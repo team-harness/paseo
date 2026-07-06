@@ -1,0 +1,73 @@
+{
+  "gate_id": "dod-runner",
+  "stage": "implementation.after_qa_fix",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "command": "npx vitest run packages/app/src/status-summary/status-bar-session-navigation.test.ts --bail=1",
+      "exit_code": 0,
+      "stdout": "\n RUN  v4.1.7 /Users/wyattfang/.paseo/worktrees/3rvhzvvc/global-status-bar-usage-history\n\n\n Test Files  1 passed (1)\n      Tests  3 passed (3)\n   Start at  13:33:43\n   Duration  129ms (transform 22ms, setup 0ms, import 31ms, tests 3ms, environment 0ms)\n\n",
+      "stderr": "",
+      "id": "CMD-001",
+      "core": true,
+      "failure_handling": "失败则回实现修 resolver 或测试夹具。"
+    },
+    {
+      "command": "npx vitest run packages/app/src/status-summary/status-bar-running-sessions.test.tsx --bail=1",
+      "exit_code": 0,
+      "stdout": "\n RUN  v4.1.7 /Users/wyattfang/.paseo/worktrees/3rvhzvvc/global-status-bar-usage-history\n\n\n Test Files  1 passed (1)\n      Tests  4 passed (4)\n   Start at  13:33:44\n   Duration  430ms (transform 42ms, setup 0ms, import 71ms, tests 29ms, environment 237ms)\n\n",
+      "stderr": "",
+      "id": "CMD-002",
+      "core": true,
+      "failure_handling": "失败则回实现修状态/交互。"
+    },
+    {
+      "command": "npm run typecheck",
+      "exit_code": 0,
+      "stdout": "\n> paseo@0.1.104-beta.3 typecheck\n> npm run typecheck --workspaces --if-present\n\n\n> @getpaseo/expo-two-way-audio@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/highlight@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/protocol@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/client@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/server@0.1.104-beta.3 typecheck\n> tsgo -p tsconfig.server.typecheck.json --noEmit\n\n\n> @getpaseo/app@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/relay@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/website@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/desktop@0.1.104-beta.3 typecheck\n> tsgo --noEmit -p tsconfig.json\n\n\n> @getpaseo/cli@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n",
+      "stderr": "",
+      "id": "CMD-003",
+      "core": true,
+      "failure_handling": "若跨包声明 stale，先按 AGENTS 指令 build 对应 stack。"
+    },
+    {
+      "command": "npm run lint",
+      "exit_code": 0,
+      "stdout": "\n> paseo@0.1.104-beta.3 lint\n> oxlint\n\nFound 0 warnings and 0 errors.\nFinished in 561ms on 2462 files with 177 rules using 10 threads.\n",
+      "stderr": "",
+      "id": "CMD-004",
+      "core": true,
+      "failure_handling": "只接受无关既有红灯并记录证据。"
+    },
+    {
+      "command": "npm run format:check",
+      "exit_code": 0,
+      "stdout": "\n> paseo@0.1.104-beta.3 format:check\n> oxfmt --check .\n\nChecking formatting...\n\nAll matched files use the correct format.\nFinished in 1350ms on 2731 files using 10 threads.\n",
+      "stderr": "",
+      "id": "CMD-005",
+      "core": true,
+      "failure_handling": "失败则运行 npm run format 后复查。"
+    },
+    {
+      "command": "! rg \"router\\\\.|buildHostAgentDetailRoute|buildHostWorkspaceRoute|provider\\\\.usage\\\\.list|listProviderUsage|fetchAgents|archiveAgent|cancelAgent|restart|useUnistyles\" packages/app/src/status-summary",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "",
+      "id": "CMD-006",
+      "core": true,
+      "failure_handling": "若存在命中必须分类；越界命中移除或回 design。"
+    },
+    {
+      "command": "npm run test:e2e --workspace=@getpaseo/app -- status-bar-running-sessions.spec.ts",
+      "exit_code": 0,
+      "stdout": "Resumed\":2,\"helloNew\":5,\"pendingDisconnected\":0,\"sessionDisconnectedWaitingReconnect\":7,\"sessionSocketDisconnectedAttached\":0,\"sessionCleanup\":0,\"validationFailed\":0,\"binaryBeforeHelloRejected\":0,\"pendingMessageRejectedBeforeHello\":0,\"missingConnectionForMessage\":0,\"unexpectedHelloOnActiveConnection\":0,\"relayExternalSocketAttached\":0,\"originRejected\":0,\"hostRejected\":0},\"inboundMessageTypesTop\":[[\"session\",58],[\"hello\",7],[\"ping\",4]],\"inboundSessionRequestTypesTop\":[[\"get_providers_snapshot_request\",7],[\"client_heartbeat\",6],[\"fetch_workspaces_request\",4],[\"workspace_setup_status_request\",4],[\"fetch_agents_request\",4],[\"list_provider_features_request\",4],[\"project_icon_request\",3],[\"get_daemon_config_request\",3],[\"checkout_status_request\",3],[\"list_terminals_request\",3],[\"subscribe_terminals_request\",3],[\"read_project_config_request\",3],[\"checkout_pr_status_request\",3],[\"workspace.create.request\",2],[\"project.remove.request\",2],[\"file_explorer_request\",2],[\"daemon.get_pairing_offer.request\",1],[\"fetch_agent_request\",1]],\"outboundMessageTypesTop\":[[\"session_message\",111],[\"pong\",4]],\"outboundSessionMessageTypesTop\":[[\"providers_snapshot_update\",48],[\"status\",7],[\"get_providers_snapshot_response\",7],[\"checkout_status_update\",4],[\"workspace_setup_status_response\",4],[\"fetch_workspaces_response\",4],[\"fetch_agents_response\",4],[\"list_provider_features_response\",4],[\"get_daemon_config_response\",3],[\"checkout_status_response\",3],[\"read_project_config_response\",3],[\"list_terminals_response\",3],[\"terminals_changed\",3],[\"project_icon_response\",3],[\"checkout_pr_status_response\",3],[\"workspace.create.response\",2],[\"project.remove.response\",2],[\"file_explorer_response\",2],[\"daemon.get_pairing_offer.response\",1],[\"fetch_agent_response\",1]],\"outboundAgentStreamTypesTop\":[],\"outboundAgentStreamAgentsTop\":[],\"outboundBinaryFrameTypesTop\":[],\"bufferedAmount\":{\"p95\":0,\"max\":0},\"eventLoopDelay\":{\"p50Ms\":11,\"p99Ms\":12.9,\"maxMs\":24.8},\"uptimeSeconds\":11.836,\"memory\":{\"rss\":502726656,\"heapTotal\":238632960,\"heapUsed\":168056048,\"external\":6854580,\"arrayBuffers\":2850799},\"runtime\":{\"checkoutDiffTargetCount\":0,\"checkoutDiffSubscriptionCount\":0,\"checkoutDiffWatcherCount\":0,\"checkoutDiffFallbackRefreshTargetCount\":0,\"terminalDirectorySubscriptionCount\":2,\"terminalSubscriptionCount\":0,\"inflightRequests\":0,\"peakInflightRequests\":8},\"latency\":[{\"type\":\"workspace.create.request\",\"count\":2,\"minMs\":63,\"maxMs\":75,\"p50Ms\":75,\"totalMs\":137},{\"type\":\"get_providers_snapshot_request\",\"count\":7,\"minMs\":0,\"maxMs\":7,\"p50Ms\":2,\"totalMs\":21},{\"type\":\"project_icon_request\",\"count\":3,\"minMs\":1,\"maxMs\":13,\"p50Ms\":6,\"totalMs\":20},{\"type\":\"list_terminals_request\",\"count\":3,\"minMs\":1,\"maxMs\":7,\"p50Ms\":7,\"totalMs\":14},{\"type\":\"fetch_workspaces_request\",\"count\":4,\"minMs\":0,\"maxMs\":9,\"p50Ms\":2,\"totalMs\":12},{\"type\":\"daemon.get_pairing_offer.request\",\"count\":1,\"minMs\":10,\"maxMs\":10,\"p50Ms\":10,\"totalMs\":10},{\"type\":\"client_heartbeat\",\"count\":6,\"minMs\":0,\"maxMs\":7,\"p50Ms\":0,\"totalMs\":10},{\"type\":\"file_explorer_request\",\"count\":2,\"minMs\":1,\"maxMs\":7,\"p50Ms\":7,\"totalMs\":9},{\"type\":\"workspace_setup_status_request\",\"count\":4,\"minMs\":0,\"maxMs\":6,\"p50Ms\":1,\"totalMs\":8},{\"type\":\"checkout_status_request\",\"count\":3,\"minMs\":0,\"maxMs\":6,\"p50Ms\":1,\"totalMs\":7},{\"type\":\"read_project_config_request\",\"count\":3,\"minMs\":0,\"maxMs\":6,\"p50Ms\":0,\"totalMs\":7},{\"type\":\"project.remove.request\",\"count\":2,\"minMs\":2,\"maxMs\":5,\"p50Ms\":5,\"totalMs\":7},{\"type\":\"get_daemon_config_request\",\"count\":3,\"minMs\":0,\"maxMs\":5,\"p50Ms\":1,\"totalMs\":6},{\"type\":\"subscribe_terminals_request\",\"count\":3,\"minMs\":0,\"maxMs\":4,\"p50Ms\":1,\"totalMs\":6},{\"type\":\"fetch_agents_request\",\"count\":4,\"minMs\":0,\"maxMs\":1,\"p50Ms\":1,\"totalMs\":2}],\"agents\":{\"total\":0,\"byLifecycle\":{},\"withActiveForegroundTurn\":0,\"timelineStats\":{\"totalItems\":0,\"maxItemsPerAgent\":0}},\"msg\":\"ws_runtime_metrics\"}\n[daemon] {\"level\":30,\"time\":1783316045583,\"pid\":32089,\"hostname\":\"WyattdeMac-mini.local\",\"msg\":\"Server closed\"}\n[e2e] Test daemon stopped\n\n  2 passed (13.3s)\n",
+      "stderr": "[e2e] OPENAI_API_KEY probe request failed: fetch failed\n[daemon] Starting inspector on 127.0.0.1:9229 failed: address already in use\n[metro] Experimental Expo Autolinking module resolver is enabled.\n(node:32264) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:32264) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n[daemon] [DaemonRunner] supervisor_received_SIGTERM. Stopping worker...\n[daemon] [DaemonRunner] Worker exited (code 0). Supervisor shutting down.\n",
+      "id": "CMD-007",
+      "core": true,
+      "failure_handling": "失败则回实现修真实 desktop/compact 浮层行为或 e2e fixture。"
+    }
+  ],
+  "providers": {}
+}

@@ -308,8 +308,8 @@ type StatusBarRow = {
 5. **status-bar-running-sessions-nav** — 为状态栏增加运行中 session 快照、详情弹层和导航到 agent/workspace 的动作。
    - 所属模块：Global Status Bar UI
    - 依赖：`global-status-bar-shell`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-07-06-status-bar-running-sessions-nav
    - 备注：导航必须遵守 Expo Router 文档和 workspace helper。
 
 6. **status-bar-polish-hardening** — 收口状态栏的 compact/desktop 表现、旧 daemon gate、无数据/错误态、可访问性、视觉回归和文档沉淀。

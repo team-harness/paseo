@@ -4,11 +4,13 @@ import { StyleSheet } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { usePanelStore } from "@/stores/panel-store";
 import { useGlobalStatusBarView } from "./use-status-summary";
+import { StatusBarRunningSessionsTrigger } from "./status-bar-running-sessions";
 import type { StatusBarRow, StatusBarRowId, StatusSummaryViewModel } from "./view-model";
 
 export const GLOBAL_STATUS_BAR_CONTENT_HEIGHT = 36;
 
 interface GlobalStatusBarProps {
+  serverId: string;
   bottomInset?: number;
   chromeState: GlobalStatusBarChromeState;
 }
@@ -33,7 +35,7 @@ export function useGlobalStatusBarChromeState(serverId: string): GlobalStatusBar
   return useMemo(() => ({ view, isVisible }), [view, isVisible]);
 }
 
-export function GlobalStatusBar({ bottomInset = 0, chromeState }: GlobalStatusBarProps) {
+export function GlobalStatusBar({ serverId, bottomInset = 0, chromeState }: GlobalStatusBarProps) {
   const { view } = chromeState;
   const isCompact = useIsCompactFormFactor();
   const barStyle = useMemo(() => [styles.root, { paddingBottom: bottomInset }], [bottomInset]);
@@ -45,29 +47,46 @@ export function GlobalStatusBar({ bottomInset = 0, chromeState }: GlobalStatusBa
   return (
     <View style={barStyle} testID="global-status-bar">
       <View style={styles.content}>
-        <StatusBarContent view={view} isCompact={isCompact} />
+        <StatusBarContent serverId={serverId} view={view} isCompact={isCompact} />
       </View>
     </View>
   );
 }
 
 function StatusBarContent({
+  serverId,
   view,
   isCompact,
 }: {
+  serverId: string;
   view: StatusSummaryViewModel;
   isCompact: boolean;
 }) {
   if (view.kind === "ready") {
-    const rows = isCompact
-      ? view.primaryRows.filter((row) => COMPACT_ROW_IDS.has(row.id))
+    const hasSessionSnapshots =
+      view.runningAgents.length > 0 ||
+      view.needsAttentionAgents.length > 0 ||
+      view.recentlyCompletedAgents.length > 0;
+    let rows = hasSessionSnapshots
+      ? view.primaryRows.filter((row) => row.id !== "running" && row.id !== "attention")
       : view.primaryRows;
+    if (isCompact) {
+      rows = rows.filter((row) => COMPACT_ROW_IDS.has(row.id));
+    }
 
     return (
       <View style={styles.rowGroup} testID="global-status-bar-ready">
         {rows.map((row) => (
           <StatusBarChip key={row.id} row={row} />
         ))}
+        {hasSessionSnapshots ? (
+          <StatusBarRunningSessionsTrigger
+            serverId={serverId}
+            runningAgents={view.runningAgents}
+            needsAttentionAgents={view.needsAttentionAgents}
+            recentlyCompletedAgents={view.recentlyCompletedAgents}
+          />
+        ) : null}
       </View>
     );
   }

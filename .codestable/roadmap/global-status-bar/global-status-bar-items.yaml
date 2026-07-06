@@ -37,7 +37,7 @@ items:
   - slug: status-bar-running-sessions-nav
     description: 为状态栏增加运行中 session 快照、详情弹层和导航到 agent/workspace 的动作
     depends_on: [global-status-bar-shell]
-    status: in-progress
+    status: done
     feature: 2026-07-06-status-bar-running-sessions-nav
     minimal_loop: false
     notes: 导航必须遵守 Expo Router 文档和 workspace helper

@@ -32,7 +32,11 @@ export function HostStatusBarLayout({ serverId, children }: HostStatusBarLayoutP
         <View style={styles.content} testID="host-status-bar-content">
           {children}
         </View>
-        <GlobalStatusBar bottomInset={insets.bottom} chromeState={chromeState} />
+        <GlobalStatusBar
+          serverId={serverId}
+          bottomInset={insets.bottom}
+          chromeState={chromeState}
+        />
       </View>
     </HostBottomChromeProvider>
   );

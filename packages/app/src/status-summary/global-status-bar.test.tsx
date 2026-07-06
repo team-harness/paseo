@@ -12,11 +12,14 @@ const { theme, runtimeState } = vi.hoisted(() => ({
     borderWidth: { 1: 1 },
     borderRadius: { md: 6 },
     fontSize: { xs: 11 },
-    fontWeight: { normal: "400" },
+    fontWeight: { normal: "400", medium: "500" },
+    opacity: { 50: 0.5 },
     colors: {
       surface0: "#000",
       surface1: "#111",
+      surface2: "#222",
       border: "#333",
+      borderAccent: "#555",
       foreground: "#fff",
       foregroundMuted: "#aaa",
       statusSuccess: "#15803d",
@@ -59,6 +62,9 @@ vi.mock("react-native-unistyles", () => ({
     create: (factory: unknown) =>
       typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
   },
+  withUnistyles:
+    (Component: React.ComponentType<Record<string, unknown>>) => (props: Record<string, unknown>) =>
+      React.createElement(Component, props),
 }));
 
 vi.mock("react-native-safe-area-context", () => ({
@@ -72,6 +78,40 @@ vi.mock("@/constants/layout", () => ({
 vi.mock("@/stores/panel-store", () => ({
   usePanelStore: (selector: (state: { desktop: { focusModeEnabled: boolean } }) => unknown) =>
     selector({ desktop: { focusModeEnabled: runtimeState.focusModeEnabled } }),
+}));
+
+vi.mock("lucide-react-native", () => ({
+  ArrowUpRight: () => React.createElement("span"),
+  BriefcaseBusiness: () => React.createElement("span"),
+}));
+
+vi.mock("expo-router", () => ({
+  usePathname: () => "/h/server-1",
+}));
+
+vi.mock("@/stores/session-store", () => ({
+  useSessionStore: (selector: (state: unknown) => unknown) =>
+    selector({ sessions: { "server-1": { workspaces: new Map() } } }),
+}));
+
+vi.mock("@/utils/navigate-to-agent", () => ({
+  navigateToAgent: () => undefined,
+}));
+
+vi.mock("@/stores/navigation-active-workspace-store", () => ({
+  navigateToWorkspace: () => undefined,
+}));
+
+vi.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("div", null, children),
+  DropdownMenuTrigger: ({ children, testID }: { children?: React.ReactNode; testID?: string }) =>
+    React.createElement("button", { "data-testid": testID, type: "button" }, children),
+  DropdownMenuContent: () => null,
+}));
+
+vi.mock("@/components/adaptive-modal-sheet", () => ({
+  AdaptiveModalSheet: () => null,
 }));
 
 vi.mock("./use-status-summary", () => ({
@@ -165,7 +205,7 @@ describe("GlobalStatusBar", () => {
     runtimeState.view = readyView();
 
     act(() => {
-      root?.render(<GlobalStatusBar chromeState={currentChromeState()} />);
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
     });
 
     expect(container?.querySelector('[data-testid="global-status-bar"]')).not.toBeNull();
@@ -175,6 +215,7 @@ describe("GlobalStatusBar", () => {
     expect(
       container?.querySelector('[data-testid="global-status-bar-row-running"]')?.textContent,
     ).toContain("2");
+    expect(container?.querySelector('[data-testid="status-bar-sessions-trigger"]')).toBeNull();
     expect(container?.querySelector('[data-testid="global-status-bar-row-cost"]')).not.toBeNull();
   });
 
@@ -183,7 +224,7 @@ describe("GlobalStatusBar", () => {
     runtimeState.compact = true;
 
     act(() => {
-      root?.render(<GlobalStatusBar chromeState={currentChromeState()} />);
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
     });
 
     expect(container?.querySelector('[data-testid="global-status-bar-row-cost"]')).toBeNull();
@@ -196,7 +237,7 @@ describe("GlobalStatusBar", () => {
   it("renders quiet non-ready states and hides unsupported hosts", () => {
     runtimeState.view = { kind: "loading" };
     act(() => {
-      root?.render(<GlobalStatusBar chromeState={currentChromeState()} />);
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
     });
     expect(
       container?.querySelector('[data-testid="global-status-bar-loading"]')?.textContent,
@@ -204,7 +245,7 @@ describe("GlobalStatusBar", () => {
 
     runtimeState.view = { kind: "offline", message: "Host is offline." };
     act(() => {
-      root?.render(<GlobalStatusBar chromeState={currentChromeState()} />);
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
     });
     expect(
       container?.querySelector('[data-testid="global-status-bar-offline"]')?.textContent,
@@ -212,7 +253,7 @@ describe("GlobalStatusBar", () => {
 
     runtimeState.view = { kind: "error", message: "Status summary unavailable." };
     act(() => {
-      root?.render(<GlobalStatusBar chromeState={currentChromeState()} />);
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
     });
     expect(
       container?.querySelector('[data-testid="global-status-bar-error"]')?.textContent,
@@ -220,13 +261,13 @@ describe("GlobalStatusBar", () => {
 
     runtimeState.view = { kind: "hidden", reason: "no-host" };
     act(() => {
-      root?.render(<GlobalStatusBar chromeState={currentChromeState()} />);
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
     });
     expect(container?.querySelector('[data-testid="global-status-bar"]')).toBeNull();
 
     runtimeState.view = { kind: "unsupported", message: "Update the host to use this." };
     act(() => {
-      root?.render(<GlobalStatusBar chromeState={currentChromeState()} />);
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
     });
     expect(container?.querySelector('[data-testid="global-status-bar"]')).toBeNull();
   });
@@ -236,7 +277,7 @@ describe("GlobalStatusBar", () => {
     runtimeState.focusModeEnabled = true;
 
     act(() => {
-      root?.render(<GlobalStatusBar chromeState={currentChromeState()} />);
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
     });
 
     expect(container?.querySelector('[data-testid="global-status-bar"]')).toBeNull();
