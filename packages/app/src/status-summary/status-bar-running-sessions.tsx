@@ -13,7 +13,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { useAgentHistory } from "@/hooks/use-agent-history";
+import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useSessionStore } from "@/stores/session-store";
+import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
+import { useQueryClient } from "@tanstack/react-query";
+import { navigateToAgent } from "@/utils/navigate-to-agent";
+import { formatTimeAgo } from "@/utils/time";
 import {
   buildStatusBarSessionList,
   navigateToStatusBarSession,
@@ -26,6 +32,8 @@ import {
   formatStatusBarSessionTitle,
   formatStatusBarSessionUsage,
 } from "./status-bar-session-format";
+
+const HISTORY_LIMIT = 10;
 
 const ThemedArrowUpRight = withUnistyles(ArrowUpRight, (theme) => ({
   color: theme.colors.foregroundMuted,
@@ -199,28 +207,167 @@ export function StatusBarRunningSessionsTrigger({
   );
 }
 
+export function StatusBarSessionHistoryTrigger({ serverId }: { serverId: string }) {
+  const isCompact = useIsCompactFormFactor();
+  const pathname = usePathname();
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const { agents, isInitialLoad, isError } = useAgentHistory({ serverId });
+  const [open, setOpen] = useState(false);
+  const sheetHeader = useMemo(() => ({ title: t("statusBar.history.title") }), [t]);
+  const items = useMemo(() => agents.slice(0, HISTORY_LIMIT), [agents]);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname, serverId]);
+
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    setOpen(nextOpen);
+  }, []);
+
+  const handleNavigate = useCallback(
+    (agent: AggregatedAgent) => {
+      setOpen(false);
+      const openAgent = () => {
+        navigateToAgent({
+          serverId: agent.serverId,
+          agentId: agent.id,
+          workspaceId: agent.workspaceId,
+          pin: false,
+        });
+      };
+
+      const navigate = () => {
+        if (isCompact) {
+          requestAnimationFrame(openAgent);
+          return;
+        }
+        openAgent();
+      };
+
+      if (agent.archivedAt) {
+        const client = useSessionStore.getState().sessions[agent.serverId]?.client ?? null;
+        if (client) {
+          void client
+            .refreshAgent(agent.id)
+            .then(() => {
+              navigate();
+              return queryClient.invalidateQueries({
+                queryKey: agentHistoryQueryKey(agent.serverId),
+              });
+            })
+            .catch(() => {});
+          return;
+        }
+      }
+
+      navigate();
+    },
+    [isCompact, queryClient],
+  );
+
+  const handleCompactOpen = useCallback(() => {
+    handleOpenChange(true);
+  }, [handleOpenChange]);
+
+  const handleClose = useCallback(() => {
+    handleOpenChange(false);
+  }, [handleOpenChange]);
+
+  const triggerBody = (
+    <TriggerContent count={items.length} label={t("statusBar.history.trigger")} />
+  );
+
+  if (isCompact) {
+    return (
+      <>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("statusBar.history.title")}
+          onPress={handleCompactOpen}
+          style={compactTriggerStyle}
+          testID="status-bar-history-trigger"
+        >
+          {triggerBody}
+        </Pressable>
+        <AdaptiveModalSheet
+          header={sheetHeader}
+          visible={open}
+          onClose={handleClose}
+          snapPoints={COMPACT_SNAP_POINTS}
+          testID="status-bar-history-sheet"
+        >
+          <StatusBarHistoryList
+            items={items}
+            isLoading={isInitialLoad}
+            isError={isError}
+            onNavigate={handleNavigate}
+          />
+        </AdaptiveModalSheet>
+      </>
+    );
+  }
+
+  return (
+    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+      <DropdownMenuTrigger
+        accessibilityRole="button"
+        accessibilityLabel={t("statusBar.history.title")}
+        style={desktopTriggerStyle}
+        testID="status-bar-history-trigger"
+      >
+        {triggerBody}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="top"
+        align="end"
+        width={360}
+        maxHeight={420}
+        scrollable
+        testID="status-bar-history-panel"
+      >
+        <StatusBarHistoryList
+          items={items}
+          isLoading={isInitialLoad}
+          isError={isError}
+          onNavigate={handleNavigate}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function TriggerContent({
   attentionCount,
+  count,
   label,
   runningCount,
 }: {
-  attentionCount: number;
+  attentionCount?: number;
+  count?: number;
   label: string;
-  runningCount: number;
+  runningCount?: number;
 }) {
   return (
     <>
       <Text style={styles.triggerLabel} numberOfLines={1}>
         {label}
       </Text>
-      {attentionCount > 0 ? (
+      {attentionCount !== undefined && attentionCount > 0 ? (
         <Text style={styles.triggerAttentionValue} numberOfLines={1}>
           {attentionCount}
         </Text>
       ) : null}
-      <Text style={styles.triggerValue} numberOfLines={1}>
-        {runningCount}
-      </Text>
+      {runningCount !== undefined ? (
+        <Text style={styles.triggerValue} numberOfLines={1}>
+          {runningCount}
+        </Text>
+      ) : null}
+      {count !== undefined ? (
+        <Text style={styles.triggerValue} numberOfLines={1}>
+          {count}
+        </Text>
+      ) : null}
     </>
   );
 }
@@ -254,6 +401,98 @@ function StatusBarSessionsList({
           </View>
         </View>
       ))}
+    </View>
+  );
+}
+
+function StatusBarHistoryList({
+  items,
+  isError,
+  isLoading,
+  onNavigate,
+}: {
+  items: AggregatedAgent[];
+  isError: boolean;
+  isLoading: boolean;
+  onNavigate: (agent: AggregatedAgent) => void;
+}) {
+  const { t } = useTranslation();
+  if (isLoading) {
+    return (
+      <View style={styles.emptyState} testID="status-bar-history-loading">
+        <Text style={styles.emptyText}>{t("statusBar.history.loading")}</Text>
+      </View>
+    );
+  }
+  if (isError && items.length === 0) {
+    return (
+      <View style={styles.emptyState} testID="status-bar-history-error">
+        <Text style={styles.emptyText}>{t("statusBar.history.error")}</Text>
+      </View>
+    );
+  }
+  if (items.length === 0) {
+    return (
+      <View style={styles.emptyState} testID="status-bar-history-empty">
+        <Text style={styles.emptyText}>{t("statusBar.history.empty")}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.list} testID="status-bar-history-list">
+      <View style={styles.group}>
+        <Text style={styles.groupLabel}>{t("statusBar.history.group")}</Text>
+        <View style={styles.groupRows}>
+          {items.map((item) => (
+            <StatusBarHistoryRow
+              key={`${item.serverId}:${item.id}`}
+              item={item}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function StatusBarHistoryRow({
+  item,
+  onNavigate,
+}: {
+  item: AggregatedAgent;
+  onNavigate: (agent: AggregatedAgent) => void;
+}) {
+  const { t } = useTranslation();
+  const title = item.title?.trim() || t("agentList.fallbackTitle");
+  const subtitle = formatHistorySubtitle(item);
+  const meta = formatStatusBarHistoryMeta(item);
+  const handlePress = useCallback(() => {
+    onNavigate(item);
+  }, [item, onNavigate]);
+
+  return (
+    <View style={styles.row} testID={`status-bar-history-row-${item.id}`}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t("statusBar.history.actions.openAgent", { title })}
+        onPress={handlePress}
+        style={rowPrimaryStyle}
+      >
+        <View style={styles.rowText}>
+          <Text style={styles.rowTitle} numberOfLines={1}>
+            {title}
+          </Text>
+          <Text style={styles.rowSubtitle} numberOfLines={1}>
+            {subtitle}
+          </Text>
+          <Text style={styles.rowMeta} numberOfLines={1}>
+            {meta}
+          </Text>
+        </View>
+        <ThemedArrowUpRight size={14} />
+      </Pressable>
     </View>
   );
 }
@@ -357,6 +596,23 @@ function groupItems(items: StatusBarSessionListItem[]) {
     }
   }
   return groups;
+}
+
+function formatHistorySubtitle(agent: AggregatedAgent): string {
+  const cwd = formatCwd(agent.cwd);
+  return cwd ? `${agent.provider} · ${cwd}` : agent.provider;
+}
+
+function formatStatusBarHistoryMeta(agent: AggregatedAgent): string {
+  return formatTimeAgo(agent.lastActivityAt);
+}
+
+function formatCwd(cwd: string): string {
+  const normalized = cwd.trim().replace(/\/+$/, "");
+  if (!normalized) return "";
+  const segments = normalized.split("/");
+  const lastSegment = segments.findLast(Boolean);
+  return lastSegment ?? normalized;
 }
 
 const styles = StyleSheet.create((theme) => ({

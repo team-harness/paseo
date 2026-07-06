@@ -35,12 +35,29 @@ const { theme, runtimeState } = vi.hoisted(() => ({
     focusModeEnabled: false,
     compact: false,
     safeAreaBottom: 0,
+    historyAgents: [],
   },
 }));
 
 vi.mock("react-native", () => ({
   Text: ({ children, testID }: { children?: React.ReactNode; testID?: string }) =>
     React.createElement("span", { "data-testid": testID }, children),
+  Pressable: ({
+    children,
+    onPress,
+    testID,
+  }: {
+    children?:
+      | React.ReactNode
+      | ((state: { pressed: boolean; hovered: boolean }) => React.ReactNode);
+    onPress?: () => void;
+    testID?: string;
+  }) =>
+    React.createElement(
+      "button",
+      { "data-testid": testID, onClick: () => onPress?.(), type: "button" },
+      typeof children === "function" ? children({ pressed: false, hovered: false }) : children,
+    ),
   View: ({
     children,
     style,
@@ -97,12 +114,35 @@ vi.mock("expo-router", () => ({
 }));
 
 vi.mock("@/stores/session-store", () => ({
-  useSessionStore: (selector: (state: unknown) => unknown) =>
-    selector({ sessions: { "server-1": { workspaces: new Map() } } }),
+  useSessionStore: Object.assign(
+    (selector: (state: unknown) => unknown) =>
+      selector({ sessions: { "server-1": { workspaces: new Map(), client: null } } }),
+    {
+      getState: () => ({ sessions: { "server-1": { workspaces: new Map(), client: null } } }),
+    },
+  ),
 }));
 
 vi.mock("@/utils/navigate-to-agent", () => ({
   navigateToAgent: () => undefined,
+}));
+
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+}));
+
+vi.mock("@/hooks/use-agent-history", () => ({
+  useAgentHistory: () => ({
+    agents: runtimeState.historyAgents,
+    isInitialLoad: false,
+    isError: false,
+    isLoading: false,
+    isRevalidating: false,
+    hasMore: false,
+    isLoadingMore: false,
+    refreshAll: vi.fn(),
+    loadMore: vi.fn(),
+  }),
 }));
 
 vi.mock("@/stores/navigation-active-workspace-store", () => ({
@@ -192,6 +232,7 @@ describe("GlobalStatusBar", () => {
     runtimeState.focusModeEnabled = false;
     runtimeState.compact = false;
     runtimeState.safeAreaBottom = 0;
+    runtimeState.historyAgents = [];
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -223,6 +264,7 @@ describe("GlobalStatusBar", () => {
       container?.querySelector('[data-testid="global-status-bar-row-running"]')?.textContent,
     ).toContain("2");
     expect(container?.querySelector('[data-testid="status-bar-sessions-trigger"]')).toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-history-trigger"]')).not.toBeNull();
     expect(container?.querySelector('[data-testid="global-status-bar-row-cost"]')).not.toBeNull();
   });
 

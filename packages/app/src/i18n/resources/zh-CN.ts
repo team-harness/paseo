@@ -241,6 +241,17 @@ export const zhCN: TranslationResources = {
         openWorkspace: "打开工作区",
       },
     },
+    history: {
+      title: "会话历史",
+      trigger: "历史",
+      group: "最近",
+      empty: "没有会话历史",
+      loading: "正在加载历史",
+      error: "无法加载历史",
+      actions: {
+        openAgent: "打开 {{title}}",
+      },
+    },
   },
   agentList: {
     fallbackTitle: "新会话",

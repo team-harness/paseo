@@ -240,6 +240,17 @@ export const en = {
         openWorkspace: "Open workspace",
       },
     },
+    history: {
+      title: "Session history",
+      trigger: "History",
+      group: "Recent",
+      empty: "No session history",
+      loading: "Loading history",
+      error: "Unable to load history",
+      actions: {
+        openAgent: "Open {{title}}",
+      },
+    },
   },
   agentList: {
     fallbackTitle: "New session",

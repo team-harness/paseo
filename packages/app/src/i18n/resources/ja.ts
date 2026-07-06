@@ -244,6 +244,17 @@ export const ja: TranslationResources = {
         openWorkspace: "ワークスペースを開く",
       },
     },
+    history: {
+      title: "セッション履歴",
+      trigger: "履歴",
+      group: "最近",
+      empty: "セッション履歴はありません",
+      loading: "履歴を読み込み中",
+      error: "履歴を読み込めません",
+      actions: {
+        openAgent: "{{title}}を開く",
+      },
+    },
   },
   agentList: {
     fallbackTitle: "新しいセッション",

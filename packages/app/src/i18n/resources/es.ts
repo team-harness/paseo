@@ -244,6 +244,17 @@ export const es: TranslationResources = {
         openWorkspace: "Abrir workspace",
       },
     },
+    history: {
+      title: "Historial de sesiones",
+      trigger: "Historial",
+      group: "Recientes",
+      empty: "No hay historial de sesiones",
+      loading: "Cargando historial",
+      error: "No se pudo cargar el historial",
+      actions: {
+        openAgent: "Abrir {{title}}",
+      },
+    },
   },
   agentList: {
     fallbackTitle: "Nueva sesión",

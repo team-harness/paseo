@@ -241,6 +241,17 @@ export const ar: TranslationResources = {
         openWorkspace: "افتح مساحة العمل",
       },
     },
+    history: {
+      title: "سجل الجلسات",
+      trigger: "السجل",
+      group: "الأخيرة",
+      empty: "لا يوجد سجل جلسات",
+      loading: "جارٍ تحميل السجل",
+      error: "تعذر تحميل السجل",
+      actions: {
+        openAgent: "افتح {{title}}",
+      },
+    },
   },
   agentList: {
     fallbackTitle: "جلسة جديدة",

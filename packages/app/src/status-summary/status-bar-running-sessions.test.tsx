@@ -4,6 +4,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import type { StatusAgentSnapshot } from "@getpaseo/protocol/messages";
 import type { StatusSummaryViewModel } from "./view-model";
 
@@ -12,6 +13,7 @@ const { theme, runtimeState, navigationSpies } = vi.hoisted(() => ({
     spacing: { 0: 0, 1: 4, 2: 8, 3: 12, 4: 16 },
     borderWidth: { 1: 1 },
     borderRadius: { md: 6 },
+    iconSize: { xs: 12, sm: 14 },
     fontSize: { xs: 11 },
     fontWeight: { normal: "400", medium: "500" },
     opacity: { 50: 0.5 },
@@ -29,6 +31,10 @@ const { theme, runtimeState, navigationSpies } = vi.hoisted(() => ({
     compact: false,
     pathname: "/h/server-1",
     liveWorkspaceIds: ["workspace-1"],
+    historyAgents: [] as AggregatedAgent[],
+    historyInitialLoad: false,
+    historyError: false,
+    refreshAgent: vi.fn(),
   },
   navigationSpies: {
     navigateToAgent: vi.fn(),
@@ -93,14 +99,27 @@ vi.mock("@/constants/layout", () => ({
 }));
 
 vi.mock("@/stores/session-store", () => ({
-  useSessionStore: (selector: (state: unknown) => unknown) =>
-    selector({
-      sessions: {
-        "server-1": {
-          workspaces: new Map(runtimeState.liveWorkspaceIds.map((id) => [id, { id }])),
+  useSessionStore: Object.assign(
+    (selector: (state: unknown) => unknown) =>
+      selector({
+        sessions: {
+          "server-1": {
+            workspaces: new Map(runtimeState.liveWorkspaceIds.map((id) => [id, { id }])),
+            client: { refreshAgent: runtimeState.refreshAgent },
+          },
         },
-      },
-    }),
+      }),
+    {
+      getState: () => ({
+        sessions: {
+          "server-1": {
+            workspaces: new Map(runtimeState.liveWorkspaceIds.map((id) => [id, { id }])),
+            client: { refreshAgent: runtimeState.refreshAgent },
+          },
+        },
+      }),
+    },
+  ),
 }));
 
 vi.mock("@/stores/panel-store", () => ({
@@ -114,6 +133,24 @@ vi.mock("./use-status-summary", () => ({
 
 vi.mock("@/utils/navigate-to-agent", () => ({
   navigateToAgent: navigationSpies.navigateToAgent,
+}));
+
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+}));
+
+vi.mock("@/hooks/use-agent-history", () => ({
+  useAgentHistory: () => ({
+    agents: runtimeState.historyAgents,
+    isInitialLoad: runtimeState.historyInitialLoad,
+    isError: runtimeState.historyError,
+    isLoading: runtimeState.historyInitialLoad,
+    isRevalidating: false,
+    hasMore: false,
+    isLoadingMore: false,
+    refreshAll: vi.fn(),
+    loadMore: vi.fn(),
+  }),
 }));
 
 vi.mock("@/stores/navigation-active-workspace-store", () => ({
@@ -229,6 +266,29 @@ function snapshot(input: Partial<StatusAgentSnapshot> & { agentId: string }): St
   };
 }
 
+function historyAgent(input: Partial<AggregatedAgent> & { id: string; offsetMinutes: number }) {
+  const lastActivityAt = new Date(Date.UTC(2026, 6, 6, 4, 0 - input.offsetMinutes, 0));
+  return {
+    id: input.id,
+    serverId: input.serverId ?? "server-1",
+    serverLabel: input.serverLabel ?? "Host",
+    title: input.title ?? input.id,
+    status: input.status ?? "idle",
+    lastActivityAt,
+    cwd: input.cwd ?? `/work/${input.id}`,
+    workspaceId: input.workspaceId ?? "workspace-1",
+    provider: input.provider ?? "codex",
+    pendingPermissionCount: input.pendingPermissionCount ?? 0,
+    requiresAttention: input.requiresAttention,
+    attentionReason: input.attentionReason,
+    attentionTimestamp: input.attentionTimestamp ?? null,
+    archivedAt: input.archivedAt,
+    createdAt: input.createdAt ?? lastActivityAt,
+    labels: input.labels ?? {},
+    projectPlacement: input.projectPlacement,
+  } satisfies AggregatedAgent;
+}
+
 function readyView(): StatusSummaryViewModel {
   const running = snapshot({ agentId: "agent-running", workspaceId: "workspace-1" });
   const attention = snapshot({ agentId: "agent-attention", workspaceId: "workspace-1" });
@@ -286,6 +346,11 @@ describe("status bar running sessions", () => {
     runtimeState.compact = false;
     runtimeState.pathname = "/h/server-1";
     runtimeState.liveWorkspaceIds = ["workspace-1"];
+    runtimeState.historyAgents = [];
+    runtimeState.historyInitialLoad = false;
+    runtimeState.historyError = false;
+    runtimeState.refreshAgent.mockReset();
+    runtimeState.refreshAgent.mockResolvedValue(undefined);
     navigationSpies.navigateToAgent.mockClear();
     navigationSpies.navigateToWorkspace.mockClear();
     container = document.createElement("div");
@@ -428,5 +493,92 @@ describe("status bar running sessions", () => {
     });
 
     expect(container?.querySelector('[data-testid="status-bar-sessions-panel"]')).toBeNull();
+  });
+
+  it("shows a history trigger next to sessions and lists the 10 latest host sessions", () => {
+    runtimeState.historyAgents = Array.from({ length: 12 }, (_, index) =>
+      historyAgent({ id: `history-${index + 1}`, offsetMinutes: index }),
+    );
+
+    act(() => {
+      root?.render(renderStatusBar());
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-sessions-trigger"]')).not.toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-history-trigger"]')).not.toBeNull();
+
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
+        ?.click();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-history-panel"]')).not.toBeNull();
+    expect(container?.querySelectorAll('[data-testid^="status-bar-history-row-"]')).toHaveLength(
+      10,
+    );
+    expect(
+      container?.querySelector('[data-testid="status-bar-history-row-history-1"]'),
+    ).not.toBeNull();
+    expect(
+      container?.querySelector('[data-testid="status-bar-history-row-history-10"]'),
+    ).not.toBeNull();
+    expect(
+      container?.querySelector('[data-testid="status-bar-history-row-history-11"]'),
+    ).toBeNull();
+  });
+
+  it("opens history even when the host has no recent sessions", () => {
+    runtimeState.historyAgents = [];
+
+    act(() => {
+      root?.render(renderStatusBar());
+    });
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
+        ?.click();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-history-panel"]')).not.toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-history-empty"]')).not.toBeNull();
+  });
+
+  it("navigates from a compact history row after closing the sheet", () => {
+    runtimeState.compact = true;
+    runtimeState.historyAgents = [historyAgent({ id: "history-1", offsetMinutes: 0 })];
+
+    act(() => {
+      root?.render(renderStatusBar());
+    });
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
+        ?.click();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-history-sheet"]')).not.toBeNull();
+
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>(
+          '[data-testid="status-bar-history-row-history-1"] button',
+        )
+        ?.click();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-history-sheet"]')).toBeNull();
+    expect(navigationSpies.navigateToAgent).not.toHaveBeenCalled();
+
+    act(() => {
+      flushAnimationFrames();
+    });
+
+    expect(navigationSpies.navigateToAgent).toHaveBeenCalledWith({
+      serverId: "server-1",
+      agentId: "history-1",
+      workspaceId: "workspace-1",
+      pin: false,
+    });
   });
 });

@@ -5,7 +5,10 @@ import { useTranslation } from "react-i18next";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { usePanelStore } from "@/stores/panel-store";
 import { useGlobalStatusBarView } from "./use-status-summary";
-import { StatusBarRunningSessionsTrigger } from "./status-bar-running-sessions";
+import {
+  StatusBarRunningSessionsTrigger,
+  StatusBarSessionHistoryTrigger,
+} from "./status-bar-running-sessions";
 import type { StatusBarRow, StatusBarRowId, StatusSummaryViewModel } from "./view-model";
 
 export const GLOBAL_STATUS_BAR_CONTENT_HEIGHT = 52;
@@ -91,6 +94,7 @@ function StatusBarContent({
             recentlyCompletedAgents={view.recentlyCompletedAgents}
           />
         ) : null}
+        <StatusBarSessionHistoryTrigger serverId={serverId} />
       </View>
     );
   }

@@ -243,6 +243,17 @@ export const ru: TranslationResources = {
         openWorkspace: "Открыть рабочую область",
       },
     },
+    history: {
+      title: "История сессий",
+      trigger: "История",
+      group: "Недавние",
+      empty: "Нет истории сессий",
+      loading: "Загрузка истории",
+      error: "Не удалось загрузить историю",
+      actions: {
+        openAgent: "Открыть {{title}}",
+      },
+    },
   },
   agentList: {
     fallbackTitle: "Новая сессия",

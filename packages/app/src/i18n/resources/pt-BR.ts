@@ -244,6 +244,17 @@ export const ptBR: TranslationResources = {
         openWorkspace: "Abrir workspace",
       },
     },
+    history: {
+      title: "Histórico de sessões",
+      trigger: "Histórico",
+      group: "Recentes",
+      empty: "Nenhum histórico de sessões",
+      loading: "Carregando histórico",
+      error: "Não foi possível carregar o histórico",
+      actions: {
+        openAgent: "Abrir {{title}}",
+      },
+    },
   },
   agentList: {
     fallbackTitle: "Nova sessão",
