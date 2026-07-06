@@ -8,6 +8,7 @@ import { FOOTER_HEIGHT, MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { Button } from "@/components/ui/button";
+import { useHostBottomChromeInset } from "@/status-summary/bottom-chrome-inset";
 import type { Theme } from "@/styles/theme";
 
 interface ArchivedAgentCalloutProps {
@@ -18,6 +19,7 @@ interface ArchivedAgentCalloutProps {
 export function ArchivedAgentCallout({ serverId, agentId }: ArchivedAgentCalloutProps) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const bottomInset = useHostBottomChromeInset(insets.bottom);
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const [isUnarchiving, setIsUnarchiving] = useState(false);
@@ -25,8 +27,8 @@ export function ArchivedAgentCallout({ serverId, agentId }: ArchivedAgentCallout
   const { style: keyboardAnimatedStyle } = useKeyboardShiftStyle({ mode: "translate" });
 
   const containerStyle = useMemo(
-    () => [styles.container, { paddingBottom: insets.bottom }, keyboardAnimatedStyle],
-    [insets.bottom, keyboardAnimatedStyle],
+    () => [styles.container, { paddingBottom: bottomInset }, keyboardAnimatedStyle],
+    [bottomInset, keyboardAnimatedStyle],
   );
 
   const handleUnarchive = useCallback(async () => {

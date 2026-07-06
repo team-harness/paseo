@@ -3,7 +3,7 @@ status: running
 baseline_ref: 0ecf2fb8da812c22f2b5fb49ce5b6609674f59df
 driver_kind: paseo
 driver_id: 07da2acb-449e-4602-8b05-eaed84fc804e
-current_feature_index: 3
+current_feature_index: 4
 features:
   - slug: usage-history-persistence
     roadmap_item: usage-history-persistence
@@ -40,7 +40,7 @@ features:
     review: .codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-review.md
     qa: .codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-qa.md
     acceptance: .codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-acceptance.md
-    status: pending
+    status: accepted
   - slug: status-bar-running-sessions-nav
     roadmap_item: status-bar-running-sessions-nav
     feature_dir: .codestable/features/2026-07-06-status-bar-running-sessions-nav

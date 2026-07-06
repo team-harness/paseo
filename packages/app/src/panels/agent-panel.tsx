@@ -65,6 +65,7 @@ import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
 import { type Agent, useSessionStore } from "@/stores/session-store";
+import { useHostBottomChromeInset } from "@/status-summary/bottom-chrome-inset";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import type { Theme } from "@/styles/theme";
@@ -1458,10 +1459,11 @@ function ActiveAgentComposer({
   const { style: composerKeyboardStyle } = useKeyboardShiftStyle({
     mode: "translate",
   });
+  const effectiveBottomInset = useHostBottomChromeInset(insets.bottom);
 
   const inputAreaStyle = useMemo(
-    () => [styles.inputAreaWrapper, { paddingBottom: insets.bottom }, composerKeyboardStyle],
-    [insets.bottom, composerKeyboardStyle],
+    () => [styles.inputAreaWrapper, { paddingBottom: effectiveBottomInset }, composerKeyboardStyle],
+    [effectiveBottomInset, composerKeyboardStyle],
   );
 
   const composerFooter = useMemo(

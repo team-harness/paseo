@@ -77,6 +77,7 @@ import { isElectronRuntime } from "@/desktop/host";
 import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
+import { useHostBottomChromeInset } from "@/status-summary/bottom-chrome-inset";
 import { settingsStyles } from "@/styles/settings";
 import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
@@ -1118,7 +1119,11 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const appVersionText = formatVersionWithPrefix(appVersion);
   const isCompactLayout = useIsCompactFormFactor();
   const insets = useSafeAreaInsets();
-  const insetBottomStyle = useMemo(() => ({ paddingBottom: insets.bottom }), [insets.bottom]);
+  const effectiveBottomInset = useHostBottomChromeInset(insets.bottom);
+  const insetBottomStyle = useMemo(
+    () => ({ paddingBottom: effectiveBottomInset }),
+    [effectiveBottomInset],
+  );
   const webScrollbarStyle = useWebScrollbarStyle();
   const scrollViewStyle = useMemo(
     () => [styles.scrollView, webScrollbarStyle],

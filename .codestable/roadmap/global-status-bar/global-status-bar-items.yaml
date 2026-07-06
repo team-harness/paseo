@@ -29,7 +29,7 @@ items:
   - slug: global-status-bar-shell
     description: 在 host-scoped shell 底部渲染跨页面状态栏，展示 total/today tokens、cost、运行中/需处理计数，并处理 layout/safe-area
     depends_on: [app-status-summary-store]
-    status: in-progress
+    status: done
     feature: 2026-07-06-global-status-bar-shell
     minimal_loop: false
     notes: 应落在 packages/app/src/app/h/[serverId]/_layout.tsx 的 host 边界内或其直接子组件；无单一 serverId 的全局路由隐藏

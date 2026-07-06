@@ -301,8 +301,8 @@ type StatusBarRow = {
 4. **global-status-bar-shell** — 在 host shell 底部渲染跨页面状态栏，展示 total/today tokens、cost、运行中/需处理计数，并处理 layout/safe-area。
    - 所属模块：Global Status Bar UI
    - 依赖：`app-status-summary-store`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-07-06-global-status-bar-shell
    - 备注：应落在 `packages/app/src/app/h/[serverId]/_layout.tsx` 的 host 边界内或其直接子组件；无单一 `serverId` 的全局路由隐藏。
 
 5. **status-bar-running-sessions-nav** — 为状态栏增加运行中 session 快照、详情弹层和导航到 agent/workspace 的动作。
