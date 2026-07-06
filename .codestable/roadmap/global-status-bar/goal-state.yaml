@@ -1,0 +1,61 @@
+roadmap: global-status-bar
+status: running
+baseline_ref: 0ecf2fb8da812c22f2b5fb49ce5b6609674f59df
+driver_kind: paseo
+driver_id: 07da2acb-449e-4602-8b05-eaed84fc804e
+current_feature_index: 1
+features:
+  - slug: usage-history-persistence
+    roadmap_item: usage-history-persistence
+    feature_dir: .codestable/features/2026-07-06-usage-history-persistence
+    design: .codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-design.md
+    checklist: .codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-checklist.yaml
+    review: .codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-review.md
+    qa: .codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-qa.md
+    acceptance: .codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-acceptance.md
+    status: accepted
+  - slug: status-summary-protocol
+    roadmap_item: status-summary-protocol
+    feature_dir: .codestable/features/2026-07-06-status-summary-protocol
+    design: .codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-design.md
+    checklist: .codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-checklist.yaml
+    review: .codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-review.md
+    qa: .codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-qa.md
+    acceptance: .codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-acceptance.md
+    status: pending
+  - slug: app-status-summary-store
+    roadmap_item: app-status-summary-store
+    feature_dir: .codestable/features/2026-07-06-app-status-summary-store
+    design: .codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-design.md
+    checklist: .codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-checklist.yaml
+    review: .codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-review.md
+    qa: .codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-qa.md
+    acceptance: .codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-acceptance.md
+    status: pending
+  - slug: global-status-bar-shell
+    roadmap_item: global-status-bar-shell
+    feature_dir: .codestable/features/2026-07-06-global-status-bar-shell
+    design: .codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-design.md
+    checklist: .codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-checklist.yaml
+    review: .codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-review.md
+    qa: .codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-qa.md
+    acceptance: .codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-acceptance.md
+    status: pending
+  - slug: status-bar-running-sessions-nav
+    roadmap_item: status-bar-running-sessions-nav
+    feature_dir: .codestable/features/2026-07-06-status-bar-running-sessions-nav
+    design: .codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-design.md
+    checklist: .codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-checklist.yaml
+    review: .codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-review.md
+    qa: .codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-qa.md
+    acceptance: .codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-acceptance.md
+    status: pending
+  - slug: status-bar-polish-hardening
+    roadmap_item: status-bar-polish-hardening
+    feature_dir: .codestable/features/2026-07-06-status-bar-polish-hardening
+    design: .codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-design.md
+    checklist: .codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-checklist.yaml
+    review: .codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-review.md
+    qa: .codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-qa.md
+    acceptance: .codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-acceptance.md
+    status: pending

@@ -103,6 +103,7 @@ import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
+import { FileBackedUsageLedger } from "./usage-ledger/index.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import {
@@ -717,6 +718,10 @@ export async function createPaseoDaemon(
   }
 
   const agentStorage = new AgentStorage(config.agentStoragePath, logger);
+  const usageLedger = new FileBackedUsageLedger({
+    paseoHome: config.paseoHome,
+    logger,
+  });
   const projectRegistry = new FileBackedProjectRegistry(
     path.join(config.paseoHome, "projects", "projects.json"),
     logger,
@@ -758,6 +763,7 @@ export async function createPaseoDaemon(
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },
     mcpAuthToken: agentMcpAuthToken,
+    usageLedger,
     logger,
   });
 
@@ -768,6 +774,8 @@ export async function createPaseoDaemon(
   );
   await agentStorage.initialize();
   logger.info({ elapsed: elapsed() }, "Agent storage initialized");
+  await usageLedger.initialize();
+  logger.info({ elapsed: elapsed() }, "Usage ledger initialized");
   await bootstrapWorkspaceRegistries({
     paseoHome: config.paseoHome,
     agentStorage,

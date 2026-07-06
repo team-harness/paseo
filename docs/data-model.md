@@ -18,6 +18,8 @@ $PASEO_HOME/
 ├── agents/
 │   └── {sanitized-cwd}/
 │       └── {agentId}.json               # One file per agent
+├── usage-ledger/
+│   └── {agentId}.json                   # Usage contributions and turn snapshot bases
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
 ├── chat/
@@ -138,7 +140,31 @@ Terminal activity contributes to the workspace status bucket **per `workspaceId`
 
 ---
 
-## 2. Daemon Configuration
+## 2. Usage Ledger
+
+**Path:** `$PASEO_HOME/usage-ledger/{agentId}.json`
+
+The usage ledger stores normalized token and cost contributions emitted by agent providers. It is independent from agent records and timeline history, so archived agents keep their historical usage and daemon restart can rebuild lifetime and today totals without live provider state.
+
+Each file contains:
+
+| Field           | Type                   | Description                                                                   |
+| --------------- | ---------------------- | ----------------------------------------------------------------------------- |
+| `version`       | `1`                    | Store payload version                                                         |
+| `records`       | `UsageLedgerRecord[]`  | Contribution records for one agent                                            |
+| `snapshotBases` | `UsageSnapshotBasis[]` | Last accepted turn-scoped provider snapshot used to dedupe and compute deltas |
+
+`UsageLedgerRecord` stores `agentId`, `provider`, `basisScope: "turn"`, `usageTurnKey`, optional `sessionId` / `workspaceId` / `model` / `turnId`, `cwd`, `sourceEventType`, `timestamp`, `basisKey`, raw `usage`, and normalized `contribution`.
+
+`contribution` only accumulates `inputTokens`, `cachedInputTokens`, `outputTokens`, and `totalCostUsd`. Context-window fields remain in the raw usage snapshot when provided, but they are not included in contribution totals or record identity.
+
+The ledger uses turn-scoped snapshot bases. `usage_updated` and `turn_completed` for the same turn share one `basisKey`, and identical final snapshots do not double-count. Provider snapshot regressions within the same turn are treated as stale events and do not write negative contribution or lower the stored basis.
+
+Writes use `writeJsonFileAtomic`. Files are parsed with Zod at daemon bootstrap; corrupt or schema-invalid ledger files are logged and skipped instead of blocking agent lifecycle. There is no migration framework. Compatibility is maintained by accepting optional fields and keeping new persisted data isolated from the agent record schema.
+
+---
+
+## 3. Daemon Configuration
 
 **Path:** `$PASEO_HOME/config.json`
 
@@ -236,7 +262,7 @@ Paseo uses these paths under the configured OpenAI base URL:
 
 ---
 
-## 3. Schedule
+## 4. Schedule
 
 **Path:** `$PASEO_HOME/schedules/{id}.json`
 
@@ -284,7 +310,7 @@ One file per schedule. ID is 8 hex characters.
 
 ---
 
-## 4. Chat
+## 5. Chat
 
 **Path:** `$PASEO_HOME/chat/rooms.json`
 
@@ -321,7 +347,7 @@ Single file containing all rooms and messages.
 
 ---
 
-## 5. Loop
+## 6. Loop
 
 **Path:** `$PASEO_HOME/loops/loops.json`
 
@@ -410,7 +436,7 @@ Single file containing an array of all loop records. Writes are direct (not atom
 
 ---
 
-## 6. Project Registry
+## 7. Project Registry
 
 **Path:** `$PASEO_HOME/projects/projects.json`
 
@@ -433,7 +459,7 @@ emptied duplicate.
 
 ---
 
-## 7. Workspace Registry
+## 8. Workspace Registry
 
 **Path:** `$PASEO_HOME/projects/workspaces.json`
 
@@ -461,7 +487,7 @@ than treating it as valid.
 
 ---
 
-## 8. Push Token Store
+## 9. Push Token Store
 
 **Path:** `$PASEO_HOME/push-tokens.json`
 
@@ -475,7 +501,7 @@ Simple set of Expo push notification tokens. Loaded with permissive parsing (fil
 
 ---
 
-## 9. Daemon meta files
+## 10. Daemon meta files
 
 These small files are not validated as full Zod schemas but are persisted under `$PASEO_HOME` for daemon identity and runtime coordination.
 

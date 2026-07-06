@@ -1,0 +1,108 @@
+feature: 2026-07-06-status-bar-running-sessions-nav
+roadmap: global-status-bar
+roadmap_item: status-bar-running-sessions-nav
+created: 2026-07-06
+
+steps:
+  - id: S1
+    title: List model, formatting, and navigation resolver
+    status: pending
+    description: 实现 snapshot 分组、去重、target 构建、per-agent usage/time 格式化和 deps-injected navigate executor，只调用 navigateToAgent / navigateToWorkspace。
+    exit_signal: 单测覆盖 attention/running/recent 优先级、缺 workspaceId、missing/archived workspace 隐藏 workspace action、agent/workspace action 分别调用正确 helper、format helper 复用。
+    evidence: unit test
+
+  - id: S2
+    title: Status bar trigger integration
+    status: pending
+    description: 把 shell 既有 activity chip in-place 升级为固定尺寸 running sessions trigger，空列表时 disabled/hidden。
+    exit_signal: 组件测试证明 trigger 不改变 footer 高度、不重复渲染 count；native/compact 不依赖 hover。
+    evidence: component test
+
+  - id: S3
+    title: Compact sheet
+    status: pending
+    description: 用 AdaptiveModalSheet 渲染同一列表，支持关闭、空态、row press 后关闭并导航。
+    exit_signal: 组件测试或手工验证 compact open/close、backdrop/back 关闭、safe area 正常。
+    evidence: component test / manual QA
+
+  - id: S4
+    title: Desktop anchored panel
+    status: pending
+    description: 用 DropdownMenu 的 Modal/position/dismiss 内核承载 StatusBarSessionsList。
+    exit_signal: desktop web 手工/截图验证 panel 锚定状态栏、不改变 footer 高度，Esc/back、outside press、route change 关闭。
+    evidence: screenshot / manual QA
+
+  - id: S5
+    title: Scope guard and validation
+    status: pending
+    description: 运行目标测试、typecheck、lint、format check 和 grep，确认无直接路由拼接、provider usage、agent lifecycle mutation。
+    exit_signal: 验证命令通过或有明确环境阻塞；越界 grep 命中已清除或解释为无害引用。
+    evidence: command output / grep / diff review
+
+checks:
+  - id: C1
+    source: design §1 明确不做 / §2.2 navigation
+    status: pending
+    assertion: agent/workspace 导航只通过 navigateToAgent / navigateToWorkspace，不直接 router push 或拼 host route。
+
+  - id: C2
+    source: design §2.2 Dedup / §3.1 关键场景
+    status: pending
+    assertion: needsAttention/running/recent 分组按优先级去重展示，同一 agent 不重复出现。
+
+  - id: C3
+    source: design §2.2 Missing workspaceId
+    status: pending
+    assertion: 缺 workspaceId 或 workspace archived/missing 时仍允许 agent 导航，但隐藏 workspace action，不从 cwd 推导 ownership。
+
+  - id: C4
+    source: design §1 关键决策 2 / docs/floating-panels.md
+    status: pending
+    assertion: desktop panel 优先复用 DropdownMenu 的 Modal/computePosition/backdrop/Esc/outside-press 能力，打开/关闭不改变 footer 高度；不手搓 host-relative measurement。
+
+  - id: C5
+    source: design §1 关键决策 2 / docs/design.md
+    status: pending
+    assertion: compact/native 使用 AdaptiveModalSheet，不用 Android 可能丢触摸的 overflowing child popover。
+
+  - id: C6
+    source: design §2.2 Panel lifecycle / §3.1
+    status: pending
+    assertion: serverId 变化、view 非 ready、trigger unmount、usePathname route change 或导航成功时 panel/sheet 会关闭。
+
+  - id: C7
+    source: design §1 明确不做 / §3.2 反向核对项
+    status: pending
+    assertion: 本 feature 不新增 provider usage、summary fetch、agent lifecycle 操作、protocol/server 改动。
+
+  - id: C8
+    source: design §3.3 / §3.5
+    status: pending
+    assertion: 目标测试、typecheck、lint、format check、scope grep、desktop/compact 手工或截图验证均有证据或明确环境阻塞记录。
+
+dod:
+  commands:
+    - id: CMD-001
+      command: npx vitest run packages/app/src/status-summary/status-bar-session-navigation.test.ts --bail=1
+      core: true
+      failure_handling: 失败则回实现修 resolver 或测试夹具。
+    - id: CMD-002
+      command: npx vitest run packages/app/src/status-summary/status-bar-running-sessions.test.tsx --bail=1
+      core: true
+      failure_handling: 失败则回实现修状态/交互。
+    - id: CMD-003
+      command: npm run typecheck
+      core: true
+      failure_handling: 若跨包声明 stale，先按 AGENTS 指令 build 对应 stack。
+    - id: CMD-004
+      command: npm run lint
+      core: true
+      failure_handling: 只接受无关既有红灯并记录证据。
+    - id: CMD-005
+      command: npm run format:check
+      core: true
+      failure_handling: 失败则运行 npm run format 后复查。
+    - id: CMD-006
+      command: 'rg "router\\.|buildHostAgentDetailRoute|buildHostWorkspaceRoute|provider\\.usage\\.list|listProviderUsage|fetchAgents|archiveAgent|cancelAgent|restart|useUnistyles" packages/app/src/status-summary'
+      core: true
+      failure_handling: 有命中必须分类；越界命中移除或回 design。

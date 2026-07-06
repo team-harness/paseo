@@ -1,0 +1,88 @@
+feature: 2026-07-06-usage-history-persistence
+created: 2026-07-06
+
+steps:
+  - action: "名词骨架：建立 UsageLedger 接口、record/schema、固定 clock 查询窗口"
+    exit_signal: "单元测试可构造空 ledger 并查询空 lifetime/today totals"
+    status: done
+  - action: "turn boundary 和 delta：实现 bridge usageTurnKey、basisKey 生成、canonical snapshot、正向 delta、重复/同快照事件跳过"
+    exit_signal: "Codex/OpenCode/Claude 缺 event turnId 的多 turn fixture、同快照跨事件、stale 回退四类测试通过"
+    status: done
+  - action: "文件持久化：接入 PASEO_HOME usage-ledger 文件、Zod parse、atomic write、bootstrap load"
+    exit_signal: "写入后新 UsageLedger 实例加载仍返回同样 lifetime/today totals"
+    status: done
+  - action: "AgentManager 桥接：把 usage_updated / turn_completed 输入 ledger，保持现有 lastUsage 和 lifecycle 行为"
+    exit_signal: "目标 agent-manager 测试证明 usage 被记录且 turn completion 状态不变"
+    status: done
+  - action: "查询覆盖：补齐 lifetime/today、跨天、archived agent、missing fields、cost optional、per-provider fixture 的行为证据"
+    exit_signal: "验收矩阵核心场景都有测试或 diff review 证据"
+    status: done
+  - action: "文档与验证：更新 data model 文档，运行目标测试、typecheck、lint"
+    exit_signal: "命令输出或环境阻塞记录齐全，docs/data-model 与 schema 一致"
+    status: done
+
+checks:
+  - item: "UsageLedger 对外只暴露 enqueueEvent、getTotals/getTodayTotals、initialize/flush/deleteAgentUsage，调用方不处理 provider 差分语义"
+    source: 名词契约
+    status: passed
+  - item: "ledger contribution 只累计 inputTokens、cachedInputTokens、outputTokens、totalCostUsd，不累计 context window 字段"
+    source: 名词契约
+    status: passed
+  - item: "usage_updated 和 turn_completed 都通过同一条 ledger 规范化路径，缺失 usage 的 turn_completed 不生成 contribution"
+    source: 编排骨架
+    status: passed
+  - item: "basisKey 由 bridge usageTurnKey 决定，不包含 sourceEventType，并覆盖缺 event turnId 的多 turn fixture"
+    source: 流程级约束
+    status: passed
+  - item: "canonical usage snapshot 用固定字段顺序和 finite number 字段派生 record id，context window 不参与 id"
+    source: 流程级约束
+    status: passed
+  - item: "重复 usage event 幂等，usage_updated 与 turn_completed 同快照不重复，snapshot 回退/乱序时不写负 contribution 且不向下刷新 basis"
+    source: 流程级约束
+    status: passed
+  - item: "新增持久化挂载点为 PASEO_HOME 下 usage-ledger 文件，并使用 Zod parse 与 atomic write"
+    source: 挂载点
+    status: passed
+  - item: "archive 不删除 ledger，hard delete 有 deleteAgentUsage 清理入口，feature 卸载可删除 usage-ledger 目录"
+    source: 挂载点
+    status: passed
+  - item: "AgentManager 只作为非阻塞 usage event bridge，不 await ledger I/O，不把 ledger 计算逻辑塞进 agent-manager.ts"
+    source: 结构健康度
+    status: passed
+  - item: "不实现 status.summary RPC、app UI、provider quota 拉取或 lifecycle/archive 语义变更"
+    source: 范围守护
+    status: passed
+  - item: "跨天、daemon 重启、archived agent、per-provider turn boundary semantics 四个 roadmap 核心风险都有可观察证据"
+    source: 验收场景
+    status: passed
+
+dod:
+  commands:
+    - id: CMD-001
+      command: "npx vitest run packages/server/src/server/usage-ledger/usage-ledger.test.ts --bail=1"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-002
+      command: 'npx vitest run packages/server/src/server/agent/agent-manager.test.ts --bail=1 -t "usage ledger"'
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-003
+      command: "npm run typecheck"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-004
+      command: "npm run lint"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-005
+      command: "npm run format:check"
+      core: false
+      failure_handling: fix-or-block
+  evidence_required:
+    - command_output
+    - diff_summary
+    - docs_diff
+  cleanliness:
+    debug_output: forbidden
+    temporary_todo: forbidden
+    commented_code: forbidden
