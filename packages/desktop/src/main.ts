@@ -680,7 +680,9 @@ async function createWindow(
 
   if (!app.isPackaged) {
     const { loadReactDevTools } = await import("./features/react-devtools.js");
-    await loadReactDevTools();
+    await loadReactDevTools().catch((error) => {
+      log.warn("[DevTools] Failed to install React DevTools; continuing without it", error);
+    });
     await mainWindow.loadURL(DEV_SERVER_URL);
     return mainWindow;
   }
