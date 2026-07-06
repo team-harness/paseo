@@ -20,6 +20,7 @@ import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
 import { useQueryClient } from "@tanstack/react-query";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { formatTimeAgo } from "@/utils/time";
+import { AgentStatusDot } from "@/components/agent-status-dot";
 import {
   buildStatusBarSessionList,
   navigateToStatusBarSession,
@@ -551,9 +552,12 @@ function StatusBarHistoryRow({
         style={rowPrimaryStyle}
       >
         <View style={styles.rowText}>
-          <Text style={styles.rowTitle} numberOfLines={1}>
-            {title}
-          </Text>
+          <View style={styles.historyTitleRow}>
+            <Text style={styles.historyTitleText} numberOfLines={1}>
+              {title}
+            </Text>
+            <StatusBarHistoryStatus agent={item} />
+          </View>
           <Text style={styles.rowSubtitle} numberOfLines={1}>
             {subtitle}
           </Text>
@@ -563,6 +567,26 @@ function StatusBarHistoryRow({
         </View>
         <ThemedArrowUpRight size={14} />
       </Pressable>
+    </View>
+  );
+}
+
+function StatusBarHistoryStatus({ agent }: { agent: AggregatedAgent }) {
+  const { t } = useTranslation();
+  const label = formatStatusBarHistoryStatus(agent, t);
+
+  return (
+    <View style={styles.historyStatus} testID={`status-bar-history-status-${agent.id}`}>
+      <AgentStatusDot
+        status={agent.status}
+        requiresAttention={agent.requiresAttention}
+        attentionReason={agent.attentionReason}
+        pendingPermissionCount={agent.pendingPermissionCount}
+        showInactive
+      />
+      <Text style={styles.historyStatusText} numberOfLines={1}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -677,6 +701,35 @@ function formatStatusBarHistoryMeta(agent: AggregatedAgent): string {
   return formatTimeAgo(agent.lastActivityAt);
 }
 
+function formatStatusBarHistoryStatus(
+  agent: AggregatedAgent,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const pendingPermissionCount = agent.pendingPermissionCount ?? 0;
+  if (pendingPermissionCount > 0) {
+    return t("agentList.badges.pending", { count: pendingPermissionCount });
+  }
+  if (agent.attentionReason === "permission") {
+    return t("agentList.badges.attention");
+  }
+  if (agent.status === "error" || agent.attentionReason === "error") {
+    return t("agentList.status.error");
+  }
+  if (agent.status === "running") {
+    return t("agentList.status.running");
+  }
+  if (agent.requiresAttention) {
+    return t("agentList.badges.attention");
+  }
+  if (agent.status === "initializing") {
+    return t("agentList.status.initializing");
+  }
+  if (agent.status === "idle") {
+    return t("agentList.status.idle");
+  }
+  return t("agentList.status.closed");
+}
+
 function formatCwd(cwd: string): string {
   const normalized = cwd.trim().replace(/\/+$/, "");
   if (!normalized) return "";
@@ -782,6 +835,32 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     flex: 1,
     gap: theme.spacing[0],
+  },
+  historyTitleRow: {
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  historyTitleText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  historyStatus: {
+    flexShrink: 0,
+    maxWidth: 96,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  historyStatusText: {
+    minWidth: 0,
+    flexShrink: 1,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   rowTitle: {
     color: theme.colors.foreground,

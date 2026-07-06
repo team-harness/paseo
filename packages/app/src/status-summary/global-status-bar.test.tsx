@@ -10,7 +10,7 @@ const { theme, runtimeState } = vi.hoisted(() => ({
   theme: {
     spacing: { 0: 0, 1: 4, 2: 8, 3: 12, 4: 16 },
     borderWidth: { 1: 1 },
-    borderRadius: { md: 6 },
+    borderRadius: { md: 6, full: 999 },
     fontSize: { xs: 11 },
     fontWeight: { normal: "400", medium: "500" },
     opacity: { 50: 0.5 },
@@ -25,6 +25,12 @@ const { theme, runtimeState } = vi.hoisted(() => ({
       statusSuccess: "#15803d",
       statusWarning: "#d97706",
       statusDanger: "#b91c1c",
+      palette: {
+        amber: { 500: "#f59e0b" },
+        blue: { 500: "#3b82f6" },
+        green: { 500: "#22c55e" },
+        red: { 500: "#ef4444" },
+      },
     },
   },
   runtimeState: {
@@ -79,6 +85,7 @@ vi.mock("react-native-unistyles", () => ({
     create: (factory: unknown) =>
       typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
   },
+  useUnistyles: () => ({ theme }),
   withUnistyles:
     (Component: React.ComponentType<Record<string, unknown>>) => (props: Record<string, unknown>) =>
       React.createElement(Component, props),
@@ -126,6 +133,10 @@ vi.mock("@/stores/session-store", () => ({
 
 vi.mock("@/utils/navigate-to-agent", () => ({
   navigateToAgent: () => undefined,
+}));
+
+vi.mock("@getpaseo/protocol/agent-state-bucket", () => ({
+  deriveAgentStateBucket: () => "done",
 }));
 
 vi.mock("@tanstack/react-query", () => ({

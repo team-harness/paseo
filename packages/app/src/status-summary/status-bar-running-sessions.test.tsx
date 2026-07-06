@@ -12,7 +12,7 @@ const { theme, runtimeState, navigationSpies } = vi.hoisted(() => ({
   theme: {
     spacing: { 0: 0, 1: 4, 2: 8, 3: 12, 4: 16 },
     borderWidth: { 1: 1 },
-    borderRadius: { md: 6 },
+    borderRadius: { md: 6, full: 999 },
     iconSize: { xs: 12, sm: 14 },
     fontSize: { xs: 11 },
     fontWeight: { normal: "400", medium: "500" },
@@ -25,6 +25,12 @@ const { theme, runtimeState, navigationSpies } = vi.hoisted(() => ({
       foreground: "#fff",
       foregroundMuted: "#aaa",
       statusWarning: "#d97706",
+      palette: {
+        amber: { 500: "#f59e0b" },
+        blue: { 500: "#3b82f6" },
+        green: { 500: "#22c55e" },
+        red: { 500: "#ef4444" },
+      },
     },
   },
   runtimeState: {
@@ -75,6 +81,7 @@ vi.mock("react-native-unistyles", () => ({
     create: (factory: unknown) =>
       typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
   },
+  useUnistyles: () => ({ theme }),
   withUnistyles:
     (Component: React.ComponentType<Record<string, unknown>>) => (props: Record<string, unknown>) =>
       React.createElement(Component, props),
@@ -136,6 +143,34 @@ vi.mock("./use-status-summary", () => ({
 
 vi.mock("@/utils/navigate-to-agent", () => ({
   navigateToAgent: navigationSpies.navigateToAgent,
+}));
+
+vi.mock("@getpaseo/protocol/agent-state-bucket", () => ({
+  deriveAgentStateBucket: ({
+    attentionReason,
+    pendingPermissionCount,
+    requiresAttention,
+    status,
+  }: {
+    attentionReason?: string | null;
+    pendingPermissionCount?: number;
+    requiresAttention?: boolean;
+    status: string;
+  }) => {
+    if ((pendingPermissionCount ?? 0) > 0 || attentionReason === "permission") {
+      return "needs_input";
+    }
+    if (status === "error" || attentionReason === "error") {
+      return "failed";
+    }
+    if (status === "running") {
+      return "running";
+    }
+    if (requiresAttention) {
+      return "attention";
+    }
+    return "done";
+  },
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -532,6 +567,26 @@ describe("status bar running sessions", () => {
     expect(
       container?.querySelector('[data-testid="status-bar-history-row-history-11"]'),
     ).toBeNull();
+  });
+
+  it("shows each history row status", () => {
+    runtimeState.historyAgents = [
+      historyAgent({ id: "history-running", offsetMinutes: 0, status: "running" }),
+    ];
+
+    act(() => {
+      root?.render(renderStatusBar());
+    });
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
+        ?.click();
+    });
+
+    expect(
+      container?.querySelector('[data-testid="status-bar-history-status-history-running"]'),
+    ).not.toBeNull();
+    expect(container?.textContent).toContain("agentList.status.running");
   });
 
   it("opens history even when the host has no recent sessions", () => {
