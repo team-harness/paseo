@@ -1,0 +1,94 @@
+{
+  "gate_id": "goal-consistency-gate",
+  "stage": "roadmap_audit.final",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "feature": "usage-history-persistence",
+      "artifacts_checked": [
+        "acceptance",
+        "checklist",
+        "dod_contract_results",
+        "dod_results",
+        "evidence_pack",
+        "evidence_pack_results",
+        "gate_results",
+        "qa",
+        "review"
+      ]
+    },
+    {
+      "feature": "status-summary-protocol",
+      "artifacts_checked": [
+        "acceptance",
+        "checklist",
+        "dod_contract_results",
+        "dod_results",
+        "evidence_pack",
+        "evidence_pack_results",
+        "gate_results",
+        "qa",
+        "review"
+      ]
+    },
+    {
+      "feature": "app-status-summary-store",
+      "artifacts_checked": [
+        "acceptance",
+        "checklist",
+        "dod_contract_results",
+        "dod_results",
+        "evidence_pack",
+        "evidence_pack_results",
+        "gate_results",
+        "qa",
+        "review"
+      ]
+    },
+    {
+      "feature": "global-status-bar-shell",
+      "artifacts_checked": [
+        "acceptance",
+        "checklist",
+        "dod_contract_results",
+        "dod_results",
+        "evidence_pack",
+        "evidence_pack_results",
+        "gate_results",
+        "qa",
+        "review"
+      ]
+    },
+    {
+      "feature": "status-bar-running-sessions-nav",
+      "artifacts_checked": [
+        "acceptance",
+        "checklist",
+        "dod_contract_results",
+        "dod_results",
+        "evidence_pack",
+        "evidence_pack_results",
+        "gate_results",
+        "qa",
+        "review"
+      ]
+    },
+    {
+      "feature": "status-bar-polish-hardening",
+      "artifacts_checked": [
+        "acceptance",
+        "checklist",
+        "dod_contract_results",
+        "dod_results",
+        "evidence_pack",
+        "evidence_pack_results",
+        "gate_results",
+        "qa",
+        "review"
+      ]
+    }
+  ],
+  "providers": {}
+}

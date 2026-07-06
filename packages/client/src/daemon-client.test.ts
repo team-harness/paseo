@@ -4925,6 +4925,76 @@ test("sends provider.usage.list.request and resolves provider.usage.list.respons
   });
 });
 
+test("sends status-summary get request and resolves status-summary response", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const summaryPromise = client.getStatusSummary({ requestId: "summary-1" });
+
+  expect(JSON.parse(assertStr(mock.sent[0]))).toEqual({
+    type: "session",
+    message: {
+      type: "status.summary.get.request",
+      requestId: "summary-1",
+    },
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "status.summary.get.response",
+      payload: {
+        requestId: "summary-1",
+        summary: {
+          generatedAt: "2026-07-06T04:00:00.000Z",
+          usage: {
+            lifetime: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            today: {
+              totalTokens: 0,
+              windowStart: "2026-07-06T00:00:00.000Z",
+              windowEnd: "2026-07-06T04:00:00.000Z",
+            },
+            byProvider: [],
+            byModel: [],
+          },
+          activity: {
+            runningAgents: [],
+            needsAttentionAgents: [],
+            recentlyCompletedAgents: [],
+            counts: {
+              running: 0,
+              needsAttention: 0,
+              idle: 0,
+              error: 0,
+            },
+          },
+        },
+      },
+    }),
+  );
+
+  await expect(summaryPromise).resolves.toMatchObject({
+    requestId: "summary-1",
+    summary: {
+      usage: {
+        lifetime: { totalTokens: 15 },
+      },
+    },
+  });
+});
+
 test("sends close_items_request and resolves close_items_response", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

@@ -1,0 +1,224 @@
+---
+doc_type: feature-evidence-pack
+feature: status-bar-polish-hardening
+status: generated
+---
+
+# status-bar-polish-hardening evidence pack
+
+## 1. Scope
+
+- Design: `.codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-design.md`
+- Checklist: `.codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-checklist.yaml`
+
+## 2. DoD Results
+
+```json
+{
+  "gate_id": "dod-runner",
+  "stage": "implementation.polish.review-fix",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "command": "test -d packages/app/src/status-summary && test -f packages/app/src/status-summary/global-status-bar.test.tsx && test -f packages/app/src/status-summary/status-bar-session-navigation.test.ts && test -f packages/app/src/status-summary/status-bar-running-sessions.test.tsx",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "",
+      "id": "CMD-001",
+      "core": true,
+      "failure_handling": "失败表示前置 store/shell/nav 未合并或文件名已漂移；停止 hardening，回前置 feature 或明确等价目标测试路径。"
+    },
+    {
+      "command": "npx vitest run packages/app/src/status-summary/global-status-bar.test.tsx --bail=1",
+      "exit_code": 0,
+      "stdout": "\n RUN  v4.1.7 /Users/wyattfang/.paseo/worktrees/3rvhzvvc/global-status-bar-usage-history\n\n\n Test Files  1 passed (1)\n      Tests  7 passed (7)\n   Start at  14:10:07\n   Duration  453ms (transform 56ms, setup 0ms, import 86ms, tests 21ms, environment 214ms)\n\n",
+      "stderr": "",
+      "id": "CMD-002",
+      "core": true,
+      "failure_handling": "继承回归测试。失败则回实现修状态分支/layout contract；file-not-found 按 CMD-001 处理；若文件名调整，用等价目标测试替代并记录。"
+    },
+    {
+      "command": "npx vitest run packages/app/src/status-summary/status-bar-session-navigation.test.ts --bail=1",
+      "exit_code": 0,
+      "stdout": "\n RUN  v4.1.7 /Users/wyattfang/.paseo/worktrees/3rvhzvvc/global-status-bar-usage-history\n\n\n Test Files  1 passed (1)\n      Tests  3 passed (3)\n   Start at  14:10:08\n   Duration  143ms (transform 24ms, setup 0ms, import 34ms, tests 3ms, environment 0ms)\n\n",
+      "stderr": "",
+      "id": "CMD-003",
+      "core": true,
+      "failure_handling": "继承回归测试。失败则回实现修 list builder/navigation target；file-not-found 按 CMD-001 处理。"
+    },
+    {
+      "command": "npx vitest run packages/app/src/status-summary/status-bar-running-sessions.test.tsx --bail=1",
+      "exit_code": 0,
+      "stdout": "\n RUN  v4.1.7 /Users/wyattfang/.paseo/worktrees/3rvhzvvc/global-status-bar-usage-history\n\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  14:10:09\n   Duration  535ms (transform 106ms, setup 0ms, import 142ms, tests 45ms, environment 188ms)\n\n",
+      "stderr": "",
+      "id": "CMD-004",
+      "core": true,
+      "failure_handling": "继承回归测试。失败则回实现修 trigger/panel/sheet lifecycle；file-not-found 按 CMD-001 处理。"
+    },
+    {
+      "command": "npx vitest run packages/app/src/i18n/resources.test.ts --bail=1",
+      "exit_code": 0,
+      "stdout": "\n RUN  v4.1.7 /Users/wyattfang/.paseo/worktrees/3rvhzvvc/global-status-bar-usage-history\n\n\n Test Files  1 passed (1)\n      Tests  33 passed (33)\n   Start at  14:10:10\n   Duration  637ms (transform 343ms, setup 0ms, import 406ms, tests 101ms, environment 0ms)\n\n",
+      "stderr": "",
+      "id": "CMD-005",
+      "core": true,
+      "failure_handling": "失败则补齐 en/ar/es/fr/ja/pt-BR/ru/zh-CN 所有 locale key 或移除未迁移 copy。"
+    },
+    {
+      "command": "npm run test:e2e --workspace=@getpaseo/app -- status-bar-running-sessions.spec.ts",
+      "exit_code": 0,
+      "stdout": ":0},\"counters\":{\"connectedAwaitingHello\":7,\"helloResumed\":2,\"helloNew\":5,\"pendingDisconnected\":0,\"sessionDisconnectedWaitingReconnect\":7,\"sessionSocketDisconnectedAttached\":0,\"sessionCleanup\":0,\"validationFailed\":0,\"binaryBeforeHelloRejected\":0,\"pendingMessageRejectedBeforeHello\":0,\"missingConnectionForMessage\":0,\"unexpectedHelloOnActiveConnection\":0,\"relayExternalSocketAttached\":0,\"originRejected\":0,\"hostRejected\":0},\"inboundMessageTypesTop\":[[\"session\",57],[\"hello\",7],[\"ping\",4]],\"inboundSessionRequestTypesTop\":[[\"get_providers_snapshot_request\",7],[\"client_heartbeat\",6],[\"fetch_workspaces_request\",4],[\"workspace_setup_status_request\",4],[\"fetch_agents_request\",4],[\"list_provider_features_request\",4],[\"project_icon_request\",3],[\"get_daemon_config_request\",3],[\"checkout_status_request\",3],[\"list_terminals_request\",3],[\"subscribe_terminals_request\",3],[\"read_project_config_request\",3],[\"checkout_pr_status_request\",3],[\"workspace.create.request\",2],[\"project.remove.request\",2],[\"file_explorer_request\",2],[\"daemon.get_pairing_offer.request\",1]],\"outboundMessageTypesTop\":[[\"session_message\",110],[\"pong\",4]],\"outboundSessionMessageTypesTop\":[[\"providers_snapshot_update\",48],[\"status\",7],[\"get_providers_snapshot_response\",7],[\"checkout_status_update\",4],[\"workspace_setup_status_response\",4],[\"fetch_workspaces_response\",4],[\"fetch_agents_response\",4],[\"list_provider_features_response\",4],[\"get_daemon_config_response\",3],[\"checkout_status_response\",3],[\"read_project_config_response\",3],[\"list_terminals_response\",3],[\"terminals_changed\",3],[\"project_icon_response\",3],[\"checkout_pr_status_response\",3],[\"workspace.create.response\",2],[\"project.remove.response\",2],[\"file_explorer_response\",2],[\"daemon.get_pairing_offer.response\",1]],\"outboundAgentStreamTypesTop\":[],\"outboundAgentStreamAgentsTop\":[],\"outboundBinaryFrameTypesTop\":[],\"bufferedAmount\":{\"p95\":0,\"max\":0},\"eventLoopDelay\":{\"p50Ms\":11,\"p99Ms\":16.1,\"maxMs\":36},\"uptimeSeconds\":12.714,\"memory\":{\"rss\":233308160,\"heapTotal\":271663104,\"heapUsed\":167082488,\"external\":6876802,\"arrayBuffers\":2873021},\"runtime\":{\"checkoutDiffTargetCount\":0,\"checkoutDiffSubscriptionCount\":0,\"checkoutDiffWatcherCount\":0,\"checkoutDiffFallbackRefreshTargetCount\":0,\"terminalDirectorySubscriptionCount\":2,\"terminalSubscriptionCount\":0,\"inflightRequests\":0,\"peakInflightRequests\":7},\"latency\":[{\"type\":\"workspace.create.request\",\"count\":2,\"minMs\":75,\"maxMs\":79,\"p50Ms\":79,\"totalMs\":154},{\"type\":\"project_icon_request\",\"count\":3,\"minMs\":1,\"maxMs\":17,\"p50Ms\":12,\"totalMs\":30},{\"type\":\"get_providers_snapshot_request\",\"count\":7,\"minMs\":0,\"maxMs\":8,\"p50Ms\":1,\"totalMs\":25},{\"type\":\"list_terminals_request\",\"count\":3,\"minMs\":0,\"maxMs\":11,\"p50Ms\":8,\"totalMs\":19},{\"type\":\"file_explorer_request\",\"count\":2,\"minMs\":2,\"maxMs\":17,\"p50Ms\":17,\"totalMs\":19},{\"type\":\"checkout_status_request\",\"count\":3,\"minMs\":0,\"maxMs\":10,\"p50Ms\":5,\"totalMs\":16},{\"type\":\"read_project_config_request\",\"count\":3,\"minMs\":0,\"maxMs\":7,\"p50Ms\":7,\"totalMs\":14},{\"type\":\"client_heartbeat\",\"count\":6,\"minMs\":0,\"maxMs\":8,\"p50Ms\":2,\"totalMs\":12},{\"type\":\"fetch_workspaces_request\",\"count\":4,\"minMs\":0,\"maxMs\":10,\"p50Ms\":1,\"totalMs\":12},{\"type\":\"subscribe_terminals_request\",\"count\":3,\"minMs\":0,\"maxMs\":8,\"p50Ms\":4,\"totalMs\":12},{\"type\":\"daemon.get_pairing_offer.request\",\"count\":1,\"minMs\":9,\"maxMs\":9,\"p50Ms\":9,\"totalMs\":9},{\"type\":\"workspace_setup_status_request\",\"count\":4,\"minMs\":0,\"maxMs\":7,\"p50Ms\":0,\"totalMs\":8},{\"type\":\"get_daemon_config_request\",\"count\":3,\"minMs\":0,\"maxMs\":5,\"p50Ms\":0,\"totalMs\":6},{\"type\":\"project.remove.request\",\"count\":2,\"minMs\":2,\"maxMs\":3,\"p50Ms\":3,\"totalMs\":5},{\"type\":\"fetch_agents_request\",\"count\":4,\"minMs\":0,\"maxMs\":1,\"p50Ms\":1,\"totalMs\":3}],\"agents\":{\"total\":0,\"byLifecycle\":{},\"withActiveForegroundTurn\":0,\"timelineStats\":{\"totalItems\":0,\"maxItemsPerAgent\":0}},\"msg\":\"ws_runtime_metrics\"}\n[daemon] {\"level\":30,\"time\":1783318225732,\"pid\":16529,\"hostname\":\"WyattdeMac-mini.local\",\"msg\":\"Server closed\"}\n[e2e] Test daemon stopped\n\n  2 passed (13.7s)\n",
+      "stderr": "[e2e] OPENAI_API_KEY probe request failed: fetch failed\n[daemon] Starting inspector on 127.0.0.1:9229 failed: address already in use\n[metro] Experimental Expo Autolinking module resolver is enabled.\n(node:16677) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:16677) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n[daemon] [DaemonRunner] supervisor_received_SIGTERM. Stopping worker...\n[daemon] [DaemonRunner] Worker exited (code 0). Supervisor shutting down.\n",
+      "id": "CMD-006",
+      "core": false,
+      "failure_handling": "仅当新增 targeted Playwright spec 时运行；失败则回实现修或记录环境阻塞。不得跑全量 Playwright。"
+    },
+    {
+      "command": "npm run typecheck",
+      "exit_code": 0,
+      "stdout": "\n> paseo@0.1.104-beta.3 typecheck\n> npm run typecheck --workspaces --if-present\n\n\n> @getpaseo/expo-two-way-audio@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/highlight@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/protocol@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/client@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/server@0.1.104-beta.3 typecheck\n> tsgo -p tsconfig.server.typecheck.json --noEmit\n\n\n> @getpaseo/app@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/relay@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/website@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/desktop@0.1.104-beta.3 typecheck\n> tsgo --noEmit -p tsconfig.json\n\n\n> @getpaseo/cli@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n",
+      "stderr": "",
+      "id": "CMD-007",
+      "core": true,
+      "failure_handling": "若跨包声明 stale，先按 AGENTS 指令 build 对应 stack 后复跑。"
+    },
+    {
+      "command": "npm run lint",
+      "exit_code": 0,
+      "stdout": "\n> paseo@0.1.104-beta.3 lint\n> oxlint\n\nFound 0 warnings and 0 errors.\nFinished in 604ms on 2462 files with 177 rules using 10 threads.\n",
+      "stderr": "",
+      "id": "CMD-008",
+      "core": true,
+      "failure_handling": "只接受无关既有红灯并记录证据；本 feature 红灯必须修。"
+    },
+    {
+      "command": "npm run format:check",
+      "exit_code": 0,
+      "stdout": "\n> paseo@0.1.104-beta.3 format:check\n> oxfmt --check .\n\nChecking formatting...\n\nAll matched files use the correct format.\nFinished in 1601ms on 2739 files using 10 threads.\n",
+      "stderr": "",
+      "id": "CMD-009",
+      "core": true,
+      "failure_handling": "失败则运行 npm run format 后复查。"
+    },
+    {
+      "command": "! rg \"provider\\\\.usage\\\\.list|listProviderUsage|fetchAgents|timeline|archiveAgent|cancelAgent|restart|closeAgent|router\\\\.|buildHostAgentDetailRoute|buildHostWorkspaceRoute|useUnistyles|console\\\\.|T[O]DO|F[I]XME\" packages/app/src/status-summary",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "",
+      "id": "CMD-010",
+      "core": true,
+      "failure_handling": "有命中必须分类；越界命中移除或回 design。若 status-bar E2E/Maestro 文件未新增，对缺失 glob 做人工说明。"
+    },
+    {
+      "command": "rg \"HostStatusBar|GlobalStatusBar|status\\\\.summary|HostStatusSummaryPayload\" packages/app/src/app/_layout.tsx packages/protocol packages/client packages/server",
+      "exit_code": 0,
+      "stdout": "ummary({ requestId: \"status-summary-request\" });\npackages/client/src/index.test.ts:    type: \"status.summary.get.request\",\npackages/client/src/index.test.ts:      type: \"status.summary.get.response\",\npackages/client/src/index.test.ts:      type: \"status.summary.updated\",\npackages/protocol/src/messages.test.ts:      type: \"status.summary.get.request\",\npackages/protocol/src/messages.test.ts:      type: \"status.summary.get.request\",\npackages/protocol/src/messages.test.ts:      type: \"status.summary.get.response\",\npackages/protocol/src/messages.test.ts:    expect(parsed.type).toBe(\"status.summary.get.response\");\npackages/protocol/src/messages.test.ts:    if (parsed.type !== \"status.summary.get.response\") {\npackages/protocol/src/messages.test.ts:      throw new Error(\"Expected status.summary.get.response\");\npackages/protocol/src/messages.test.ts:      type: \"status.summary.updated\",\npackages/protocol/src/messages.test.ts:    expect(parsed.type).toBe(\"status.summary.updated\");\npackages/protocol/src/messages.test.ts:    if (parsed.type !== \"status.summary.updated\") {\npackages/protocol/src/messages.test.ts:      throw new Error(\"Expected status.summary.updated\");\npackages/protocol/src/messages.ts:  type: z.literal(\"status.summary.get.request\"),\npackages/protocol/src/messages.ts:export const HostStatusSummaryPayloadSchema = z.object({\npackages/protocol/src/messages.ts:  type: z.literal(\"status.summary.get.response\"),\npackages/protocol/src/messages.ts:    summary: HostStatusSummaryPayloadSchema,\npackages/protocol/src/messages.ts:// `status.summary.get.request` after reconnect as the authoritative snapshot.\npackages/protocol/src/messages.ts:  type: z.literal(\"status.summary.updated\"),\npackages/protocol/src/messages.ts:  payload: HostStatusSummaryPayloadSchema,\npackages/protocol/src/messages.ts:export type HostStatusSummaryPayload = z.infer<typeof HostStatusSummaryPayloadSchema>;\npackages/server/src/server/session.ts:  type HostStatusSummaryPayload,\npackages/server/src/server/session.ts:      case \"status.summary.get.request\":\npackages/server/src/server/session.ts:      type: \"status.summary.get.response\",\npackages/server/src/server/session.ts:  private emitStatusSummaryUpdated(summary: HostStatusSummaryPayload): void {\npackages/server/src/server/session.ts:      type: \"status.summary.updated\",\npackages/server/src/server/session.test.ts:  HostStatusSummaryPayload,\npackages/server/src/server/session.test.ts:  summary: HostStatusSummaryPayload = {\npackages/server/src/server/session.test.ts:  private listeners: Array<(summary: HostStatusSummaryPayload) => void> = [];\npackages/server/src/server/session.test.ts:  async getSummary(): Promise<HostStatusSummaryPayload> {\npackages/server/src/server/session.test.ts:  subscribe(listener: (summary: HostStatusSummaryPayload) => void): () => void {\npackages/server/src/server/session.test.ts:  emit(summary: HostStatusSummaryPayload = this.summary): void {\npackages/server/src/server/session.test.ts:  test(\"responds to status.summary.get.request with a correlated summary payload\", async () => {\npackages/server/src/server/session.test.ts:      type: \"status.summary.get.request\",\npackages/server/src/server/session.test.ts:        type: \"status.summary.get.response\",\npackages/server/src/server/session.test.ts:  test(\"emits status.summary.updated when the singleton service pushes a snapshot\", () => {\npackages/server/src/server/session.test.ts:        type: \"status.summary.updated\",\npackages/server/src/server/status-summary/status-summary-service.ts:  HostStatusSummaryPayload,\npackages/server/src/server/status-summary/status-summary-service.ts:export type StatusSummaryListener = (summary: HostStatusSummaryPayload) => void;\npackages/server/src/server/status-summary/status-summary-service.ts:  async getSummary(): Promise<HostStatusSummaryPayload> {\npackages/server/src/server/status-summary/status-summary-service.ts:function buildActivity(agents: ManagedAgent[], now: Date): HostStatusSummaryPayload[\"activity\"] {\n",
+      "stderr": "",
+      "id": "CMD-011",
+      "core": true,
+      "failure_handling": "root layout 或协议/server/client 越界命中必须移除；前置 protocol/client/server 既有合法实现需人工分类为非 hardening diff。"
+    }
+  ],
+  "providers": {}
+}
+```
+
+## 3. Validation Commands
+
+Extracted from checklist `dod.commands`; see DoD Results for command status.
+
+## 3.1 Real UI Evidence
+
+- `npm run test:e2e --workspace=@getpaseo/app -- status-bar-running-sessions.spec.ts` 使用 isolated app E2E daemon/Metro，未触碰主 daemon 6767。
+- Desktop Chrome case 覆盖真实 anchored panel：panel rows 可见、panel 位于 trigger 上方、footer 高度稳定、Esc/outside press/route change 关闭。
+- Compact web viewport case 覆盖真实 sheet：原 running/attention chips 被单个 sessions trigger 替换、sheet 打开、backdrop 关闭、workspace action 后 sheet 关闭并导航保持有效。
+- QA 首轮发现 compact workspace action 后 sheet 残留；最终修复为保留 `AdaptiveModalSheet` 挂载，compact 导航在 `setOpen(false)` 后延后一帧执行，让 `visible=false` 先进入 Gorhom lifecycle。组件测试新增 agent/workspace close-before-nav 顺序断言，Playwright 复跑通过。
+
+## 3.2 Review Fix Evidence
+
+- Independent review agent `130d6805-17e0-4ca2-a829-2b21bab0bd49` 初判 `changes-requested`，指出条件挂载绕过 native Gorhom dismiss lifecycle，并指出 checklist 对 native compact 覆盖表述偏满。
+- 已处理：撤销条件挂载，改为 lifecycle-safe 延后一帧导航；S3/S4/C4 改为 `*-with-gap`；review 文件记录为 `passed after fixes`。
+
+## 3.3 Scope Classification
+
+- `CMD-010` 只扫描生产 `packages/app/src/status-summary`，结果无命中；未新增 provider usage fetch、旧 RPC fallback、agent lifecycle mutation、direct router push、root layout status bar、`useUnistyles` 或 debug marker。
+- `packages/app/e2e/status-bar-running-sessions.spec.ts` 中的 `buildHostAgentDetailRoute` / `buildHostWorkspaceRoute` 是测试夹具导航 helper，不是生产 status-summary 越界。
+- `CMD-011` 命中前置 `status.summary.*` protocol/client/server 实现；本 feature 未修改这些文件，分类为合法前置 feature 命中。
+
+## 4. Scope And Cleanliness
+
+Design bytes: 26847
+Checklist bytes: 7445
+
+## 5. Residual Risks
+
+- 自动化覆盖 desktop web 和 compact web viewport；真实 iOS/Android hardware back、home indicator safe area、Android/iOS Gorhom bottom sheet lifecycle、pan close 后 reopen 未由本 feature 自动化覆盖。该项已记录在 QA 和 checklist S3/S4/C3/C4 `*-with-gap`。
+
+## 6. Provider Signals
+
+```json
+{
+  "archguard": {
+    "status": "skipped",
+    "reason": "archguard collection disabled",
+    "warnings": []
+  },
+  "meta_cc": {
+    "status": "skipped",
+    "reason": "meta-cc collection disabled",
+    "warnings": []
+  }
+}
+```
+
+## 7. Gate Results
+
+```json
+{
+  "gate_id": "scope-gate",
+  "stage": "implementation.polish.review-fix-final",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "changed_files": [
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-checklist.yaml",
+        "packages/app/src/i18n/resources.test.ts",
+        "packages/app/src/i18n/resources/ar.ts",
+        "packages/app/src/i18n/resources/en.ts",
+        "packages/app/src/i18n/resources/es.ts",
+        "packages/app/src/i18n/resources/fr.ts",
+        "packages/app/src/i18n/resources/ja.ts",
+        "packages/app/src/i18n/resources/pt-BR.ts",
+        "packages/app/src/i18n/resources/ru.ts",
+        "packages/app/src/i18n/resources/zh-CN.ts",
+        "packages/app/src/status-summary/global-status-bar.test.tsx",
+        "packages/app/src/status-summary/global-status-bar.tsx",
+        "packages/app/src/status-summary/query.ts",
+        "packages/app/src/status-summary/status-bar-running-sessions.test.tsx",
+        "packages/app/src/status-summary/status-bar-running-sessions.tsx",
+        "packages/app/src/status-summary/view-model.ts",
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-acceptance.md",
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-evidence-pack.json",
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-evidence-pack.md",
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-qa.md",
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-review.md",
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-scope-gate.json"
+      ],
+      "ignored_machine_artifacts": [
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-dod-results.json"
+      ],
+      "allowed_prefixes": [
+        ".codestable/features/2026-07-06-status-bar-polish-hardening",
+        "packages/app/src/status-summary",
+        "packages/app/src/i18n",
+        ".codestable/roadmap/global-status-bar"
+      ]
+    }
+  ],
+  "providers": {}
+}
+```

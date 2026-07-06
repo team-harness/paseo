@@ -212,6 +212,36 @@ export const zhCN: TranslationResources = {
       loadMore: "加载更多",
     },
   },
+  statusBar: {
+    rows: {
+      totalTokens: "总 token",
+      today: "今天",
+      cost: "费用",
+      running: "运行中",
+      needsAttention: "需要注意",
+      errors: "错误",
+    },
+    states: {
+      loading: "正在加载状态",
+      unavailable: "状态不可用",
+      unsupported: "请更新主机以使用此功能。",
+      offline: "Host 离线。",
+    },
+    sessions: {
+      title: "Agent 会话",
+      trigger: "会话",
+      empty: "没有 Agent 会话",
+      groups: {
+        attention: "需要注意",
+        running: "运行中",
+        recent: "最近",
+      },
+      actions: {
+        openAgent: "打开 {{title}}",
+        openWorkspace: "打开工作区",
+      },
+    },
+  },
   agentList: {
     fallbackTitle: "新会话",
     dateSections: {

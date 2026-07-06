@@ -65,6 +65,7 @@ import {
   type WebSocketRuntimeDiagnosticSnapshot,
 } from "./websocket/runtime-metrics.js";
 import { ProviderUsageService } from "../services/quota-fetcher/service.js";
+import type { StatusSummaryService } from "./status-summary/status-summary-service.js";
 import { getProcessMemoryDiagnostics, getProcessUptimeSeconds } from "./process-diagnostics.js";
 import {
   CLIENT_SHUTDOWN_RPC_REASON,
@@ -460,6 +461,7 @@ export class VoiceAssistantWebSocketServer {
   private unsubscribeSpeechReadiness: (() => void) | null = null;
   private unsubscribeDaemonConfigChange: (() => void) | null = null;
   private readonly providerUsageService: ProviderUsageService;
+  private readonly statusSummaryService: StatusSummaryService;
   private unsubscribeTerminalActivity: (() => void) | null = null;
   private readonly browserToolsBroker: BrowserToolsBroker | null;
   private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
@@ -504,6 +506,7 @@ export class VoiceAssistantWebSocketServer {
     github?: GitHubService,
     pushNotificationSender?: PushNotificationSender,
     providerSnapshotManager?: ProviderSnapshotManager,
+    statusSummaryService?: StatusSummaryService,
     daemonRuntimeConfig?: {
       listen: string | null;
       worktreesRoot?: string;
@@ -566,6 +569,10 @@ export class VoiceAssistantWebSocketServer {
       throw new Error("providerSnapshotManager is required");
     }
     this.providerSnapshotManager = providerSnapshotManager;
+    if (!statusSummaryService) {
+      throw new Error("statusSummaryService is required");
+    }
+    this.statusSummaryService = statusSummaryService;
     this.serverCapabilities = buildServerCapabilities({
       readiness: this.speech?.getReadiness() ?? null,
     });
@@ -1032,6 +1039,7 @@ export class VoiceAssistantWebSocketServer {
       terminalManager: this.terminalManager,
       providerSnapshotManager: this.providerSnapshotManager,
       providerUsageService: this.providerUsageService,
+      statusSummaryService: this.statusSummaryService,
       serviceProxy: this.serviceProxy ?? undefined,
       scriptRuntimeStore: this.scriptRuntimeStore ?? undefined,
       workspaceSetupSnapshots: this.workspaceSetupSnapshots,
@@ -1230,6 +1238,8 @@ export class VoiceAssistantWebSocketServer {
         worktreeRestore: true,
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: true,
+        // COMPAT(statusSummary): added in v0.1.104, drop the gate when floor >= v0.1.104.
+        statusSummary: true,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
         // COMPAT(daemonDiagnostics): added in v0.1.100, remove gate after 2026-12-25 once daemon floor >= v0.1.100.

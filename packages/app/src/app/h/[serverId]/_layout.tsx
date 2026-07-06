@@ -3,6 +3,7 @@ import { useHostRuntimeBootstrapState } from "@/app/_layout";
 import { HostRouteProvider } from "@/navigation/host-route-context";
 import { resolveStartupRoute } from "@/navigation/host-runtime-bootstrap";
 import { useHostRegistryStatus, useHosts } from "@/runtime/host-runtime";
+import { HostStatusBarLayout } from "@/status-summary/global-status-bar-layout";
 
 const HOST_STACK_SCREEN_OPTIONS = {
   headerShown: false,
@@ -47,5 +48,9 @@ function KnownHostRoute() {
     return stack;
   }
 
-  return <HostRouteProvider serverId={routeServerId}>{stack}</HostRouteProvider>;
+  return (
+    <HostRouteProvider serverId={routeServerId}>
+      <HostStatusBarLayout serverId={routeServerId}>{stack}</HostStatusBarLayout>
+    </HostRouteProvider>
+  );
 }

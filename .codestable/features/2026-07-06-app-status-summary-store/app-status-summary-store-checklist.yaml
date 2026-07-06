@@ -1,0 +1,102 @@
+feature: 2026-07-06-app-status-summary-store
+created: 2026-07-06
+
+steps:
+  - action: "Query/cache 骨架：定义 status summary query key、fetcher、staleTime、enabled 条件、refreshStatusSummary 辅助和 hook 返回的 query state"
+    exit_signal: "单测覆盖 supported/unsupported/offline/no-host 不同 enable 结果；unsupported 不调用 client；explicit refresh 不依赖 active observer"
+    status: done
+  - action: "Push apply：实现 status.summary.updated cache replace，并接入 SessionProvider message effect"
+    exit_signal: "测试覆盖 push replace cache、不同 serverId 隔离、cleanup 后旧 client 不再写 cache"
+    status: done
+  - action: "Reconnect refresh：连接从 offline→online、app resume 或 SessionProvider revalidation 时命令式 fetchQuery/prefetchQuery status summary"
+    exit_signal: "SessionProvider 目标测试证明无 UI observer 时重连仍触发 fetch，且 unsupported host 不触发"
+    status: done
+  - action: "View model：实现 rows、running/attention/recent lists、loading/error/offline/unsupported 状态"
+    exit_signal: "纯函数单测覆盖 token/cost/counts、空 totals、previous summary、错误态"
+    status: done
+  - action: "范围守护与验证：运行目标 app tests、typecheck、lint、format check"
+    exit_signal: "命令输出或环境阻塞记录齐全，grep 证明未调用 provider usage 或旧 RPC 拼 summary"
+    status: done
+
+checks:
+  - item: 'status summary cache 按 serverId 隔离，query key 为 ["statusSummary", serverId]'
+    source: 名词契约
+    status: passed
+  - item: "query staleTime 明确为 Infinity；freshness 来自 push 与 explicit refresh，不依赖 time-based stale"
+    source: 名词契约
+    status: passed
+  - item: "fetch enable 只在 serverId、client、online、features.statusSummary 全部满足时为 true"
+    source: 流程级约束
+    status: passed
+  - item: "初连、重连、app resume 的 refresh 使用 fetchQuery/prefetchQuery，不能只 invalidate inactive query"
+    source: 流程级约束
+    status: passed
+  - item: "unsupported 旧 daemon 返回 view model unsupported，且不 fan out fetchAgents、timeline 或旧 RPC 拼 summary"
+    source: 范围守护
+    status: passed
+  - item: "status.summary.updated push 作为完整 snapshot replace query data，不做 patch merge"
+    source: 流程级约束
+    status: passed
+  - item: "get 失败后收到 status.summary.updated 时，view model 不继续用旧 query error 遮住最新 summary"
+    source: 流程级约束
+    status: passed
+  - item: "SessionProvider push subscription 随 serverId/client effect cleanup，旧 client 不再写当前 host cache"
+    source: 编排层
+    status: passed
+  - item: "断线不清空 previous summary；offline/error view model 明确表达非实时状态"
+    source: 流程级约束
+    status: passed
+  - item: "重连或 app resume 后会 refetch status summary，push 不是唯一更新来源，且无 UI observer 时仍可触发"
+    source: 验收场景
+    status: passed
+  - item: "view model 输出 primaryRows、runningAgents、needsAttentionAgents、recentlyCompletedAgents，后续 UI 不需要直接碰 client"
+    source: 名词契约
+    status: passed
+  - item: "roadmap §4.4 契约偏差已在 design 中 reconciliation：focus-mode/nav target 归后续 shell/nav feature"
+    source: roadmap 契约
+    status: passed
+  - item: "不实现 UI/status bar shell/navigation，不改 host route layout，不持久化 summary 到 AsyncStorage"
+    source: 范围守护
+    status: passed
+  - item: "目标 app tests、typecheck、lint、format 证据齐全"
+    source: 验收场景
+    status: passed
+
+dod:
+  commands:
+    - id: CMD-001
+      command: "npx vitest run packages/app/src/status-summary/view-model.test.ts --bail=1"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-002
+      command: "npx vitest run packages/app/src/status-summary/push.test.ts --bail=1"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-003
+      command: "npx vitest run packages/app/src/status-summary/use-status-summary.test.ts --bail=1"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-004
+      command: "npx vitest run packages/app/src/contexts/session-context.service-status.test.ts --bail=1 -t status-summary"
+      core: false
+      failure_handling: fix-or-block
+    - id: CMD-005
+      command: "npm run typecheck"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-006
+      command: "npm run lint"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-007
+      command: "npm run format:check"
+      core: false
+      failure_handling: fix-or-block
+  evidence_required:
+    - command_output
+    - diff_summary
+    - hook_query_evidence
+  cleanliness:
+    debug_output: forbidden
+    temporary_todo: forbidden
+    commented_code: forbidden

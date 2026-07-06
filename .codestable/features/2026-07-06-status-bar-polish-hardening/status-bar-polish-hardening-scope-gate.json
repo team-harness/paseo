@@ -1,0 +1,45 @@
+{
+  "gate_id": "scope-gate",
+  "stage": "implementation.polish.review-fix-final",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "changed_files": [
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-checklist.yaml",
+        "packages/app/src/i18n/resources.test.ts",
+        "packages/app/src/i18n/resources/ar.ts",
+        "packages/app/src/i18n/resources/en.ts",
+        "packages/app/src/i18n/resources/es.ts",
+        "packages/app/src/i18n/resources/fr.ts",
+        "packages/app/src/i18n/resources/ja.ts",
+        "packages/app/src/i18n/resources/pt-BR.ts",
+        "packages/app/src/i18n/resources/ru.ts",
+        "packages/app/src/i18n/resources/zh-CN.ts",
+        "packages/app/src/status-summary/global-status-bar.test.tsx",
+        "packages/app/src/status-summary/global-status-bar.tsx",
+        "packages/app/src/status-summary/query.ts",
+        "packages/app/src/status-summary/status-bar-running-sessions.test.tsx",
+        "packages/app/src/status-summary/status-bar-running-sessions.tsx",
+        "packages/app/src/status-summary/view-model.ts",
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-acceptance.md",
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-evidence-pack.json",
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-evidence-pack.md",
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-qa.md",
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-review.md",
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-scope-gate.json"
+      ],
+      "ignored_machine_artifacts": [
+        ".codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-dod-results.json"
+      ],
+      "allowed_prefixes": [
+        ".codestable/features/2026-07-06-status-bar-polish-hardening",
+        "packages/app/src/status-summary",
+        "packages/app/src/i18n",
+        ".codestable/roadmap/global-status-bar"
+      ]
+    }
+  ],
+  "providers": {}
+}

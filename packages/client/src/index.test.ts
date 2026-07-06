@@ -648,6 +648,68 @@ test("provider actions delegate to existing provider RPCs and local snapshot upd
   await client.close();
 });
 
+test("status-actions delegate to daemon status summary RPC and local update stream", async () => {
+  const { client, ws } = await connectClient();
+  const summary = {
+    generatedAt: "2026-07-06T04:00:00.000Z",
+    usage: {
+      lifetime: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      today: {
+        totalTokens: 0,
+        windowStart: "2026-07-06T00:00:00.000Z",
+        windowEnd: "2026-07-06T04:00:00.000Z",
+      },
+      byProvider: [],
+      byModel: [],
+    },
+    activity: {
+      runningAgents: [],
+      needsAttentionAgents: [],
+      recentlyCompletedAgents: [],
+      counts: {
+        running: 0,
+        needsAttention: 0,
+        idle: 0,
+        error: 0,
+      },
+    },
+  };
+
+  const summaryPromise = client.status.summary({ requestId: "status-summary-request" });
+  expect(parseSentSessionMessage(ws.sent.at(-1))).toMatchObject({
+    type: "status.summary.get.request",
+    requestId: "status-summary-request",
+  });
+  ws.message(
+    sessionMessage({
+      type: "status.summary.get.response",
+      payload: {
+        requestId: "status-summary-request",
+        summary,
+      },
+    }),
+  );
+  await expect(summaryPromise).resolves.toEqual({
+    requestId: "status-summary-request",
+    summary,
+  });
+
+  const updates: string[] = [];
+  const unsubscribe = client.status.subscribe((update) => {
+    updates.push(update.generatedAt);
+  });
+  ws.message(
+    sessionMessage({
+      type: "status.summary.updated",
+      payload: summary,
+    }),
+  );
+  expect(updates).toEqual(["2026-07-06T04:00:00.000Z"]);
+
+  unsubscribe();
+  await client.close();
+});
+
 test("config actions delegate to existing daemon config RPCs", async () => {
   const { client, ws } = await connectClient();
 

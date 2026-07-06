@@ -1230,6 +1230,11 @@ export const ProviderUsageListRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const StatusSummaryGetRequestMessageSchema = z.object({
+  type: z.literal("status.summary.get.request"),
+  requestId: z.string(),
+});
+
 export const ResumeAgentRequestMessageSchema = z.object({
   type: z.literal("resume_agent_request"),
   handle: AgentPersistenceHandleSchema,
@@ -2079,6 +2084,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   RefreshProvidersSnapshotRequestMessageSchema,
   ProviderDiagnosticRequestMessageSchema,
   ProviderUsageListRequestMessageSchema,
+  StatusSummaryGetRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
   RefreshAgentRequestMessageSchema,
@@ -2363,6 +2369,8 @@ export const ServerInfoStatusPayloadSchema = z
         daemonDiagnostics: z.boolean().optional(),
         // COMPAT(daemonSelfUpdate): added in v0.1.93, remove gate after 2026-12-13.
         daemonSelfUpdate: z.boolean().optional(),
+        // COMPAT(statusSummary): added in v0.1.104, drop the gate when floor >= v0.1.104.
+        statusSummary: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
       })
@@ -3981,6 +3989,77 @@ export const ProviderUsageListResponseMessageSchema = z.object({
   }),
 });
 
+export const StatusSummaryUsageTotalsSchema = z
+  .object({
+    inputTokens: z.number().nonnegative().optional(),
+    cachedInputTokens: z.number().nonnegative().optional(),
+    outputTokens: z.number().nonnegative().optional(),
+    totalCostUsd: z.number().nonnegative().optional(),
+    totalTokens: z.number().nonnegative(),
+  })
+  .passthrough();
+
+export const StatusSummaryTodayUsageTotalsSchema = StatusSummaryUsageTotalsSchema.extend({
+  windowStart: z.string(),
+  windowEnd: z.string().nullable().optional(),
+});
+
+export const StatusSummaryUsageBucketSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  totals: StatusSummaryUsageTotalsSchema,
+});
+
+export const StatusAgentSnapshotSchema = z.object({
+  agentId: z.string(),
+  provider: AgentProviderSchema,
+  cwd: z.string(),
+  workspaceId: z.string().nullable().optional(),
+  title: z.string().nullable().optional(),
+  status: AgentStatusSchema,
+  stateBucket: WorkspaceStateBucketSchema,
+  updatedAt: z.string(),
+  attentionReason: z.enum(["finished", "error", "permission"]).nullable().optional(),
+  attentionTimestamp: z.string().nullable().optional(),
+  parentAgentId: z.string().nullable().optional(),
+});
+
+export const HostStatusSummaryPayloadSchema = z.object({
+  generatedAt: z.string(),
+  usage: z.object({
+    lifetime: StatusSummaryUsageTotalsSchema,
+    today: StatusSummaryTodayUsageTotalsSchema,
+    byProvider: z.array(StatusSummaryUsageBucketSchema).optional(),
+    byModel: z.array(StatusSummaryUsageBucketSchema).optional(),
+  }),
+  activity: z.object({
+    runningAgents: z.array(StatusAgentSnapshotSchema),
+    needsAttentionAgents: z.array(StatusAgentSnapshotSchema),
+    recentlyCompletedAgents: z.array(StatusAgentSnapshotSchema),
+    counts: z.object({
+      running: z.number().int().nonnegative(),
+      needsAttention: z.number().int().nonnegative(),
+      idle: z.number().int().nonnegative(),
+      error: z.number().int().nonnegative(),
+    }),
+  }),
+});
+
+export const StatusSummaryGetResponseMessageSchema = z.object({
+  type: z.literal("status.summary.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    summary: HostStatusSummaryPayloadSchema,
+  }),
+});
+
+// Notification push: no requestId and no `.response` pair; clients use
+// `status.summary.get.request` after reconnect as the authoritative snapshot.
+export const StatusSummaryUpdatedMessageSchema = z.object({
+  type: z.literal("status.summary.updated"),
+  payload: HostStatusSummaryPayloadSchema,
+});
+
 const AgentSlashCommandSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -4272,6 +4351,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   RefreshProvidersSnapshotResponseMessageSchema,
   ProviderDiagnosticResponseMessageSchema,
   ProviderUsageListResponseMessageSchema,
+  StatusSummaryGetResponseMessageSchema,
+  StatusSummaryUpdatedMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
   TerminalsChangedSchema,
@@ -4421,6 +4502,13 @@ export type ProviderUsageDetail = z.infer<typeof ProviderUsageDetailSchema>;
 export type ProviderUsageListResponseMessage = z.infer<
   typeof ProviderUsageListResponseMessageSchema
 >;
+export type StatusSummaryUsageTotals = z.infer<typeof StatusSummaryUsageTotalsSchema>;
+export type StatusSummaryTodayUsageTotals = z.infer<typeof StatusSummaryTodayUsageTotalsSchema>;
+export type StatusSummaryUsageBucket = z.infer<typeof StatusSummaryUsageBucketSchema>;
+export type StatusAgentSnapshot = z.infer<typeof StatusAgentSnapshotSchema>;
+export type HostStatusSummaryPayload = z.infer<typeof HostStatusSummaryPayloadSchema>;
+export type StatusSummaryGetResponseMessage = z.infer<typeof StatusSummaryGetResponseMessageSchema>;
+export type StatusSummaryUpdatedMessage = z.infer<typeof StatusSummaryUpdatedMessageSchema>;
 export type ChatCreateResponse = z.infer<typeof ChatCreateResponseSchema>;
 export type ChatListResponse = z.infer<typeof ChatListResponseSchema>;
 export type ChatInspectResponse = z.infer<typeof ChatInspectResponseSchema>;

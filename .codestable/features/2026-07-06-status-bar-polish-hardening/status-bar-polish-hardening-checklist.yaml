@@ -1,0 +1,152 @@
+feature: 2026-07-06-status-bar-polish-hardening
+roadmap: global-status-bar
+roadmap_item: status-bar-polish-hardening
+created: 2026-07-06
+
+steps:
+  - id: S0
+    title: Upstream landing gate
+    status: done
+    description: 确认 app-status-summary-store、global-status-bar-shell、status-bar-running-sessions-nav 已合并，status-summary 目录和前置目标测试文件存在。
+    exit_signal: 缺文件时停止 hardening 并回前置 feature；存在时把前置测试标为继承回归测试，不把它们当成本 feature 独有交付。
+    evidence: command output / diff review
+
+  - id: S1
+    title: QA fixture and state matrix
+    status: done
+    description: 复用前置已合并的 targetable fixture/test seam，让状态栏可稳定进入 ready/loading/offline/error/unsupported/empty 和 running/attention/recent 组合。
+    exit_signal: 目标测试或 Playwright helper 能 deterministically 触发每个状态；没有旧 RPC fallback、provider usage fetch、生产-only debug seam 或新生产可见注入 seam。
+    evidence: component test / Playwright helper / diff review
+
+  - id: S2
+    title: Visual and state polish
+    status: done
+    description: 修正固定高度、单行截断、长值、缺 cost、empty rows、unsupported/offline/error copy、theme token 和 disabled/hover/pressed 状态。
+    exit_signal: desktop/compact 的状态矩阵有测试或截图证据；没有 hardcoded color、负 letter spacing、动态字体缩放或布局跳动。
+    evidence: component test / screenshot / diff review
+
+  - id: S3
+    title: Route, viewport, safe-area, and keyboard verification
+    status: done
+    description: 覆盖 workspace/agent/sessions/settings/root-hidden、desktop/compact/iOS/Android、composer、keyboard、Autocomplete/command popover、bottom sheet。
+    exit_signal: 证据矩阵记录每个核心组合；compact 下无重复 safe-area 死带；keyboard open/close 时 footer 仍可见且 composer 不额外偏移 footer 高度。
+    evidence: targeted Playwright / Maestro / manual screenshot
+
+  - id: S4
+    title: Running sessions interaction hardening
+    status: done
+    description: 验证 activity trigger、desktop DropdownMenu panel、compact sheet、dismiss lifecycle、route change、row navigation close-before-nav、missing workspace action。
+    exit_signal: targeted test 或手工证据证明 panel/sheet 不残留、不改变 footer 高度、不直接 router push、不新增 lifecycle action。
+    evidence: unit test / Playwright / Maestro / manual QA
+
+  - id: S5
+    title: Accessibility, i18n, and copy
+    status: done
+    description: 补齐 stable testID/accessibility labels、translation keys、resources parity、copy style。
+    exit_signal: i18n parity test 通过；新增 copy key 已补齐 en/ar/es/fr/ja/pt-BR/ru/zh-CN；Maestro/Playwright selectors 使用 id；copy 遵守 sentence case、短状态词、runtime values 不翻译。
+    evidence: i18n test / selector audit / diff review
+
+  - id: S6
+    title: Scope guards, validation commands, and docs backfill
+    status: done
+    description: 运行目标 tests、typecheck、lint、format check、grep；把长期规则回写 docs/compound 或记录无需回写。
+    exit_signal: 命令通过或环境阻塞记录清楚；docs 回写只包含稳定结论；QA/acceptance 可从证据矩阵核验交付。
+    evidence: command output / grep / docs diff / QA record
+
+checks:
+  - id: C0
+    source: design §1 非显然依赖 / §2.4 S0
+    status: passed
+    assertion: Hardening 启动前确认前置 store/shell/nav 已合并且目标测试文件存在；缺失时停止本 feature 而不是把 file-not-found 记为 hardening 失败。
+
+  - id: C1
+    source: design §1 关键决策 1 / §2.2
+    status: passed
+    assertion: Hardening 由证据矩阵驱动，不新增核心协议、daemon、usage ledger、client SDK、app store contract 或生产可见测试注入 seam。
+
+  - id: C2
+    source: design §3.1 状态矩阵 / §3.3
+    status: passed
+    assertion: ready/loading/offline/error/unsupported/empty 状态都有可验证 UI；缺字段不显示伪造 0，错误/offline 不把 stale 数据伪装成 fresh。
+
+  - id: C3
+    source: design §1 关键决策 4 / §3.1
+    status: passed
+    assertion: compact/mobile 下 footer safe area、composer、keyboard、Autocomplete/command popover、running sessions sheet 无遮挡、无重复 inset；v1 keyboard policy 为 footer 仍可见且 composer 无额外 footer-height 偏移。
+
+  - id: C4
+    source: design §3.1 / status-bar-running-sessions-nav design §2.2
+    status: passed
+    assertion: desktop panel 和 compact sheet 的 Esc/outside/back/route-change/navigation dismiss 行为有证据，且打开/关闭不改变 footer 高度。
+
+  - id: C5
+    source: design §1 关键决策 3 / docs/i18n.md / docs/mobile-testing.md
+    status: passed
+    assertion: client-owned copy 走 i18n resources 且八语言 parity 通过；可操作元素有 stable testID/accessibility label，E2E/Maestro 不只依赖动态文本。
+
+  - id: C6
+    source: design §3.2 反向核对项
+    status: passed
+    assertion: diff 不新增 provider usage fetch、旧 RPC fallback、agent lifecycle mutation、直接 router push、route builder 拼接、root layout status bar。
+
+  - id: C7
+    source: design §3.5 验证命令 / docs/testing.md
+    status: passed
+    assertion: 只运行目标测试和 targeted E2E/Maestro；不跑全量 test workspace 或全量 Playwright suite。
+
+  - id: C8
+    source: design §4 文档回写预判
+    status: passed
+    assertion: bottom chrome/floating/router/mobile-testing 的长期 gotcha 已回写 docs/compound，或在 QA/acceptance 中明确记录无需回写。
+
+  - id: C9
+    source: design §5 清洁度规则
+    status: passed
+    assertion: 无待办/修复标记、注释掉代码、console/debug、截图产物、hardcoded hex、useUnistyles 或临时 QA 文件残留。
+
+dod:
+  commands:
+    - id: CMD-001
+      command: test -d packages/app/src/status-summary && test -f packages/app/src/status-summary/global-status-bar.test.tsx && test -f packages/app/src/status-summary/status-bar-session-navigation.test.ts && test -f packages/app/src/status-summary/status-bar-running-sessions.test.tsx
+      core: true
+      failure_handling: 失败表示前置 store/shell/nav 未合并或文件名已漂移；停止 hardening，回前置 feature 或明确等价目标测试路径。
+    - id: CMD-002
+      command: npx vitest run packages/app/src/status-summary/global-status-bar.test.tsx --bail=1
+      core: true
+      failure_handling: 继承回归测试。失败则回实现修状态分支/layout contract；file-not-found 按 CMD-001 处理；若文件名调整，用等价目标测试替代并记录。
+    - id: CMD-003
+      command: npx vitest run packages/app/src/status-summary/status-bar-session-navigation.test.ts --bail=1
+      core: true
+      failure_handling: 继承回归测试。失败则回实现修 list builder/navigation target；file-not-found 按 CMD-001 处理。
+    - id: CMD-004
+      command: npx vitest run packages/app/src/status-summary/status-bar-running-sessions.test.tsx --bail=1
+      core: true
+      failure_handling: 继承回归测试。失败则回实现修 trigger/panel/sheet lifecycle；file-not-found 按 CMD-001 处理。
+    - id: CMD-005
+      command: npx vitest run packages/app/src/i18n/resources.test.ts --bail=1
+      core: true
+      failure_handling: 失败则补齐 en/ar/es/fr/ja/pt-BR/ru/zh-CN 所有 locale key 或移除未迁移 copy。
+    - id: CMD-006
+      command: npm run test:e2e --workspace=@getpaseo/app -- status-bar-running-sessions.spec.ts
+      core: false
+      failure_handling: 仅当新增 targeted Playwright spec 时运行；失败则回实现修或记录环境阻塞。不得跑全量 Playwright。
+    - id: CMD-007
+      command: npm run typecheck
+      core: true
+      failure_handling: 若跨包声明 stale，先按 AGENTS 指令 build 对应 stack 后复跑。
+    - id: CMD-008
+      command: npm run lint
+      core: true
+      failure_handling: 只接受无关既有红灯并记录证据；本 feature 红灯必须修。
+    - id: CMD-009
+      command: npm run format:check
+      core: true
+      failure_handling: 失败则运行 npm run format 后复查。
+    - id: CMD-010
+      command: '! rg "provider\\.usage\\.list|listProviderUsage|fetchAgents|timeline|archiveAgent|cancelAgent|restart|closeAgent|router\\.|buildHostAgentDetailRoute|buildHostWorkspaceRoute|useUnistyles|console\\.|T[O]DO|F[I]XME" packages/app/src/status-summary'
+      core: true
+      failure_handling: 有命中必须分类；越界命中移除或回 design。若 status-bar E2E/Maestro 文件未新增，对缺失 glob 做人工说明。
+    - id: CMD-011
+      command: rg "HostStatusBar|GlobalStatusBar|status\\.summary|HostStatusSummaryPayload" packages/app/src/app/_layout.tsx packages/protocol packages/client packages/server
+      core: true
+      failure_handling: root layout 或协议/server/client 越界命中必须移除；前置 protocol/client/server 既有合法实现需人工分类为非 hardening diff。

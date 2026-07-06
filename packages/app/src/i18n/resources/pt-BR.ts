@@ -215,6 +215,36 @@ export const ptBR: TranslationResources = {
       loadMore: "Carregar mais",
     },
   },
+  statusBar: {
+    rows: {
+      totalTokens: "Tokens totais",
+      today: "Hoje",
+      cost: "Custo",
+      running: "Em execução",
+      needsAttention: "Precisa de atenção",
+      errors: "Erros",
+    },
+    states: {
+      loading: "Carregando status",
+      unavailable: "Status indisponível",
+      unsupported: "Atualize o host para usar isto.",
+      offline: "O host está offline.",
+    },
+    sessions: {
+      title: "Sessões de agentes",
+      trigger: "Sessões",
+      empty: "Nenhuma sessão de agente",
+      groups: {
+        attention: "Precisa de atenção",
+        running: "Em execução",
+        recent: "Recentes",
+      },
+      actions: {
+        openAgent: "Abrir {{title}}",
+        openWorkspace: "Abrir workspace",
+      },
+    },
+  },
   agentList: {
     fallbackTitle: "Nova sessão",
     dateSections: {

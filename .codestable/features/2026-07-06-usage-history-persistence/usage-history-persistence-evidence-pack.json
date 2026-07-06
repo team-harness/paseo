@@ -1,0 +1,26 @@
+{
+  "gate_id": "evidence-pack",
+  "stage": "implementation.before_review",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "out": ".codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-evidence-pack.md",
+      "providers": {
+        "archguard": {
+          "status": "available",
+          "signal_type": "availability",
+          "summary": "archguard binary found at /opt/homebrew/bin/archguard; risk summary not collected in this minimal mode",
+          "warnings": ["archguard available but risk summary not collected"]
+        },
+        "meta_cc": {
+          "status": "unavailable",
+          "reason": "meta-cc summary not found; realtime session collection is out of scope",
+          "warnings": []
+        }
+      }
+    }
+  ],
+  "providers": {}
+}
