@@ -13,6 +13,7 @@ import {
 import type { Logger } from "pino";
 import { z } from "zod";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
+import type { UsageLedger } from "../usage-ledger/index.js";
 
 import {
   getAgentStreamEventTurnId,
@@ -212,6 +213,7 @@ export interface AgentManagerOptions {
   appendSystemPrompt?: string;
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
+  usageLedger?: UsageLedger;
   logger: Logger;
 }
 
@@ -526,6 +528,9 @@ export class AgentManager {
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
   private readonly backgroundTasks = new Set<Promise<void>>();
   private readonly agentStreamCoalescer: AgentStreamCoalescer;
+  private readonly usageLedger?: UsageLedger;
+  private readonly usageTurnSequences = new Map<string, string>();
+  private usageTurnSequenceCounter = 0;
   private mcpBaseUrl: string | null;
   private readonly mcpAuthToken: string | null;
   private paseoToolsEnabled = true;
@@ -548,6 +553,7 @@ export class AgentManager {
     this.configurePaseoTools(options);
     this.appendSystemPrompt = options.appendSystemPrompt ?? "";
     this.logger = options.logger.child({ module: "agent", component: "agent-manager" });
+    this.usageLedger = options.usageLedger;
     this.rescueTimeouts = {
       reloadSessionCloseMs:
         options.rescueTimeouts?.reloadSessionCloseMs ?? RELOAD_SESSION_CLOSE_TIMEOUT_MS,
@@ -1176,6 +1182,7 @@ export class AgentManager {
       "agent.manager.close.start",
     );
     const closedAgent = this.prepareAgentForClosure(agent, "agent closed");
+    this.clearFallbackUsageTurnKey(agentId);
     await agent.session.close();
     this.timelineStore.delete(agentId);
     await this.persistSnapshot(closedAgent);
@@ -2975,6 +2982,10 @@ export class AgentManager {
       await dispatchPromise;
     }
 
+    if (!options?.fromHistory && isTurnTerminalEvent(event)) {
+      this.clearFallbackUsageTurnKey(agent.id);
+    }
+
     if (!options?.fromHistory && isForegroundEvent && isTurnTerminalEvent(event)) {
       this.finalizeForegroundTurn(agent, eventTurnId);
     }
@@ -3062,8 +3073,7 @@ export class AgentManager {
         this.onStreamThreadStarted(agent);
         return undefined;
       case "usage_updated":
-        agent.lastUsage = event.usage;
-        this.emitState(agent);
+        this.onStreamUsageUpdated({ agent, event, eventTurnId, fromHistory: options?.fromHistory });
         return undefined;
       case "mode_changed":
         agent.currentModeId = event.currentModeId;
@@ -3099,7 +3109,13 @@ export class AgentManager {
       case "timeline":
         return this.onStreamTimelineEvent({ agent, event, options, isForegroundEvent, flags });
       case "turn_completed":
-        this.onStreamTurnCompleted({ agent, event, eventTurnId, isForegroundEvent });
+        this.onStreamTurnCompleted({
+          agent,
+          event,
+          eventTurnId,
+          isForegroundEvent,
+          fromHistory: options?.fromHistory === true,
+        });
         return undefined;
       case "turn_failed":
         return this.onStreamTurnFailed({
@@ -3136,6 +3152,20 @@ export class AgentManager {
       }
     }
     void this.refreshRuntimeInfo(agent);
+  }
+
+  private onStreamUsageUpdated(params: {
+    agent: ActiveManagedAgent;
+    event: Extract<AgentStreamEvent, { type: "usage_updated" }>;
+    eventTurnId: string | undefined;
+    fromHistory: boolean | undefined;
+  }): void {
+    const { agent, event, eventTurnId, fromHistory } = params;
+    agent.lastUsage = event.usage;
+    if (!fromHistory) {
+      this.enqueueUsageLedgerEvent({ agent, event, eventTurnId });
+    }
+    this.emitState(agent);
   }
 
   private async onStreamTimelineEvent(params: {
@@ -3178,8 +3208,9 @@ export class AgentManager {
     event: Extract<AgentStreamEvent, { type: "turn_completed" }>;
     eventTurnId: string | undefined;
     isForegroundEvent: boolean;
+    fromHistory: boolean;
   }): void {
-    const { agent, event, eventTurnId, isForegroundEvent } = params;
+    const { agent, event, eventTurnId, isForegroundEvent, fromHistory } = params;
     this.logger.trace(
       {
         agentId: agent.id,
@@ -3192,12 +3223,62 @@ export class AgentManager {
       "agent.manager.turn.completed",
     );
     agent.lastUsage = event.usage;
+    if (!fromHistory && event.usage) {
+      this.enqueueUsageLedgerEvent({ agent, event, eventTurnId });
+    }
     agent.lastError = undefined;
     if (!isForegroundEvent && agent.lifecycle !== "idle" && !agent.pendingReplacement) {
       (agent as ActiveManagedAgent).lifecycle = "idle";
       this.emitState(agent);
     }
     void this.refreshRuntimeInfo(agent);
+  }
+
+  private enqueueUsageLedgerEvent(params: {
+    agent: ActiveManagedAgent;
+    event: Extract<AgentStreamEvent, { type: "usage_updated" | "turn_completed" }>;
+    eventTurnId: string | undefined;
+  }): void {
+    if (!this.usageLedger) {
+      return;
+    }
+    const { agent, event, eventTurnId } = params;
+    const usage = event.usage;
+    if (!usage) {
+      return;
+    }
+    const usageTurnKey = this.resolveUsageTurnKey(agent, eventTurnId);
+    this.usageLedger.enqueueEvent({
+      agentId: agent.id,
+      provider: event.provider,
+      usageTurnKey,
+      sessionId: agent.persistence?.sessionId ?? null,
+      workspaceId: agent.workspaceId ?? null,
+      cwd: agent.cwd,
+      model: agent.runtimeInfo?.model ?? agent.config.model ?? null,
+      turnId: event.turnId ?? eventTurnId ?? agent.activeForegroundTurnId ?? null,
+      sourceEventType: event.type,
+      usage,
+      observedAt: new Date(),
+    });
+  }
+
+  private resolveUsageTurnKey(agent: ActiveManagedAgent, eventTurnId: string | undefined): string {
+    const explicitTurnId = eventTurnId ?? agent.activeForegroundTurnId;
+    if (explicitTurnId) {
+      return explicitTurnId;
+    }
+    const existing = this.usageTurnSequences.get(agent.id);
+    if (existing) {
+      return existing;
+    }
+    const generated = `usage-turn-${++this.usageTurnSequenceCounter}`;
+    this.usageTurnSequences.set(agent.id, generated);
+    return generated;
+  }
+
+  private clearFallbackUsageTurnKey(agentId: string): void {
+    this.usageTurnSequences.delete(agentId);
   }
 
   private async onStreamTurnFailed(params: {

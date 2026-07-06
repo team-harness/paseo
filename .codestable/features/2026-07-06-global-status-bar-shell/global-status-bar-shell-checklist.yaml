@@ -1,0 +1,125 @@
+feature: 2026-07-06-global-status-bar-shell
+roadmap: global-status-bar
+roadmap_item: global-status-bar-shell
+created: 2026-07-06
+
+steps:
+  - id: S1
+    title: Shell layout skeleton
+    status: pending
+    description: 在 host layout 内引入参与 flex 布局的 HostStatusBarLayout，包住 host Stack，保持无 serverId 分支不变。
+    exit_signal: diff 或目标测试证明只在 /h/[serverId] host 边界挂载，content 为 flex:1/minHeight:0，footer 非 absolute overlay。
+    evidence: diff review / component smoke test
+
+  - id: S2
+    title: Bottom chrome inset contract
+    status: pending
+    description: 新增 bottom chrome context/helper，把 footer 高度、bottom safe-area 归属和主要 leaf 的 effective bottom inset 接起来。
+    exit_signal: AgentPanel composer 不再在状态栏可见时无条件叠 insets.bottom；settings 等相邻底部 padding 已 audit；单测或 diff review 能看到统一 helper 而非散落手写扣减。
+    evidence: component test / diff review
+
+  - id: S3
+    title: Display-only status states
+    status: pending
+    description: 实现 GlobalStatusBar 对 useGlobalStatusBarView 的 loading/offline/error/unsupported/ready 分支和 desktop focus mode hidden。
+    exit_signal: 组件测试覆盖每个 view kind；focus mode true 时组件返回 null 或不占 footer 高度。
+    evidence: component test
+
+  - id: S4
+    title: Ready summary rows
+    status: pending
+    description: 渲染 primaryRows 与运行状态摘要，desktop/compact 都保持单行、固定高度和文本截断。
+    exit_signal: 长值、缺 cost、空 rows 不溢出且不伪造 0；compact 分支隐藏低优先级项而不是撑宽。
+    evidence: component test / screenshot
+
+  - id: S5
+    title: Safe-area, keyboard, and host-page layout verification
+    status: pending
+    description: 接入 bottom safe area，验证 workspace 和至少一个非 workspace host page 的底部栏不遮挡内容、不重复 inset，键盘开合不造成 composer 错位。
+    exit_signal: workspace composer、sessions/settings 底部内容与状态栏同时可见；footer 背景覆盖 bottom inset；compact 下 composer 与状态栏之间无死白安全区带；键盘打开时 composer 不多偏移 footer 高度；锚定 autocomplete/command popover 不被 footer 裁切。
+    evidence: manual QA / screenshot
+
+  - id: S6
+    title: Scope guard and validation
+    status: pending
+    description: 运行目标测试、typecheck、lint、format check，并 grep 反向确认未实现 fallback、provider usage、导航、弹层或 root layout 挂载。
+    exit_signal: 验证命令通过或有明确环境阻塞；越界 grep 命中已清除或解释为无害引用。
+    evidence: command output / grep / diff review
+
+checks:
+  - id: C1
+    source: design §1 明确不做 / §2.3 挂载点
+    status: pending
+    assertion: 状态栏只挂在 packages/app/src/app/h/[serverId]/_layout.tsx host 边界内，不挂 root _layout.tsx，也不在全局路由任选 host。
+
+  - id: C2
+    source: design §1 关键决策 2 / §2.2 流程级约束
+    status: pending
+    assertion: 状态栏是 participating flex footer，不使用 absolute/fixed bottom overlay 作为主布局，不遮挡 workspace composer。
+
+  - id: C3
+    source: design §2.1 状态分支 / §3.1 关键场景
+    status: pending
+    assertion: ready/loading/offline/error/unsupported/focus hidden 都有集中 UI 分支；focus mode 由 shell 在 hook 外叠加；旧 daemon unsupported 默认隐藏且不显示误导性数据。
+
+  - id: C4
+    source: design §1 关键决策 3 / §2.2 bottom inset ownership
+    status: pending
+    assertion: compact/mobile 下 footer 拥有 bottom safe area，主要贴底 leaf 通过 bottom chrome helper 扣减自身 bottom inset，composer 与状态栏之间无重复 safe-area 死白带。
+
+  - id: C5
+    source: design §2.2 Keyboard / §3.1 关键场景
+    status: pending
+    assertion: 键盘打开/收起时 composer 不因 footer 高度产生额外偏移；若实现选择键盘打开隐藏 footer，该行为稳定且有测试或 QA 证据。
+
+  - id: C6
+    source: design §2.1 Tone 映射 / §5 清洁度规则
+    status: pending
+    assertion: 状态栏使用自有轻量 chip 和 theme/status tokens 映射 default/ok/warning/danger，不硬编码颜色，也不强行复用 StatusBadge 无法表达的 variant。
+
+  - id: C7
+    source: design §1 明确不做 / §3.2 反向核对项
+    status: pending
+    assertion: 本 feature 不新增运行 session 详情弹层、bottom sheet、Portal、hover card 或导航 handler。
+
+  - id: C8
+    source: design §1 明确不做 / §3.2 反向核对项
+    status: pending
+    assertion: UI shell 不调用 daemon client、provider usage、fetchAgents、timeline 或旧 RPC；只消费 useGlobalStatusBarView(serverId)。
+
+  - id: C9
+    source: design §2.5 结构健康度 / docs/unistyles.md
+    status: pending
+    assertion: 新组件样式使用 StyleSheet.create((theme) => ...)，不新增 useUnistyles()，不把 UI 逻辑写进 host layout。
+
+  - id: C10
+    source: design §3.3 / §3.5 验证命令
+    status: pending
+    assertion: 目标组件测试、typecheck、lint、format check、范围守护 grep、bottom inset grep 和 compact/keyboard 手工或截图验证均有执行证据或明确环境阻塞记录。
+
+dod:
+  commands:
+    - id: CMD-001
+      command: npx vitest run packages/app/src/status-summary/global-status-bar.test.tsx --bail=1
+      core: true
+      failure_handling: 失败则回实现修状态分支或测试夹具；若文件名调整，用等价目标测试替代并记录。
+    - id: CMD-002
+      command: npm run typecheck
+      core: true
+      failure_handling: 若跨包声明 stale，先按 AGENTS 指令运行对应 build script，再复跑。
+    - id: CMD-003
+      command: npm run lint
+      core: true
+      failure_handling: 只接受与本 feature 无关的既有红灯并记录证据；否则修复。
+    - id: CMD-004
+      command: npm run format:check
+      core: true
+      failure_handling: 失败则运行 npm run format 后复查。
+    - id: CMD-005
+      command: rg "provider\\.usage\\.list|listProviderUsage|fetchAgents|getStatusSummary|navigateToWorkspace|useUnistyles" packages/app/src/status-summary packages/app/src/app/h/[serverId]/_layout.tsx packages/app/src/app/_layout.tsx
+      core: true
+      failure_handling: 有命中必须人工分类；越界命中需移除或回 design。
+    - id: CMD-006
+      command: 'rg "paddingBottom: insets\\.bottom|\\{ paddingBottom: insets\\.bottom \\}" packages/app/src/panels packages/app/src/screens packages/app/src/components'
+      core: true
+      failure_handling: 对 host leaf 中与状态栏相邻的命中逐条分类；AgentPanel composer 不得保留无条件重复 inset。

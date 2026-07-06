@@ -89,6 +89,14 @@ describe("desktop packaging", () => {
     expect(config).toContain("!node_modules/@getpaseo/server/dist/server/web-ui/**");
   });
 
+  it("allows hardened macOS builds to load Electron Framework", () => {
+    for (const fileName of ["entitlements.mac.plist", "entitlements.mac.inherit.plist"]) {
+      const entitlements = readFileSync(join(packageRoot, "build", fileName), "utf8");
+
+      expect(entitlements).toContain("com.apple.security.cs.disable-library-validation");
+    }
+  });
+
   // electron-builder packs production dependencies declared in package.json into
   // app.asar. Runtime code in runtime-paths.ts and bin/paseo dynamically resolves
   // these workspace packages by string, so static analysis (TypeScript, Knip) cannot

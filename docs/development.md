@@ -162,6 +162,18 @@ frames non-stop, pinning ProMotion displays at 120Hz forever and draining the
 battery while the app is idle — so do not re-add it. The probe's visibility
 guards already prevent throttling from causing a false stall.
 
+### Local packaged macOS builds
+
+`electron-builder` local macOS packages can be ad-hoc signed when no Apple
+Developer ID certificate is available. Paseo still enables hardened runtime, so
+the app entitlements must keep
+`com.apple.security.cs.disable-library-validation`; otherwise dyld can abort at
+launch while loading `Electron Framework.framework` with a Team ID mismatch.
+
+When validating a local packaged desktop build, set `PASEO_DESKTOP_SMOKE=1` so
+the `afterSign` hook launches the signed `.app` and catches dyld/signing errors
+before the installer is copied into `/Applications`.
+
 ### Daemon logs
 
 Check `$PASEO_HOME/daemon.log` for daemon logs. The default level is `info`; set

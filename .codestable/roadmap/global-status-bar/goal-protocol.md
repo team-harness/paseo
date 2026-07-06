@@ -1,0 +1,71 @@
+# CodeStable Roadmap Goal Protocol
+
+本文件复制到 `.codestable/roadmap/global-status-bar/goal-protocol.md` 后，由 `/goal` 会话读取。详细执行规则拆到同目录子文档，避免单个 md 超过 300 行。
+
+## 1. 先读文件
+
+- `.codestable/roadmap/global-status-bar/goal-state.yaml`
+- `.codestable/roadmap/global-status-bar/goal-plan.md`
+- `.codestable/roadmap/global-status-bar/global-status-bar-roadmap.md`
+- `.codestable/roadmap/global-status-bar/global-status-bar-items.yaml`
+- `.codestable/roadmap/global-status-bar/goal-features/*.md`
+- `.codestable/roadmap/global-status-bar/goal-protocol-feature-loop.md`
+- `.codestable/roadmap/global-status-bar/goal-protocol-gates.md`
+- `.codestable/roadmap/global-status-bar/goal-protocol-audit.md`
+
+## 2. 启动检查
+
+- 所有 feature design frontmatter 必须是 `status: approved`。
+- `goal-state.yaml` 使用 `current_feature_index`，语义为 0-based。
+- `baseline_ref` 在 git 仓库内必须能解析为 SHA。
+- `goal-plan.md` 必须包含 roadmap 核心验收路径、最终聚合命令、DoD Policy、Gate Policy、Provider Policy。
+- checklist `steps` 和 `checks` 初始状态必须为 `pending`；goal 执行中按阶段更新。
+
+## 3. Goal 模式接管
+
+用户粘贴 `/goal`，或主流程按 Goal driver 派发规则启动可见 Task agent，代表授权 goal 会话连续执行各 feature 的 impl / review / QA / accept。普通流程中逐 feature 停等用户确认的 checkpoint，在 goal 模式下改为写入报告、状态和审计记录。
+
+仍必须 handoff 的情况：
+
+- 需要改变已批准 design、roadmap item、接口契约或 feature 范围。
+- 独立 Task agent reviewer pending / failed / blocked，且没有用户明确降级。
+- 同一失败项三轮修复仍不通过。
+- 外部凭证或环境缺失导致核心行为无法判断。
+- 功能性核心路径或 roadmap 级核心验收路径无法验证。
+- 用户主动要求暂停、改方向或终止。
+
+## 4. 启动标记
+
+```text
+CS_ROADMAP_GOAL_START
+Roadmap: global-status-bar
+Features: <数量>
+Baseline ref: <sha|no-git>
+Plan: .codestable/roadmap/global-status-bar/goal-plan.md
+Protocol: .codestable/roadmap/global-status-bar/goal-protocol.md
+```
+
+## 5. 执行顺序
+
+1. 按 `goal-state.yaml.current_feature_index` 找到下一个 pending feature。
+2. 读取对应 `goal-features/<feature-slug>.md`、design、checklist。
+3. 按 `goal-protocol-feature-loop.md` 执行 feature loop。
+4. 每个阶段按 `goal-protocol-gates.md` 执行 Gate Policy。
+5. 每个 feature accepted 后更新 `goal-state.yaml` 和 roadmap items，立即 scoped-commit；`git status --short` 干净后才进入下一 feature。
+6. 所有 feature accepted 后按 `goal-protocol-audit.md` 做最终审计。
+
+## 6. 完成标记
+
+只有最终审计通过后才能打印：
+
+```text
+CS_ROADMAP_GOAL_COMPLETE
+```
+
+如果无法继续：
+
+```text
+CS_ROADMAP_GOAL_HANDOFF
+Reason: <具体阻塞>
+Next: <建议动作>
+```

@@ -1,0 +1,55 @@
+{
+  "gate_id": "dod-runner",
+  "stage": "implementation.before_review",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "command": "npx vitest run packages/server/src/server/usage-ledger/usage-ledger.test.ts --bail=1",
+      "exit_code": 0,
+      "stdout": "\n RUN  v4.1.7 /Users/wyattfang/work/github/paseo\n\n\n Test Files  1 passed (1)\n      Tests  8 passed (8)\n   Start at  11:14:31\n   Duration  137ms (transform 32ms, setup 0ms, import 63ms, tests 15ms, environment 0ms)\n\n",
+      "stderr": "",
+      "id": "CMD-001",
+      "core": true,
+      "failure_handling": "fix-or-block"
+    },
+    {
+      "command": "npx vitest run packages/server/src/server/agent/agent-manager.test.ts --bail=1 -t \"usage ledger\"",
+      "exit_code": 0,
+      "stdout": "\n RUN  v4.1.7 /Users/wyattfang/work/github/paseo\n\n\n Test Files  1 passed (1)\n      Tests  3 passed | 116 skipped (119)\n   Start at  11:14:31\n   Duration  441ms (transform 221ms, setup 0ms, import 312ms, tests 69ms, environment 0ms)\n\n",
+      "stderr": "",
+      "id": "CMD-002",
+      "core": true,
+      "failure_handling": "fix-or-block"
+    },
+    {
+      "command": "npm run typecheck",
+      "exit_code": 0,
+      "stdout": "\n> paseo@0.1.104-beta.3 typecheck\n> npm run typecheck --workspaces --if-present\n\n\n> @getpaseo/expo-two-way-audio@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/highlight@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/protocol@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/client@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/server@0.1.104-beta.3 typecheck\n> tsgo -p tsconfig.server.typecheck.json --noEmit\n\n\n> @getpaseo/app@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/relay@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/website@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/desktop@0.1.104-beta.3 typecheck\n> tsgo --noEmit -p tsconfig.json\n\n\n> @getpaseo/cli@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n",
+      "stderr": "",
+      "id": "CMD-003",
+      "core": true,
+      "failure_handling": "fix-or-block"
+    },
+    {
+      "command": "npm run lint",
+      "exit_code": 0,
+      "stdout": "\n> paseo@0.1.104-beta.3 lint\n> oxlint\n\nFound 0 warnings and 0 errors.\nFinished in 558ms on 2442 files with 177 rules using 10 threads.\n",
+      "stderr": "",
+      "id": "CMD-004",
+      "core": true,
+      "failure_handling": "fix-or-block"
+    },
+    {
+      "command": "npm run format:check",
+      "exit_code": 0,
+      "stdout": "\n> paseo@0.1.104-beta.3 format:check\n> oxfmt --check .\n\nChecking formatting...\n\nAll matched files use the correct format.\nFinished in 1500ms on 2681 files using 10 threads.\n",
+      "stderr": "",
+      "id": "CMD-005",
+      "core": false,
+      "failure_handling": "fix-or-block"
+    }
+  ],
+  "providers": {}
+}

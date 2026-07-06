@@ -36,6 +36,11 @@ import type {
 } from "./agent-sdk-types.js";
 import type { PaseoToolCatalog } from "./tools/types.js";
 import type { ProviderDefinition } from "./provider-registry.js";
+import type {
+  UsageLedger,
+  UsageLedgerEventInput,
+  UsageLedgerQuery,
+} from "../usage-ledger/index.js";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -290,6 +295,28 @@ class TestAgentSession implements AgentSession {
   async close(): Promise<void> {}
 }
 
+class RecordingUsageLedger implements UsageLedger {
+  readonly events: UsageLedgerEventInput[] = [];
+
+  async initialize(): Promise<void> {}
+
+  enqueueEvent(input: UsageLedgerEventInput): void {
+    this.events.push(input);
+  }
+
+  async getTotals(_query?: UsageLedgerQuery): Promise<Record<string, never>> {
+    return {};
+  }
+
+  async getTodayTotals(): Promise<Record<string, never>> {
+    return {};
+  }
+
+  async flush(): Promise<void> {}
+
+  async deleteAgentUsage(): Promise<void> {}
+}
+
 class StreamingAssistantSession implements AgentSession {
   readonly provider = "codex" as const;
   readonly capabilities = TEST_CAPABILITIES;
@@ -500,6 +527,181 @@ test("createAgent forwards request env into the spawned provider process", async
       probe: "expected",
       agentId: "00000000-0000-4000-8000-00000000e001",
     });
+  } finally {
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
+test("usage ledger bridge records usage updates and turn completion on the foreground turn basis", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-usage-ledger-"));
+  const usageLedger = new RecordingUsageLedger();
+  class UsageSession extends TestAgentSession {
+    override async startTurn(): Promise<{ turnId: string }> {
+      const turnId = "turn-usage-1";
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "usage_updated",
+          provider: this.provider,
+          usage: { inputTokens: 10, outputTokens: 1 },
+        });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId,
+          usage: { inputTokens: 12, outputTokens: 2 },
+        });
+      }, 0);
+      return { turnId };
+    }
+  }
+  class UsageClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new UsageSession(config);
+    }
+  }
+  const manager = new AgentManager({
+    clients: {
+      codex: new UsageClient(),
+    },
+    usageLedger,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-0000000000a1",
+  });
+
+  try {
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir });
+    await Array.fromAsync(await manager.runAgent(agent.id, "hello"));
+
+    expect(usageLedger.events.map((event) => event.sourceEventType)).toEqual([
+      "usage_updated",
+      "turn_completed",
+    ]);
+    expect(usageLedger.events.map((event) => event.usageTurnKey)).toEqual([
+      "turn-usage-1",
+      "turn-usage-1",
+    ]);
+    expect(usageLedger.events[0]).toMatchObject({
+      agentId: agent.id,
+      provider: "codex",
+      cwd: workdir,
+      usage: { inputTokens: 10, outputTokens: 1 },
+    });
+    expect(manager.getAgent(agent.id)?.lifecycle).toBe("idle");
+  } finally {
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
+test("usage ledger bridge creates a new fallback basis after terminal events without provider turn ids", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-usage-ledger-fallback-"));
+  const usageLedger = new RecordingUsageLedger();
+  class ResetUsageSession extends TestAgentSession {
+    private nextInputTokens = 10;
+
+    override async startTurn(): Promise<{ turnId: string }> {
+      const turnId = `turn-${this.nextInputTokens}`;
+      const inputTokens = this.nextInputTokens;
+      this.nextInputTokens = 2;
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "usage_updated",
+          provider: this.provider,
+          usage: { inputTokens },
+        });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId,
+          usage: { inputTokens },
+        });
+      }, 0);
+      return { turnId };
+    }
+  }
+  class CapturingClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new ResetUsageSession(config);
+    }
+  }
+  const manager = new AgentManager({
+    clients: {
+      codex: new CapturingClient(),
+    },
+    usageLedger,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-0000000000a2",
+  });
+
+  try {
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir });
+    await manager.runAgent(agent.id, "first");
+    await manager.runAgent(agent.id, "second");
+
+    expect(usageLedger.events.map((event) => event.usageTurnKey)).toEqual([
+      "turn-10",
+      "turn-10",
+      "turn-2",
+      "turn-2",
+    ]);
+  } finally {
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
+test("usage ledger bridge uses generated fallback turn keys when no foreground turn id is active", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-usage-ledger-sequence-"));
+  const usageLedger = new RecordingUsageLedger();
+  let session: TestAgentSession | null = null;
+  class CapturingClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      session = new TestAgentSession(config);
+      return session;
+    }
+  }
+  const manager = new AgentManager({
+    clients: {
+      codex: new CapturingClient(),
+    },
+    usageLedger,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-0000000000a3",
+  });
+
+  try {
+    await manager.createAgent({ provider: "codex", cwd: workdir });
+    session?.pushEvent({
+      type: "usage_updated",
+      provider: "codex",
+      usage: { inputTokens: 10 },
+    });
+    session?.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      usage: { inputTokens: 10 },
+    });
+    session?.pushEvent({
+      type: "usage_updated",
+      provider: "codex",
+      usage: { inputTokens: 2 },
+    });
+    session?.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      usage: { inputTokens: 2 },
+    });
+
+    await vi.waitFor(() => {
+      expect(usageLedger.events).toHaveLength(4);
+    });
+    expect(usageLedger.events.map((event) => event.usageTurnKey)).toEqual([
+      "usage-turn-1",
+      "usage-turn-1",
+      "usage-turn-2",
+      "usage-turn-2",
+    ]);
+    expect(usageLedger.events.map((event) => event.turnId)).toEqual([null, null, null, null]);
   } finally {
     rmSync(workdir, { recursive: true, force: true });
   }

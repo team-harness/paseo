@@ -1,0 +1,105 @@
+feature: 2026-07-06-status-summary-protocol
+created: 2026-07-06
+
+steps:
+  - action: "协议名词骨架：新增 status summary payload、get request/response、updated push schema 和 exported types"
+    exit_signal: "protocol message parse tests 覆盖 get response、updated push、payload.requestId 关联、optional 字段和 unknown-forward compatibility"
+    status: pending
+  - action: "Summary service：用 usage ledger 与 agent source 聚合 lifetime/today/activity DTO"
+    exit_signal: "service 单测覆盖 totals、totalTokens、parentAgentId、recentlyCompleted 15 分钟窗口、activity counts 互斥映射"
+    status: pending
+  - action: "Server wiring：接入 server_info feature flag、session get handler、push coalescing"
+    exit_signal: "session 目标测试能 get summary；singleton service 基于 AgentManager agent_state/agent_stream 事件触发 coalesced full snapshot push"
+    status: pending
+  - action: "Client SDK：新增 getStatusSummary 方法，push 使用已有 typed on(...) 订阅"
+    exit_signal: "client 目标测试或 typecheck 证明 dotted correlated RPC 正确"
+    status: pending
+  - action: "命名/文档：补 status.summary.updated 无 response push 说明"
+    exit_signal: "schema 注释或 docs/rpc-namespacing.md 明确 notification 命名约定"
+    status: pending
+  - action: "验证：运行目标 protocol/server/client tests、typecheck、lint、format check"
+    exit_signal: "命令输出或环境阻塞记录齐全"
+    status: pending
+
+checks:
+  - item: "HostStatusSummaryPayload 包含 generatedAt、usage lifetime/today/byProvider/byModel、activity running/attention/recent/counts，且 v1 不含 provider plan usage"
+    source: 名词契约
+    status: pending
+  - item: "status.summary.get.request/response 使用 dotted namespace；response 使用 payload.{requestId,summary} 以满足 DaemonClient correlated RPC"
+    source: 名词契约
+    status: pending
+  - item: "status.summary.updated 是无 response push，schema 或 docs 明确命名理由"
+    source: 名词契约
+    status: pending
+  - item: "server_info.features.statusSummary 是唯一 capability gate，并带 COMPAT(statusSummary) 注释"
+    source: 挂载点
+    status: pending
+  - item: "StatusSummaryService 聚合逻辑不散进 session.ts、daemon-client.ts 或 app 层"
+    source: 结构健康度
+    status: pending
+  - item: "StatusSummaryService 在 bootstrap.ts 作为 daemon singleton 创建并注入 Session；coalescing timer 归 service 所有"
+    source: 挂载点
+    status: pending
+  - item: "summary push 仅由 AgentManager agent_state/agent_stream 事件触发，不依赖不存在的 usage ledger event subscription"
+    source: 流程级约束
+    status: pending
+  - item: "summary push 使用 coalescing，发送完整 snapshot，reconnect 后 get response 是权威值；允许非阻塞 ledger enqueue 造成短暂滞后一拍"
+    source: 流程级约束
+    status: pending
+  - item: "get request 失败返回 rpc_error，不返回部分 response"
+    source: 流程级约束
+    status: pending
+  - item: 'parentAgentId 由 daemon 从 labels["paseo.parent-agent-id"] 派生，client 不解析 labels'
+    source: 名词契约
+    status: pending
+  - item: "activity.counts 复用 deriveAgentStateBucket / getAgentStatusPriority 口径，并明确 permission/error/running/initializing/attention/idle/closed 互斥映射"
+    source: 名词契约
+    status: pending
+  - item: "recentlyCompletedAgents 使用 injected clock 和固定 15 分钟窗口，测试覆盖窗口内外"
+    source: 验收场景
+    status: pending
+  - item: "不实现 app store/UI/导航，不 fan out 旧 RPC，不调用 provider.usage.list"
+    source: 范围守护
+    status: pending
+  - item: "protocol/server/client 目标测试和 typecheck/lint/format 证据齐全"
+    source: 验收场景
+    status: pending
+
+dod:
+  commands:
+    - id: CMD-001
+      command: 'npx vitest run packages/protocol/src/messages.test.ts --bail=1 -t "status summary"'
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-002
+      command: "npx vitest run packages/server/src/server/status-summary/status-summary-service.test.ts --bail=1"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-003
+      command: 'npx vitest run packages/server/src/server/session.test.ts --bail=1 -t "status summary"'
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-004
+      command: 'npx vitest run packages/client/src/daemon-client.test.ts --bail=1 -t "status summary"'
+      core: false
+      failure_handling: fix-or-block
+    - id: CMD-005
+      command: "npm run typecheck"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-006
+      command: "npm run lint"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-007
+      command: "npm run format:check"
+      core: false
+      failure_handling: fix-or-block
+  evidence_required:
+    - command_output
+    - diff_summary
+    - protocol_parse_evidence
+  cleanliness:
+    debug_output: forbidden
+    temporary_todo: forbidden
+    commented_code: forbidden
