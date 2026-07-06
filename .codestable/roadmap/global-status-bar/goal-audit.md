@@ -41,11 +41,15 @@ Latest validation for final feature:
 
 - `npx vitest run packages/app/src/status-summary/global-status-bar.test.tsx packages/app/src/status-summary/status-bar-session-navigation.test.ts packages/app/src/status-summary/status-bar-running-sessions.test.tsx packages/app/src/status-summary/view-model.test.ts packages/app/src/i18n/resources.test.ts --bail=1` -> 5 files / 52 tests passed.
 - `npm run test:e2e --workspace=@getpaseo/app -- status-bar-running-sessions.spec.ts` -> 2 Playwright tests passed.
+- `npm run build:client` -> passed.
+- `npm run build:server` -> passed.
 - `npm run typecheck` -> passed.
 - `npm run lint` -> passed.
 - `npm run format:check` -> passed.
 - CodeStable implementation review gate -> passed.
 - CodeStable scope gate -> passed.
+- CodeStable goal consistency gate `roadmap_audit.after_commit` -> passed.
+- Final feature artifact audit script checked 6 accepted features and found no missing review/QA/acceptance/checklist/gate-result artifacts.
 
 ## 5. Consistency Notes
 

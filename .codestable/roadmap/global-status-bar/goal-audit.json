@@ -1,6 +1,6 @@
 {
   "gate_id": "goal-consistency-gate",
-  "stage": "roadmap_audit.before_complete",
+  "stage": "roadmap_audit.final",
   "status": "passed",
   "blocking": [],
   "warnings": [],
