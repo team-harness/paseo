@@ -486,9 +486,7 @@ export async function createPaseoDaemon(
     logger,
   );
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
-  const browserToolsBroker = new BrowserToolsBroker({
-    policy: browserToolsPolicy,
-  });
+  const browserToolsBroker = new BrowserToolsBroker({});
 
   const serverId = getOrCreateServerId(config.paseoHome, { logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);
@@ -1032,6 +1030,7 @@ export async function createPaseoDaemon(
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateExternal,
     createPaseoWorktree: createPaseoWorktreeForTools,
+    browserToolsEnabled: browserToolsPolicy.isEnabled(),
     browserToolsBroker,
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
