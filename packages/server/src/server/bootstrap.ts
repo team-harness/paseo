@@ -104,6 +104,7 @@ import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { FileBackedUsageLedger } from "./usage-ledger/index.js";
+import { StatusSummaryService } from "./status-summary/status-summary-service.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import {
@@ -772,6 +773,11 @@ export async function createPaseoDaemon(
     agentManager,
     agentStorage,
   );
+  const statusSummaryService = new StatusSummaryService({
+    usageLedger,
+    agentSource: agentManager,
+    logger: logger.child({ module: "status-summary" }),
+  });
   await agentStorage.initialize();
   logger.info({ elapsed: elapsed() }, "Agent storage initialized");
   await usageLedger.initialize();
@@ -1284,6 +1290,7 @@ export async function createPaseoDaemon(
               github,
               config.pushNotificationSender,
               providerSnapshotManager,
+              statusSummaryService,
               {
                 listen: formatListenTarget(boundListenTarget ?? listenTarget),
                 worktreesRoot: config.worktreesRoot,
@@ -1363,6 +1370,7 @@ export async function createPaseoDaemon(
     await closeAllAgents(logger, agentManager);
     await agentManager.flush().catch(() => undefined);
     detachAgentStoragePersistence();
+    statusSummaryService.dispose();
     await agentStorage.flush().catch(() => undefined);
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();

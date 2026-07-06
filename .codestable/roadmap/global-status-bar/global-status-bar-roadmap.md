@@ -287,8 +287,8 @@ type StatusBarRow = {
 2. **status-summary-protocol** — 定义 daemon status summary 聚合服务、协议 schema、client SDK 方法和 server feature gate。
    - 所属模块：Status Summary Service / Status Summary Protocol
    - 依赖：`usage-history-persistence`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-07-06-status-summary-protocol
    - 备注：最小闭环；完成后无需 UI 也可用 RPC 证明 persisted lifetime/today summary 可读取。
 
 3. **app-status-summary-store** — app 接入 summary RPC 和 push，提供 host 级 cache、capability gate、reconnect refresh 和 view model。

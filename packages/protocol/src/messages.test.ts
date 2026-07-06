@@ -220,6 +220,110 @@ describe("provider usage list message contract", () => {
   });
 });
 
+describe("status-summary message contract", () => {
+  const summary = {
+    generatedAt: "2026-07-06T04:00:00.000Z",
+    usage: {
+      lifetime: {
+        inputTokens: 100,
+        cachedInputTokens: 20,
+        outputTokens: 30,
+        totalCostUsd: 1.25,
+        totalTokens: 150,
+      },
+      today: {
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+        windowStart: "2026-07-06T00:00:00.000Z",
+        windowEnd: "2026-07-06T04:00:00.000Z",
+      },
+      byProvider: [],
+      byModel: [],
+    },
+    activity: {
+      runningAgents: [
+        {
+          agentId: "agent-running",
+          provider: "codex",
+          cwd: "/repo",
+          workspaceId: "workspace-1",
+          title: "Running agent",
+          status: "running",
+          stateBucket: "running",
+          updatedAt: "2026-07-06T03:59:00.000Z",
+          parentAgentId: "parent-agent",
+        },
+      ],
+      needsAttentionAgents: [],
+      recentlyCompletedAgents: [],
+      counts: {
+        running: 1,
+        needsAttention: 0,
+        idle: 0,
+        error: 0,
+      },
+    },
+  };
+
+  test("accepts status summary get as a namespaced correlated RPC", () => {
+    const parsed = SessionInboundMessageSchema.parse({
+      type: "status.summary.get.request",
+      requestId: "status-summary-1",
+    });
+
+    expect(parsed).toEqual({
+      type: "status.summary.get.request",
+      requestId: "status-summary-1",
+    });
+  });
+
+  test("accepts status summary response with requestId inside payload", () => {
+    const parsed = SessionOutboundMessageSchema.parse({
+      type: "status.summary.get.response",
+      payload: {
+        requestId: "status-summary-2",
+        summary,
+      },
+    });
+
+    expect(parsed.type).toBe("status.summary.get.response");
+    if (parsed.type !== "status.summary.get.response") {
+      throw new Error("Expected status.summary.get.response");
+    }
+    expect(parsed.payload.requestId).toBe("status-summary-2");
+    expect(parsed.payload.summary.usage.lifetime.totalTokens).toBe(150);
+  });
+
+  test("accepts status summary updated as a full snapshot notification", () => {
+    const parsed = SessionOutboundMessageSchema.parse({
+      type: "status.summary.updated",
+      payload: summary,
+    });
+
+    expect(parsed.type).toBe("status.summary.updated");
+    if (parsed.type !== "status.summary.updated") {
+      throw new Error("Expected status.summary.updated");
+    }
+    expect(parsed.payload.activity.runningAgents[0]?.parentAgentId).toBe("parent-agent");
+  });
+
+  test("parses the statusSummary server feature gate", () => {
+    const parsed = parseServerInfoStatusPayload({
+      status: "server_info",
+      serverId: "srv-test",
+      features: {
+        statusSummary: true,
+      },
+    });
+
+    if (!parsed) {
+      throw new Error("Expected server info payload to parse");
+    }
+    expect(parsed.features?.statusSummary).toBe(true);
+  });
+});
+
 describe("diagnostics message contract", () => {
   test("accepts the diagnostics request as a simple namespaced RPC", () => {
     const parsed = SessionInboundMessageSchema.parse({

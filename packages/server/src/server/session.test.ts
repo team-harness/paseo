@@ -6,7 +6,10 @@ import pino from "pino";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
-import type { WorkspaceDescriptorPayload } from "@getpaseo/protocol/messages";
+import type {
+  HostStatusSummaryPayload,
+  WorkspaceDescriptorPayload,
+} from "@getpaseo/protocol/messages";
 import {
   decodeFileTransferFrame,
   encodeFileTransferFrame,
@@ -72,6 +75,51 @@ interface SessionHandlerInternals {
   handleStashPopRequest(params: unknown): Promise<unknown>;
   createPaseoWorktree(params: unknown): Promise<unknown>;
   handleStartWorkspaceScriptRequest(params: unknown): Promise<unknown>;
+}
+
+class FakeStatusSummaryService {
+  summary: HostStatusSummaryPayload = {
+    generatedAt: "2026-07-06T04:00:00.000Z",
+    usage: {
+      lifetime: { totalTokens: 0 },
+      today: {
+        totalTokens: 0,
+        windowStart: "2026-07-06T00:00:00.000Z",
+        windowEnd: "2026-07-06T04:00:00.000Z",
+      },
+      byProvider: [],
+      byModel: [],
+    },
+    activity: {
+      runningAgents: [],
+      needsAttentionAgents: [],
+      recentlyCompletedAgents: [],
+      counts: {
+        running: 0,
+        needsAttention: 0,
+        idle: 0,
+        error: 0,
+      },
+    },
+  };
+  private listeners: Array<(summary: HostStatusSummaryPayload) => void> = [];
+
+  async getSummary(): Promise<HostStatusSummaryPayload> {
+    return this.summary;
+  }
+
+  subscribe(listener: (summary: HostStatusSummaryPayload) => void): () => void {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter((entry) => entry !== listener);
+    };
+  }
+
+  emit(summary: HostStatusSummaryPayload = this.summary): void {
+    for (const listener of this.listeners) {
+      listener(summary);
+    }
+  }
 }
 
 function asSessionInternals(session: Session): SessionHandlerInternals {
@@ -207,6 +255,7 @@ interface SessionForTestOptions {
   workspaceRegistry?: { get: ReturnType<typeof vi.fn> };
   projectRegistry?: Partial<SessionOptions["projectRegistry"]>;
   terminalManager?: SessionOptions["terminalManager"];
+  statusSummaryService?: FakeStatusSummaryService;
   serviceProxy?: SessionOptions["serviceProxy"];
   scriptRuntimeStore?: SessionOptions["scriptRuntimeStore"];
   getDaemonTcpPort?: () => number | null;
@@ -296,6 +345,8 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     terminalManager: options.terminalManager ?? null,
     providerSnapshotManager:
       options.providerSnapshotManager ?? createProviderSnapshotManagerStub().manager,
+    statusSummaryService: (options.statusSummaryService ??
+      new FakeStatusSummaryService()) as unknown as SessionOptions["statusSummaryService"],
     serviceProxy: options.serviceProxy,
     scriptRuntimeStore: options.scriptRuntimeStore,
     getDaemonTcpPort: options.getDaemonTcpPort,
@@ -4159,6 +4210,55 @@ describe("chat/schedule/loop dispatch routing (behavior preservation)", () => {
       .find((m) => m.payload.requestId === msg.requestId);
     expect(routed, `${msg.type} did not route to a handler (silent no-op)`).toBeDefined();
     expect(routed?.payload.code).toBe(code);
+  });
+});
+
+describe("status-summary", () => {
+  test("responds to status.summary.get.request with a correlated summary payload", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const statusSummaryService = new FakeStatusSummaryService();
+    statusSummaryService.summary = {
+      ...statusSummaryService.summary,
+      usage: {
+        ...statusSummaryService.summary.usage,
+        lifetime: {
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+        },
+      },
+    };
+    const session = createSessionForTest({ messages, statusSummaryService });
+
+    await session.handleMessage({
+      type: "status.summary.get.request",
+      requestId: "summary-1",
+    });
+
+    expect(messages).toEqual([
+      {
+        type: "status.summary.get.response",
+        payload: {
+          requestId: "summary-1",
+          summary: statusSummaryService.summary,
+        },
+      },
+    ]);
+  });
+
+  test("emits status.summary.updated when the singleton service pushes a snapshot", () => {
+    const messages: SessionOutboundMessage[] = [];
+    const statusSummaryService = new FakeStatusSummaryService();
+    createSessionForTest({ messages, statusSummaryService });
+
+    statusSummaryService.emit();
+
+    expect(messages).toEqual([
+      {
+        type: "status.summary.updated",
+        payload: statusSummaryService.summary,
+      },
+    ]);
   });
 });
 

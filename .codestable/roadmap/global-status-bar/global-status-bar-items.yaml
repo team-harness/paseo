@@ -13,7 +13,7 @@ items:
   - slug: status-summary-protocol
     description: 定义 daemon status summary 聚合服务、协议 schema、client SDK 方法和 server feature gate
     depends_on: [usage-history-persistence]
-    status: in-progress
+    status: done
     feature: 2026-07-06-status-summary-protocol
     minimal_loop: false
     notes: 最小闭环第二段；完成后无需 UI 也可用 RPC 证明 persisted lifetime/today summary 可读取

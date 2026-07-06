@@ -16,6 +16,7 @@ import type {
   RefreshProvidersSnapshotResponseMessage,
   SendAgentMessageRequest,
   SessionOutboundMessage,
+  StatusSummaryGetResponseMessage,
   WorkspaceDescriptorPayload,
 } from "@getpaseo/protocol/messages";
 import { DaemonClient } from "./daemon-client.js";
@@ -270,6 +271,17 @@ export type PaseoProviderSnapshotUpdate = Extract<
 export type PaseoProviderRefreshResult = RefreshProvidersSnapshotResponseMessage["payload"];
 export type PaseoProviderDiagnosticResult = ProviderDiagnosticResponseMessage["payload"];
 
+export type PaseoStatusSummaryResult = StatusSummaryGetResponseMessage["payload"];
+export type PaseoStatusSummaryUpdate = Extract<
+  SessionOutboundMessage,
+  { type: "status.summary.updated" }
+>["payload"];
+
+export interface PaseoStatusActions {
+  summary(options?: { requestId?: string }): Promise<PaseoStatusSummaryResult>;
+  subscribe(handler: (summary: PaseoStatusSummaryUpdate) => void): () => void;
+}
+
 export interface PaseoProviderListOptions {
   cwd?: string;
   requestId?: string;
@@ -333,6 +345,7 @@ export interface PaseoClient {
   readonly workspaces: PaseoWorkspaceActions;
   readonly agents: PaseoAgentActions;
   readonly providers: PaseoProviderActions;
+  readonly status: PaseoStatusActions;
   readonly config: PaseoConfigActions;
   connect(): Promise<void>;
   close(): Promise<void>;
@@ -391,6 +404,13 @@ export function createPaseoClient(config: PaseoClientConfig): PaseoClient {
       diagnostic: (provider, options) => daemonClient.getProviderDiagnostic(provider, options),
       subscribe: (handler) =>
         daemonClient.on("providers_snapshot_update", (message) => {
+          handler(message.payload);
+        }),
+    },
+    status: {
+      summary: (options) => daemonClient.getStatusSummary(options),
+      subscribe: (handler) =>
+        daemonClient.on("status.summary.updated", (message) => {
           handler(message.payload);
         }),
     },
