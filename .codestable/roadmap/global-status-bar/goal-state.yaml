@@ -1,9 +1,9 @@
 roadmap: global-status-bar
-status: running
+status: completed
 baseline_ref: 0ecf2fb8da812c22f2b5fb49ce5b6609674f59df
 driver_kind: paseo
 driver_id: 07da2acb-449e-4602-8b05-eaed84fc804e
-current_feature_index: 5
+current_feature_index: 6
 features:
   - slug: usage-history-persistence
     roadmap_item: usage-history-persistence
@@ -58,4 +58,4 @@ features:
     review: .codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-review.md
     qa: .codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-qa.md
     acceptance: .codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-acceptance.md
-    status: pending
+    status: accepted

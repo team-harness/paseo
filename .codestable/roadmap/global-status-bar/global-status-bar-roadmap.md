@@ -315,8 +315,8 @@ type StatusBarRow = {
 6. **status-bar-polish-hardening** — 收口状态栏的 compact/desktop 表现、旧 daemon gate、无数据/错误态、可访问性、视觉回归和文档沉淀。
    - 所属模块：Global Status Bar UI / App Status Store
    - 依赖：`global-status-bar-shell`、`status-bar-running-sessions-nav`、`usage-history-persistence`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-07-06-status-bar-polish-hardening
    - 备注：覆盖边界输入、截图验证、i18n copy、docs/attention 候选沉淀。
 
 **最小闭环**：第 1 条 `usage-history-persistence` 提供可持久化 usage source，第 2 条 `status-summary-protocol` 暴露 RPC 后，新 client/CLI 测试能调用 `status.summary.get.request` 获取 persisted lifetime/today usage totals 和 active session snapshot，证明底部状态栏的数据源成立。

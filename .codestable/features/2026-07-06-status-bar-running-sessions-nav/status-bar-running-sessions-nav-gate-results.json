@@ -1,0 +1,40 @@
+{
+  "gate_id": "scope-gate",
+  "stage": "implementation.after_qa_fix",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "changed_files": [
+        ".codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-checklist.yaml",
+        ".codestable/roadmap/global-status-bar/goal-state.yaml",
+        "packages/app/src/status-summary/global-status-bar-layout.tsx",
+        "packages/app/src/status-summary/global-status-bar.test.tsx",
+        "packages/app/src/status-summary/global-status-bar.tsx",
+        ".codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-evidence-pack.json",
+        ".codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-evidence-pack.md",
+        ".codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-qa.md",
+        ".codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-review.md",
+        ".codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-scope-gate.json",
+        "packages/app/e2e/status-bar-running-sessions.spec.ts",
+        "packages/app/src/status-summary/status-bar-running-sessions.test.tsx",
+        "packages/app/src/status-summary/status-bar-running-sessions.tsx",
+        "packages/app/src/status-summary/status-bar-session-format.ts",
+        "packages/app/src/status-summary/status-bar-session-navigation.test.ts",
+        "packages/app/src/status-summary/status-bar-session-navigation.ts"
+      ],
+      "ignored_machine_artifacts": [
+        ".codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-dod-results.json"
+      ],
+      "allowed_prefixes": [
+        ".codestable/features/2026-07-06-status-bar-running-sessions-nav",
+        ".codestable/features/2026-07-06-status-bar-running-sessions-nav",
+        "packages/app/src/status-summary",
+        "packages/app/e2e/status-bar-running-sessions.spec.ts",
+        ".codestable/roadmap/global-status-bar/goal-state.yaml"
+      ]
+    }
+  ],
+  "providers": {}
+}

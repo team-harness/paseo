@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
 import { usePathname } from "expo-router";
 import { ArrowUpRight, BriefcaseBusiness } from "lucide-react-native";
 import type { StatusAgentSnapshot } from "@getpaseo/protocol/messages";
@@ -24,7 +25,6 @@ import {
   formatStatusBarSessionSubtitle,
   formatStatusBarSessionTitle,
   formatStatusBarSessionUsage,
-  getStatusBarSessionGroupLabel,
 } from "./status-bar-session-format";
 
 const ThemedArrowUpRight = withUnistyles(ArrowUpRight, (theme) => ({
@@ -34,7 +34,6 @@ const ThemedBriefcaseBusiness = withUnistyles(BriefcaseBusiness, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
 const COMPACT_SNAP_POINTS = ["45%", "85%"];
-const SHEET_HEADER = { title: "Agent sessions" };
 
 const compactTriggerStyle = ({ pressed }: { pressed: boolean }) => [
   styles.trigger,
@@ -82,7 +81,9 @@ export function StatusBarRunningSessionsTrigger({
 }: StatusBarRunningSessionsTriggerProps) {
   const isCompact = useIsCompactFormFactor();
   const pathname = usePathname();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const sheetHeader = useMemo(() => ({ title: t("statusBar.sessions.title") }), [t]);
   const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
   const liveWorkspaceIds = useMemo(() => new Set(workspaces?.keys() ?? []), [workspaces]);
   const items = useMemo(
@@ -117,10 +118,19 @@ export function StatusBarRunningSessionsTrigger({
     [hasItems],
   );
 
-  const handleNavigate = useCallback((target: StatusBarSessionTarget) => {
-    setOpen(false);
-    navigateToStatusBarSession(target);
-  }, []);
+  const handleNavigate = useCallback(
+    (target: StatusBarSessionTarget) => {
+      setOpen(false);
+      if (isCompact) {
+        requestAnimationFrame(() => {
+          navigateToStatusBarSession(target);
+        });
+        return;
+      }
+      navigateToStatusBarSession(target);
+    },
+    [isCompact],
+  );
   const handleCompactOpen = useCallback(() => {
     handleOpenChange(true);
   }, [handleOpenChange]);
@@ -133,7 +143,11 @@ export function StatusBarRunningSessionsTrigger({
   }
 
   const triggerBody = (
-    <TriggerContent attentionCount={attentionCount} runningCount={runningCount} />
+    <TriggerContent
+      attentionCount={attentionCount}
+      runningCount={runningCount}
+      label={t("statusBar.sessions.trigger")}
+    />
   );
 
   if (isCompact) {
@@ -141,7 +155,7 @@ export function StatusBarRunningSessionsTrigger({
       <>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Agent sessions"
+          accessibilityLabel={t("statusBar.sessions.title")}
           onPress={handleCompactOpen}
           style={compactTriggerStyle}
           testID="status-bar-sessions-trigger"
@@ -149,7 +163,7 @@ export function StatusBarRunningSessionsTrigger({
           {triggerBody}
         </Pressable>
         <AdaptiveModalSheet
-          header={SHEET_HEADER}
+          header={sheetHeader}
           visible={open}
           onClose={handleClose}
           snapPoints={COMPACT_SNAP_POINTS}
@@ -165,7 +179,7 @@ export function StatusBarRunningSessionsTrigger({
     <DropdownMenu open={open} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger
         accessibilityRole="button"
-        accessibilityLabel="Agent sessions"
+        accessibilityLabel={t("statusBar.sessions.title")}
         style={desktopTriggerStyle}
         testID="status-bar-sessions-trigger"
       >
@@ -187,15 +201,17 @@ export function StatusBarRunningSessionsTrigger({
 
 function TriggerContent({
   attentionCount,
+  label,
   runningCount,
 }: {
   attentionCount: number;
+  label: string;
   runningCount: number;
 }) {
   return (
     <>
       <Text style={styles.triggerLabel} numberOfLines={1}>
-        Sessions
+        {label}
       </Text>
       {attentionCount > 0 ? (
         <Text style={styles.triggerAttentionValue} numberOfLines={1}>
@@ -216,10 +232,11 @@ function StatusBarSessionsList({
   items: StatusBarSessionListItem[];
   onNavigate: (target: StatusBarSessionTarget) => void;
 }) {
+  const { t } = useTranslation();
   if (items.length === 0) {
     return (
       <View style={styles.emptyState} testID="status-bar-sessions-empty">
-        <Text style={styles.emptyText}>No agent sessions</Text>
+        <Text style={styles.emptyText}>{t("statusBar.sessions.empty")}</Text>
       </View>
     );
   }
@@ -229,7 +246,7 @@ function StatusBarSessionsList({
     <View style={styles.list} testID="status-bar-sessions-list">
       {groups.map((group) => (
         <View key={group.kind} style={styles.group}>
-          <Text style={styles.groupLabel}>{getStatusBarSessionGroupLabel(group.kind)}</Text>
+          <Text style={styles.groupLabel}>{getStatusBarSessionGroupLabel(group.kind, t)}</Text>
           <View style={styles.groupRows}>
             {group.items.map((item) => (
               <StatusBarSessionRow key={item.key} item={item} onNavigate={onNavigate} />
@@ -248,8 +265,10 @@ function StatusBarSessionRow({
   item: StatusBarSessionListItem;
   onNavigate: (target: StatusBarSessionTarget) => void;
 }) {
+  const { t } = useTranslation();
   const usage = formatStatusBarSessionUsage(item.snapshot);
   const meta = [usage, formatStatusBarSessionMeta(item.snapshot)].filter(Boolean).join(" · ");
+  const title = formatStatusBarSessionTitle(item.snapshot);
   const handlePrimaryPress = useCallback(() => {
     onNavigate(item.primaryTarget);
   }, [item.primaryTarget, onNavigate]);
@@ -262,13 +281,13 @@ function StatusBarSessionRow({
     <View style={styles.row} testID={`status-bar-session-row-${item.snapshot.agentId}`}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Open ${formatStatusBarSessionTitle(item.snapshot)}`}
+        accessibilityLabel={t("statusBar.sessions.actions.openAgent", { title })}
         onPress={handlePrimaryPress}
         style={rowPrimaryStyle}
       >
         <View style={styles.rowText}>
           <Text style={styles.rowTitle} numberOfLines={1}>
-            {formatStatusBarSessionTitle(item.snapshot)}
+            {title}
           </Text>
           <Text style={styles.rowSubtitle} numberOfLines={1}>
             {formatStatusBarSessionSubtitle(item.snapshot)}
@@ -281,7 +300,7 @@ function StatusBarSessionRow({
       </Pressable>
       {item.workspaceTarget ? (
         <IconButton
-          accessibilityLabel="Open workspace"
+          accessibilityLabel={t("statusBar.sessions.actions.openWorkspace")}
           testID={`status-bar-session-workspace-${item.snapshot.agentId}`}
           onPress={handleWorkspacePress}
         >
@@ -290,6 +309,15 @@ function StatusBarSessionRow({
       ) : null}
     </View>
   );
+}
+
+function getStatusBarSessionGroupLabel(
+  group: StatusBarSessionListItem["group"],
+  t: (key: string) => string,
+): string {
+  if (group === "attention") return t("statusBar.sessions.groups.attention");
+  if (group === "running") return t("statusBar.sessions.groups.running");
+  return t("statusBar.sessions.groups.recent");
 }
 
 function IconButton({

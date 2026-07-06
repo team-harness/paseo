@@ -1,0 +1,47 @@
+{
+  "gate_id": "scope-gate",
+  "stage": "implementation.before_review",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "changed_files": [
+        ".codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-checklist.yaml",
+        "packages/client/src/daemon-client.test.ts",
+        "packages/client/src/daemon-client.ts",
+        "packages/client/src/index.test.ts",
+        "packages/client/src/index.ts",
+        "packages/protocol/src/messages.test.ts",
+        "packages/protocol/src/messages.ts",
+        "packages/server/src/server/bootstrap.ts",
+        "packages/server/src/server/session.test.ts",
+        "packages/server/src/server/session.ts",
+        "packages/server/src/server/websocket-server.ts",
+        ".codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-evidence-pack.json",
+        ".codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-evidence-pack.md",
+        ".codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-scope-gate.json",
+        "packages/server/src/server/status-summary/status-summary-service.test.ts",
+        "packages/server/src/server/status-summary/status-summary-service.ts"
+      ],
+      "ignored_machine_artifacts": [
+        ".codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-dod-results.json"
+      ],
+      "allowed_prefixes": [
+        ".codestable/features/2026-07-06-status-summary-protocol",
+        "packages/protocol/src/messages.ts",
+        "packages/protocol/src/messages.test.ts",
+        "packages/server/src/server/status-summary",
+        "packages/server/src/server/session.ts",
+        "packages/server/src/server/session.test.ts",
+        "packages/server/src/server/websocket-server.ts",
+        "packages/server/src/server/bootstrap.ts",
+        "packages/client/src/daemon-client.ts",
+        "packages/client/src/daemon-client.test.ts",
+        "packages/client/src/index.ts",
+        "packages/client/src/index.test.ts"
+      ]
+    }
+  ],
+  "providers": {}
+}

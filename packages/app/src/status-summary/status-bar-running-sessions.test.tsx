@@ -72,6 +72,13 @@ vi.mock("react-native-unistyles", () => ({
       React.createElement(Component, props),
 }));
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) =>
+      key === "statusBar.sessions.actions.openAgent" ? `Open ${String(options?.title ?? "")}` : key,
+  }),
+}));
+
 vi.mock("lucide-react-native", () => ({
   ArrowUpRight: () => React.createElement("span", { "data-testid": "arrow-icon" }),
   BriefcaseBusiness: () => React.createElement("span", { "data-testid": "workspace-icon" }),
@@ -191,6 +198,21 @@ vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
 import { GlobalStatusBar } from "./global-status-bar";
 
+let rafQueue: FrameRequestCallback[] = [];
+
+vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+  rafQueue.push(callback);
+  return rafQueue.length;
+});
+
+function flushAnimationFrames() {
+  const queued = rafQueue;
+  rafQueue = [];
+  queued.forEach((callback, index) => {
+    callback(index);
+  });
+}
+
 function snapshot(input: Partial<StatusAgentSnapshot> & { agentId: string }): StatusAgentSnapshot {
   return {
     agentId: input.agentId,
@@ -260,6 +282,7 @@ describe("status bar running sessions", () => {
   let container: HTMLElement | null = null;
 
   beforeEach(() => {
+    rafQueue = [];
     runtimeState.compact = false;
     runtimeState.pathname = "/h/server-1";
     runtimeState.liveWorkspaceIds = ["workspace-1"];
@@ -325,12 +348,18 @@ describe("status bar running sessions", () => {
         ?.click();
     });
 
+    expect(container?.querySelector('[data-testid="status-bar-sessions-sheet"]')).toBeNull();
+    expect(navigationSpies.navigateToAgent).not.toHaveBeenCalled();
+
+    act(() => {
+      flushAnimationFrames();
+    });
+
     expect(navigationSpies.navigateToAgent).toHaveBeenCalledWith({
       serverId: "server-1",
       agentId: "agent-attention",
       workspaceId: "workspace-1",
     });
-    expect(container?.querySelector('[data-testid="status-bar-sessions-sheet"]')).toBeNull();
   });
 
   it("shows workspace action only for live workspaces", () => {
@@ -348,6 +377,37 @@ describe("status bar running sessions", () => {
     expect(
       container?.querySelector('[data-testid="status-bar-session-workspace-agent-attention"]'),
     ).toBeNull();
+  });
+
+  it("closes the compact sheet before workspace navigation", () => {
+    runtimeState.compact = true;
+    act(() => {
+      root?.render(renderStatusBar());
+    });
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-sessions-trigger"]')
+        ?.click();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-sessions-sheet"]')).not.toBeNull();
+
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>(
+          '[data-testid="status-bar-session-workspace-agent-attention"]',
+        )
+        ?.click();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-sessions-sheet"]')).toBeNull();
+    expect(navigationSpies.navigateToWorkspace).not.toHaveBeenCalled();
+
+    act(() => {
+      flushAnimationFrames();
+    });
+
+    expect(navigationSpies.navigateToWorkspace).toHaveBeenCalledWith("server-1", "workspace-1");
   });
 
   it("closes an open panel on route change", () => {

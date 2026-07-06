@@ -215,6 +215,36 @@ export const ja: TranslationResources = {
       loadMore: "さらに読み込む",
     },
   },
+  statusBar: {
+    rows: {
+      totalTokens: "合計トークン",
+      today: "今日",
+      cost: "コスト",
+      running: "実行中",
+      needsAttention: "対応が必要",
+      errors: "エラー",
+    },
+    states: {
+      loading: "ステータスを読み込み中",
+      unavailable: "ステータスを利用できません",
+      unsupported: "これを使うにはホストを更新してください。",
+      offline: "ホストはオフラインです。",
+    },
+    sessions: {
+      title: "エージェントセッション",
+      trigger: "セッション",
+      empty: "エージェントセッションはありません",
+      groups: {
+        attention: "対応が必要",
+        running: "実行中",
+        recent: "最近",
+      },
+      actions: {
+        openAgent: "{{title}}を開く",
+        openWorkspace: "ワークスペースを開く",
+      },
+    },
+  },
   agentList: {
     fallbackTitle: "新しいセッション",
     dateSections: {

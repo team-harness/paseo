@@ -71,6 +71,13 @@ vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: runtimeState.safeAreaBottom, left: 0 }),
 }));
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) =>
+      key === "statusBar.sessions.actions.openAgent" ? `Open ${String(options?.title ?? "")}` : key,
+  }),
+}));
+
 vi.mock("@/constants/layout", () => ({
   useIsCompactFormFactor: () => runtimeState.compact,
 }));
@@ -241,7 +248,7 @@ describe("GlobalStatusBar", () => {
     });
     expect(
       container?.querySelector('[data-testid="global-status-bar-loading"]')?.textContent,
-    ).toContain("Loading status");
+    ).toContain("statusBar.states.loading");
 
     runtimeState.view = { kind: "offline", message: "Host is offline." };
     act(() => {
@@ -249,7 +256,7 @@ describe("GlobalStatusBar", () => {
     });
     expect(
       container?.querySelector('[data-testid="global-status-bar-offline"]')?.textContent,
-    ).toContain("Host is offline.");
+    ).toContain("statusBar.states.offline");
 
     runtimeState.view = { kind: "error", message: "Status summary unavailable." };
     act(() => {

@@ -48,13 +48,11 @@ export function buildStatusSummaryViewModel(
     if (state.reason === "unsupported") {
       return {
         kind: "unsupported",
-        message: "Update the host to use this.",
         previousSummary: state.previousSummary,
       };
     }
     return {
       kind: "offline",
-      message: "Host is offline.",
       previousSummary: state.previousSummary,
     };
   }

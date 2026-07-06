@@ -43,7 +43,7 @@ export function useHostStatusSummary(serverId: string | null | undefined): {
 
   const queryFn = useCallback(async () => {
     if (!client) {
-      throw new Error("Host is not connected");
+      throw new Error("Status summary client unavailable");
     }
     return fetchStatusSummary(client);
   }, [client]);

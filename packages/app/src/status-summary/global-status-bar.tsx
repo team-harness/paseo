@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { usePanelStore } from "@/stores/panel-store";
 import { useGlobalStatusBarView } from "./use-status-summary";
@@ -38,6 +39,7 @@ export function useGlobalStatusBarChromeState(serverId: string): GlobalStatusBar
 export function GlobalStatusBar({ serverId, bottomInset = 0, chromeState }: GlobalStatusBarProps) {
   const { view } = chromeState;
   const isCompact = useIsCompactFormFactor();
+  const { t } = useTranslation();
   const barStyle = useMemo(() => [styles.root, { paddingBottom: bottomInset }], [bottomInset]);
 
   if (!chromeState.isVisible) {
@@ -47,7 +49,7 @@ export function GlobalStatusBar({ serverId, bottomInset = 0, chromeState }: Glob
   return (
     <View style={barStyle} testID="global-status-bar">
       <View style={styles.content}>
-        <StatusBarContent serverId={serverId} view={view} isCompact={isCompact} />
+        <StatusBarContent serverId={serverId} view={view} isCompact={isCompact} t={t} />
       </View>
     </View>
   );
@@ -57,10 +59,12 @@ function StatusBarContent({
   serverId,
   view,
   isCompact,
+  t,
 }: {
   serverId: string;
   view: StatusSummaryViewModel;
   isCompact: boolean;
+  t: (key: string, options?: Record<string, unknown>) => string;
 }) {
   if (view.kind === "ready") {
     const hasSessionSnapshots =
@@ -77,7 +81,7 @@ function StatusBarContent({
     return (
       <View style={styles.rowGroup} testID="global-status-bar-ready">
         {rows.map((row) => (
-          <StatusBarChip key={row.id} row={row} />
+          <StatusBarChip key={row.id} row={row} t={t} />
         ))}
         {hasSessionSnapshots ? (
           <StatusBarRunningSessionsTrigger
@@ -94,7 +98,7 @@ function StatusBarContent({
     return null;
   }
 
-  const message = getStateMessage(view);
+  const message = getStateMessage(view, t);
   return (
     <View style={styles.stateRow} testID={`global-status-bar-${view.kind}`}>
       <Text style={styles.stateText} numberOfLines={1}>
@@ -104,13 +108,13 @@ function StatusBarContent({
   );
 }
 
-function StatusBarChip({ row }: { row: StatusBarRow }) {
+function StatusBarChip({ row, t }: { row: StatusBarRow; t: (key: string) => string }) {
   const chipStyle = useMemo(() => [styles.chip, getToneStyle(row.tone)], [row.tone]);
 
   return (
     <View style={chipStyle} testID={`global-status-bar-row-${row.id}`}>
       <Text style={styles.chipLabel} numberOfLines={1}>
-        {row.label}
+        {getRowLabel(row.id, t)}
       </Text>
       <Text style={styles.chipValue} numberOfLines={1}>
         {row.value}
@@ -119,11 +123,29 @@ function StatusBarChip({ row }: { row: StatusBarRow }) {
   );
 }
 
-function getStateMessage(view: Exclude<StatusSummaryViewModel, { kind: "ready" | "hidden" }>) {
+function getStateMessage(
+  view: Exclude<StatusSummaryViewModel, { kind: "ready" | "hidden" }>,
+  t: (key: string) => string,
+) {
   if (view.kind === "loading") {
-    return "Loading status";
+    return t("statusBar.states.loading");
   }
-  return view.message ?? "Status unavailable";
+  if (view.kind === "offline") {
+    return t("statusBar.states.offline");
+  }
+  if (view.kind === "unsupported") {
+    return t("statusBar.states.unsupported");
+  }
+  return view.message ?? t("statusBar.states.unavailable");
+}
+
+function getRowLabel(rowId: StatusBarRowId, t: (key: string) => string) {
+  if (rowId === "lifetime-tokens") return t("statusBar.rows.totalTokens");
+  if (rowId === "today-tokens") return t("statusBar.rows.today");
+  if (rowId === "cost") return t("statusBar.rows.cost");
+  if (rowId === "running") return t("statusBar.rows.running");
+  if (rowId === "attention") return t("statusBar.rows.needsAttention");
+  return t("statusBar.rows.errors");
 }
 
 function getToneStyle(tone: StatusBarRow["tone"]) {
