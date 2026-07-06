@@ -8,7 +8,7 @@ import { useGlobalStatusBarView } from "./use-status-summary";
 import { StatusBarRunningSessionsTrigger } from "./status-bar-running-sessions";
 import type { StatusBarRow, StatusBarRowId, StatusSummaryViewModel } from "./view-model";
 
-export const GLOBAL_STATUS_BAR_CONTENT_HEIGHT = 36;
+export const GLOBAL_STATUS_BAR_CONTENT_HEIGHT = 52;
 
 interface GlobalStatusBarProps {
   serverId: string;
@@ -158,14 +158,14 @@ function getToneStyle(tone: StatusBarRow["tone"]) {
 const styles = StyleSheet.create((theme) => ({
   root: {
     flexShrink: 0,
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: theme.colors.surfaceSidebar,
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
   },
   content: {
     minHeight: GLOBAL_STATUS_BAR_CONTENT_HEIGHT,
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
+    paddingVertical: theme.spacing[3],
     justifyContent: "center",
   },
   rowGroup: {
