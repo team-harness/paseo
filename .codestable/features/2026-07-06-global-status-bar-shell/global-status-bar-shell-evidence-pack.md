@@ -1,0 +1,153 @@
+---
+doc_type: feature-evidence-pack
+feature: 2026-07-06-global-status-bar-shell
+status: generated
+---
+
+# 2026-07-06-global-status-bar-shell evidence pack
+
+## 1. Scope
+
+- Design: `.codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-design.md`
+- Checklist: `.codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-checklist.yaml`
+
+## 2. DoD Results
+
+```json
+{
+  "gate_id": "dod-runner",
+  "stage": "implementation.before_review",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "command": "npx vitest run packages/app/src/status-summary/global-status-bar.test.tsx --bail=1",
+      "exit_code": 0,
+      "stdout": "\n RUN  v4.1.7 /Users/wyattfang/.paseo/worktrees/3rvhzvvc/global-status-bar-usage-history\n\n\n Test Files  1 passed (1)\n      Tests  7 passed (7)\n   Start at  12:35:26\n   Duration  479ms (transform 35ms, setup 0ms, import 60ms, tests 22ms, environment 247ms)\n\n",
+      "stderr": "",
+      "id": "CMD-001",
+      "core": true,
+      "failure_handling": "失败则回实现修状态分支或测试夹具；若文件名调整，用等价目标测试替代并记录。"
+    },
+    {
+      "command": "npm run typecheck",
+      "exit_code": 0,
+      "stdout": "\n> paseo@0.1.104-beta.3 typecheck\n> npm run typecheck --workspaces --if-present\n\n\n> @getpaseo/expo-two-way-audio@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/highlight@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/protocol@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/client@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/server@0.1.104-beta.3 typecheck\n> tsgo -p tsconfig.server.typecheck.json --noEmit\n\n\n> @getpaseo/app@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/relay@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/website@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n\n> @getpaseo/desktop@0.1.104-beta.3 typecheck\n> tsgo --noEmit -p tsconfig.json\n\n\n> @getpaseo/cli@0.1.104-beta.3 typecheck\n> tsgo --noEmit\n\n",
+      "stderr": "",
+      "id": "CMD-002",
+      "core": true,
+      "failure_handling": "若跨包声明 stale，先按 AGENTS 指令运行对应 build script，再复跑。"
+    },
+    {
+      "command": "npm run lint",
+      "exit_code": 0,
+      "stdout": "\n> paseo@0.1.104-beta.3 lint\n> oxlint\n\nFound 0 warnings and 0 errors.\nFinished in 509ms on 2456 files with 177 rules using 10 threads.\n",
+      "stderr": "",
+      "id": "CMD-003",
+      "core": true,
+      "failure_handling": "只接受与本 feature 无关的既有红灯并记录证据；否则修复。"
+    },
+    {
+      "command": "npm run format:check",
+      "exit_code": 0,
+      "stdout": "\n> paseo@0.1.104-beta.3 format:check\n> oxfmt --check .\n\nChecking formatting...\n\nAll matched files use the correct format.\nFinished in 1120ms on 2716 files using 10 threads.\n",
+      "stderr": "",
+      "id": "CMD-004",
+      "core": true,
+      "failure_handling": "失败则运行 npm run format 后复查。"
+    },
+    {
+      "command": "rg \"provider\\\\.usage\\\\.list|listProviderUsage|fetchAgents|getStatusSummary|navigateToWorkspace|useUnistyles\" packages/app/src/status-summary packages/app/src/app/h/[serverId]/_layout.tsx packages/app/src/app/_layout.tsx",
+      "exit_code": 0,
+      "stdout": "packages/app/src/app/_layout.tsx:import { StyleSheet, UnistylesRuntime, useUnistyles } from \"react-native-unistyles\";\npackages/app/src/app/_layout.tsx:  const { theme } = useUnistyles();\npackages/app/src/app/_layout.tsx:  const { theme } = useUnistyles();\npackages/app/src/status-summary/use-status-summary.test.ts:    async getStatusSummary() {\npackages/app/src/status-summary/query-core.ts:  getStatusSummary(): Promise<{\npackages/app/src/status-summary/query-core.ts:  const response = await client.getStatusSummary();\n",
+      "stderr": "",
+      "id": "CMD-005",
+      "core": true,
+      "failure_handling": "有命中必须人工分类；越界命中需移除或回 design。"
+    },
+    {
+      "command": "! rg \"paddingBottom: insets\\\\.bottom|\\\\{ paddingBottom: insets\\\\.bottom \\\\}\" packages/app/src/panels packages/app/src/screens packages/app/src/components",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "",
+      "id": "CMD-006",
+      "core": true,
+      "failure_handling": "若存在命中，对 host leaf 中与状态栏相邻的命中逐条分类；AgentPanel composer 和 archived callout 不得保留无条件重复 inset。"
+    }
+  ],
+  "providers": {}
+}
+```
+
+## 3. Validation Commands
+
+Extracted from checklist `dod.commands`; see DoD Results for command status.
+
+## 4. Scope And Cleanliness
+
+Design bytes: 24723
+Checklist bytes: 5264
+
+## 5. Residual Risks
+
+- none
+
+## 6. Provider Signals
+
+```json
+{
+  "archguard": {
+    "status": "skipped",
+    "reason": "archguard collection disabled",
+    "warnings": []
+  },
+  "meta_cc": {
+    "status": "skipped",
+    "reason": "meta-cc collection disabled",
+    "warnings": []
+  }
+}
+```
+
+## 7. Gate Results
+
+```json
+{
+  "gate_id": "scope-gate",
+  "stage": "implementation.before_review",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "changed_files": [
+        ".codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-checklist.yaml",
+        "packages/app/src/app/h/[serverId]/_layout.tsx",
+        "packages/app/src/components/archived-agent-callout.tsx",
+        "packages/app/src/panels/agent-panel.tsx",
+        "packages/app/src/screens/settings-screen.tsx",
+        ".codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-evidence-pack.json",
+        ".codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-evidence-pack.md",
+        ".codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-scope-gate.json",
+        "packages/app/src/status-summary/bottom-chrome-inset.tsx",
+        "packages/app/src/status-summary/global-status-bar-layout.tsx",
+        "packages/app/src/status-summary/global-status-bar.test.tsx",
+        "packages/app/src/status-summary/global-status-bar.tsx"
+      ],
+      "ignored_machine_artifacts": [
+        ".codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-dod-results.json"
+      ],
+      "allowed_prefixes": [
+        ".codestable/features/2026-07-06-global-status-bar-shell",
+        "packages/app/src/status-summary",
+        "packages/app/src/app/h/[serverId]/_layout.tsx",
+        "packages/app/src/panels/agent-panel.tsx",
+        "packages/app/src/screens/settings-screen.tsx",
+        "packages/app/src/components/archived-agent-callout.tsx"
+      ]
+    }
+  ],
+  "providers": {}
+}
+```

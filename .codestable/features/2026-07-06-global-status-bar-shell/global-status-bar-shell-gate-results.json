@@ -1,0 +1,37 @@
+{
+  "gate_id": "scope-gate",
+  "stage": "implementation.before_review",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "changed_files": [
+        ".codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-checklist.yaml",
+        "packages/app/src/app/h/[serverId]/_layout.tsx",
+        "packages/app/src/components/archived-agent-callout.tsx",
+        "packages/app/src/panels/agent-panel.tsx",
+        "packages/app/src/screens/settings-screen.tsx",
+        ".codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-evidence-pack.json",
+        ".codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-evidence-pack.md",
+        ".codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-scope-gate.json",
+        "packages/app/src/status-summary/bottom-chrome-inset.tsx",
+        "packages/app/src/status-summary/global-status-bar-layout.tsx",
+        "packages/app/src/status-summary/global-status-bar.test.tsx",
+        "packages/app/src/status-summary/global-status-bar.tsx"
+      ],
+      "ignored_machine_artifacts": [
+        ".codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-dod-results.json"
+      ],
+      "allowed_prefixes": [
+        ".codestable/features/2026-07-06-global-status-bar-shell",
+        "packages/app/src/status-summary",
+        "packages/app/src/app/h/[serverId]/_layout.tsx",
+        "packages/app/src/panels/agent-panel.tsx",
+        "packages/app/src/screens/settings-screen.tsx",
+        "packages/app/src/components/archived-agent-callout.tsx"
+      ]
+    }
+  ],
+  "providers": {}
+}

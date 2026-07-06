@@ -1,0 +1,39 @@
+{
+  "gate_id": "scope-gate",
+  "stage": "implementation.before_review",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "changed_files": [
+        "docs/data-model.md",
+        "packages/server/src/server/agent/agent-manager.test.ts",
+        "packages/server/src/server/agent/agent-manager.ts",
+        "packages/server/src/server/bootstrap.ts",
+        ".codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-checklist.yaml",
+        ".codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-design-review.md",
+        ".codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-design.md",
+        ".codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-evidence-pack.json",
+        ".codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-evidence-pack.md",
+        ".codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-scope-gate.json",
+        ".codestable/roadmap/global-status-bar/goal-state.yaml",
+        "packages/server/src/server/usage-ledger/index.ts",
+        "packages/server/src/server/usage-ledger/usage-ledger.test.ts"
+      ],
+      "ignored_machine_artifacts": [
+        ".codestable/features/2026-07-06-usage-history-persistence/usage-history-persistence-dod-results.json"
+      ],
+      "allowed_prefixes": [
+        ".codestable/features/2026-07-06-usage-history-persistence",
+        "packages/server/src/server/usage-ledger",
+        "packages/server/src/server/agent/agent-manager.ts",
+        "packages/server/src/server/agent/agent-manager.test.ts",
+        "packages/server/src/server/bootstrap.ts",
+        "docs/data-model.md",
+        ".codestable/roadmap/global-status-bar/goal-state.yaml"
+      ]
+    }
+  ],
+  "providers": {}
+}

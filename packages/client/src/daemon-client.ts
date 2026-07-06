@@ -67,6 +67,7 @@ import type {
   RefreshProvidersSnapshotResponseMessage,
   ProviderDiagnosticResponseMessage,
   ProviderUsageListResponseMessage,
+  StatusSummaryGetResponseMessage,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
   DiagnosticsResponse,
@@ -359,6 +360,7 @@ type GetProvidersSnapshotPayload = GetProvidersSnapshotResponseMessage["payload"
 type RefreshProvidersSnapshotPayload = RefreshProvidersSnapshotResponseMessage["payload"];
 type ProviderDiagnosticPayload = ProviderDiagnosticResponseMessage["payload"];
 type ProviderUsageListPayload = ProviderUsageListResponseMessage["payload"];
+type StatusSummaryPayload = StatusSummaryGetResponseMessage["payload"];
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
 type DaemonPairingOfferPayload = DaemonGetPairingOfferResponse["payload"];
 type DiagnosticsPayload = DiagnosticsResponse["payload"];
@@ -3922,6 +3924,15 @@ export class DaemonClient {
       requestId: options?.requestId,
       message: {
         type: "provider.usage.list.request",
+      },
+    });
+  }
+
+  async getStatusSummary(options?: { requestId?: string }): Promise<StatusSummaryPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"status.summary.get.response">({
+      requestId: options?.requestId,
+      message: {
+        type: "status.summary.get.request",
       },
     });
   }

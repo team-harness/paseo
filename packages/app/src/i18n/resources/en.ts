@@ -211,6 +211,36 @@ export const en = {
       loadMore: "Load more",
     },
   },
+  statusBar: {
+    rows: {
+      totalTokens: "Total tokens",
+      today: "Today",
+      cost: "Cost",
+      running: "Running",
+      needsAttention: "Needs attention",
+      errors: "Errors",
+    },
+    states: {
+      loading: "Loading status",
+      unavailable: "Status unavailable",
+      unsupported: "Update the host to use this.",
+      offline: "Host is offline.",
+    },
+    sessions: {
+      title: "Agent sessions",
+      trigger: "Sessions",
+      empty: "No agent sessions",
+      groups: {
+        attention: "Needs attention",
+        running: "Running",
+        recent: "Recent",
+      },
+      actions: {
+        openAgent: "Open {{title}}",
+        openWorkspace: "Open workspace",
+      },
+    },
+  },
   agentList: {
     fallbackTitle: "New session",
     dateSections: {

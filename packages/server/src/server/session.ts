@@ -7,6 +7,7 @@ import { CLIENT_CAPS, type ClientCapability } from "@getpaseo/protocol/client-ca
 import {
   serializeAgentStreamEvent,
   type AgentSnapshotPayload,
+  type HostStatusSummaryPayload,
   type AgentAttachment,
   type FirstAgentContext,
   type SessionInboundMessage,
@@ -184,6 +185,7 @@ import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { createGitHubService, type GitHubService } from "../services/github-service.js";
 import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
+import type { StatusSummaryService } from "./status-summary/status-summary-service.js";
 import {
   summarizeFetchWorkspacesEntries,
   workspaceIdsOnCheckout,
@@ -433,6 +435,7 @@ export interface SessionOptions {
   terminalManager: TerminalManager | null;
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
+  statusSummaryService: StatusSummaryService;
   serviceProxy?: ServiceProxySubsystem;
   scriptRuntimeStore?: WorkspaceScriptRuntimeStore;
   workspaceSetupSnapshots?: Map<string, WorkspaceSetupSnapshot>;
@@ -579,6 +582,8 @@ export class Session {
   private readonly checkoutSession: CheckoutSession;
   private readonly chatScheduleLoopSession: ChatScheduleLoopSession;
   private readonly providerCatalogSession: ProviderCatalogSession;
+  private readonly statusSummaryService: StatusSummaryService;
+  private unsubscribeStatusSummary: (() => void) | null = null;
   private readonly workspaceFilesSession: WorkspaceFilesSession;
   private readonly agentConfigSession: AgentConfigSession;
   private readonly projectConfigSession: ProjectConfigSession;
@@ -620,6 +625,7 @@ export class Session {
       terminalManager,
       providerSnapshotManager,
       providerUsageService,
+      statusSummaryService,
       serviceProxy,
       scriptRuntimeStore,
       workspaceSetupSnapshots,
@@ -751,6 +757,10 @@ export class Session {
       providerSnapshotManager,
       providerUsageService,
       logger: this.sessionLogger,
+    });
+    this.statusSummaryService = statusSummaryService;
+    this.unsubscribeStatusSummary = this.statusSummaryService.subscribe((summary) => {
+      this.emitStatusSummaryUpdated(summary);
     });
     this.agentConfigSession = new AgentConfigSession({
       host: {
@@ -1364,6 +1374,7 @@ export class Session {
       this.dispatchCheckoutMessage(msg) ??
       this.dispatchWorkspaceAndProjectMessage(msg) ??
       this.dispatchProviderMessage(msg) ??
+      this.dispatchStatusSummaryMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
       this.dispatchChatScheduleLoopMessage(msg) ??
       this.dispatchMiscMessage(msg);
@@ -1659,6 +1670,33 @@ export class Session {
       default:
         return undefined;
     }
+  }
+
+  private dispatchStatusSummaryMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "status.summary.get.request":
+        return this.handleStatusSummaryGetRequest(msg.requestId);
+      default:
+        return undefined;
+    }
+  }
+
+  private async handleStatusSummaryGetRequest(requestId: string): Promise<void> {
+    const summary = await this.statusSummaryService.getSummary();
+    this.emit({
+      type: "status.summary.get.response",
+      payload: {
+        requestId,
+        summary,
+      },
+    });
+  }
+
+  private emitStatusSummaryUpdated(summary: HostStatusSummaryPayload): void {
+    this.emit({
+      type: "status.summary.updated",
+      payload: summary,
+    });
   }
 
   private dispatchTerminalMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -5527,6 +5565,10 @@ export class Session {
     if (this.unsubscribeTerminalWorkspaceContributionEvents) {
       this.unsubscribeTerminalWorkspaceContributionEvents();
       this.unsubscribeTerminalWorkspaceContributionEvents = null;
+    }
+    if (this.unsubscribeStatusSummary) {
+      this.unsubscribeStatusSummary();
+      this.unsubscribeStatusSummary = null;
     }
     this.providerCatalogSession.dispose();
 

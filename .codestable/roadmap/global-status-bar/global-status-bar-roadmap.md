@@ -287,36 +287,36 @@ type StatusBarRow = {
 2. **status-summary-protocol** — 定义 daemon status summary 聚合服务、协议 schema、client SDK 方法和 server feature gate。
    - 所属模块：Status Summary Service / Status Summary Protocol
    - 依赖：`usage-history-persistence`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-07-06-status-summary-protocol
    - 备注：最小闭环；完成后无需 UI 也可用 RPC 证明 persisted lifetime/today summary 可读取。
 
 3. **app-status-summary-store** — app 接入 summary RPC 和 push，提供 host 级 cache、capability gate、reconnect refresh 和 view model。
    - 所属模块：App Status Store
    - 依赖：`status-summary-protocol`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-07-06-app-status-summary-store
    - 备注：不在 UI 中散落旧 daemon 防御分支。
 
 4. **global-status-bar-shell** — 在 host shell 底部渲染跨页面状态栏，展示 total/today tokens、cost、运行中/需处理计数，并处理 layout/safe-area。
    - 所属模块：Global Status Bar UI
    - 依赖：`app-status-summary-store`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-07-06-global-status-bar-shell
    - 备注：应落在 `packages/app/src/app/h/[serverId]/_layout.tsx` 的 host 边界内或其直接子组件；无单一 `serverId` 的全局路由隐藏。
 
 5. **status-bar-running-sessions-nav** — 为状态栏增加运行中 session 快照、详情弹层和导航到 agent/workspace 的动作。
    - 所属模块：Global Status Bar UI
    - 依赖：`global-status-bar-shell`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-07-06-status-bar-running-sessions-nav
    - 备注：导航必须遵守 Expo Router 文档和 workspace helper。
 
 6. **status-bar-polish-hardening** — 收口状态栏的 compact/desktop 表现、旧 daemon gate、无数据/错误态、可访问性、视觉回归和文档沉淀。
    - 所属模块：Global Status Bar UI / App Status Store
    - 依赖：`global-status-bar-shell`、`status-bar-running-sessions-nav`、`usage-history-persistence`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-07-06-status-bar-polish-hardening
    - 备注：覆盖边界输入、截图验证、i18n copy、docs/attention 候选沉淀。
 
 **最小闭环**：第 1 条 `usage-history-persistence` 提供可持久化 usage source，第 2 条 `status-summary-protocol` 暴露 RPC 后，新 client/CLI 测试能调用 `status.summary.get.request` 获取 persisted lifetime/today usage totals 和 active session snapshot，证明底部状态栏的数据源成立。

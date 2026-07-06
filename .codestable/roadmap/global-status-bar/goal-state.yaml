@@ -1,9 +1,9 @@
 roadmap: global-status-bar
-status: running
+status: completed
 baseline_ref: 0ecf2fb8da812c22f2b5fb49ce5b6609674f59df
 driver_kind: paseo
 driver_id: 07da2acb-449e-4602-8b05-eaed84fc804e
-current_feature_index: 0
+current_feature_index: 6
 features:
   - slug: usage-history-persistence
     roadmap_item: usage-history-persistence
@@ -22,7 +22,7 @@ features:
     review: .codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-review.md
     qa: .codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-qa.md
     acceptance: .codestable/features/2026-07-06-status-summary-protocol/status-summary-protocol-acceptance.md
-    status: pending
+    status: accepted
   - slug: app-status-summary-store
     roadmap_item: app-status-summary-store
     feature_dir: .codestable/features/2026-07-06-app-status-summary-store
@@ -31,7 +31,7 @@ features:
     review: .codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-review.md
     qa: .codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-qa.md
     acceptance: .codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-acceptance.md
-    status: pending
+    status: accepted
   - slug: global-status-bar-shell
     roadmap_item: global-status-bar-shell
     feature_dir: .codestable/features/2026-07-06-global-status-bar-shell
@@ -40,7 +40,7 @@ features:
     review: .codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-review.md
     qa: .codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-qa.md
     acceptance: .codestable/features/2026-07-06-global-status-bar-shell/global-status-bar-shell-acceptance.md
-    status: pending
+    status: accepted
   - slug: status-bar-running-sessions-nav
     roadmap_item: status-bar-running-sessions-nav
     feature_dir: .codestable/features/2026-07-06-status-bar-running-sessions-nav
@@ -49,7 +49,7 @@ features:
     review: .codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-review.md
     qa: .codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-qa.md
     acceptance: .codestable/features/2026-07-06-status-bar-running-sessions-nav/status-bar-running-sessions-nav-acceptance.md
-    status: pending
+    status: accepted
   - slug: status-bar-polish-hardening
     roadmap_item: status-bar-polish-hardening
     feature_dir: .codestable/features/2026-07-06-status-bar-polish-hardening
@@ -58,4 +58,4 @@ features:
     review: .codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-review.md
     qa: .codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-qa.md
     acceptance: .codestable/features/2026-07-06-status-bar-polish-hardening/status-bar-polish-hardening-acceptance.md
-    status: pending
+    status: accepted

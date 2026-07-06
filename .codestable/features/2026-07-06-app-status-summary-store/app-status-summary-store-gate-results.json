@@ -1,0 +1,37 @@
+{
+  "gate_id": "scope-gate",
+  "stage": "implementation.before_review",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "changed_files": [
+        ".codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-checklist.yaml",
+        "packages/app/src/contexts/session-context.service-status.test.ts",
+        "packages/app/src/contexts/session-context.tsx",
+        ".codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-evidence-pack.json",
+        ".codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-evidence-pack.md",
+        ".codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-scope-gate.json",
+        "packages/app/src/status-summary/push.test.ts",
+        "packages/app/src/status-summary/push.ts",
+        "packages/app/src/status-summary/query-core.ts",
+        "packages/app/src/status-summary/query.ts",
+        "packages/app/src/status-summary/use-status-summary.test.ts",
+        "packages/app/src/status-summary/use-status-summary.ts",
+        "packages/app/src/status-summary/view-model.test.ts",
+        "packages/app/src/status-summary/view-model.ts"
+      ],
+      "ignored_machine_artifacts": [
+        ".codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-dod-results.json"
+      ],
+      "allowed_prefixes": [
+        ".codestable/features/2026-07-06-app-status-summary-store",
+        "packages/app/src/status-summary",
+        "packages/app/src/contexts/session-context.tsx",
+        "packages/app/src/contexts/session-context.service-status.test.ts"
+      ]
+    }
+  ],
+  "providers": {}
+}

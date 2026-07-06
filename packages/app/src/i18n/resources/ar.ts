@@ -212,6 +212,36 @@ export const ar: TranslationResources = {
       loadMore: "تحميل المزيد",
     },
   },
+  statusBar: {
+    rows: {
+      totalTokens: "إجمالي الرموز",
+      today: "اليوم",
+      cost: "التكلفة",
+      running: "قيد التشغيل",
+      needsAttention: "تحتاج إلى انتباه",
+      errors: "أخطاء",
+    },
+    states: {
+      loading: "جارٍ تحميل الحالة",
+      unavailable: "الحالة غير متاحة",
+      unsupported: "حدّث المضيف لاستخدام هذا.",
+      offline: "المضيف غير متصل.",
+    },
+    sessions: {
+      title: "جلسات الوكلاء",
+      trigger: "الجلسات",
+      empty: "لا توجد جلسات وكلاء",
+      groups: {
+        attention: "تحتاج إلى انتباه",
+        running: "قيد التشغيل",
+        recent: "الأخيرة",
+      },
+      actions: {
+        openAgent: "افتح {{title}}",
+        openWorkspace: "افتح مساحة العمل",
+      },
+    },
+  },
   agentList: {
     fallbackTitle: "جلسة جديدة",
     dateSections: {

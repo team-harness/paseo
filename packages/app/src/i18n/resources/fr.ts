@@ -215,6 +215,36 @@ export const fr: TranslationResources = {
       loadMore: "Charger plus",
     },
   },
+  statusBar: {
+    rows: {
+      totalTokens: "Tokens totaux",
+      today: "Aujourd'hui",
+      cost: "Coût",
+      running: "En cours",
+      needsAttention: "À traiter",
+      errors: "Erreurs",
+    },
+    states: {
+      loading: "Chargement du statut",
+      unavailable: "Statut indisponible",
+      unsupported: "Mettez à jour l'hôte pour utiliser ceci.",
+      offline: "L'hôte est hors ligne.",
+    },
+    sessions: {
+      title: "Sessions d'agents",
+      trigger: "Sessions",
+      empty: "Aucune session d'agent",
+      groups: {
+        attention: "À traiter",
+        running: "En cours",
+        recent: "Récentes",
+      },
+      actions: {
+        openAgent: "Ouvrir {{title}}",
+        openWorkspace: "Ouvrir l'espace de travail",
+      },
+    },
+  },
   agentList: {
     fallbackTitle: "Nouvelle séance",
     dateSections: {

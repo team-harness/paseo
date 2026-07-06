@@ -214,6 +214,36 @@ export const ru: TranslationResources = {
       loadMore: "Загрузить больше",
     },
   },
+  statusBar: {
+    rows: {
+      totalTokens: "Всего токенов",
+      today: "Сегодня",
+      cost: "Стоимость",
+      running: "Выполняется",
+      needsAttention: "Требует внимания",
+      errors: "Ошибки",
+    },
+    states: {
+      loading: "Загрузка статуса",
+      unavailable: "Статус недоступен",
+      unsupported: "Обновите хост, чтобы использовать это.",
+      offline: "Хост не в сети.",
+    },
+    sessions: {
+      title: "Сессии агентов",
+      trigger: "Сессии",
+      empty: "Нет сессий агентов",
+      groups: {
+        attention: "Требует внимания",
+        running: "Выполняется",
+        recent: "Недавние",
+      },
+      actions: {
+        openAgent: "Открыть {{title}}",
+        openWorkspace: "Открыть рабочую область",
+      },
+    },
+  },
   agentList: {
     fallbackTitle: "Новая сессия",
     dateSections: {

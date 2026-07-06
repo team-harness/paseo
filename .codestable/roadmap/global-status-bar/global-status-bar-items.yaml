@@ -13,7 +13,7 @@ items:
   - slug: status-summary-protocol
     description: 定义 daemon status summary 聚合服务、协议 schema、client SDK 方法和 server feature gate
     depends_on: [usage-history-persistence]
-    status: in-progress
+    status: done
     feature: 2026-07-06-status-summary-protocol
     minimal_loop: false
     notes: 最小闭环第二段；完成后无需 UI 也可用 RPC 证明 persisted lifetime/today summary 可读取
@@ -21,7 +21,7 @@ items:
   - slug: app-status-summary-store
     description: app 接入 summary RPC 和 push，提供 host 级 cache、capability gate、reconnect refresh 和 view model
     depends_on: [status-summary-protocol]
-    status: in-progress
+    status: done
     feature: 2026-07-06-app-status-summary-store
     minimal_loop: false
     notes: 不在 UI 中散落旧 daemon 防御分支
@@ -29,7 +29,7 @@ items:
   - slug: global-status-bar-shell
     description: 在 host-scoped shell 底部渲染跨页面状态栏，展示 total/today tokens、cost、运行中/需处理计数，并处理 layout/safe-area
     depends_on: [app-status-summary-store]
-    status: in-progress
+    status: done
     feature: 2026-07-06-global-status-bar-shell
     minimal_loop: false
     notes: 应落在 packages/app/src/app/h/[serverId]/_layout.tsx 的 host 边界内或其直接子组件；无单一 serverId 的全局路由隐藏
@@ -37,7 +37,7 @@ items:
   - slug: status-bar-running-sessions-nav
     description: 为状态栏增加运行中 session 快照、详情弹层和导航到 agent/workspace 的动作
     depends_on: [global-status-bar-shell]
-    status: in-progress
+    status: done
     feature: 2026-07-06-status-bar-running-sessions-nav
     minimal_loop: false
     notes: 导航必须遵守 Expo Router 文档和 workspace helper
@@ -46,7 +46,7 @@ items:
     description: 收口状态栏的 compact/desktop 表现、旧 daemon gate、无数据/错误态、可访问性、视觉回归和文档沉淀
     depends_on:
       [global-status-bar-shell, status-bar-running-sessions-nav, usage-history-persistence]
-    status: in-progress
+    status: done
     feature: 2026-07-06-status-bar-polish-hardening
     minimal_loop: false
     notes: 覆盖边界输入、截图验证、i18n copy、docs/attention 候选沉淀

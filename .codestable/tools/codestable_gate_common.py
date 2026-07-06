@@ -93,6 +93,8 @@ def _parse_scalar(value: str) -> Any:
         return False
     if lower in {"null", "~"}:
         return None
+    if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
+        return int(value)
     return value.strip("'\"")
 
 

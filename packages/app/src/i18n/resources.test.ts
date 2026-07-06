@@ -163,6 +163,15 @@ describe("translation resources", () => {
     expect(findUntranslatedConnectionErrors()).toEqual([]);
   });
 
+  it("includes global status bar keys", () => {
+    expect(en.statusBar.rows.totalTokens).toBe("Total tokens");
+    expect(en.statusBar.rows.needsAttention).toBe("Needs attention");
+    expect(en.statusBar.states.loading).toBe("Loading status");
+    expect(en.statusBar.sessions.title).toBe("Agent sessions");
+    expect(en.statusBar.sessions.actions.openAgent).toBe("Open {{title}}");
+    expect(zhCN.statusBar.sessions.trigger).toBe("会话");
+  });
+
   it("includes shared shell keys for the Batch 1 migration", () => {
     expect(en.common.actions.back).toBe("Back");
     expect(en.common.actions.cancel).toBe("Cancel");

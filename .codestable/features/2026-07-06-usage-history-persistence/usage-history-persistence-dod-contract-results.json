@@ -1,0 +1,13 @@
+{
+  "gate_id": "dod-contract-gate",
+  "stage": "roadmap_audit.compat",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [
+    "compatibility artifact generated after implementation for goal consistency gate; design/checklist contract was reviewed during feature design review"
+  ],
+  "evidence": [
+    { "feature": "usage-history-persistence", "source": "existing design review and checklist DoD" }
+  ],
+  "providers": {}
+}
