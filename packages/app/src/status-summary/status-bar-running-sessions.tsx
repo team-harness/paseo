@@ -4,7 +4,7 @@ import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { usePathname } from "expo-router";
-import { ArrowUpRight, BriefcaseBusiness } from "lucide-react-native";
+import { ArrowUpRight, BriefcaseBusiness, RefreshCw } from "lucide-react-native";
 import type { StatusAgentSnapshot } from "@getpaseo/protocol/messages";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import {
@@ -41,6 +41,9 @@ const ThemedArrowUpRight = withUnistyles(ArrowUpRight, (theme) => ({
 const ThemedBriefcaseBusiness = withUnistyles(BriefcaseBusiness, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
+const ThemedRefreshCw = withUnistyles(RefreshCw, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
 const COMPACT_SNAP_POINTS = ["45%", "85%"];
 
 const compactTriggerStyle = ({ pressed }: { pressed: boolean }) => [
@@ -72,6 +75,23 @@ const iconButtonStyle = ({ pressed, hovered = false }: { pressed: boolean; hover
   styles.iconButton,
   hovered ? styles.iconButtonHovered : null,
   pressed ? styles.iconButtonPressed : null,
+];
+
+const historyRefreshButtonStyle = ({
+  pressed,
+  hovered = false,
+}: {
+  pressed: boolean;
+  hovered?: boolean;
+}) => [
+  styles.historyRefreshButton,
+  hovered ? styles.iconButtonHovered : null,
+  pressed ? styles.iconButtonPressed : null,
+];
+
+const historyRefreshButtonDisabledStyle = () => [
+  styles.historyRefreshButton,
+  styles.iconButtonDisabled,
 ];
 
 interface StatusBarRunningSessionsTriggerProps {
@@ -212,10 +232,14 @@ export function StatusBarSessionHistoryTrigger({ serverId }: { serverId: string 
   const pathname = usePathname();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { agents, isInitialLoad, isError } = useAgentHistory({ serverId });
+  const { agents, isInitialLoad, isError, isRevalidating, refreshAll } = useAgentHistory({
+    serverId,
+  });
   const [open, setOpen] = useState(false);
+  const [isManualRefresh, setIsManualRefresh] = useState(false);
   const sheetHeader = useMemo(() => ({ title: t("statusBar.history.title") }), [t]);
   const items = useMemo(() => agents.slice(0, HISTORY_LIMIT), [agents]);
+  const isRefreshing = isManualRefresh || isRevalidating;
 
   useEffect(() => {
     setOpen(false);
@@ -274,6 +298,16 @@ export function StatusBarSessionHistoryTrigger({ serverId }: { serverId: string 
     handleOpenChange(false);
   }, [handleOpenChange]);
 
+  const handleRefresh = useCallback(() => {
+    if (isInitialLoad || isRefreshing) {
+      return;
+    }
+    setIsManualRefresh(true);
+    void refreshAll().finally(() => {
+      setIsManualRefresh(false);
+    });
+  }, [isInitialLoad, isRefreshing, refreshAll]);
+
   const triggerBody = (
     <TriggerContent count={items.length} label={t("statusBar.history.trigger")} />
   );
@@ -301,6 +335,8 @@ export function StatusBarSessionHistoryTrigger({ serverId }: { serverId: string 
             items={items}
             isLoading={isInitialLoad}
             isError={isError}
+            isRefreshing={isRefreshing}
+            onRefresh={handleRefresh}
             onNavigate={handleNavigate}
           />
         </AdaptiveModalSheet>
@@ -330,6 +366,8 @@ export function StatusBarSessionHistoryTrigger({ serverId }: { serverId: string 
           items={items}
           isLoading={isInitialLoad}
           isError={isError}
+          isRefreshing={isRefreshing}
+          onRefresh={handleRefresh}
           onNavigate={handleNavigate}
         />
       </DropdownMenuContent>
@@ -409,49 +447,81 @@ function StatusBarHistoryList({
   items,
   isError,
   isLoading,
+  isRefreshing,
+  onRefresh,
   onNavigate,
 }: {
   items: AggregatedAgent[];
   isError: boolean;
   isLoading: boolean;
+  isRefreshing: boolean;
+  onRefresh: () => void;
   onNavigate: (agent: AggregatedAgent) => void;
 }) {
   const { t } = useTranslation();
-  if (isLoading) {
+  const refreshDisabled = isLoading || isRefreshing;
+  const refreshButtonStyle = refreshDisabled
+    ? historyRefreshButtonDisabledStyle
+    : historyRefreshButtonStyle;
+  const refreshLabel = t(
+    isRefreshing ? "statusBar.history.actions.refreshing" : "statusBar.history.actions.refresh",
+  );
+  const content = (() => {
+    if (isLoading) {
+      return (
+        <View style={styles.emptyState} testID="status-bar-history-loading">
+          <Text style={styles.emptyText}>{t("statusBar.history.loading")}</Text>
+        </View>
+      );
+    }
+    if (isError && items.length === 0) {
+      return (
+        <View style={styles.emptyState} testID="status-bar-history-error">
+          <Text style={styles.emptyText}>{t("statusBar.history.error")}</Text>
+        </View>
+      );
+    }
+    if (items.length === 0) {
+      return (
+        <View style={styles.emptyState} testID="status-bar-history-empty">
+          <Text style={styles.emptyText}>{t("statusBar.history.empty")}</Text>
+        </View>
+      );
+    }
+
     return (
-      <View style={styles.emptyState} testID="status-bar-history-loading">
-        <Text style={styles.emptyText}>{t("statusBar.history.loading")}</Text>
+      <View style={styles.groupRows}>
+        {items.map((item) => (
+          <StatusBarHistoryRow
+            key={`${item.serverId}:${item.id}`}
+            item={item}
+            onNavigate={onNavigate}
+          />
+        ))}
       </View>
     );
-  }
-  if (isError && items.length === 0) {
-    return (
-      <View style={styles.emptyState} testID="status-bar-history-error">
-        <Text style={styles.emptyText}>{t("statusBar.history.error")}</Text>
-      </View>
-    );
-  }
-  if (items.length === 0) {
-    return (
-      <View style={styles.emptyState} testID="status-bar-history-empty">
-        <Text style={styles.emptyText}>{t("statusBar.history.empty")}</Text>
-      </View>
-    );
-  }
+  })();
 
   return (
     <View style={styles.list} testID="status-bar-history-list">
       <View style={styles.group}>
-        <Text style={styles.groupLabel}>{t("statusBar.history.group")}</Text>
-        <View style={styles.groupRows}>
-          {items.map((item) => (
-            <StatusBarHistoryRow
-              key={`${item.serverId}:${item.id}`}
-              item={item}
-              onNavigate={onNavigate}
-            />
-          ))}
+        <View style={styles.historyHeader}>
+          <Text style={styles.historyHeaderLabel} numberOfLines={1}>
+            {t("statusBar.history.group")}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={refreshLabel}
+            disabled={refreshDisabled}
+            hitSlop={6}
+            onPress={onRefresh}
+            style={refreshButtonStyle}
+            testID="status-bar-history-refresh"
+          >
+            <ThemedRefreshCw size={14} />
+          </Pressable>
         </View>
+        {content}
       </View>
     </View>
   );
@@ -665,6 +735,21 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
     paddingHorizontal: theme.spacing[3],
   },
+  historyHeader: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+  },
+  historyHeaderLabel: {
+    minWidth: 0,
+    flex: 1,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
   groupRows: {
     gap: theme.spacing[1],
   },
@@ -722,6 +807,16 @@ const styles = StyleSheet.create((theme) => ({
   },
   iconButtonPressed: {
     opacity: theme.opacity[50],
+  },
+  iconButtonDisabled: {
+    opacity: theme.opacity[50],
+  },
+  historyRefreshButton: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.md,
   },
   emptyState: {
     padding: theme.spacing[4],

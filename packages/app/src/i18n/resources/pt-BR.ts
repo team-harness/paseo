@@ -253,6 +253,8 @@ export const ptBR: TranslationResources = {
       error: "Não foi possível carregar o histórico",
       actions: {
         openAgent: "Abrir {{title}}",
+        refresh: "Atualizar histórico",
+        refreshing: "Atualizando histórico",
       },
     },
   },

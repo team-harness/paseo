@@ -253,6 +253,8 @@ export const ja: TranslationResources = {
       error: "履歴を読み込めません",
       actions: {
         openAgent: "{{title}}を開く",
+        refresh: "履歴を更新",
+        refreshing: "履歴を更新中",
       },
     },
   },

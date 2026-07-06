@@ -252,6 +252,8 @@ export const ru: TranslationResources = {
       error: "Не удалось загрузить историю",
       actions: {
         openAgent: "Открыть {{title}}",
+        refresh: "Обновить историю",
+        refreshing: "Обновление истории",
       },
     },
   },

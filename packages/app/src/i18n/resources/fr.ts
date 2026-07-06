@@ -253,6 +253,8 @@ export const fr: TranslationResources = {
       error: "Impossible de charger l'historique",
       actions: {
         openAgent: "Ouvrir {{title}}",
+        refresh: "Actualiser l'historique",
+        refreshing: "Actualisation de l'historique",
       },
     },
   },

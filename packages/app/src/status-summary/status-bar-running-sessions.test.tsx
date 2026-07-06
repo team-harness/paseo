@@ -34,7 +34,9 @@ const { theme, runtimeState, navigationSpies } = vi.hoisted(() => ({
     historyAgents: [] as AggregatedAgent[],
     historyInitialLoad: false,
     historyError: false,
+    historyRevalidating: false,
     refreshAgent: vi.fn(),
+    refreshHistory: vi.fn(),
   },
   navigationSpies: {
     navigateToAgent: vi.fn(),
@@ -88,6 +90,7 @@ vi.mock("react-i18next", () => ({
 vi.mock("lucide-react-native", () => ({
   ArrowUpRight: () => React.createElement("span", { "data-testid": "arrow-icon" }),
   BriefcaseBusiness: () => React.createElement("span", { "data-testid": "workspace-icon" }),
+  RefreshCw: () => React.createElement("span", { "data-testid": "refresh-icon" }),
 }));
 
 vi.mock("expo-router", () => ({
@@ -145,10 +148,10 @@ vi.mock("@/hooks/use-agent-history", () => ({
     isInitialLoad: runtimeState.historyInitialLoad,
     isError: runtimeState.historyError,
     isLoading: runtimeState.historyInitialLoad,
-    isRevalidating: false,
+    isRevalidating: runtimeState.historyRevalidating,
     hasMore: false,
     isLoadingMore: false,
-    refreshAll: vi.fn(),
+    refreshAll: runtimeState.refreshHistory,
     loadMore: vi.fn(),
   }),
 }));
@@ -349,8 +352,11 @@ describe("status bar running sessions", () => {
     runtimeState.historyAgents = [];
     runtimeState.historyInitialLoad = false;
     runtimeState.historyError = false;
+    runtimeState.historyRevalidating = false;
     runtimeState.refreshAgent.mockReset();
     runtimeState.refreshAgent.mockResolvedValue(undefined);
+    runtimeState.refreshHistory.mockReset();
+    runtimeState.refreshHistory.mockResolvedValue(undefined);
     navigationSpies.navigateToAgent.mockClear();
     navigationSpies.navigateToWorkspace.mockClear();
     container = document.createElement("div");
@@ -542,6 +548,29 @@ describe("status bar running sessions", () => {
 
     expect(container?.querySelector('[data-testid="status-bar-history-panel"]')).not.toBeNull();
     expect(container?.querySelector('[data-testid="status-bar-history-empty"]')).not.toBeNull();
+  });
+
+  it("refreshes history on demand from the history panel", () => {
+    runtimeState.historyAgents = [historyAgent({ id: "history-1", offsetMinutes: 0 })];
+
+    act(() => {
+      root?.render(renderStatusBar());
+    });
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
+        ?.click();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-history-refresh"]')).not.toBeNull();
+
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-refresh"]')
+        ?.click();
+    });
+
+    expect(runtimeState.refreshHistory).toHaveBeenCalledTimes(1);
   });
 
   it("navigates from a compact history row after closing the sheet", () => {

@@ -107,6 +107,7 @@ vi.mock("@/stores/panel-store", () => ({
 vi.mock("lucide-react-native", () => ({
   ArrowUpRight: () => React.createElement("span"),
   BriefcaseBusiness: () => React.createElement("span"),
+  RefreshCw: () => React.createElement("span"),
 }));
 
 vi.mock("expo-router", () => ({

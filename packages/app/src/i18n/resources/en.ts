@@ -249,6 +249,8 @@ export const en = {
       error: "Unable to load history",
       actions: {
         openAgent: "Open {{title}}",
+        refresh: "Refresh history",
+        refreshing: "Refreshing history",
       },
     },
   },

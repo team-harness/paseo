@@ -250,6 +250,8 @@ export const ar: TranslationResources = {
       error: "تعذر تحميل السجل",
       actions: {
         openAgent: "افتح {{title}}",
+        refresh: "تحديث السجل",
+        refreshing: "جارٍ تحديث السجل",
       },
     },
   },

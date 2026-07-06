@@ -250,6 +250,8 @@ export const zhCN: TranslationResources = {
       error: "无法加载历史",
       actions: {
         openAgent: "打开 {{title}}",
+        refresh: "刷新历史",
+        refreshing: "正在刷新历史",
       },
     },
   },
