@@ -8,6 +8,8 @@ import { usePushTokenRegistration } from "@/hooks/use-push-token-registration";
 import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
 import { refreshAgentInitializationTimeout } from "@/hooks/use-agent-initialization";
 import { prefetchProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { applyStatusSummaryUpdate } from "@/status-summary/push";
+import { refreshStatusSummary, shouldRefreshStatusSummary } from "@/status-summary/query";
 import { generateMessageId, type StreamItem } from "@/types/stream";
 import {
   createSessionAgentStreamReducerQueue,
@@ -555,6 +557,9 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     (state) => state.sessions[serverId]?.focusedTerminalId ?? null,
   );
   const sessionAgents = useSessionStore((state) => state.sessions[serverId]?.agents);
+  const supportsStatusSummary = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.statusSummary === true,
+  );
 
   const previousAgentStatusRef = useRef<Map<string, AgentLifecycleStatus>>(new Map());
   const sendAgentMessageRef = useRef<
@@ -808,6 +813,25 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     }, AUTHORITATIVE_REVALIDATION_DEBOUNCE_MS);
   }, [client, flushAuthoritativeRevalidation, isConnected]);
 
+  const refreshHostStatusSummary = useCallback(() => {
+    if (
+      !shouldRefreshStatusSummary({
+        serverId,
+        client,
+        isConnected,
+        supportsStatusSummary,
+      })
+    ) {
+      return;
+    }
+    void refreshStatusSummary({ queryClient, serverId, client }).catch((error) => {
+      console.warn("[Session] failed to refresh status summary", {
+        serverId,
+        error,
+      });
+    });
+  }, [client, isConnected, queryClient, serverId, supportsStatusSummary]);
+
   const requestCanonicalCatchUp = useCallback(
     (agentId: string, cursor: { epoch: string; endSeq: number }) => {
       const request = planTimelineCatchUpAfter({ epoch: cursor.epoch, seq: cursor.endSeq });
@@ -831,6 +855,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
   const handleAppResumed = useCallback(
     (awayMs: number) => {
+      refreshHostStatusSummary();
       scheduleAuthoritativeRevalidation();
 
       if (isNative) {
@@ -861,6 +886,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     [
       bumpHistorySyncGeneration,
       client,
+      refreshHostStatusSummary,
       requestCanonicalCatchUp,
       scheduleAuthoritativeRevalidation,
       serverId,
@@ -1262,12 +1288,17 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   }, [isConnected, serverId]);
 
   useEffect(() => {
+    refreshHostStatusSummary();
+  }, [refreshHostStatusSummary]);
+
+  useEffect(() => {
     const wasConnected = wasConnectedRef.current;
     wasConnectedRef.current = isConnected;
     if (!wasConnected && isConnected) {
+      refreshHostStatusSummary();
       scheduleAuthoritativeRevalidation();
     }
-  }, [isConnected, scheduleAuthoritativeRevalidation]);
+  }, [isConnected, refreshHostStatusSummary, scheduleAuthoritativeRevalidation]);
 
   useEffect(() => {
     return () => {
@@ -1381,6 +1412,11 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     const unsubCheckoutStatusUpdate = client.on("checkout_status_update", (message) => {
       if (message.type !== "checkout_status_update") return;
       applyCheckoutStatusUpdateFromEvent({ queryClient, serverId, message });
+    });
+
+    const unsubStatusSummaryUpdate = client.on("status.summary.updated", (message) => {
+      if (message.type !== "status.summary.updated") return;
+      applyStatusSummaryUpdate({ serverId, queryClient, message });
     });
 
     const unsubWorkspaceSetupProgress = client.on("workspace_setup_progress", (message) => {
@@ -1753,6 +1789,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubWorkspaceUpdate();
       unsubScriptStatusUpdate();
       unsubCheckoutStatusUpdate();
+      unsubStatusSummaryUpdate();
       unsubWorkspaceSetupProgress();
       unsubWorkspaceSetupStatusResponse();
       unsubStatus();

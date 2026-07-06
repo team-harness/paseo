@@ -3,7 +3,7 @@ status: running
 baseline_ref: 0ecf2fb8da812c22f2b5fb49ce5b6609674f59df
 driver_kind: paseo
 driver_id: 07da2acb-449e-4602-8b05-eaed84fc804e
-current_feature_index: 2
+current_feature_index: 3
 features:
   - slug: usage-history-persistence
     roadmap_item: usage-history-persistence
@@ -31,7 +31,7 @@ features:
     review: .codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-review.md
     qa: .codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-qa.md
     acceptance: .codestable/features/2026-07-06-app-status-summary-store/app-status-summary-store-acceptance.md
-    status: pending
+    status: accepted
   - slug: global-status-bar-shell
     roadmap_item: global-status-bar-shell
     feature_dir: .codestable/features/2026-07-06-global-status-bar-shell

@@ -294,8 +294,8 @@ type StatusBarRow = {
 3. **app-status-summary-store** — app 接入 summary RPC 和 push，提供 host 级 cache、capability gate、reconnect refresh 和 view model。
    - 所属模块：App Status Store
    - 依赖：`status-summary-protocol`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-07-06-app-status-summary-store
    - 备注：不在 UI 中散落旧 daemon 防御分支。
 
 4. **global-status-bar-shell** — 在 host shell 底部渲染跨页面状态栏，展示 total/today tokens、cost、运行中/需处理计数，并处理 layout/safe-area。

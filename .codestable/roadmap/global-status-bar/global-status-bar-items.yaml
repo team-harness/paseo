@@ -21,7 +21,7 @@ items:
   - slug: app-status-summary-store
     description: app 接入 summary RPC 和 push，提供 host 级 cache、capability gate、reconnect refresh 和 view model
     depends_on: [status-summary-protocol]
-    status: in-progress
+    status: done
     feature: 2026-07-06-app-status-summary-store
     minimal_loop: false
     notes: 不在 UI 中散落旧 daemon 防御分支
