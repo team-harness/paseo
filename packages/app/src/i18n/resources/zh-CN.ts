@@ -217,6 +217,7 @@ export const zhCN: TranslationResources = {
       totalTokens: "总 token",
       today: "今天",
       cost: "总费用",
+      costToday: "今日费用",
       running: "运行中",
       needsAttention: "需要注意",
       errors: "错误",
@@ -226,6 +227,12 @@ export const zhCN: TranslationResources = {
       unavailable: "状态不可用",
       unsupported: "请更新主机以使用此功能。",
       offline: "Host 离线。",
+    },
+    cost: {
+      title: "费用",
+      today: "今日",
+      total: "总计",
+      estimateNote: "OpenAI 和 Codex 费用按 API token 价格估算。",
     },
     sessions: {
       title: "Agent 会话",

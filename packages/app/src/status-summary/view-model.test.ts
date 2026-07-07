@@ -10,13 +10,14 @@ function summary(overrides: Partial<HostStatusSummaryPayload> = {}): HostStatusS
         inputTokens: 1_000,
         cachedInputTokens: 500,
         outputTokens: 250,
-        totalTokens: 1_750,
-        totalCostUsd: 0.1234,
+        totalTokens: 112_000_000,
+        totalCostUsd: 12.34,
       },
       today: {
         inputTokens: 100,
         outputTokens: 25,
-        totalTokens: 125,
+        totalTokens: 61_000_000,
+        totalCostUsd: 0.1234,
         windowStart: "2026-07-06T00:00:00.000Z",
         windowEnd: "2026-07-06T04:00:00.000Z",
       },
@@ -89,12 +90,16 @@ describe("buildStatusSummaryViewModel", () => {
     expect(view.kind).toBe("ready");
     if (view.kind !== "ready") throw new Error("Expected ready view");
     expect(view.primaryRows.map((row) => [row.id, row.value, row.tone])).toEqual([
-      ["lifetime-tokens", "1,750", "default"],
+      ["lifetime-tokens", "1.1亿", "default"],
       ["cost", "$0.1234", "ok"],
-      ["today-tokens", "125", "default"],
+      ["today-tokens", "6.1千万", "default"],
       ["running", "1", "ok"],
       ["attention", "2", "warning"],
       ["errors", "1", "danger"],
+    ]);
+    expect(view.primaryRows.find((row) => row.id === "cost")?.details).toEqual([
+      { label: "Today", value: "$0.1234" },
+      { label: "Total", value: "$12.34" },
     ]);
     expect(view.runningAgents).toHaveLength(1);
     expect(view.needsAttentionAgents).toHaveLength(0);

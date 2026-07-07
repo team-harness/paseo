@@ -20,6 +20,7 @@ import {
   CodexAppServerAgentClient,
   CodexAppServerAgentSession,
   codexAppServerTurnInputFromPrompt,
+  estimateOpenAiModelCostUsd,
   listCodexSkills,
   mapCodexPatchNotificationToToolCall,
   mapCodexPlanToToolCall,
@@ -2508,7 +2509,7 @@ describe("Codex app-server provider", () => {
   });
 
   test("emits usage_updated on token usage updates and keeps usage on turn completion", () => {
-    const session = createSession();
+    const session = createSession({ model: "gpt-5.4-mini" });
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
 
@@ -2535,6 +2536,7 @@ describe("Codex app-server provider", () => {
         inputTokens: 30000,
         cachedInputTokens: 5000,
         outputTokens: 15000,
+        totalCostUsd: 0.086625,
         contextWindowMaxTokens: 200000,
         contextWindowUsedTokens: 50000,
       },
@@ -2547,10 +2549,37 @@ describe("Codex app-server provider", () => {
         inputTokens: 30000,
         cachedInputTokens: 5000,
         outputTokens: 15000,
+        totalCostUsd: 0.086625,
         contextWindowMaxTokens: 200000,
         contextWindowUsedTokens: 50000,
       },
     });
+  });
+
+  test("estimates OpenAI model cost from token usage for known Codex models only", () => {
+    expect(
+      estimateOpenAiModelCostUsd({
+        modelId: "gpt-5.4-mini",
+        inputTokens: 30_000,
+        cachedInputTokens: 5_000,
+        outputTokens: 15_000,
+      }),
+    ).toBe(0.086625);
+    expect(
+      estimateOpenAiModelCostUsd({
+        modelId: "gpt-5.4",
+        inputTokens: 30_000,
+        cachedInputTokens: 5_000,
+        outputTokens: 15_000,
+      }),
+    ).toBe(0.28875);
+    expect(
+      estimateOpenAiModelCostUsd({
+        modelId: "unknown-model",
+        inputTokens: 30_000,
+        outputTokens: 15_000,
+      }),
+    ).toBeUndefined();
   });
 
   test("streams Codex assistant message deltas and does not replay completed text", () => {

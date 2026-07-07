@@ -220,6 +220,7 @@ export const ptBR: TranslationResources = {
       totalTokens: "Tokens totais",
       today: "Hoje",
       cost: "Custo total",
+      costToday: "Custo de hoje",
       running: "Em execução",
       needsAttention: "Precisa de atenção",
       errors: "Erros",
@@ -229,6 +230,12 @@ export const ptBR: TranslationResources = {
       unavailable: "Status indisponível",
       unsupported: "Atualize o host para usar isto.",
       offline: "O host está offline.",
+    },
+    cost: {
+      title: "Custo",
+      today: "Hoje",
+      total: "Total",
+      estimateNote: "Os custos de OpenAI e Codex são estimados pelos preços de tokens da API.",
     },
     sessions: {
       title: "Sessões de agentes",

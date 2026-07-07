@@ -216,6 +216,7 @@ export const en = {
       totalTokens: "Total tokens",
       today: "Today",
       cost: "Total cost",
+      costToday: "Today cost",
       running: "Running",
       needsAttention: "Needs attention",
       errors: "Errors",
@@ -225,6 +226,12 @@ export const en = {
       unavailable: "Status unavailable",
       unsupported: "Update the host to use this.",
       offline: "Host is offline.",
+    },
+    cost: {
+      title: "Cost",
+      today: "Today",
+      total: "Total",
+      estimateNote: "OpenAI and Codex costs are estimated from API token pricing.",
     },
     sessions: {
       title: "Agent sessions",

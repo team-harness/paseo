@@ -217,6 +217,7 @@ export const ar: TranslationResources = {
       totalTokens: "إجمالي الرموز",
       today: "اليوم",
       cost: "إجمالي التكلفة",
+      costToday: "تكلفة اليوم",
       running: "قيد التشغيل",
       needsAttention: "تحتاج إلى انتباه",
       errors: "أخطاء",
@@ -226,6 +227,12 @@ export const ar: TranslationResources = {
       unavailable: "الحالة غير متاحة",
       unsupported: "حدّث المضيف لاستخدام هذا.",
       offline: "المضيف غير متصل.",
+    },
+    cost: {
+      title: "التكلفة",
+      today: "اليوم",
+      total: "الإجمالي",
+      estimateNote: "يتم تقدير تكاليف OpenAI وCodex من أسعار رموز API.",
     },
     sessions: {
       title: "جلسات الوكلاء",

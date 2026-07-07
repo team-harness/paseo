@@ -220,6 +220,7 @@ export const fr: TranslationResources = {
       totalTokens: "Tokens totaux",
       today: "Aujourd'hui",
       cost: "Coût total",
+      costToday: "Coût du jour",
       running: "En cours",
       needsAttention: "À traiter",
       errors: "Erreurs",
@@ -229,6 +230,12 @@ export const fr: TranslationResources = {
       unavailable: "Statut indisponible",
       unsupported: "Mettez à jour l'hôte pour utiliser ceci.",
       offline: "L'hôte est hors ligne.",
+    },
+    cost: {
+      title: "Coût",
+      today: "Aujourd'hui",
+      total: "Total",
+      estimateNote: "Les coûts OpenAI et Codex sont estimés à partir des tarifs API par token.",
     },
     sessions: {
       title: "Sessions d'agents",

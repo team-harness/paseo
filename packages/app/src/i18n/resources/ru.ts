@@ -219,6 +219,7 @@ export const ru: TranslationResources = {
       totalTokens: "Всего токенов",
       today: "Сегодня",
       cost: "Общая стоимость",
+      costToday: "Стоимость сегодня",
       running: "Выполняется",
       needsAttention: "Требует внимания",
       errors: "Ошибки",
@@ -228,6 +229,12 @@ export const ru: TranslationResources = {
       unavailable: "Статус недоступен",
       unsupported: "Обновите хост, чтобы использовать это.",
       offline: "Хост не в сети.",
+    },
+    cost: {
+      title: "Стоимость",
+      today: "Сегодня",
+      total: "Всего",
+      estimateNote: "Стоимость OpenAI и Codex оценивается по ценам API за токены.",
     },
     sessions: {
       title: "Сессии агентов",

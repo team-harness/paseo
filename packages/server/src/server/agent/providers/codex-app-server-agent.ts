@@ -855,6 +855,13 @@ function filterCodexThreadsByCwd(
 }
 
 export function toAgentUsage(tokenUsage: unknown): AgentUsage | undefined {
+  return toAgentUsageForModel(tokenUsage, undefined);
+}
+
+export function toAgentUsageForModel(
+  tokenUsage: unknown,
+  modelId: string | null | undefined,
+): AgentUsage | undefined {
   const usage = toObjectRecord(tokenUsage);
   if (!usage) return undefined;
   const last = toObjectRecord(usage.last);
@@ -863,14 +870,95 @@ export function toAgentUsage(tokenUsage: unknown): AgentUsage | undefined {
     usage.modelContextWindow,
   );
   const contextWindowUsedTokens = firstPositiveFiniteNumber(last?.total_tokens, last?.totalTokens);
+  const inputTokens = typeof last?.inputTokens === "number" ? last.inputTokens : undefined;
+  const cachedInputTokens =
+    typeof last?.cachedInputTokens === "number" ? last.cachedInputTokens : undefined;
+  const outputTokens = typeof last?.outputTokens === "number" ? last.outputTokens : undefined;
+  const totalCostUsd = estimateOpenAiModelCostUsd({
+    modelId,
+    inputTokens,
+    cachedInputTokens,
+    outputTokens,
+  });
   return {
-    inputTokens: typeof last?.inputTokens === "number" ? last.inputTokens : undefined,
-    cachedInputTokens:
-      typeof last?.cachedInputTokens === "number" ? last.cachedInputTokens : undefined,
-    outputTokens: typeof last?.outputTokens === "number" ? last.outputTokens : undefined,
+    inputTokens,
+    cachedInputTokens,
+    outputTokens,
+    ...(totalCostUsd !== undefined ? { totalCostUsd } : {}),
     ...(contextWindowMaxTokens !== undefined ? { contextWindowMaxTokens } : {}),
     ...(contextWindowUsedTokens !== undefined ? { contextWindowUsedTokens } : {}),
   };
+}
+
+interface OpenAiModelPricing {
+  inputPerMillionUsd: number;
+  cachedInputPerMillionUsd: number;
+  outputPerMillionUsd: number;
+}
+
+const OPENAI_MODEL_PRICING: Array<{ pattern: RegExp; pricing: OpenAiModelPricing }> = [
+  {
+    pattern: /^gpt-5\.4-mini(?:$|-)/,
+    pricing: {
+      inputPerMillionUsd: 0.75,
+      cachedInputPerMillionUsd: 0.075,
+      outputPerMillionUsd: 4.5,
+    },
+  },
+  {
+    pattern: /^gpt-5\.4-nano(?:$|-)/,
+    pricing: {
+      inputPerMillionUsd: 0.2,
+      cachedInputPerMillionUsd: 0.02,
+      outputPerMillionUsd: 1.25,
+    },
+  },
+  {
+    pattern: /^gpt-5\.4(?:$|-)/,
+    pricing: {
+      inputPerMillionUsd: 2.5,
+      cachedInputPerMillionUsd: 0.25,
+      outputPerMillionUsd: 15,
+    },
+  },
+  {
+    pattern: /^gpt-5\.3-codex(?:$|-)/,
+    pricing: {
+      inputPerMillionUsd: 1.75,
+      cachedInputPerMillionUsd: 0.175,
+      outputPerMillionUsd: 14,
+    },
+  },
+];
+
+export function estimateOpenAiModelCostUsd(input: {
+  modelId: string | null | undefined;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+}): number | undefined {
+  const modelId = input.modelId?.trim();
+  if (!modelId) {
+    return undefined;
+  }
+  const pricing = OPENAI_MODEL_PRICING.find((entry) => entry.pattern.test(modelId))?.pricing;
+  if (!pricing) {
+    return undefined;
+  }
+  const inputTokens = finiteNonnegativeNumber(input.inputTokens) ?? 0;
+  const cachedInputTokens = finiteNonnegativeNumber(input.cachedInputTokens) ?? 0;
+  const outputTokens = finiteNonnegativeNumber(input.outputTokens) ?? 0;
+  const billableInputTokens = Math.max(0, inputTokens - cachedInputTokens);
+  const cost =
+    (billableInputTokens * pricing.inputPerMillionUsd +
+      cachedInputTokens * pricing.cachedInputPerMillionUsd +
+      outputTokens * pricing.outputPerMillionUsd) /
+    1_000_000;
+  return cost > 0 ? cost : undefined;
+}
+
+function finiteNonnegativeNumber(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 function extractUserText(content: unknown): string | null {
@@ -4623,7 +4711,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   private handleTokenUsageUpdatedNotification(
     parsed: Extract<ParsedCodexNotification, { kind: "token_usage_updated" }>,
   ): void {
-    this.latestUsage = toAgentUsage(parsed.tokenUsage);
+    this.latestUsage = toAgentUsageForModel(parsed.tokenUsage, this.config.model);
     if (this.latestUsage) {
       this.notifySubscribers({
         type: "usage_updated",

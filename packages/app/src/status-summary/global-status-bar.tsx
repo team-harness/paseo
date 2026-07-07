@@ -1,7 +1,13 @@
-import { useMemo } from "react";
-import { Text, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
+import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { usePanelStore } from "@/stores/panel-store";
 import { useGlobalStatusBarView } from "./use-status-summary";
@@ -22,9 +28,11 @@ interface GlobalStatusBarProps {
 const COMPACT_ROW_IDS: ReadonlySet<StatusBarRowId> = new Set([
   "today-tokens",
   "lifetime-tokens",
+  "cost",
   "running",
   "attention",
 ]);
+const COST_SHEET_SNAP_POINTS = ["30%", "55%"];
 
 export interface GlobalStatusBarChromeState {
   view: StatusSummaryViewModel;
@@ -83,9 +91,13 @@ function StatusBarContent({
 
     return (
       <View style={styles.rowGroup} testID="global-status-bar-ready">
-        {rows.map((row) => (
-          <StatusBarChip key={row.id} row={row} t={t} />
-        ))}
+        {rows.map((row) =>
+          row.id === "cost" && row.details ? (
+            <StatusBarCostChip key={row.id} row={row} isCompact={isCompact} t={t} />
+          ) : (
+            <StatusBarChip key={row.id} row={row} t={t} />
+          ),
+        )}
         {hasSessionSnapshots ? (
           <StatusBarRunningSessionsTrigger
             serverId={serverId}
@@ -118,11 +130,116 @@ function StatusBarChip({ row, t }: { row: StatusBarRow; t: (key: string) => stri
   return (
     <View style={chipStyle} testID={`global-status-bar-row-${row.id}`}>
       <Text style={styles.chipLabel} numberOfLines={1}>
-        {getRowLabel(row.id, t)}
+        {getRowLabel(row, t)}
       </Text>
       <Text style={styles.chipValue} numberOfLines={1}>
         {row.value}
       </Text>
+    </View>
+  );
+}
+
+function StatusBarCostChip({
+  row,
+  isCompact,
+  t,
+}: {
+  row: StatusBarRow;
+  isCompact: boolean;
+  t: (key: string) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const chipStyle = useMemo(() => [styles.chip, getToneStyle(row.tone)], [row.tone]);
+  const sheetHeader = useMemo(() => ({ title: t("statusBar.cost.title") }), [t]);
+  const handleOpen = useCallback(() => setOpen(true), []);
+  const handleClose = useCallback(() => setOpen(false), []);
+  const triggerStyle = useCallback(
+    ({
+      pressed,
+      hovered,
+      open: triggerOpen,
+    }: {
+      pressed: boolean;
+      hovered: boolean;
+      open: boolean;
+    }) => [
+      ...chipStyle,
+      hovered || triggerOpen ? styles.chipHovered : null,
+      pressed ? styles.chipPressed : null,
+    ],
+    [chipStyle],
+  );
+  const content = <StatusBarCostDetails row={row} t={t} />;
+
+  if (isCompact) {
+    return (
+      <>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("statusBar.cost.title")}
+          onPress={handleOpen}
+          style={chipStyle}
+          testID="global-status-bar-row-cost"
+        >
+          <StatusBarChipContent row={row} t={t} />
+        </Pressable>
+        <AdaptiveModalSheet
+          header={sheetHeader}
+          visible={open}
+          onClose={handleClose}
+          snapPoints={COST_SHEET_SNAP_POINTS}
+          testID="status-bar-cost-sheet"
+        >
+          {content}
+        </AdaptiveModalSheet>
+      </>
+    );
+  }
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger
+        accessibilityRole="button"
+        accessibilityLabel={t("statusBar.cost.title")}
+        style={triggerStyle}
+        testID="global-status-bar-row-cost"
+      >
+        <StatusBarChipContent row={row} t={t} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" width={220} testID="status-bar-cost-panel">
+        {content}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function StatusBarChipContent({ row, t }: { row: StatusBarRow; t: (key: string) => string }) {
+  return (
+    <>
+      <Text style={styles.chipLabel} numberOfLines={1}>
+        {getRowLabel(row, t)}
+      </Text>
+      <Text style={styles.chipValue} numberOfLines={1}>
+        {row.value}
+      </Text>
+    </>
+  );
+}
+
+function StatusBarCostDetails({ row, t }: { row: StatusBarRow; t: (key: string) => string }) {
+  return (
+    <View style={styles.costDetails} testID="status-bar-cost-details">
+      {row.details?.map((detail) => (
+        <View key={detail.label} style={styles.costDetailRow}>
+          <Text style={styles.costDetailLabel} numberOfLines={1}>
+            {detail.label === "Today" ? t("statusBar.cost.today") : t("statusBar.cost.total")}
+          </Text>
+          <Text style={styles.costDetailValue} numberOfLines={1}>
+            {detail.value}
+          </Text>
+        </View>
+      ))}
+      <Text style={styles.costDetailNote}>{t("statusBar.cost.estimateNote")}</Text>
     </View>
   );
 }
@@ -143,12 +260,14 @@ function getStateMessage(
   return view.message ?? t("statusBar.states.unavailable");
 }
 
-function getRowLabel(rowId: StatusBarRowId, t: (key: string) => string) {
-  if (rowId === "lifetime-tokens") return t("statusBar.rows.totalTokens");
-  if (rowId === "today-tokens") return t("statusBar.rows.today");
-  if (rowId === "cost") return t("statusBar.rows.cost");
-  if (rowId === "running") return t("statusBar.rows.running");
-  if (rowId === "attention") return t("statusBar.rows.needsAttention");
+function getRowLabel(row: StatusBarRow, t: (key: string) => string) {
+  if (row.id === "lifetime-tokens") return t("statusBar.rows.totalTokens");
+  if (row.id === "today-tokens") return t("statusBar.rows.today");
+  if (row.id === "cost") {
+    return row.label === "Total cost" ? t("statusBar.rows.cost") : t("statusBar.rows.costToday");
+  }
+  if (row.id === "running") return t("statusBar.rows.running");
+  if (row.id === "attention") return t("statusBar.rows.needsAttention");
   return t("statusBar.rows.errors");
 }
 
@@ -211,6 +330,12 @@ const styles = StyleSheet.create((theme) => ({
   chipDanger: {
     borderColor: theme.colors.statusDanger,
   },
+  chipHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  chipPressed: {
+    opacity: theme.opacity[50],
+  },
   chipLabel: {
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
@@ -221,5 +346,29 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
+  },
+  costDetails: {
+    padding: theme.spacing[3],
+    gap: theme.spacing[2],
+  },
+  costDetailRow: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
+  costDetailLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  costDetailValue: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+  },
+  costDetailNote: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
 }));

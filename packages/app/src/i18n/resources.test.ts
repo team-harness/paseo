@@ -166,12 +166,15 @@ describe("translation resources", () => {
   it("includes global status bar keys", () => {
     expect(en.statusBar.rows.totalTokens).toBe("Total tokens");
     expect(en.statusBar.rows.cost).toBe("Total cost");
+    expect(en.statusBar.rows.costToday).toBe("Today cost");
     expect(en.statusBar.rows.needsAttention).toBe("Needs attention");
     expect(en.statusBar.states.loading).toBe("Loading status");
+    expect(en.statusBar.cost.estimateNote).toContain("estimated");
     expect(en.statusBar.sessions.title).toBe("Agent sessions");
     expect(en.statusBar.sessions.actions.openAgent).toBe("Open {{title}}");
     expect(zhCN.statusBar.sessions.trigger).toBe("会话");
     expect(zhCN.statusBar.rows.cost).toBe("总费用");
+    expect(zhCN.statusBar.rows.costToday).toBe("今日费用");
   });
 
   it("includes shared shell keys for the Batch 1 migration", () => {

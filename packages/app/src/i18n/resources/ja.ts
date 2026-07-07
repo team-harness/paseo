@@ -220,6 +220,7 @@ export const ja: TranslationResources = {
       totalTokens: "合計トークン",
       today: "今日",
       cost: "合計コスト",
+      costToday: "今日のコスト",
       running: "実行中",
       needsAttention: "対応が必要",
       errors: "エラー",
@@ -229,6 +230,12 @@ export const ja: TranslationResources = {
       unavailable: "ステータスを利用できません",
       unsupported: "これを使うにはホストを更新してください。",
       offline: "ホストはオフラインです。",
+    },
+    cost: {
+      title: "コスト",
+      today: "今日",
+      total: "合計",
+      estimateNote: "OpenAI と Codex のコストは API トークン料金から推定されます。",
     },
     sessions: {
       title: "エージェントセッション",

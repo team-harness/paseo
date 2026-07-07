@@ -162,15 +162,62 @@ vi.mock("@/stores/navigation-active-workspace-store", () => ({
 }));
 
 vi.mock("@/components/ui/dropdown-menu", () => ({
-  DropdownMenu: ({ children }: { children?: React.ReactNode }) =>
-    React.createElement("div", null, children),
-  DropdownMenuTrigger: ({ children, testID }: { children?: React.ReactNode; testID?: string }) =>
-    React.createElement("button", { "data-testid": testID, type: "button" }, children),
-  DropdownMenuContent: () => null,
+  DropdownMenu: ({
+    children,
+    open,
+    onOpenChange,
+  }: {
+    children?: React.ReactNode;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+  }) =>
+    React.createElement(
+      "div",
+      { "data-open": String(open), "data-testid": "dropdown-root" },
+      React.Children.map(children, (child) =>
+        React.isValidElement(child)
+          ? React.cloneElement(child as React.ReactElement<Record<string, unknown>>, {
+              __open: open,
+              __onOpenChange: onOpenChange,
+            })
+          : child,
+      ),
+    ),
+  DropdownMenuTrigger: ({
+    children,
+    testID,
+    __onOpenChange,
+  }: {
+    children?: React.ReactNode;
+    testID?: string;
+    __onOpenChange?: (open: boolean) => void;
+  }) =>
+    React.createElement(
+      "button",
+      { "data-testid": testID, onClick: () => __onOpenChange?.(true), type: "button" },
+      children,
+    ),
+  DropdownMenuContent: ({
+    children,
+    testID,
+    __open,
+  }: {
+    children?: React.ReactNode;
+    testID?: string;
+    __open?: boolean;
+  }) => (__open ? React.createElement("div", { "data-testid": testID }, children) : null),
 }));
 
 vi.mock("@/components/adaptive-modal-sheet", () => ({
-  AdaptiveModalSheet: () => null,
+  AdaptiveModalSheet: ({
+    children,
+    visible,
+    testID,
+  }: {
+    children?: React.ReactNode;
+    visible?: boolean;
+    testID?: string;
+  }) => (visible ? React.createElement("div", { "data-testid": testID }, children) : null),
 }));
 
 vi.mock("./use-status-summary", () => ({
@@ -208,7 +255,16 @@ function readyView(): StatusSummaryViewModel {
     },
     primaryRows: [
       { id: "lifetime-tokens", label: "Total tokens", value: "1,500", tone: "default" },
-      { id: "cost", label: "Total cost", value: "-", tone: "default" },
+      {
+        id: "cost",
+        label: "Today cost",
+        value: "$0.1234",
+        tone: "ok",
+        details: [
+          { label: "Today", value: "$0.1234" },
+          { label: "Total", value: "$12.34" },
+        ],
+      },
       { id: "today-tokens", label: "Today", value: "250", tone: "default" },
       { id: "running", label: "Running", value: "2", tone: "ok" },
       { id: "attention", label: "Needs attention", value: "1", tone: "warning" },
@@ -280,6 +336,24 @@ describe("GlobalStatusBar", () => {
     expect(container?.querySelector('[data-testid="global-status-bar-row-cost"]')).not.toBeNull();
   });
 
+  it("opens desktop cost details with today and total values", () => {
+    runtimeState.view = readyView();
+
+    act(() => {
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
+    });
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="global-status-bar-row-cost"]')
+        ?.click();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-cost-panel"]')).not.toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-cost-details"]')?.textContent).toBe(
+      "statusBar.cost.today$0.1234statusBar.cost.total$12.34statusBar.cost.estimateNote",
+    );
+  });
+
   it("keeps compact rows to high-priority summary chips", () => {
     runtimeState.view = readyView();
     runtimeState.compact = true;
@@ -288,11 +362,30 @@ describe("GlobalStatusBar", () => {
       root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
     });
 
-    expect(container?.querySelector('[data-testid="global-status-bar-row-cost"]')).toBeNull();
+    expect(container?.querySelector('[data-testid="global-status-bar-row-cost"]')).not.toBeNull();
     expect(container?.querySelector('[data-testid="global-status-bar-row-errors"]')).toBeNull();
     expect(
       container?.querySelector('[data-testid="global-status-bar-row-running"]'),
     ).not.toBeNull();
+  });
+
+  it("opens compact cost details in a sheet", () => {
+    runtimeState.view = readyView();
+    runtimeState.compact = true;
+
+    act(() => {
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
+    });
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="global-status-bar-row-cost"]')
+        ?.click();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-cost-sheet"]')).not.toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-cost-details"]')?.textContent).toBe(
+      "statusBar.cost.today$0.1234statusBar.cost.total$12.34statusBar.cost.estimateNote",
+    );
   });
 
   it("renders quiet non-ready states and hides unsupported hosts", () => {

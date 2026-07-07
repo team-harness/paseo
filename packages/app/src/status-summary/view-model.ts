@@ -18,6 +18,12 @@ export interface StatusBarRow {
   label: string;
   value: string;
   tone: "default" | "ok" | "warning" | "danger";
+  details?: StatusBarRowDetail[];
+}
+
+export interface StatusBarRowDetail {
+  label: string;
+  value: string;
 }
 
 export type StatusSummaryViewModel =
@@ -90,12 +96,22 @@ export function buildPrimaryRows(summary: HostStatusSummaryPayload): StatusBarRo
     },
   ];
 
-  const cost = summary.usage.lifetime.totalCostUsd ?? summary.usage.today.totalCostUsd;
+  const todayCost = summary.usage.today.totalCostUsd;
+  const lifetimeCost = summary.usage.lifetime.totalCostUsd;
+  const cost = todayCost ?? lifetimeCost;
   rows.push({
     id: "cost",
-    label: "Total cost",
+    label: todayCost === undefined && lifetimeCost !== undefined ? "Total cost" : "Today cost",
     value: formatCost(cost),
     tone: cost === undefined ? "default" : "ok",
+    ...(cost !== undefined
+      ? {
+          details: [
+            { label: "Today", value: formatCost(todayCost) },
+            { label: "Total", value: formatCost(lifetimeCost) },
+          ],
+        }
+      : {}),
   });
 
   rows.push(
@@ -132,6 +148,15 @@ function formatTokenCount(value: StatusSummaryUsageTotals["totalTokens"]): strin
   if (value === undefined) {
     return "0";
   }
+  if (value >= 100_000_000) {
+    return formatChineseUnit(value, 100_000_000, "亿");
+  }
+  if (value >= 10_000_000) {
+    return formatChineseUnit(value, 10_000_000, "千万");
+  }
+  if (value >= 10_000) {
+    return formatChineseUnit(value, 10_000, "万");
+  }
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
 }
 
@@ -144,4 +169,14 @@ function formatCost(value: number | undefined): string {
     currency: "USD",
     maximumFractionDigits: value < 1 ? 4 : 2,
   }).format(value);
+}
+
+function formatChineseUnit(value: number, unitValue: number, suffix: string): string {
+  const scaled = value / unitValue;
+  const maximumFractionDigits = scaled >= 10 ? 0 : 1;
+  const formatted = new Intl.NumberFormat("zh-CN", {
+    useGrouping: false,
+    maximumFractionDigits,
+  }).format(scaled);
+  return `${formatted}${suffix}`;
 }
