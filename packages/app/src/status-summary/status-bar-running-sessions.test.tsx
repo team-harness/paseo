@@ -310,6 +310,11 @@ function flushAnimationFrames() {
   });
 }
 
+async function flushPromises() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 function snapshot(input: Partial<StatusAgentSnapshot> & { agentId: string }): StatusAgentSnapshot {
   return {
     agentId: input.agentId,
@@ -614,7 +619,7 @@ describe("status bar running sessions", () => {
     expect(container?.querySelector('[data-testid="status-bar-sessions-panel"]')).toBeNull();
   });
 
-  it("shows a history trigger next to sessions and lists the 10 latest host sessions", () => {
+  it("shows a history trigger next to sessions and lists the 10 latest host sessions", async () => {
     runtimeState.historyAgents = Array.from({ length: 12 }, (_, index) =>
       historyAgent({ id: `history-${index + 1}`, offsetMinutes: index }),
     );
@@ -626,10 +631,11 @@ describe("status bar running sessions", () => {
     expect(container?.querySelector('[data-testid="status-bar-sessions-trigger"]')).not.toBeNull();
     expect(container?.querySelector('[data-testid="status-bar-history-trigger"]')).not.toBeNull();
 
-    act(() => {
+    await act(async () => {
       container
         ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
         ?.click();
+      await flushPromises();
     });
 
     expect(container?.querySelector('[data-testid="status-bar-history-panel"]')).not.toBeNull();
@@ -645,9 +651,45 @@ describe("status bar running sessions", () => {
     expect(
       container?.querySelector('[data-testid="status-bar-history-row-history-11"]'),
     ).toBeNull();
+    expect(runtimeState.refreshHistory).toHaveBeenCalledTimes(1);
   });
 
-  it("shows each history row status", () => {
+  it("refreshes history automatically when opening the history panel", async () => {
+    runtimeState.historyAgents = [historyAgent({ id: "history-1", offsetMinutes: 0 })];
+
+    act(() => {
+      root?.render(renderStatusBar());
+    });
+
+    expect(runtimeState.refreshHistory).not.toHaveBeenCalled();
+
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
+        ?.click();
+      await flushPromises();
+    });
+
+    expect(runtimeState.refreshHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not auto-refresh history while the initial load is active", async () => {
+    runtimeState.historyInitialLoad = true;
+
+    act(() => {
+      root?.render(renderStatusBar());
+    });
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
+        ?.click();
+      await flushPromises();
+    });
+
+    expect(runtimeState.refreshHistory).not.toHaveBeenCalled();
+  });
+
+  it("shows each history row status", async () => {
     runtimeState.historyAgents = [
       historyAgent({ id: "history-running", offsetMinutes: 0, status: "running" }),
     ];
@@ -655,10 +697,11 @@ describe("status bar running sessions", () => {
     act(() => {
       root?.render(renderStatusBar());
     });
-    act(() => {
+    await act(async () => {
       container
         ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
         ?.click();
+      await flushPromises();
     });
 
     expect(
@@ -667,56 +710,60 @@ describe("status bar running sessions", () => {
     expect(container?.textContent).toContain("agentList.status.running");
   });
 
-  it("opens history even when the host has no recent sessions", () => {
+  it("opens history even when the host has no recent sessions", async () => {
     runtimeState.historyAgents = [];
 
     act(() => {
       root?.render(renderStatusBar());
     });
-    act(() => {
+    await act(async () => {
       container
         ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
         ?.click();
+      await flushPromises();
     });
 
     expect(container?.querySelector('[data-testid="status-bar-history-panel"]')).not.toBeNull();
     expect(container?.querySelector('[data-testid="status-bar-history-empty"]')).not.toBeNull();
   });
 
-  it("refreshes history on demand from the history panel", () => {
+  it("refreshes history on demand from the history panel", async () => {
     runtimeState.historyAgents = [historyAgent({ id: "history-1", offsetMinutes: 0 })];
 
     act(() => {
       root?.render(renderStatusBar());
     });
-    act(() => {
+    await act(async () => {
       container
         ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
         ?.click();
+      await flushPromises();
     });
 
     expect(container?.querySelector('[data-testid="status-bar-history-refresh"]')).not.toBeNull();
 
-    act(() => {
+    await act(async () => {
       container
         ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-refresh"]')
         ?.click();
+      await flushPromises();
     });
 
-    expect(runtimeState.refreshHistory).toHaveBeenCalledTimes(1);
+    expect(runtimeState.refreshHistory).toHaveBeenCalledTimes(2);
   });
 
-  it("navigates from a compact history row after closing the sheet", () => {
+  it("navigates from a compact history row after closing the sheet", async () => {
     runtimeState.compact = true;
     runtimeState.historyAgents = [historyAgent({ id: "history-1", offsetMinutes: 0 })];
 
     act(() => {
       root?.render(renderStatusBar());
     });
-    act(() => {
+    await act(async () => {
       container
         ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
         ?.click();
+      await flushPromises();
     });
 
     expect(container?.querySelector('[data-testid="status-bar-history-sheet"]')).not.toBeNull();

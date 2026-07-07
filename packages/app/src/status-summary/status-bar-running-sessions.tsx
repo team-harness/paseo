@@ -270,9 +270,25 @@ export function StatusBarSessionHistoryTrigger({ serverId }: { serverId: string 
     setOpen(false);
   }, [pathname, serverId]);
 
-  const handleOpenChange = useCallback((nextOpen: boolean) => {
-    setOpen(nextOpen);
-  }, []);
+  const refreshHistory = useCallback(() => {
+    if (isInitialLoad || isRefreshing) {
+      return;
+    }
+    setIsManualRefresh(true);
+    void refreshAll().finally(() => {
+      setIsManualRefresh(false);
+    });
+  }, [isInitialLoad, isRefreshing, refreshAll]);
+
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      setOpen(nextOpen);
+      if (nextOpen) {
+        refreshHistory();
+      }
+    },
+    [refreshHistory],
+  );
 
   const handleNavigate = useCallback(
     (agent: AggregatedAgent) => {
@@ -323,16 +339,6 @@ export function StatusBarSessionHistoryTrigger({ serverId }: { serverId: string 
     handleOpenChange(false);
   }, [handleOpenChange]);
 
-  const handleRefresh = useCallback(() => {
-    if (isInitialLoad || isRefreshing) {
-      return;
-    }
-    setIsManualRefresh(true);
-    void refreshAll().finally(() => {
-      setIsManualRefresh(false);
-    });
-  }, [isInitialLoad, isRefreshing, refreshAll]);
-
   const triggerBody = (
     <TriggerContent count={items.length} label={t("statusBar.history.trigger")} />
   );
@@ -361,7 +367,7 @@ export function StatusBarSessionHistoryTrigger({ serverId }: { serverId: string 
             isLoading={isInitialLoad}
             isError={isError}
             isRefreshing={isRefreshing}
-            onRefresh={handleRefresh}
+            onRefresh={refreshHistory}
             onNavigate={handleNavigate}
           />
         </AdaptiveModalSheet>
@@ -392,7 +398,7 @@ export function StatusBarSessionHistoryTrigger({ serverId }: { serverId: string 
           isLoading={isInitialLoad}
           isError={isError}
           isRefreshing={isRefreshing}
-          onRefresh={handleRefresh}
+          onRefresh={refreshHistory}
           onNavigate={handleNavigate}
         />
       </DropdownMenuContent>
