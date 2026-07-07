@@ -215,7 +215,7 @@ export const en = {
     rows: {
       totalTokens: "Total tokens",
       today: "Today",
-      cost: "Cost",
+      cost: "Total cost",
       running: "Running",
       needsAttention: "Needs attention",
       errors: "Errors",

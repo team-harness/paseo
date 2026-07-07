@@ -90,8 +90,8 @@ describe("buildStatusSummaryViewModel", () => {
     if (view.kind !== "ready") throw new Error("Expected ready view");
     expect(view.primaryRows.map((row) => [row.id, row.value, row.tone])).toEqual([
       ["lifetime-tokens", "1,750", "default"],
-      ["today-tokens", "125", "default"],
       ["cost", "$0.1234", "ok"],
+      ["today-tokens", "125", "default"],
       ["running", "1", "ok"],
       ["attention", "2", "warning"],
       ["errors", "1", "danger"],
@@ -144,8 +144,8 @@ describe("buildStatusSummaryViewModel", () => {
     if (view.kind !== "ready") throw new Error("Expected ready view");
     expect(view.primaryRows.map((row) => [row.id, row.value])).toEqual([
       ["lifetime-tokens", "0"],
-      ["today-tokens", "0"],
       ["cost", "-"],
+      ["today-tokens", "0"],
       ["running", "1"],
       ["attention", "2"],
       ["errors", "1"],

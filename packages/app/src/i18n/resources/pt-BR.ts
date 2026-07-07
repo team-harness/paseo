@@ -219,7 +219,7 @@ export const ptBR: TranslationResources = {
     rows: {
       totalTokens: "Tokens totais",
       today: "Hoje",
-      cost: "Custo",
+      cost: "Custo total",
       running: "Em execução",
       needsAttention: "Precisa de atenção",
       errors: "Erros",

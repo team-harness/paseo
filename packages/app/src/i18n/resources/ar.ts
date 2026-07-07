@@ -216,7 +216,7 @@ export const ar: TranslationResources = {
     rows: {
       totalTokens: "إجمالي الرموز",
       today: "اليوم",
-      cost: "التكلفة",
+      cost: "إجمالي التكلفة",
       running: "قيد التشغيل",
       needsAttention: "تحتاج إلى انتباه",
       errors: "أخطاء",

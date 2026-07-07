@@ -219,7 +219,7 @@ export const fr: TranslationResources = {
     rows: {
       totalTokens: "Tokens totaux",
       today: "Aujourd'hui",
-      cost: "Coût",
+      cost: "Coût total",
       running: "En cours",
       needsAttention: "À traiter",
       errors: "Erreurs",

@@ -216,7 +216,7 @@ export const zhCN: TranslationResources = {
     rows: {
       totalTokens: "总 token",
       today: "今天",
-      cost: "费用",
+      cost: "总费用",
       running: "运行中",
       needsAttention: "需要注意",
       errors: "错误",

@@ -218,7 +218,7 @@ export const ru: TranslationResources = {
     rows: {
       totalTokens: "Всего токенов",
       today: "Сегодня",
-      cost: "Стоимость",
+      cost: "Общая стоимость",
       running: "Выполняется",
       needsAttention: "Требует внимания",
       errors: "Ошибки",

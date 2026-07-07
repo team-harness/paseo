@@ -88,6 +88,74 @@ test("uses turn keys to keep reset snapshots from separate provider turns indepe
   });
 });
 
+test("deduplicates cumulative provider cost snapshots while keeping token turns independent", async () => {
+  await withLedger(async ({ ledger }) => {
+    ledger.enqueueEvent(
+      usageEvent({
+        provider: "claude",
+        usageTurnKey: "turn-1",
+        usage: { inputTokens: 100, totalCostUsd: 10 },
+        observedAt: "2026-07-06T08:00:00.000Z",
+      }),
+    );
+    ledger.enqueueEvent(
+      usageEvent({
+        provider: "claude",
+        usageTurnKey: "turn-2",
+        usage: { inputTokens: 4, totalCostUsd: 15 },
+        observedAt: "2026-07-06T09:00:00.000Z",
+      }),
+    );
+    ledger.enqueueEvent(
+      usageEvent({
+        provider: "claude",
+        usageTurnKey: "turn-3",
+        usage: { inputTokens: 6, totalCostUsd: 2 },
+        observedAt: "2026-07-06T10:00:00.000Z",
+      }),
+    );
+
+    await expect(ledger.getTotals()).resolves.toEqual({
+      inputTokens: 110,
+      totalCostUsd: 17,
+    });
+  });
+});
+
+test("uses pre-window cumulative provider cost as the baseline for today totals", async () => {
+  await withLedger(async ({ ledger }) => {
+    ledger.enqueueEvent(
+      usageEvent({
+        provider: "claude",
+        usageTurnKey: "turn-1",
+        usage: { inputTokens: 100, totalCostUsd: 10 },
+        observedAt: "2026-07-05T15:00:00.000Z",
+      }),
+    );
+    ledger.enqueueEvent(
+      usageEvent({
+        provider: "claude",
+        usageTurnKey: "turn-2",
+        usage: { inputTokens: 4, totalCostUsd: 15 },
+        observedAt: "2026-07-06T09:00:00.000Z",
+      }),
+    );
+    ledger.enqueueEvent(
+      usageEvent({
+        provider: "claude",
+        usageTurnKey: "turn-3",
+        usage: { inputTokens: 6, totalCostUsd: 18 },
+        observedAt: "2026-07-06T10:00:00.000Z",
+      }),
+    );
+
+    await expect(ledger.getTodayTotals(new Date("2026-07-06T12:00:00.000Z"))).resolves.toEqual({
+      inputTokens: 10,
+      totalCostUsd: 8,
+    });
+  });
+});
+
 test("drops stale snapshots without writing negative contribution or lowering the basis", async () => {
   await withLedger(async ({ ledger }) => {
     ledger.enqueueEvent(usageEvent({ usage: { inputTokens: 30, outputTokens: 10 } }));

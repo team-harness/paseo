@@ -219,7 +219,7 @@ export const ja: TranslationResources = {
     rows: {
       totalTokens: "合計トークン",
       today: "今日",
-      cost: "コスト",
+      cost: "合計コスト",
       running: "実行中",
       needsAttention: "対応が必要",
       errors: "エラー",

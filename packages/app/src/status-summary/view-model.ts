@@ -88,23 +88,23 @@ export function buildPrimaryRows(summary: HostStatusSummaryPayload): StatusBarRo
       value: formatTokenCount(summary.usage.lifetime.totalTokens),
       tone: "default",
     },
+  ];
+
+  const cost = summary.usage.lifetime.totalCostUsd ?? summary.usage.today.totalCostUsd;
+  rows.push({
+    id: "cost",
+    label: "Total cost",
+    value: formatCost(cost),
+    tone: cost === undefined ? "default" : "ok",
+  });
+
+  rows.push(
     {
       id: "today-tokens",
       label: "Today",
       value: formatTokenCount(summary.usage.today.totalTokens),
       tone: "default",
     },
-  ];
-
-  const cost = summary.usage.lifetime.totalCostUsd ?? summary.usage.today.totalCostUsd;
-  rows.push({
-    id: "cost",
-    label: "Cost",
-    value: formatCost(cost),
-    tone: cost === undefined ? "default" : "ok",
-  });
-
-  rows.push(
     {
       id: "running",
       label: "Running",

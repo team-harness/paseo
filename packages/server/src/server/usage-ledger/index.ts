@@ -142,6 +142,8 @@ const CONTRIBUTION_FIELDS = [
   "outputTokens",
   "totalCostUsd",
 ] as const;
+const TOKEN_CONTRIBUTION_FIELDS = ["inputTokens", "cachedInputTokens", "outputTokens"] as const;
+const CUMULATIVE_COST_PROVIDERS = new Set<AgentProvider>(["claude", "opencode"]);
 
 export class FileBackedUsageLedger implements UsageLedger {
   private readonly dir: string;
@@ -196,9 +198,10 @@ export class FileBackedUsageLedger implements UsageLedger {
         if (!recordMatchesQuery(record, query)) {
           continue;
         }
-        addContribution(totals, record.contribution);
+        addContribution(totals, contributionWithoutCumulativeCost(record));
       }
     }
+    addCumulativeCostContributions(totals, this.recordsByAgent, query);
     return totals;
   }
 
@@ -278,8 +281,13 @@ export class FileBackedUsageLedger implements UsageLedger {
 
     const basisKey = buildBasisKey(input);
     const previousBasis = this.basesByKey.get(basisKey);
-    const contribution = computeContribution(previousBasis?.lastSnapshot, parsedUsage.data);
-    if (contribution.kind === "stale") {
+    const usageForTurnBasis = usageWithoutCumulativeCost(input.provider, parsedUsage.data);
+    const previousTurnSnapshot =
+      previousBasis?.lastSnapshot === undefined
+        ? undefined
+        : usageWithoutCumulativeCost(input.provider, previousBasis.lastSnapshot);
+    const turnContribution = computeContribution(previousTurnSnapshot, usageForTurnBasis);
+    if (turnContribution.kind === "stale") {
       this.logger.warn(
         { agentId: input.agentId, provider: input.provider, basisKey },
         "Dropping stale usage ledger snapshot",
@@ -287,24 +295,22 @@ export class FileBackedUsageLedger implements UsageLedger {
       return;
     }
 
-    if (contribution.kind === "empty") {
+    const costContribution = computeCumulativeCostContribution(
+      input,
+      parsedUsage.data,
+      this.basesByKey,
+    );
+    const delta = {
+      ...(turnContribution.kind === "record" ? turnContribution.delta : {}),
+      ...(costContribution.delta !== undefined ? { totalCostUsd: costContribution.delta } : {}),
+    };
+    if (!hasContribution(delta)) {
       return;
     }
 
     const timestamp = input.observedAt.toISOString();
-    const nextBasis: UsageSnapshotBasis = {
-      basisKey,
-      basisScope: "turn",
-      usageTurnKey: input.usageTurnKey,
-      agentId: input.agentId,
-      provider: input.provider,
-      sessionId: input.sessionId ?? null,
-      turnId: input.turnId ?? null,
-      lastSnapshot: contribution.nextSnapshot,
-      updatedAt: timestamp,
-    };
     const record: UsageLedgerRecord = {
-      id: buildRecordId(basisKey, contribution.nextSnapshot),
+      id: buildRecordId(basisKey, parsedUsage.data),
       agentId: input.agentId,
       provider: input.provider,
       basisScope: "turn",
@@ -318,19 +324,59 @@ export class FileBackedUsageLedger implements UsageLedger {
       timestamp,
       basisKey,
       usage: parsedUsage.data,
-      contribution: contribution.delta,
+      contribution: delta,
     };
 
     const records = this.recordsByAgent.get(input.agentId) ?? [];
     if (records.some((existing) => existing.id === record.id)) {
-      this.basesByKey.set(basisKey, nextBasis);
+      this.updateSnapshotBases(input, timestamp, basisKey, turnContribution, costContribution);
       return;
     }
 
     records.push(record);
     this.recordsByAgent.set(input.agentId, records);
-    this.basesByKey.set(basisKey, nextBasis);
+    this.updateSnapshotBases(input, timestamp, basisKey, turnContribution, costContribution);
     await this.persistAgent(input.agentId);
+  }
+
+  private updateSnapshotBases(
+    input: UsageLedgerEventInput,
+    timestamp: string,
+    basisKey: string,
+    turnContribution:
+      | { kind: "record"; delta: UsageTotalsDelta; nextSnapshot: AgentUsage }
+      | { kind: "empty" },
+    costContribution: CumulativeCostContribution,
+  ): void {
+    if (turnContribution.kind === "record") {
+      this.basesByKey.set(basisKey, {
+        basisKey,
+        basisScope: "turn",
+        usageTurnKey: input.usageTurnKey,
+        agentId: input.agentId,
+        provider: input.provider,
+        sessionId: input.sessionId ?? null,
+        turnId: input.turnId ?? null,
+        lastSnapshot: turnContribution.nextSnapshot,
+        updatedAt: timestamp,
+      });
+    }
+    if (costContribution.nextSnapshot !== undefined) {
+      if (costContribution.basisKey === undefined) {
+        return;
+      }
+      this.basesByKey.set(costContribution.basisKey, {
+        basisKey: costContribution.basisKey,
+        basisScope: "turn",
+        usageTurnKey: costContribution.basisKey,
+        agentId: input.agentId,
+        provider: input.provider,
+        sessionId: input.sessionId ?? null,
+        turnId: input.turnId ?? null,
+        lastSnapshot: { totalCostUsd: costContribution.nextSnapshot },
+        updatedAt: timestamp,
+      });
+    }
   }
 
   private async persistAgent(agentId: string): Promise<void> {
@@ -359,6 +405,14 @@ export class FileBackedUsageLedger implements UsageLedger {
 
 function buildBasisKey(input: UsageLedgerEventInput): string {
   return `${input.agentId}:${input.provider}:${input.usageTurnKey}`;
+}
+
+function buildCumulativeCostBasisKey(input: {
+  agentId: string;
+  provider: AgentProvider;
+  sessionId?: string | null;
+}): string {
+  return `${input.agentId}:${input.provider}:cumulative-cost:${input.sessionId ?? "no-session"}`;
 }
 
 function buildRecordId(basisKey: string, snapshot: AgentUsage): string {
@@ -400,6 +454,111 @@ function computeContribution(
     return { kind: "empty" };
   }
   return { kind: "record", delta, nextSnapshot };
+}
+
+interface CumulativeCostContribution {
+  basisKey?: string;
+  delta?: number;
+  nextSnapshot?: number;
+}
+
+function computeCumulativeCostContribution(
+  input: UsageLedgerEventInput,
+  usage: AgentUsage,
+  basesByKey: Map<string, UsageSnapshotBasis>,
+): CumulativeCostContribution {
+  if (!CUMULATIVE_COST_PROVIDERS.has(input.provider)) {
+    return {};
+  }
+  const nextValue = finiteNumber(usage.totalCostUsd);
+  const basisKey = buildCumulativeCostBasisKey(input);
+  if (nextValue === undefined) {
+    return { basisKey };
+  }
+  const previousValue = finiteNumber(basesByKey.get(basisKey)?.lastSnapshot.totalCostUsd);
+  if (previousValue === undefined || nextValue < previousValue) {
+    return { basisKey, delta: nextValue, nextSnapshot: nextValue };
+  }
+  const difference = nextValue - previousValue;
+  return {
+    basisKey,
+    delta: difference > 0 ? difference : undefined,
+    nextSnapshot: nextValue,
+  };
+}
+
+function usageWithoutCumulativeCost(provider: AgentProvider, usage: AgentUsage): AgentUsage {
+  if (!CUMULATIVE_COST_PROVIDERS.has(provider)) {
+    return usage;
+  }
+  const { totalCostUsd: _totalCostUsd, ...rest } = usage;
+  return rest;
+}
+
+function contributionWithoutCumulativeCost(record: UsageLedgerRecord): UsageTotalsDelta {
+  if (!CUMULATIVE_COST_PROVIDERS.has(record.provider)) {
+    return record.contribution;
+  }
+  const contribution: UsageTotalsDelta = {};
+  for (const field of TOKEN_CONTRIBUTION_FIELDS) {
+    const value = record.contribution[field];
+    if (value !== undefined) {
+      contribution[field] = value;
+    }
+  }
+  return contribution;
+}
+
+function addCumulativeCostContributions(
+  totals: UsageTotalsDelta,
+  recordsByAgent: Map<string, UsageLedgerRecord[]>,
+  query: UsageLedgerQuery,
+): void {
+  const groups = new Map<string, UsageLedgerRecord[]>();
+  for (const records of recordsByAgent.values()) {
+    for (const record of records) {
+      if (!CUMULATIVE_COST_PROVIDERS.has(record.provider)) {
+        continue;
+      }
+      if (!recordMatchesQueryNonTemporal(record, query)) {
+        continue;
+      }
+      const timestamp = Date.parse(record.timestamp);
+      if (query.to && timestamp >= Date.parse(query.to)) {
+        continue;
+      }
+      if (finiteNumber(record.usage.totalCostUsd) === undefined) {
+        continue;
+      }
+      const key = buildCumulativeCostBasisKey(record);
+      const group = groups.get(key) ?? [];
+      group.push(record);
+      groups.set(key, group);
+    }
+  }
+  for (const records of groups.values()) {
+    records.sort(compareUsageLedgerRecords);
+    let previous: number | undefined;
+    for (const record of records) {
+      const next = finiteNumber(record.usage.totalCostUsd);
+      if (next === undefined) {
+        continue;
+      }
+      const delta = previous === undefined || next < previous ? next : next - previous;
+      previous = next;
+      if (delta > 0 && recordMatchesQuery(record, query)) {
+        totals.totalCostUsd = (totals.totalCostUsd ?? 0) + delta;
+      }
+    }
+  }
+}
+
+function compareUsageLedgerRecords(a: UsageLedgerRecord, b: UsageLedgerRecord): number {
+  const timestampOrder = a.timestamp.localeCompare(b.timestamp);
+  if (timestampOrder !== 0) {
+    return timestampOrder;
+  }
+  return a.id.localeCompare(b.id);
 }
 
 function mergeContributionSnapshot(
@@ -449,13 +608,7 @@ function addContribution(totals: UsageTotalsDelta, delta: UsageTotalsDelta): voi
 }
 
 function recordMatchesQuery(record: UsageLedgerRecord, query: UsageLedgerQuery): boolean {
-  if (query.agentId && record.agentId !== query.agentId) {
-    return false;
-  }
-  if (query.provider && record.provider !== query.provider) {
-    return false;
-  }
-  if (query.workspaceId && record.workspaceId !== query.workspaceId) {
+  if (!recordMatchesQueryNonTemporal(record, query)) {
     return false;
   }
   const timestamp = Date.parse(record.timestamp);
@@ -463,6 +616,22 @@ function recordMatchesQuery(record: UsageLedgerRecord, query: UsageLedgerQuery):
     return false;
   }
   if (query.to && timestamp >= Date.parse(query.to)) {
+    return false;
+  }
+  return true;
+}
+
+function recordMatchesQueryNonTemporal(
+  record: UsageLedgerRecord,
+  query: UsageLedgerQuery,
+): boolean {
+  if (query.agentId && record.agentId !== query.agentId) {
+    return false;
+  }
+  if (query.provider && record.provider !== query.provider) {
+    return false;
+  }
+  if (query.workspaceId && record.workspaceId !== query.workspaceId) {
     return false;
   }
   return true;

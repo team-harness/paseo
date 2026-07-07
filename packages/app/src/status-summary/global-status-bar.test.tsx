@@ -208,8 +208,8 @@ function readyView(): StatusSummaryViewModel {
     },
     primaryRows: [
       { id: "lifetime-tokens", label: "Total tokens", value: "1,500", tone: "default" },
+      { id: "cost", label: "Total cost", value: "-", tone: "default" },
       { id: "today-tokens", label: "Today", value: "250", tone: "default" },
-      { id: "cost", label: "Cost", value: "-", tone: "default" },
       { id: "running", label: "Running", value: "2", tone: "ok" },
       { id: "attention", label: "Needs attention", value: "1", tone: "warning" },
       { id: "errors", label: "Errors", value: "0", tone: "default" },
