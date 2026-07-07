@@ -246,6 +246,12 @@ export const ja: TranslationResources = {
         running: "実行中",
         recent: "最近",
       },
+      status: {
+        permission: "権限待ち",
+        error: "エラー",
+        finished: "完了",
+        active: "アクティブ",
+      },
       actions: {
         openAgent: "{{title}}を開く",
         openWorkspace: "ワークスペースを開く",

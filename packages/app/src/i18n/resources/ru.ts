@@ -245,6 +245,12 @@ export const ru: TranslationResources = {
         running: "Выполняется",
         recent: "Недавние",
       },
+      status: {
+        permission: "Ожидает разрешения",
+        error: "Ошибка",
+        finished: "Завершено",
+        active: "Активно",
+      },
       actions: {
         openAgent: "Открыть {{title}}",
         openWorkspace: "Открыть рабочую область",

@@ -243,6 +243,12 @@ export const ar: TranslationResources = {
         running: "قيد التشغيل",
         recent: "الأخيرة",
       },
+      status: {
+        permission: "بانتظار الإذن",
+        error: "خطأ",
+        finished: "اكتمل",
+        active: "نشط",
+      },
       actions: {
         openAgent: "افتح {{title}}",
         openWorkspace: "افتح مساحة العمل",

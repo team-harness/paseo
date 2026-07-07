@@ -242,6 +242,12 @@ export const en = {
         running: "Running",
         recent: "Recent",
       },
+      status: {
+        permission: "Waiting for permission",
+        error: "Error",
+        finished: "Finished",
+        active: "Active",
+      },
       actions: {
         openAgent: "Open {{title}}",
         openWorkspace: "Open workspace",

@@ -243,6 +243,12 @@ export const zhCN: TranslationResources = {
         running: "运行中",
         recent: "最近",
       },
+      status: {
+        permission: "等待权限",
+        error: "出错",
+        finished: "已完成",
+        active: "活跃",
+      },
       actions: {
         openAgent: "打开 {{title}}",
         openWorkspace: "打开工作区",

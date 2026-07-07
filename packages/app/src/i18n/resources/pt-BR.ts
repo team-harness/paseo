@@ -246,6 +246,12 @@ export const ptBR: TranslationResources = {
         running: "Em execução",
         recent: "Recentes",
       },
+      status: {
+        permission: "Aguardando permissão",
+        error: "Erro",
+        finished: "Concluído",
+        active: "Ativo",
+      },
       actions: {
         openAgent: "Abrir {{title}}",
         openWorkspace: "Abrir workspace",

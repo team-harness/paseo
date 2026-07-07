@@ -73,7 +73,7 @@ export function buildStatusBarSessionList(
     }
   };
 
-  appendGroup("attention", input.needsAttentionAgents);
+  appendGroup("attention", sortAttentionSnapshots(input.needsAttentionAgents));
   appendGroup("running", input.runningAgents);
   appendGroup("recent", input.recentlyCompletedAgents);
 
@@ -109,4 +109,26 @@ function normalizeWorkspaceId(value: string | null | undefined): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function sortAttentionSnapshots(snapshots: StatusAgentSnapshot[]): StatusAgentSnapshot[] {
+  return [...snapshots].sort((a, b) => {
+    const priorityDelta = attentionPriority(a) - attentionPriority(b);
+    if (priorityDelta !== 0) {
+      return priorityDelta;
+    }
+    return timestampForAttentionSort(b) - timestampForAttentionSort(a);
+  });
+}
+
+function attentionPriority(snapshot: StatusAgentSnapshot): number {
+  if (snapshot.attentionReason === "permission") return 0;
+  if (snapshot.attentionReason === "error" || snapshot.status === "error") return 1;
+  if (snapshot.attentionReason === "finished") return 2;
+  return 3;
+}
+
+function timestampForAttentionSort(snapshot: StatusAgentSnapshot): number {
+  const timestamp = Date.parse(snapshot.attentionTimestamp ?? snapshot.updatedAt);
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }

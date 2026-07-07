@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, View, type TextStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { usePathname } from "expo-router";
-import { ArrowUpRight, BriefcaseBusiness, RefreshCw } from "lucide-react-native";
+import {
+  ArrowUpRight,
+  BriefcaseBusiness,
+  CheckCircle2,
+  CirclePlay,
+  CircleX,
+  RefreshCw,
+  ShieldQuestion,
+  TriangleAlert,
+} from "lucide-react-native";
 import type { StatusAgentSnapshot } from "@getpaseo/protocol/messages";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import {
@@ -44,6 +53,21 @@ const ThemedBriefcaseBusiness = withUnistyles(BriefcaseBusiness, (theme) => ({
 }));
 const ThemedRefreshCw = withUnistyles(RefreshCw, (theme) => ({
   color: theme.colors.foregroundMuted,
+}));
+const ThemedTriangleAlert = withUnistyles(TriangleAlert, (theme) => ({
+  color: theme.colors.statusWarning,
+}));
+const ThemedCirclePlay = withUnistyles(CirclePlay, (theme) => ({
+  color: theme.colors.foreground,
+}));
+const ThemedCircleX = withUnistyles(CircleX, (theme) => ({
+  color: theme.colors.palette.red[500],
+}));
+const ThemedCheckCircle2 = withUnistyles(CheckCircle2, (theme) => ({
+  color: theme.colors.palette.green[500],
+}));
+const ThemedShieldQuestion = withUnistyles(ShieldQuestion, (theme) => ({
+  color: theme.colors.statusWarning,
 }));
 const COMPACT_SNAP_POINTS = ["45%", "85%"];
 
@@ -393,14 +417,20 @@ function TriggerContent({
         {label}
       </Text>
       {attentionCount !== undefined && attentionCount > 0 ? (
-        <Text style={styles.triggerAttentionValue} numberOfLines={1}>
-          {attentionCount}
-        </Text>
+        <TriggerMetric
+          kind="attention"
+          value={attentionCount}
+          valueStyle={styles.triggerAttentionValue}
+          testID="status-bar-sessions-attention-count"
+        />
       ) : null}
       {runningCount !== undefined ? (
-        <Text style={styles.triggerValue} numberOfLines={1}>
-          {runningCount}
-        </Text>
+        <TriggerMetric
+          kind="running"
+          value={runningCount}
+          valueStyle={styles.triggerValue}
+          testID="status-bar-sessions-running-count"
+        />
       ) : null}
       {count !== undefined ? (
         <Text style={styles.triggerValue} numberOfLines={1}>
@@ -408,6 +438,27 @@ function TriggerContent({
         </Text>
       ) : null}
     </>
+  );
+}
+
+function TriggerMetric({
+  kind,
+  testID,
+  value,
+  valueStyle,
+}: {
+  kind: "attention" | "running";
+  testID: string;
+  value: number;
+  valueStyle: TextStyle;
+}) {
+  return (
+    <View style={styles.triggerMetric} testID={testID}>
+      {kind === "attention" ? <ThemedTriangleAlert size={12} /> : <ThemedCirclePlay size={12} />}
+      <Text style={valueStyle} numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
   );
 }
 
@@ -600,7 +651,10 @@ function StatusBarSessionRow({
 }) {
   const { t } = useTranslation();
   const usage = formatStatusBarSessionUsage(item.snapshot);
-  const meta = [usage, formatStatusBarSessionMeta(item.snapshot)].filter(Boolean).join(" · ");
+  const statusLabel = formatStatusBarSessionStatus(item.snapshot, item.group, t);
+  const meta = [statusLabel, usage, formatStatusBarSessionMeta(item.snapshot)]
+    .filter(Boolean)
+    .join(" · ");
   const title = formatStatusBarSessionTitle(item.snapshot);
   const handlePrimaryPress = useCallback(() => {
     onNavigate(item.primaryTarget);
@@ -618,6 +672,7 @@ function StatusBarSessionRow({
         onPress={handlePrimaryPress}
         style={rowPrimaryStyle}
       >
+        <SessionStatusIcon snapshot={item.snapshot} group={item.group} />
         <View style={styles.rowText}>
           <Text style={styles.rowTitle} numberOfLines={1}>
             {title}
@@ -642,6 +697,52 @@ function StatusBarSessionRow({
       ) : null}
     </View>
   );
+}
+
+function SessionStatusIcon({
+  group,
+  snapshot,
+}: {
+  group: StatusBarSessionListItem["group"];
+  snapshot: StatusAgentSnapshot;
+}) {
+  const icon = (() => {
+    if (snapshot.attentionReason === "permission") {
+      return <ThemedShieldQuestion size={14} />;
+    }
+    if (snapshot.attentionReason === "error" || snapshot.status === "error") {
+      return <ThemedCircleX size={14} />;
+    }
+    if (snapshot.attentionReason === "finished") {
+      return <ThemedCheckCircle2 size={14} />;
+    }
+    if (group === "running" || snapshot.status === "running") {
+      return <ThemedCirclePlay size={14} />;
+    }
+    return <ThemedTriangleAlert size={14} />;
+  })();
+
+  return <View style={styles.rowStatusIcon}>{icon}</View>;
+}
+
+function formatStatusBarSessionStatus(
+  snapshot: StatusAgentSnapshot,
+  group: StatusBarSessionListItem["group"],
+  t: (key: string) => string,
+): string | null {
+  if (snapshot.attentionReason === "permission") {
+    return t("statusBar.sessions.status.permission");
+  }
+  if (snapshot.attentionReason === "error" || snapshot.status === "error") {
+    return t("statusBar.sessions.status.error");
+  }
+  if (snapshot.attentionReason === "finished") {
+    return t("statusBar.sessions.status.finished");
+  }
+  if (group === "running" || snapshot.status === "running") {
+    return t("statusBar.sessions.status.active");
+  }
+  return null;
 }
 
 function getStatusBarSessionGroupLabel(
@@ -764,6 +865,12 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
   },
+  triggerMetric: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[0],
+  },
   triggerValue: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
@@ -824,6 +931,11 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[2],
+  },
+  rowStatusIcon: {
+    width: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
   rowHovered: {
     backgroundColor: theme.colors.surface2,

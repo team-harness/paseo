@@ -8,47 +8,50 @@ import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import type { StatusAgentSnapshot } from "@getpaseo/protocol/messages";
 import type { StatusSummaryViewModel } from "./view-model";
 
-const { theme, runtimeState, navigationSpies } = vi.hoisted(() => ({
-  theme: {
-    spacing: { 0: 0, 1: 4, 2: 8, 3: 12, 4: 16 },
-    borderWidth: { 1: 1 },
-    borderRadius: { md: 6, full: 999 },
-    iconSize: { xs: 12, sm: 14 },
-    fontSize: { xs: 11 },
-    fontWeight: { normal: "400", medium: "500" },
-    opacity: { 50: 0.5 },
-    colors: {
-      surface1: "#111",
-      surface2: "#222",
-      border: "#333",
-      borderAccent: "#555",
-      foreground: "#fff",
-      foregroundMuted: "#aaa",
-      statusWarning: "#d97706",
-      palette: {
-        amber: { 500: "#f59e0b" },
-        blue: { 500: "#3b82f6" },
-        green: { 500: "#22c55e" },
-        red: { 500: "#ef4444" },
+const { theme, runtimeState, navigationSpies } = vi.hoisted(() => {
+  Object.assign(globalThis, { __DEV__: false });
+  return {
+    theme: {
+      spacing: { 0: 0, 1: 4, 2: 8, 3: 12, 4: 16 },
+      borderWidth: { 1: 1 },
+      borderRadius: { md: 6, full: 999 },
+      iconSize: { xs: 12, sm: 14 },
+      fontSize: { xs: 11 },
+      fontWeight: { normal: "400", medium: "500" },
+      opacity: { 50: 0.5 },
+      colors: {
+        surface1: "#111",
+        surface2: "#222",
+        border: "#333",
+        borderAccent: "#555",
+        foreground: "#fff",
+        foregroundMuted: "#aaa",
+        statusWarning: "#d97706",
+        palette: {
+          amber: { 500: "#f59e0b" },
+          blue: { 500: "#3b82f6" },
+          green: { 500: "#22c55e" },
+          red: { 500: "#ef4444" },
+        },
       },
     },
-  },
-  runtimeState: {
-    compact: false,
-    pathname: "/h/server-1",
-    liveWorkspaceIds: ["workspace-1"],
-    historyAgents: [] as AggregatedAgent[],
-    historyInitialLoad: false,
-    historyError: false,
-    historyRevalidating: false,
-    refreshAgent: vi.fn(),
-    refreshHistory: vi.fn(),
-  },
-  navigationSpies: {
-    navigateToAgent: vi.fn(),
-    navigateToWorkspace: vi.fn(),
-  },
-}));
+    runtimeState: {
+      compact: false,
+      pathname: "/h/server-1",
+      liveWorkspaceIds: ["workspace-1"],
+      historyAgents: [] as AggregatedAgent[],
+      historyInitialLoad: false,
+      historyError: false,
+      historyRevalidating: false,
+      refreshAgent: vi.fn(),
+      refreshHistory: vi.fn(),
+    },
+    navigationSpies: {
+      navigateToAgent: vi.fn(),
+      navigateToWorkspace: vi.fn(),
+    },
+  };
+});
 
 vi.mock("react-native", () => ({
   Platform: { OS: "web" },
@@ -97,7 +100,14 @@ vi.mock("react-i18next", () => ({
 vi.mock("lucide-react-native", () => ({
   ArrowUpRight: () => React.createElement("span", { "data-testid": "arrow-icon" }),
   BriefcaseBusiness: () => React.createElement("span", { "data-testid": "workspace-icon" }),
+  CheckCircle2: () => React.createElement("span", { "data-testid": "finished-icon" }),
+  CirclePlay: () => React.createElement("span", { "data-testid": "running-icon" }),
+  CircleX: () => React.createElement("span", { "data-testid": "error-icon" }),
+  FolderGit2: () => React.createElement("span", { "data-testid": "folder-git-icon" }),
+  GitBranch: () => React.createElement("span", { "data-testid": "git-branch-icon" }),
   RefreshCw: () => React.createElement("span", { "data-testid": "refresh-icon" }),
+  ShieldQuestion: () => React.createElement("span", { "data-testid": "permission-icon" }),
+  TriangleAlert: () => React.createElement("span", { "data-testid": "attention-icon" }),
 }));
 
 vi.mock("expo-router", () => ({
@@ -193,6 +203,17 @@ vi.mock("@/hooks/use-agent-history", () => ({
 
 vi.mock("@/stores/navigation-active-workspace-store", () => ({
   navigateToWorkspace: navigationSpies.navigateToWorkspace,
+  useActiveWorkspaceSelection: () => null,
+}));
+
+vi.mock("@/git/use-status-query", () => ({
+  useCheckoutStatusQuery: () => ({
+    status: null,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    error: null,
+  }),
 }));
 
 vi.mock("@/components/ui/dropdown-menu", () => ({
@@ -274,6 +295,7 @@ vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 import { GlobalStatusBar } from "./global-status-bar";
 
 let rafQueue: FrameRequestCallback[] = [];
+type ReadyStatusSummaryViewModel = Extract<StatusSummaryViewModel, { kind: "ready" }>;
 
 vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
   rafQueue.push(callback);
@@ -327,7 +349,7 @@ function historyAgent(input: Partial<AggregatedAgent> & { id: string; offsetMinu
   } satisfies AggregatedAgent;
 }
 
-function readyView(): StatusSummaryViewModel {
+function readyView(): ReadyStatusSummaryViewModel {
   const running = snapshot({ agentId: "agent-running", workspaceId: "workspace-1" });
   const attention = snapshot({ agentId: "agent-attention", workspaceId: "workspace-1" });
   return {
@@ -418,6 +440,12 @@ describe("status bar running sessions", () => {
     expect(container?.querySelector('[data-testid="global-status-bar-row-running"]')).toBeNull();
     expect(container?.querySelector('[data-testid="global-status-bar-row-attention"]')).toBeNull();
     expect(container?.querySelector('[data-testid="status-bar-sessions-trigger"]')).not.toBeNull();
+    expect(
+      container?.querySelector('[data-testid="status-bar-sessions-attention-count"]'),
+    ).not.toBeNull();
+    expect(
+      container?.querySelector('[data-testid="status-bar-sessions-running-count"]'),
+    ).not.toBeNull();
 
     act(() => {
       container
@@ -429,6 +457,56 @@ describe("status bar running sessions", () => {
     expect(
       container?.querySelector('[data-testid="status-bar-session-row-agent-attention"]'),
     ).not.toBeNull();
+  });
+
+  it("prioritizes actionable attention rows and labels session status", () => {
+    const permission = snapshot({
+      agentId: "agent-permission",
+      status: "idle",
+      stateBucket: "needs_input",
+      attentionReason: "permission",
+      attentionTimestamp: "2026-07-06T04:01:00.000Z",
+    });
+    const error = snapshot({
+      agentId: "agent-error",
+      status: "error",
+      stateBucket: "failed",
+      attentionReason: "error",
+      attentionTimestamp: "2026-07-06T04:03:00.000Z",
+    });
+    const finished = snapshot({
+      agentId: "agent-finished",
+      status: "idle",
+      stateBucket: "attention",
+      attentionReason: "finished",
+      attentionTimestamp: "2026-07-06T04:05:00.000Z",
+    });
+    const view = readyView();
+    view.needsAttentionAgents = [finished, error, permission];
+    view.runningAgents = [];
+    view.summary.activity.needsAttentionAgents = view.needsAttentionAgents;
+    view.summary.activity.runningAgents = [];
+
+    act(() => {
+      root?.render(renderStatusBar(view));
+    });
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-sessions-trigger"]')
+        ?.click();
+    });
+
+    const rows = Array.from(
+      container?.querySelectorAll('[data-testid^="status-bar-session-row-"]') ?? [],
+    ).map((row) => row.getAttribute("data-testid"));
+    expect(rows.slice(0, 3)).toEqual([
+      "status-bar-session-row-agent-permission",
+      "status-bar-session-row-agent-error",
+      "status-bar-session-row-agent-finished",
+    ]);
+    expect(container?.textContent).toContain("statusBar.sessions.status.permission");
+    expect(container?.textContent).toContain("statusBar.sessions.status.error");
+    expect(container?.textContent).toContain("statusBar.sessions.status.finished");
   });
 
   it("uses a compact sheet and closes before agent navigation", () => {

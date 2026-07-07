@@ -42,6 +42,9 @@ const { theme, runtimeState } = vi.hoisted(() => ({
     compact: false,
     safeAreaBottom: 0,
     historyAgents: [],
+    activeWorkspaceSelection: null as { serverId: string; workspaceId: string } | null,
+    workspaces: new Map<string, unknown>(),
+    checkoutStatusByCwd: new Map<string, { currentBranch: string | null }>(),
   },
 }));
 
@@ -114,7 +117,14 @@ vi.mock("@/stores/panel-store", () => ({
 vi.mock("lucide-react-native", () => ({
   ArrowUpRight: () => React.createElement("span"),
   BriefcaseBusiness: () => React.createElement("span"),
+  CheckCircle2: () => React.createElement("span"),
+  CirclePlay: () => React.createElement("span"),
+  CircleX: () => React.createElement("span"),
+  FolderGit2: () => React.createElement("span"),
+  GitBranch: () => React.createElement("span"),
   RefreshCw: () => React.createElement("span"),
+  ShieldQuestion: () => React.createElement("span"),
+  TriangleAlert: () => React.createElement("span"),
 }));
 
 vi.mock("expo-router", () => ({
@@ -124,9 +134,11 @@ vi.mock("expo-router", () => ({
 vi.mock("@/stores/session-store", () => ({
   useSessionStore: Object.assign(
     (selector: (state: unknown) => unknown) =>
-      selector({ sessions: { "server-1": { workspaces: new Map(), client: null } } }),
+      selector({ sessions: { "server-1": { workspaces: runtimeState.workspaces, client: null } } }),
     {
-      getState: () => ({ sessions: { "server-1": { workspaces: new Map(), client: null } } }),
+      getState: () => ({
+        sessions: { "server-1": { workspaces: runtimeState.workspaces, client: null } },
+      }),
     },
   ),
 }));
@@ -159,6 +171,17 @@ vi.mock("@/hooks/use-agent-history", () => ({
 
 vi.mock("@/stores/navigation-active-workspace-store", () => ({
   navigateToWorkspace: () => undefined,
+  useActiveWorkspaceSelection: () => runtimeState.activeWorkspaceSelection,
+}));
+
+vi.mock("@/git/use-status-query", () => ({
+  useCheckoutStatusQuery: ({ cwd }: { serverId: string; cwd: string }) => ({
+    status: runtimeState.checkoutStatusByCwd.get(cwd) ?? null,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    error: null,
+  }),
 }));
 
 vi.mock("@/components/ui/dropdown-menu", () => ({
@@ -301,6 +324,9 @@ describe("GlobalStatusBar", () => {
     runtimeState.compact = false;
     runtimeState.safeAreaBottom = 0;
     runtimeState.historyAgents = [];
+    runtimeState.activeWorkspaceSelection = null;
+    runtimeState.workspaces = new Map();
+    runtimeState.checkoutStatusByCwd = new Map();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -351,6 +377,82 @@ describe("GlobalStatusBar", () => {
     expect(container?.querySelector('[data-testid="status-bar-cost-panel"]')).not.toBeNull();
     expect(container?.querySelector('[data-testid="status-bar-cost-details"]')?.textContent).toBe(
       "statusBar.cost.today$0.1234statusBar.cost.total$12.34statusBar.cost.estimateNote",
+    );
+  });
+
+  it("shows active workspace branch and worktree beside history", () => {
+    runtimeState.view = readyView();
+    runtimeState.activeWorkspaceSelection = { serverId: "server-1", workspaceId: "workspace-1" };
+    runtimeState.workspaces = new Map([
+      [
+        "workspace-1",
+        {
+          id: "workspace-1",
+          workspaceDirectory: "/Users/dev/work/paseo",
+          gitRuntime: { currentBranch: "fallback-branch" },
+        },
+      ],
+    ]);
+    runtimeState.checkoutStatusByCwd = new Map([
+      ["/Users/dev/work/paseo", { currentBranch: "status-bar-repo-info" }],
+    ]);
+
+    act(() => {
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-workspace-info"]')).not.toBeNull();
+    expect(
+      container?.querySelector('[data-testid="status-bar-workspace-branch"]')?.textContent,
+    ).toBe("status-bar-repo-info");
+    expect(container?.querySelector('[data-testid="status-bar-workspace-path"]')?.textContent).toBe(
+      "~/work/paseo",
+    );
+  });
+
+  it("refreshes workspace info when the active workspace changes", () => {
+    runtimeState.view = readyView();
+    runtimeState.workspaces = new Map([
+      [
+        "workspace-1",
+        {
+          id: "workspace-1",
+          workspaceDirectory: "/Users/dev/work/paseo",
+          gitRuntime: { currentBranch: "main" },
+        },
+      ],
+      [
+        "workspace-2",
+        {
+          id: "workspace-2",
+          workspaceDirectory: "/Users/dev/work/paseo-worktree",
+          gitRuntime: { currentBranch: "feature" },
+        },
+      ],
+    ]);
+    runtimeState.checkoutStatusByCwd = new Map([
+      ["/Users/dev/work/paseo", { currentBranch: "main" }],
+      ["/Users/dev/work/paseo-worktree", { currentBranch: "status-bar-feature" }],
+    ]);
+    runtimeState.activeWorkspaceSelection = { serverId: "server-1", workspaceId: "workspace-1" };
+
+    act(() => {
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
+    });
+    expect(
+      container?.querySelector('[data-testid="status-bar-workspace-branch"]')?.textContent,
+    ).toBe("main");
+
+    runtimeState.activeWorkspaceSelection = { serverId: "server-1", workspaceId: "workspace-2" };
+    act(() => {
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
+    });
+
+    expect(
+      container?.querySelector('[data-testid="status-bar-workspace-branch"]')?.textContent,
+    ).toBe("status-bar-feature");
+    expect(container?.querySelector('[data-testid="status-bar-workspace-path"]')?.textContent).toBe(
+      "~/work/paseo-worktree",
     );
   });
 

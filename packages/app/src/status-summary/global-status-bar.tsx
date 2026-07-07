@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
+import { FolderGit2, GitBranch } from "lucide-react-native";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import {
   DropdownMenu,
@@ -9,7 +10,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { useCheckoutStatusQuery } from "@/git/use-status-query";
+import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { usePanelStore } from "@/stores/panel-store";
+import { useSessionStore } from "@/stores/session-store";
+import { shortenPath } from "@/utils/shorten-path";
 import { useGlobalStatusBarView } from "./use-status-summary";
 import {
   StatusBarRunningSessionsTrigger,
@@ -33,6 +38,12 @@ const COMPACT_ROW_IDS: ReadonlySet<StatusBarRowId> = new Set([
   "attention",
 ]);
 const COST_SHEET_SNAP_POINTS = ["30%", "55%"];
+const ThemedGitBranch = withUnistyles(GitBranch, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
+const ThemedFolderGit2 = withUnistyles(FolderGit2, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
 
 export interface GlobalStatusBarChromeState {
   view: StatusSummaryViewModel;
@@ -107,6 +118,7 @@ function StatusBarContent({
           />
         ) : null}
         <StatusBarSessionHistoryTrigger serverId={serverId} />
+        <StatusBarWorkspaceInfo serverId={serverId} />
       </View>
     );
   }
@@ -244,6 +256,57 @@ function StatusBarCostDetails({ row, t }: { row: StatusBarRow; t: (key: string) 
   );
 }
 
+function StatusBarWorkspaceInfo({ serverId }: { serverId: string }) {
+  const activeSelection = useActiveWorkspaceSelection();
+  const workspace = useSessionStore((state) => {
+    if (!activeSelection || activeSelection.serverId !== serverId) {
+      return null;
+    }
+    return state.sessions[serverId]?.workspaces.get(activeSelection.workspaceId) ?? null;
+  });
+  const workspaceDirectory = workspace?.workspaceDirectory ?? "";
+  const { status } = useCheckoutStatusQuery({ serverId, cwd: workspaceDirectory });
+  const branchName = formatBranchName(
+    status?.currentBranch ?? workspace?.gitRuntime?.currentBranch,
+  );
+  const worktreePath = shortenPath(workspaceDirectory);
+
+  if (!workspace || !worktreePath) {
+    return null;
+  }
+
+  return (
+    <View style={styles.workspaceInfo} testID="status-bar-workspace-info">
+      {branchName ? (
+        <View style={styles.workspaceInfoLine}>
+          <ThemedGitBranch size={12} />
+          <Text
+            style={styles.workspaceInfoText}
+            numberOfLines={1}
+            testID="status-bar-workspace-branch"
+          >
+            {branchName}
+          </Text>
+        </View>
+      ) : null}
+      <View style={styles.workspaceInfoLine}>
+        <ThemedFolderGit2 size={12} />
+        <Text style={styles.workspaceInfoText} numberOfLines={1} testID="status-bar-workspace-path">
+          {worktreePath}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function formatBranchName(branchName: string | null | undefined): string | null {
+  const trimmed = branchName?.trim();
+  if (!trimmed || trimmed === "HEAD") {
+    return null;
+  }
+  return trimmed;
+}
+
 function getStateMessage(
   view: Exclude<StatusSummaryViewModel, { kind: "ready" | "hidden" }>,
   t: (key: string) => string,
@@ -368,6 +431,26 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
   },
   costDetailNote: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  workspaceInfo: {
+    minWidth: 0,
+    maxWidth: 188,
+    height: 32,
+    justifyContent: "center",
+    gap: theme.spacing[0],
+    paddingHorizontal: theme.spacing[1],
+  },
+  workspaceInfoLine: {
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  workspaceInfoText: {
+    minWidth: 0,
+    flexShrink: 1,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
   },

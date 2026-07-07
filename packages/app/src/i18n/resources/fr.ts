@@ -246,6 +246,12 @@ export const fr: TranslationResources = {
         running: "En cours",
         recent: "Récentes",
       },
+      status: {
+        permission: "En attente d'autorisation",
+        error: "Erreur",
+        finished: "Terminé",
+        active: "Actif",
+      },
       actions: {
         openAgent: "Ouvrir {{title}}",
         openWorkspace: "Ouvrir l'espace de travail",
