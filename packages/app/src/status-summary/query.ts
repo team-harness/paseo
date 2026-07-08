@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { useReplicaQuery } from "@/data/query";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import {
@@ -48,14 +49,11 @@ export function useHostStatusSummary(serverId: string | null | undefined): {
     return fetchStatusSummary(client);
   }, [client]);
 
-  const query = useQuery({
+  const query = useReplicaQuery({
     queryKey,
     queryFn,
     enabled: canFetch,
-    staleTime: STATUS_SUMMARY_STALE_TIME_MS,
-    refetchOnMount: false,
-    refetchOnReconnect: false,
-    refetchOnWindowFocus: false,
+    pushEvent: "status.summary.updated",
   });
 
   const refresh = useCallback(async () => {

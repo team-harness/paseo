@@ -16,7 +16,6 @@ export interface ScheduleCreateOptions extends ScheduleCommandOptions {
   timezone?: string;
   name?: string;
   target?: string;
-  agent?: string;
   provider?: string;
   mode?: string;
   cwd?: string;
@@ -39,7 +38,6 @@ export async function runCreateCommand(
     timezone: options.timezone,
     name: options.name,
     target: options.target,
-    agent: options.agent,
     provider: options.provider,
     mode: options.mode,
     cwd: options.cwd,

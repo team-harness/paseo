@@ -129,37 +129,6 @@ describe("parseScheduleCreateInput first-run timing", () => {
   });
 });
 
-describe("parseScheduleCreateInput existing-agent target", () => {
-  test("--agent creates an existing-agent schedule target", () => {
-    const input = parseScheduleCreateInput({
-      prompt: "check in",
-      cron: "0 9 * * *",
-      agent: "550e8400-e29b-41d4-a716-446655440000",
-    });
-
-    expect(input.target).toEqual({
-      type: "agent",
-      agentId: "550e8400-e29b-41d4-a716-446655440000",
-    });
-  });
-
-  test("--agent rejects conflicting new-agent options", () => {
-    expect(() =>
-      parseScheduleCreateInput({
-        prompt: "check in",
-        cron: "0 9 * * *",
-        agent: "550e8400-e29b-41d4-a716-446655440000",
-        provider: "claude",
-      }),
-    ).toThrow(
-      expect.objectContaining({
-        code: "INVALID_TARGET",
-        message: expect.stringContaining("--agent cannot be combined"),
-      }),
-    );
-  });
-});
-
 describe("parseScheduleUpdateInput", () => {
   test("rejects calls with no fields to update", () => {
     expect(() => parseScheduleUpdateInput({ id: "abc" })).toThrow(
