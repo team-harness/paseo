@@ -88,11 +88,30 @@ export function formatDurationMs(durationMs: number): string {
 
 function resolveScheduleTarget(args: {
   targetValue: string | undefined;
+  agentValue: string | undefined;
   hasExplicitNewAgentOption: boolean;
   createNewAgentTarget: () => ScheduleTarget;
 }): ScheduleTarget {
-  const { targetValue, hasExplicitNewAgentOption, createNewAgentTarget } = args;
+  const { targetValue, agentValue, hasExplicitNewAgentOption, createNewAgentTarget } = args;
   const currentAgentId = process.env.PASEO_AGENT_ID?.trim();
+  const trimmedAgentValue = agentValue?.trim();
+
+  if (trimmedAgentValue) {
+    if (targetValue) {
+      throw {
+        code: "INVALID_TARGET",
+        message: "Specify at most one of --agent or --target",
+      } satisfies CommandError;
+    }
+    if (hasExplicitNewAgentOption) {
+      throw {
+        code: "INVALID_TARGET",
+        message: "--agent cannot be combined with --provider or --mode",
+        details: "Existing-agent schedules reuse that agent's current configuration",
+      } satisfies CommandError;
+    }
+    return { type: "agent", agentId: trimmedAgentValue };
+  }
 
   if (!targetValue) {
     if (currentAgentId && !hasExplicitNewAgentOption) {
@@ -133,6 +152,7 @@ export function parseScheduleCreateInput(options: {
   timezone?: string;
   name?: string;
   target?: string;
+  agent?: string;
   provider?: string;
   mode?: string;
   cwd?: string;
@@ -187,6 +207,7 @@ export function parseScheduleCreateInput(options: {
   };
   const target = resolveScheduleTarget({
     targetValue,
+    agentValue: options.agent,
     hasExplicitNewAgentOption,
     createNewAgentTarget,
   });

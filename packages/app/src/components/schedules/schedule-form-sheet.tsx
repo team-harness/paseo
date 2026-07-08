@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { ChevronDown, Folder } from "lucide-react-native";
+import { Bot, ChevronDown, Folder } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import type { ScheduleCadence, ScheduleSummary } from "@getpaseo/protocol/schedule/types";
@@ -19,6 +19,7 @@ import {
 } from "@/components/adaptive-modal-sheet";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { getProviderIcon } from "@/components/provider-icons";
 import { CadenceEditor } from "@/components/schedules/cadence-editor";
@@ -36,6 +37,7 @@ import { toErrorMessage } from "@/utils/error-messages";
 import { shortenPath } from "@/utils/shorten-path";
 import type { ProjectSummary } from "@/utils/projects";
 import type { ProviderSelectorProvider } from "@/provider-selection/provider-selection";
+import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 
 const DEFAULT_CADENCE: ScheduleCadence = { type: "every", everyMs: 60 * 60 * 1000 };
 
@@ -51,6 +53,14 @@ interface ScheduleProjectOptions {
   targets: ScheduleProjectTarget[];
   options: ComboboxOption[];
   targetByOptionId: Map<string, ScheduleProjectTarget>;
+}
+
+type ScheduleCreateTargetMode = "new-agent" | "agent";
+
+interface ScheduleAgentOptions {
+  agents: AggregatedAgent[];
+  options: ComboboxOption[];
+  agentByOptionId: Map<string, AggregatedAgent>;
 }
 
 // The model/cwd config only exists on new-agent schedules; this screen filters
@@ -91,6 +101,54 @@ function buildScheduleProjectOptions(projects: readonly ProjectSummary[]): Sched
   return { targets, options, targetByOptionId };
 }
 
+function buildScheduleAgentOptions(input: {
+  agents: readonly AggregatedAgent[];
+  serverId?: string;
+}): ScheduleAgentOptions {
+  const agents = input.agents
+    .filter((agent) => !agent.archivedAt)
+    .filter((agent) => !input.serverId || agent.serverId === input.serverId)
+    .sort((left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime());
+  const agentByOptionId = new Map(agents.map((agent) => [agent.id, agent]));
+  const options: ComboboxOption[] = agents.map((agent) => ({
+    id: agent.id,
+    label: agent.title?.trim() || "Untitled agent",
+    description: `${agent.serverLabel} - ${shortenPath(agent.cwd)}`,
+  }));
+  return { agents, options, agentByOptionId };
+}
+
+function resolveAgentTargetLabel(input: {
+  schedule: ScheduleSummary | undefined;
+  agents: readonly AggregatedAgent[];
+  serverId?: string;
+}): string | null {
+  if (!input.schedule || input.schedule.target.type !== "agent") {
+    return null;
+  }
+  const { agentId } = input.schedule.target;
+  const agent = input.agents.find(
+    (entry) => entry.serverId === input.serverId && entry.id === agentId,
+  );
+  if (!agent) {
+    return "Agent unavailable";
+  }
+  return agent.title?.trim() || "Untitled agent";
+}
+
+function resolveScheduleMutationServerId(input: {
+  isEdit: boolean;
+  targetMode: ScheduleCreateTargetMode;
+  selectedAgent: AggregatedAgent | null;
+  serverId?: string;
+  newAgentMutationServerId: string;
+}): string {
+  if (!input.isEdit && input.targetMode === "agent") {
+    return input.selectedAgent?.serverId ?? input.serverId ?? "";
+  }
+  return input.newAgentMutationServerId;
+}
+
 function resolveSelectedScheduleProjectTarget(input: {
   targets: readonly ScheduleProjectTarget[];
   serverId: string | null;
@@ -129,8 +187,25 @@ function parseMaxRuns(raw: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function chooseSubmitter(input: {
+  isAgentTarget: boolean;
+  targetMode: ScheduleCreateTargetMode;
+  submitAgentTarget: () => Promise<boolean>;
+  submitExistingAgent: () => Promise<boolean>;
+  submitNewAgent: () => Promise<boolean>;
+}): Promise<boolean> {
+  if (input.isAgentTarget) {
+    return input.submitAgentTarget();
+  }
+  if (input.targetMode === "agent") {
+    return input.submitExistingAgent();
+  }
+  return input.submitNewAgent();
+}
+
 function canSubmitScheduleForm(input: {
   isAgentTarget: boolean;
+  targetMode: ScheduleCreateTargetMode;
   isEdit: boolean;
   promptTrimmed: string;
   cadenceError: string | null;
@@ -138,6 +213,7 @@ function canSubmitScheduleForm(input: {
   selectedModelIsValid: boolean;
   hasWorkingDir: boolean;
   hasSelectedProject: boolean;
+  hasSelectedAgent: boolean;
 }): boolean {
   if (input.promptTrimmed.length === 0 || input.cadenceError !== null || input.isSubmitting) {
     return false;
@@ -146,6 +222,9 @@ function canSubmitScheduleForm(input: {
   // non-empty stored cwd; create requires a matched project.
   if (input.isAgentTarget) {
     return true;
+  }
+  if (!input.isEdit && input.targetMode === "agent") {
+    return input.hasSelectedAgent;
   }
   if (!input.selectedModelIsValid) {
     return false;
@@ -168,18 +247,15 @@ export function ScheduleFormSheet({
   const { projects } = useProjects();
   const { agents } = useAggregatedAgents({ includeArchived: true });
   const projectOptions = useMemo(() => buildScheduleProjectOptions(projects), [projects]);
+  const agentOptions = useMemo(
+    () => buildScheduleAgentOptions({ agents, serverId }),
+    [agents, serverId],
+  );
 
-  const agentTargetLabel = useMemo(() => {
-    if (!schedule || schedule.target.type !== "agent") {
-      return null;
-    }
-    const { agentId } = schedule.target;
-    const agent = agents.find((entry) => entry.serverId === serverId && entry.id === agentId);
-    if (!agent) {
-      return "Agent unavailable";
-    }
-    return agent.title?.trim() || "Untitled agent";
-  }, [agents, schedule, serverId]);
+  const agentTargetLabel = useMemo(
+    () => resolveAgentTargetLabel({ schedule, agents, serverId }),
+    [agents, schedule, serverId],
+  );
 
   const onlineServerIds = useMemo(
     () => Array.from(new Set(projectOptions.targets.map((target) => target.serverId))),
@@ -233,7 +309,8 @@ export function ScheduleFormSheet({
     [projectOptions.targets, selectedServerId, workingDir],
   );
   const selectedProjectOptionId = selectedProjectTarget?.optionId ?? "";
-  const mutationServerId = selectedProjectTarget?.serverId ?? selectedServerId ?? serverId ?? "";
+  const newAgentMutationServerId =
+    selectedProjectTarget?.serverId ?? selectedServerId ?? serverId ?? "";
 
   const handleSelectProject = useCallback(
     (target: ScheduleProjectTarget) => {
@@ -283,11 +360,6 @@ export function ScheduleFormSheet({
     [selectedModel, selectedProvider],
   );
 
-  const { createSchedule, updateSchedule, isCreating, isUpdating } = useScheduleMutations({
-    serverId: mutationServerId,
-  });
-  const isSubmitting = isCreating || isUpdating;
-
   // Name / prompt / cadence / maxRuns are local to this form, not part of
   // useAgentFormState. Seed once per open from the schedule being edited.
   const [name, setName] = useState(() => schedule?.name ?? "");
@@ -300,6 +372,8 @@ export function ScheduleFormSheet({
   );
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldResetKey, setFieldResetKey] = useState(0);
+  const [targetMode, setTargetMode] = useState<ScheduleCreateTargetMode>("new-agent");
+  const [selectedAgentId, setSelectedAgentId] = useState("");
 
   // The sheet stays mounted across opens, so the lazy initializers above only
   // run once. Re-seed the locally-owned fields (name/prompt/cadence/maxRuns)
@@ -314,6 +388,8 @@ export function ScheduleFormSheet({
       setCadence(schedule?.cadence ?? DEFAULT_CADENCE);
       setSubmitError(null);
       setFieldResetKey((key) => key + 1);
+      setTargetMode("new-agent");
+      setSelectedAgentId("");
       // The sheet stays mounted, and the form reducer's reset-on-close only
       // clears user-modified flags — not the picker values — so a create opened
       // after an edit would inherit that schedule's server/cwd (including a
@@ -329,6 +405,20 @@ export function ScheduleFormSheet({
 
   const promptTrimmed = prompt.trim();
   const trimmedWorkingDir = workingDir.trim();
+  const selectedAgent = selectedAgentId
+    ? (agentOptions.agentByOptionId.get(selectedAgentId) ?? null)
+    : null;
+  const mutationServerId = resolveScheduleMutationServerId({
+    isEdit,
+    targetMode,
+    selectedAgent,
+    serverId,
+    newAgentMutationServerId,
+  });
+  const { createSchedule, updateSchedule, isCreating, isUpdating } = useScheduleMutations({
+    serverId: mutationServerId,
+  });
+  const isSubmitting = isCreating || isUpdating;
   const cadenceError = cadence.type === "cron" ? validateCron(cadence.expression) : null;
   const selectedModelIsValid = isSelectedModelValidForProviders({
     providers: modelSelectorProviders,
@@ -337,6 +427,7 @@ export function ScheduleFormSheet({
   });
   const canSubmit = canSubmitScheduleForm({
     isAgentTarget,
+    targetMode,
     isEdit,
     promptTrimmed,
     cadenceError,
@@ -344,6 +435,7 @@ export function ScheduleFormSheet({
     selectedModelIsValid,
     hasWorkingDir: trimmedWorkingDir.length > 0,
     hasSelectedProject: Boolean(selectedProjectTarget),
+    hasSelectedAgent: Boolean(selectedAgent),
   });
 
   // Agent target: the update RPC only accepts name/prompt/cadence/maxRuns.
@@ -420,20 +512,52 @@ export function ScheduleFormSheet({
     updateSchedule,
   ]);
 
+  const submitExistingAgent = useCallback(async (): Promise<boolean> => {
+    if (!selectedAgent) {
+      return false;
+    }
+    const maxRunsValue = parseMaxRuns(maxRuns);
+    await createSchedule({
+      prompt: promptTrimmed,
+      name: name.trim() || undefined,
+      cadence,
+      target: {
+        type: "agent",
+        agentId: selectedAgent.id,
+      },
+      ...(maxRunsValue != null ? { maxRuns: maxRunsValue } : {}),
+    });
+    return true;
+  }, [cadence, createSchedule, maxRuns, name, promptTrimmed, selectedAgent]);
+
   const handleSubmit = useCallback(async () => {
     if (!promptTrimmed) {
       return;
     }
     setSubmitError(null);
     try {
-      const submitted = isAgentTarget ? await submitAgentTarget() : await submitNewAgent();
+      const submitted = await chooseSubmitter({
+        isAgentTarget,
+        targetMode,
+        submitAgentTarget,
+        submitExistingAgent,
+        submitNewAgent,
+      });
       if (submitted) {
         onClose();
       }
     } catch (error) {
       setSubmitError(toErrorMessage(error));
     }
-  }, [isAgentTarget, onClose, promptTrimmed, submitAgentTarget, submitNewAgent]);
+  }, [
+    isAgentTarget,
+    onClose,
+    promptTrimmed,
+    submitAgentTarget,
+    submitExistingAgent,
+    submitNewAgent,
+    targetMode,
+  ]);
 
   const handleSubmitPress = useCallback(() => {
     void handleSubmit();
@@ -512,53 +636,38 @@ export function ScheduleFormSheet({
         />
       </View>
 
-      {isAgentTarget ? (
+      {!isEdit ? (
         <View style={styles.field}>
           <Text style={styles.label}>Target</Text>
-          <View style={styles.readonlyField} testID="schedule-agent-target">
-            <Text style={styles.selectTriggerText} numberOfLines={1}>
-              {agentTargetLabel}
-            </Text>
-          </View>
-          <Text style={styles.hint}>Runs against this existing agent.</Text>
+          <TargetModeField value={targetMode} onChange={setTargetMode} />
         </View>
-      ) : (
-        <>
-          <View style={styles.field}>
-            <Text style={styles.label}>Project</Text>
-            <ProjectField
-              options={projectOptions.options}
-              targetByOptionId={projectOptions.targetByOptionId}
-              value={selectedProjectOptionId}
-              selectedTarget={selectedProjectTarget}
-              fallbackCwd={workingDir}
-              onSelect={handleSelectProject}
-            />
-          </View>
+      ) : null}
 
-          <View style={styles.field}>
-            <Text style={styles.label}>Model</Text>
-            <CombinedModelSelector
-              providers={modelSelectorProviders}
-              selectedProvider={selectedProvider ?? ""}
-              selectedModel={selectedModel}
-              onSelect={setProviderAndModelFromUser}
-              isLoading={isAllModelsLoading}
-              renderTrigger={renderModelTrigger}
-              triggerFill
-              serverId={mutationServerId}
-            />
-          </View>
-
-          {modeOptions.length > 0 ? (
-            <ModeField
-              options={modeOptions}
-              selectedMode={selectedMode}
-              onSelect={setModeFromUser}
-            />
-          ) : null}
-        </>
-      )}
+      <ScheduleTargetFields
+        isAgentTarget={isAgentTarget}
+        isEdit={isEdit}
+        targetMode={targetMode}
+        agentTargetLabel={agentTargetLabel}
+        agentOptions={agentOptions}
+        selectedAgentId={selectedAgentId}
+        selectedAgent={selectedAgent}
+        onSelectAgent={setSelectedAgentId}
+        projectOptions={projectOptions}
+        selectedProjectOptionId={selectedProjectOptionId}
+        selectedProjectTarget={selectedProjectTarget}
+        workingDir={workingDir}
+        onSelectProject={handleSelectProject}
+        modelSelectorProviders={modelSelectorProviders}
+        selectedProvider={selectedProvider}
+        selectedModel={selectedModel}
+        onSelectProviderModel={setProviderAndModelFromUser}
+        isAllModelsLoading={isAllModelsLoading}
+        renderModelTrigger={renderModelTrigger}
+        newAgentMutationServerId={newAgentMutationServerId}
+        modeOptions={modeOptions}
+        selectedMode={selectedMode}
+        onSelectMode={setModeFromUser}
+      />
 
       <View style={styles.field}>
         <Text style={styles.label}>Cadence</Text>
@@ -589,6 +698,242 @@ export function ScheduleFormSheet({
 // ---------------------------------------------------------------------------
 // Mode field - Combobox over the selected provider's modes.
 // ---------------------------------------------------------------------------
+
+function ScheduleTargetFields({
+  isAgentTarget,
+  isEdit,
+  targetMode,
+  agentTargetLabel,
+  agentOptions,
+  selectedAgentId,
+  selectedAgent,
+  onSelectAgent,
+  projectOptions,
+  selectedProjectOptionId,
+  selectedProjectTarget,
+  workingDir,
+  onSelectProject,
+  modelSelectorProviders,
+  selectedProvider,
+  selectedModel,
+  onSelectProviderModel,
+  isAllModelsLoading,
+  renderModelTrigger,
+  newAgentMutationServerId,
+  modeOptions,
+  selectedMode,
+  onSelectMode,
+}: {
+  isAgentTarget: boolean;
+  isEdit: boolean;
+  targetMode: ScheduleCreateTargetMode;
+  agentTargetLabel: string | null;
+  agentOptions: ScheduleAgentOptions;
+  selectedAgentId: string;
+  selectedAgent: AggregatedAgent | null;
+  onSelectAgent: (agentId: string) => void;
+  projectOptions: ScheduleProjectOptions;
+  selectedProjectOptionId: string;
+  selectedProjectTarget: ScheduleProjectTarget | null;
+  workingDir: string;
+  onSelectProject: (target: ScheduleProjectTarget) => void;
+  modelSelectorProviders: ProviderSelectorProvider[];
+  selectedProvider: AgentProvider | null;
+  selectedModel: string;
+  onSelectProviderModel: (providerId: AgentProvider, modelId: string) => void;
+  isAllModelsLoading: boolean;
+  renderModelTrigger: Parameters<typeof CombinedModelSelector>[0]["renderTrigger"];
+  newAgentMutationServerId: string;
+  modeOptions: { id: string; label: string }[];
+  selectedMode: string;
+  onSelectMode: (modeId: string) => void;
+}): ReactElement {
+  if (isAgentTarget) {
+    return (
+      <View style={styles.field}>
+        <Text style={styles.label}>Target</Text>
+        <View style={styles.readonlyField} testID="schedule-agent-target">
+          <Text style={styles.selectTriggerText} numberOfLines={1}>
+            {agentTargetLabel}
+          </Text>
+        </View>
+        <Text style={styles.hint}>Runs against this existing agent.</Text>
+      </View>
+    );
+  }
+
+  if (!isEdit && targetMode === "agent") {
+    return (
+      <View style={styles.field}>
+        <Text style={styles.label}>Agent</Text>
+        <AgentField
+          options={agentOptions.options}
+          agentByOptionId={agentOptions.agentByOptionId}
+          value={selectedAgentId}
+          selectedAgent={selectedAgent}
+          onSelect={onSelectAgent}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <View style={styles.field}>
+        <Text style={styles.label}>Project</Text>
+        <ProjectField
+          options={projectOptions.options}
+          targetByOptionId={projectOptions.targetByOptionId}
+          value={selectedProjectOptionId}
+          selectedTarget={selectedProjectTarget}
+          fallbackCwd={workingDir}
+          onSelect={onSelectProject}
+        />
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.label}>Model</Text>
+        <CombinedModelSelector
+          providers={modelSelectorProviders}
+          selectedProvider={selectedProvider ?? ""}
+          selectedModel={selectedModel}
+          onSelect={onSelectProviderModel}
+          isLoading={isAllModelsLoading}
+          renderTrigger={renderModelTrigger}
+          triggerFill
+          serverId={newAgentMutationServerId}
+        />
+      </View>
+
+      {modeOptions.length > 0 ? (
+        <ModeField options={modeOptions} selectedMode={selectedMode} onSelect={onSelectMode} />
+      ) : null}
+    </>
+  );
+}
+
+function TargetModeField({
+  value,
+  onChange,
+}: {
+  value: ScheduleCreateTargetMode;
+  onChange: (value: ScheduleCreateTargetMode) => void;
+}): ReactElement {
+  const options = useMemo<Array<SegmentedControlOption<ScheduleCreateTargetMode>>>(
+    () => [
+      { value: "new-agent", label: "New agent", testID: "schedule-target-mode-new-agent" },
+      { value: "agent", label: "Existing agent", testID: "schedule-target-mode-agent" },
+    ],
+    [],
+  );
+  return (
+    <SegmentedControl
+      options={options}
+      value={value}
+      onValueChange={onChange}
+      size="sm"
+      testID="schedule-target-mode"
+    />
+  );
+}
+
+function AgentField({
+  options,
+  agentByOptionId,
+  value,
+  selectedAgent,
+  onSelect,
+}: {
+  options: ComboboxOption[];
+  agentByOptionId: Map<string, AggregatedAgent>;
+  value: string;
+  selectedAgent: AggregatedAgent | null;
+  onSelect: (agentId: string) => void;
+}): ReactElement {
+  const anchorRef = useRef<View>(null);
+  const [open, setOpen] = useState(false);
+
+  const handleSelect = useCallback(
+    (id: string) => {
+      if (!agentByOptionId.has(id)) {
+        return;
+      }
+      onSelect(id);
+      setOpen(false);
+    },
+    [agentByOptionId, onSelect],
+  );
+
+  const handlePress = useCallback(() => {
+    setOpen((current) => !current);
+  }, []);
+
+  const triggerStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.selectTrigger,
+      (Boolean(hovered) || pressed || open) && styles.selectTriggerActive,
+    ],
+    [open],
+  );
+
+  const displayValue =
+    selectedAgent?.title?.trim() || (selectedAgent ? "Untitled agent" : "Select agent");
+  const description = selectedAgent
+    ? `${selectedAgent.serverLabel} - ${shortenPath(selectedAgent.cwd)}`
+    : null;
+
+  const renderOption = useCallback(
+    ({
+      option,
+      selected,
+      active,
+      onPress,
+    }: {
+      option: ComboboxOption;
+      selected: boolean;
+      active: boolean;
+      onPress: () => void;
+    }) => <AgentOptionItem option={option} selected={selected} active={active} onPress={onPress} />,
+    [],
+  );
+
+  return (
+    <>
+      <View ref={anchorRef} collapsable={false}>
+        <Pressable
+          onPress={handlePress}
+          style={triggerStyle}
+          accessibilityRole="button"
+          accessibilityLabel={`Select agent (${displayValue})`}
+          testID="schedule-agent-trigger"
+        >
+          <Text
+            style={selectedAgent ? styles.selectTriggerText : styles.selectTriggerPlaceholder}
+            numberOfLines={1}
+          >
+            {displayValue}
+          </Text>
+          <ChevronDown size={16} color={styles.chevron.color} />
+        </Pressable>
+      </View>
+      {description ? <Text style={styles.hint}>{description}</Text> : null}
+      <Combobox
+        options={options}
+        value={value}
+        onSelect={handleSelect}
+        searchable
+        searchPlaceholder="Search agents..."
+        emptyText="No agents found"
+        title="Select agent"
+        open={open}
+        onOpenChange={setOpen}
+        anchorRef={anchorRef}
+        desktopPlacement="bottom-start"
+        renderOption={renderOption}
+      />
+    </>
+  );
+}
 
 function ModeField({
   options,
@@ -794,6 +1139,39 @@ function ProjectOptionItem({
   return (
     <ComboboxItem
       testID={buildProjectOptionTestId(option.id)}
+      label={option.label}
+      description={option.description}
+      selected={selected}
+      active={active}
+      onPress={onPress}
+      leadingSlot={leadingSlot}
+    />
+  );
+}
+
+function AgentOptionItem({
+  option,
+  selected,
+  active,
+  onPress,
+}: {
+  option: ComboboxOption;
+  selected: boolean;
+  active: boolean;
+  onPress: () => void;
+}): ReactElement {
+  const leadingSlot = useMemo(
+    () => (
+      <View style={styles.optionIconBox}>
+        <Bot size={16} color={styles.chevron.color} />
+      </View>
+    ),
+    [],
+  );
+
+  return (
+    <ComboboxItem
+      testID={`schedule-agent-option-${option.id}`}
       label={option.label}
       description={option.description}
       selected={selected}

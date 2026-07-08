@@ -24,6 +24,7 @@ export function createScheduleCommand(): Command {
       .option("--timezone <iana>", "IANA time zone for cron cadence (default: UTC)")
       .option("--name <name>", "Optional schedule name")
       .option("--target <self|new-agent|agent-id>", "Run target")
+      .option("--agent <agent-id>", "Run against an existing agent")
       .option(
         "--provider <provider>",
         "Agent provider, or provider/model (e.g. codex or codex/gpt-5.4)",
