@@ -20,6 +20,7 @@ import {
   StatusBarRunningSessionsTrigger,
   StatusBarSessionHistoryTrigger,
 } from "./status-bar-running-sessions";
+import { StatusBarSessionPinsTrigger } from "./status-bar-session-pins";
 import type { StatusBarRow, StatusBarRowId, StatusSummaryViewModel } from "./view-model";
 
 export const GLOBAL_STATUS_BAR_CONTENT_HEIGHT = 52;
@@ -115,9 +116,20 @@ function StatusBarContent({
             runningAgents={view.runningAgents}
             needsAttentionAgents={view.needsAttentionAgents}
             recentlyCompletedAgents={view.recentlyCompletedAgents}
+            pinnedSessions={view.pinnedSessions}
+            canUseStatusBarSessionPins={view.canUseStatusBarSessionPins}
           />
         ) : null}
-        <StatusBarSessionHistoryTrigger serverId={serverId} />
+        <StatusBarSessionHistoryTrigger
+          serverId={serverId}
+          pinnedSessions={view.pinnedSessions}
+          canUseStatusBarSessionPins={view.canUseStatusBarSessionPins}
+        />
+        <StatusBarSessionPinsTrigger
+          serverId={serverId}
+          pinnedSessions={view.pinnedSessions}
+          canUseStatusBarSessionPins={view.canUseStatusBarSessionPins}
+        />
         <StatusBarWorkspaceInfo serverId={serverId} />
       </View>
     );

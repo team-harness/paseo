@@ -296,6 +296,8 @@ function readyView(): StatusSummaryViewModel {
     runningAgents: [],
     needsAttentionAgents: [],
     recentlyCompletedAgents: [],
+    pinnedSessions: [],
+    canUseStatusBarSessionPins: false,
     generatedAt: "2026-07-06T04:00:00.000Z",
     isRefreshing: false,
   };

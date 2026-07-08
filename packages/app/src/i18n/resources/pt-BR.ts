@@ -270,6 +270,16 @@ export const ptBR: TranslationResources = {
         refreshing: "Atualizando histórico",
       },
     },
+    pins: {
+      title: "Sessões fixadas",
+      trigger: "Fixar",
+      empty: "Nenhuma sessão fixada",
+      actions: {
+        openSession: "Abrir {{title}}",
+        pinSession: "Fixar {{title}}",
+        unpinSession: "Desafixar {{title}}",
+      },
+    },
   },
   agentList: {
     fallbackTitle: "Nova sessão",

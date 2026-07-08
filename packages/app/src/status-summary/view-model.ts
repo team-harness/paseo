@@ -1,6 +1,7 @@
 import type {
   HostStatusSummaryPayload,
   StatusAgentSnapshot,
+  StatusPinnedSession,
   StatusSummaryUsageTotals,
 } from "@getpaseo/protocol/messages";
 import type { StatusSummaryQueryState } from "./query";
@@ -40,12 +41,15 @@ export type StatusSummaryViewModel =
       runningAgents: StatusAgentSnapshot[];
       needsAttentionAgents: StatusAgentSnapshot[];
       recentlyCompletedAgents: StatusAgentSnapshot[];
+      pinnedSessions: StatusPinnedSession[];
+      canUseStatusBarSessionPins: boolean;
       generatedAt: string;
       isRefreshing: boolean;
     };
 
 export function buildStatusSummaryViewModel(
   state: StatusSummaryQueryState,
+  options: { canUseStatusBarSessionPins?: boolean } = {},
 ): StatusSummaryViewModel {
   if (state.kind === "disabled") {
     if (state.reason === "no-host") {
@@ -81,6 +85,8 @@ export function buildStatusSummaryViewModel(
     runningAgents: summary.activity.runningAgents,
     needsAttentionAgents: summary.activity.needsAttentionAgents,
     recentlyCompletedAgents: summary.activity.recentlyCompletedAgents,
+    pinnedSessions: summary.pinnedSessions ?? [],
+    canUseStatusBarSessionPins: options.canUseStatusBarSessionPins === true,
     generatedAt: summary.generatedAt,
     isRefreshing: state.isRefreshing,
   };

@@ -45,6 +45,7 @@ const { theme, runtimeState, navigationSpies } = vi.hoisted(() => {
       historyRevalidating: false,
       refreshAgent: vi.fn(),
       refreshHistory: vi.fn(),
+      setStatusSessionPin: vi.fn(),
     },
     navigationSpies: {
       navigateToAgent: vi.fn(),
@@ -105,6 +106,8 @@ vi.mock("lucide-react-native", () => ({
   CircleX: () => React.createElement("span", { "data-testid": "error-icon" }),
   FolderGit2: () => React.createElement("span", { "data-testid": "folder-git-icon" }),
   GitBranch: () => React.createElement("span", { "data-testid": "git-branch-icon" }),
+  Pin: () => React.createElement("span", { "data-testid": "pin-icon" }),
+  PinOff: () => React.createElement("span", { "data-testid": "pin-off-icon" }),
   RefreshCw: () => React.createElement("span", { "data-testid": "refresh-icon" }),
   ShieldQuestion: () => React.createElement("span", { "data-testid": "permission-icon" }),
   TriangleAlert: () => React.createElement("span", { "data-testid": "attention-icon" }),
@@ -125,7 +128,10 @@ vi.mock("@/stores/session-store", () => ({
         sessions: {
           "server-1": {
             workspaces: new Map(runtimeState.liveWorkspaceIds.map((id) => [id, { id }])),
-            client: { refreshAgent: runtimeState.refreshAgent },
+            client: {
+              refreshAgent: runtimeState.refreshAgent,
+              setStatusSessionPin: runtimeState.setStatusSessionPin,
+            },
           },
         },
       }),
@@ -134,7 +140,10 @@ vi.mock("@/stores/session-store", () => ({
         sessions: {
           "server-1": {
             workspaces: new Map(runtimeState.liveWorkspaceIds.map((id) => [id, { id }])),
-            client: { refreshAgent: runtimeState.refreshAgent },
+            client: {
+              refreshAgent: runtimeState.refreshAgent,
+              setStatusSessionPin: runtimeState.setStatusSessionPin,
+            },
           },
         },
       }),
@@ -377,6 +386,7 @@ function readyView(): ReadyStatusSummaryViewModel {
         recentlyCompletedAgents: [],
         counts: { running: 1, needsAttention: 1, idle: 0, error: 0 },
       },
+      pinnedSessions: [],
     },
     primaryRows: [
       { id: "lifetime-tokens", label: "Total tokens", value: "1,500", tone: "default" },
@@ -389,6 +399,8 @@ function readyView(): ReadyStatusSummaryViewModel {
     runningAgents: [running],
     needsAttentionAgents: [attention],
     recentlyCompletedAgents: [],
+    pinnedSessions: [],
+    canUseStatusBarSessionPins: false,
     generatedAt: "2026-07-06T04:00:00.000Z",
     isRefreshing: false,
   };
@@ -419,6 +431,11 @@ describe("status bar running sessions", () => {
     runtimeState.refreshAgent.mockResolvedValue(undefined);
     runtimeState.refreshHistory.mockReset();
     runtimeState.refreshHistory.mockResolvedValue(undefined);
+    runtimeState.setStatusSessionPin.mockReset();
+    runtimeState.setStatusSessionPin.mockResolvedValue({
+      requestId: "pin-test",
+      pinnedSessions: [],
+    });
     navigationSpies.navigateToAgent.mockClear();
     navigationSpies.navigateToWorkspace.mockClear();
     container = document.createElement("div");
@@ -568,6 +585,43 @@ describe("status bar running sessions", () => {
     ).toBeNull();
   });
 
+  it("toggles a running session pin without navigating the row", async () => {
+    const view = readyView();
+    view.canUseStatusBarSessionPins = true;
+    view.summary.pinnedSessions = [];
+
+    act(() => {
+      root?.render(renderStatusBar(view));
+    });
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-sessions-trigger"]')
+        ?.click();
+    });
+
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-session-pin-agent-running"]')
+        ?.click();
+      await flushPromises();
+    });
+
+    expect(runtimeState.setStatusSessionPin).toHaveBeenCalledWith({
+      agentId: "agent-running",
+      pinned: true,
+      workspaceId: "workspace-1",
+      title: "agent-running",
+      provider: "codex",
+      cwd: "/work/agent-running",
+      status: "running",
+      requiresAttention: false,
+      attentionReason: undefined,
+      pendingPermissionCount: 0,
+      updatedAt: "2026-07-06T04:00:00.000Z",
+    });
+    expect(navigationSpies.navigateToAgent).not.toHaveBeenCalled();
+  });
+
   it("closes the compact sheet before workspace navigation", () => {
     runtimeState.compact = true;
     act(() => {
@@ -652,6 +706,120 @@ describe("status bar running sessions", () => {
       container?.querySelector('[data-testid="status-bar-history-row-history-11"]'),
     ).toBeNull();
     expect(runtimeState.refreshHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides session pin controls when the host lacks the feature gate", async () => {
+    runtimeState.historyAgents = [historyAgent({ id: "history-1", offsetMinutes: 0 })];
+
+    act(() => {
+      root?.render(renderStatusBar());
+    });
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-sessions-trigger"]')
+        ?.click();
+    });
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
+        ?.click();
+      await flushPromises();
+    });
+
+    expect(container?.querySelector('[data-testid^="status-bar-session-pin-"]')).toBeNull();
+    expect(container?.querySelector('[data-testid^="status-bar-history-pin-"]')).toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-pins-trigger"]')).toBeNull();
+  });
+
+  it("toggles a history session pin without navigating the row", async () => {
+    const view = readyView();
+    view.canUseStatusBarSessionPins = true;
+    runtimeState.historyAgents = [historyAgent({ id: "history-1", offsetMinutes: 0 })];
+
+    act(() => {
+      root?.render(renderStatusBar(view));
+    });
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
+        ?.click();
+      await flushPromises();
+    });
+
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-pin-history-1"]')
+        ?.click();
+      await flushPromises();
+    });
+
+    expect(runtimeState.setStatusSessionPin).toHaveBeenCalledWith({
+      agentId: "history-1",
+      pinned: true,
+      workspaceId: "workspace-1",
+      title: "history-1",
+      provider: "codex",
+      cwd: "/work/history-1",
+      status: "idle",
+      requiresAttention: undefined,
+      attentionReason: undefined,
+      pendingPermissionCount: 0,
+      updatedAt: "2026-07-06T04:00:00.000Z",
+    });
+    expect(navigationSpies.navigateToAgent).not.toHaveBeenCalled();
+  });
+
+  it("opens pinned sessions next to history and navigates without requiring workspaceId", () => {
+    const view = readyView();
+    view.canUseStatusBarSessionPins = true;
+    view.pinnedSessions = [
+      {
+        agentId: "pinned-1",
+        workspaceId: null,
+        title: "Pinned one",
+        provider: "codex",
+        cwd: "/work/pinned-1",
+        status: "running",
+        requiresAttention: false,
+        attentionReason: null,
+        pendingPermissionCount: 0,
+        updatedAt: "2026-07-06T04:00:00.000Z",
+        pinnedAt: "2026-07-06T04:01:00.000Z",
+      },
+    ];
+    view.summary.pinnedSessions = view.pinnedSessions;
+
+    act(() => {
+      root?.render(renderStatusBar(view));
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-history-trigger"]')).not.toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-pins-trigger"]')).not.toBeNull();
+
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-pins-trigger"]')
+        ?.click();
+    });
+    expect(container?.querySelector('[data-testid="status-bar-pins-panel"]')).not.toBeNull();
+    expect(
+      container?.querySelector('[data-testid="status-bar-pin-status-pinned-1"]'),
+    ).not.toBeNull();
+    expect(container?.textContent).toContain("codex · pinned-1");
+    expect(container?.textContent).toContain("agentList.status.running");
+
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-pin-row-pinned-1"] button')
+        ?.click();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-pins-panel"]')).toBeNull();
+    expect(navigationSpies.navigateToAgent).toHaveBeenCalledWith({
+      serverId: "server-1",
+      agentId: "pinned-1",
+      workspaceId: null,
+    });
   });
 
   it("refreshes history automatically when opening the history panel", async () => {

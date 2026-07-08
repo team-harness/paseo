@@ -1,0 +1,11 @@
+feature: "2026-07-08-status-bar-session-pins"
+status: complete
+baseline_ref: "99ef8cee619ef56ecb72726123cd9198480f5ed6"
+stage: acceptance
+driver_kind: none
+driver_id: ""
+design: ".codestable/features/2026-07-08-status-bar-session-pins/status-bar-session-pins-design.md"
+checklist: ".codestable/features/2026-07-08-status-bar-session-pins/status-bar-session-pins-checklist.yaml"
+review: ".codestable/features/2026-07-08-status-bar-session-pins/status-bar-session-pins-review.md"
+qa: ".codestable/features/2026-07-08-status-bar-session-pins/status-bar-session-pins-qa.md"
+acceptance: ".codestable/features/2026-07-08-status-bar-session-pins/status-bar-session-pins-acceptance.md"

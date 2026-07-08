@@ -270,6 +270,16 @@ export const fr: TranslationResources = {
         refreshing: "Actualisation de l'historique",
       },
     },
+    pins: {
+      title: "Sessions épinglées",
+      trigger: "Épingler",
+      empty: "Aucune session épinglée",
+      actions: {
+        openSession: "Ouvrir {{title}}",
+        pinSession: "Épingler {{title}}",
+        unpinSession: "Désépingler {{title}}",
+      },
+    },
   },
   agentList: {
     fallbackTitle: "Nouvelle séance",

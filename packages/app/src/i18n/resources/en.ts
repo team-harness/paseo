@@ -266,6 +266,16 @@ export const en = {
         refreshing: "Refreshing history",
       },
     },
+    pins: {
+      title: "Pinned sessions",
+      trigger: "Pin",
+      empty: "No pinned sessions",
+      actions: {
+        openSession: "Open {{title}}",
+        pinSession: "Pin {{title}}",
+        unpinSession: "Unpin {{title}}",
+      },
+    },
   },
   agentList: {
     fallbackTitle: "New session",

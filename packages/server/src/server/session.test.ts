@@ -103,6 +103,34 @@ class FakeStatusSummaryService {
     },
   };
   private listeners: Array<(summary: HostStatusSummaryPayload) => void> = [];
+  readonly setSessionPin = vi.fn(
+    async (input: {
+      agentId: string;
+      pinned: boolean;
+      workspaceId?: string | null;
+      title?: string | null;
+      provider?: string | null;
+      updatedAt?: string | null;
+    }) => {
+      this.summary = {
+        ...this.summary,
+        pinnedSessions: input.pinned
+          ? [
+              {
+                agentId: input.agentId,
+                workspaceId: input.workspaceId ?? null,
+                title: input.title ?? null,
+                provider: input.provider ?? null,
+                updatedAt: input.updatedAt ?? null,
+                pinnedAt: "2026-07-06T04:01:00.000Z",
+              },
+            ]
+          : [],
+      };
+      this.emit(this.summary);
+      return this.summary.pinnedSessions ?? [];
+    },
+  );
 
   async getSummary(): Promise<HostStatusSummaryPayload> {
     return this.summary;
@@ -4257,6 +4285,45 @@ describe("status-summary", () => {
       {
         type: "status.summary.updated",
         payload: statusSummaryService.summary,
+      },
+    ]);
+  });
+
+  test("sets session pins and broadcasts the updated status summary", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const statusSummaryService = new FakeStatusSummaryService();
+    const session = createSessionForTest({ messages, statusSummaryService });
+
+    await session.handleMessage({
+      type: "status.session_pins.set.request",
+      requestId: "pin-1",
+      agentId: "agent-1",
+      pinned: true,
+      workspaceId: "workspace-1",
+      title: "Pinned",
+      provider: "codex",
+      updatedAt: "2026-07-06T04:00:00.000Z",
+    });
+
+    expect(statusSummaryService.setSessionPin).toHaveBeenCalledWith({
+      agentId: "agent-1",
+      pinned: true,
+      workspaceId: "workspace-1",
+      title: "Pinned",
+      provider: "codex",
+      updatedAt: "2026-07-06T04:00:00.000Z",
+    });
+    expect(messages).toEqual([
+      {
+        type: "status.summary.updated",
+        payload: statusSummaryService.summary,
+      },
+      {
+        type: "status.session_pins.set.response",
+        payload: {
+          requestId: "pin-1",
+          pinnedSessions: statusSummaryService.summary.pinnedSessions,
+        },
       },
     ]);
   });

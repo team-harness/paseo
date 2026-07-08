@@ -1,6 +1,7 @@
 import type {
   HostStatusSummaryPayload,
   StatusAgentSnapshot,
+  StatusPinnedSession,
   StatusSummaryUsageTotals,
 } from "@getpaseo/protocol/messages";
 import { deriveAgentStateBucket } from "@getpaseo/protocol/agent-state-bucket";
@@ -8,6 +9,7 @@ import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import type { Logger } from "pino";
 import type { UsageLedger, UsageTotalsDelta } from "../usage-ledger/index.js";
 import type { AgentManagerEvent, ManagedAgent } from "../agent/agent-manager.js";
+import type { SessionPinStore, SetSessionPinnedInput } from "./session-pin-store.js";
 
 const RECENTLY_COMPLETED_WINDOW_MS = 15 * 60 * 1000;
 
@@ -22,6 +24,7 @@ export interface StatusSummaryAgentSource {
 export interface StatusSummaryServiceOptions {
   usageLedger: UsageLedger;
   agentSource: StatusSummaryAgentSource;
+  sessionPinStore?: Pick<SessionPinStore, "list" | "setPinned">;
   logger: Logger;
   clock?: () => Date;
   coalesceMs?: number;
@@ -32,6 +35,7 @@ export type StatusSummaryListener = (summary: HostStatusSummaryPayload) => void;
 export class StatusSummaryService {
   private readonly usageLedger: UsageLedger;
   private readonly agentSource: StatusSummaryAgentSource;
+  private readonly sessionPinStore?: Pick<SessionPinStore, "list" | "setPinned">;
   private readonly logger: Logger;
   private readonly clock: () => Date;
   private readonly coalesceMs: number;
@@ -43,6 +47,7 @@ export class StatusSummaryService {
   constructor(options: StatusSummaryServiceOptions) {
     this.usageLedger = options.usageLedger;
     this.agentSource = options.agentSource;
+    this.sessionPinStore = options.sessionPinStore;
     this.logger = options.logger;
     this.clock = options.clock ?? (() => new Date());
     this.coalesceMs = options.coalesceMs ?? 250;
@@ -58,9 +63,10 @@ export class StatusSummaryService {
 
   async getSummary(): Promise<HostStatusSummaryPayload> {
     const now = this.clock();
-    const [lifetime, today] = await Promise.all([
+    const [lifetime, today, pinnedSessions] = await Promise.all([
       this.readLedgerTotals("lifetime", () => this.usageLedger.getTotals()),
       this.readLedgerTotals("today", () => this.usageLedger.getTodayTotals(now)),
+      this.readPinnedSessions(),
     ]);
     return {
       generatedAt: now.toISOString(),
@@ -75,7 +81,17 @@ export class StatusSummaryService {
         byModel: [],
       },
       activity: buildActivity(this.agentSource.listAgents(), now),
+      pinnedSessions,
     };
+  }
+
+  async setSessionPin(input: SetSessionPinnedInput): Promise<StatusPinnedSession[]> {
+    if (!this.sessionPinStore) {
+      throw new Error("Status summary session pin store is not configured");
+    }
+    const pinnedSessions = await this.sessionPinStore.setPinned(input);
+    await this.emitUpdated("session_pin_changed");
+    return pinnedSessions;
   }
 
   subscribe(listener: StatusSummaryListener): () => void {
@@ -130,6 +146,18 @@ export class StatusSummaryService {
     } catch (error) {
       this.logger.warn({ err: error, scope }, "Failed to read status summary usage totals");
       return {};
+    }
+  }
+
+  private async readPinnedSessions(): Promise<StatusPinnedSession[]> {
+    if (!this.sessionPinStore) {
+      return [];
+    }
+    try {
+      return await this.sessionPinStore.list();
+    } catch (error) {
+      this.logger.warn({ err: error }, "Failed to read status summary session pins");
+      return [];
     }
   }
 }

@@ -270,6 +270,16 @@ export const ja: TranslationResources = {
         refreshing: "履歴を更新中",
       },
     },
+    pins: {
+      title: "Pinned sessions",
+      trigger: "Pin",
+      empty: "No pinned sessions",
+      actions: {
+        openSession: "Open {{title}}",
+        pinSession: "Pin {{title}}",
+        unpinSession: "Unpin {{title}}",
+      },
+    },
   },
   agentList: {
     fallbackTitle: "新しいセッション",

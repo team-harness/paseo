@@ -267,6 +267,16 @@ export const zhCN: TranslationResources = {
         refreshing: "正在刷新历史",
       },
     },
+    pins: {
+      title: "固定会话",
+      trigger: "Pin",
+      empty: "没有固定会话",
+      actions: {
+        openSession: "打开 {{title}}",
+        pinSession: "Pin {{title}}",
+        unpinSession: "取消 Pin {{title}}",
+      },
+    },
   },
   agentList: {
     fallbackTitle: "新会话",

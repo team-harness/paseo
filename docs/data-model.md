@@ -24,6 +24,8 @@ $PASEO_HOME/
 │       └── {agentId}.json               # One file per agent
 ├── usage-ledger/
 │   └── {agentId}.json                   # Usage contributions and turn snapshot bases
+├── status-summary/
+│   └── session-pins.json                 # Host-owned pinned agent/session shortcuts
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
 ├── chat/
@@ -168,7 +170,26 @@ Writes use `writeJsonFileAtomic`. Files are parsed with Zod at daemon bootstrap;
 
 ---
 
-## 3. Daemon Configuration
+## 3. Status Summary Session Pins
+
+**Path:** `$PASEO_HOME/status-summary/session-pins.json`
+
+Session pins are host-owned shortcuts for returning to specific agent sessions from the global status bar. They are daemon-side state, not app-local cache, so every client connected to the same host sees the same pinned sessions through `status.summary.get.response` and `status.summary.updated`.
+
+The file contains:
+
+| Field            | Type                    | Description                                    |
+| ---------------- | ----------------------- | ---------------------------------------------- |
+| `version`        | `1`                     | Store payload version                          |
+| `pinnedSessions` | `StatusPinnedSession[]` | One entry per pinned agent, keyed by `agentId` |
+
+`StatusPinnedSession` stores `agentId`, optional `workspaceId`, a display snapshot captured when the user pins the session, and `pinnedAt`. The display snapshot includes `title`, `provider`, `cwd`, `status`, `requiresAttention`, `attentionReason`, `pendingPermissionCount`, and `updatedAt` so the pinned list can render the same summary information as the history list even after the source agent leaves the live/history result set. `workspaceId` is only a navigation hint; runtime code must not infer workspace ownership from `cwd`.
+
+Writes use `writeJsonFileAtomic`. The file is parsed with Zod at daemon bootstrap; corrupt or schema-invalid files are logged and treated as an empty pin list instead of blocking daemon startup. Session pins do not modify agent records and do not affect archive, delete, stop, or cancel lifecycle behavior.
+
+---
+
+## 4. Daemon Configuration
 
 **Path:** `$PASEO_HOME/config.json`
 

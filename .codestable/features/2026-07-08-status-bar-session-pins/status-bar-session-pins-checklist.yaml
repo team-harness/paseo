@@ -1,0 +1,138 @@
+feature: 2026-07-08-status-bar-session-pins
+created: 2026-07-08
+
+steps:
+  - id: S1
+    title: Protocol, host pin store, and data model docs
+    status: done
+    description: 新增 pinned session schema、summary optional field、set RPC schema、daemon 文件型 session pin store，并更新 docs/data-model.md 记录新 host store。
+    exit_signal: 协议测试/daemon store 单测覆盖旧 payload 兼容、set/unset 幂等、原子持久化和损坏文件回退；docs/data-model.md 记录 session pin store 路径、schema 归属、原子写和损坏文件回退语义。
+    evidence: unit test / docs diff
+
+  - id: S2
+    title: Server, client RPC, and daemon bootstrap wiring
+    status: done
+    description: Session 分发 status.session_pins.set.request，DaemonClient 暴露 setStatusSessionPin，daemon bootstrap 创建同一个 SessionPinStore 并注入 StatusSummaryService 与 mutation 处理链路，mutation 后广播 status.summary.updated。
+    exit_signal: server/session、client 或构造测试证明真实 daemon wiring 使用同一 store，set 响应返回当前 pinnedSessions，另一客户端可通过 summary update 看到变化。
+    evidence: server/client test
+
+  - id: S3
+    title: Server feature flag, app capability, and summary consumption
+    status: done
+    description: "server_info payload 暴露 features.statusBarSessionPins: true；app 单点解析该 capability，并让 status summary view model 暴露 host 返回的 pinned sessions。"
+    exit_signal: server_info schema/payload 测试覆盖 feature flag；旧 host 下不显示可操作 Pin，新 host 下 rows/list 读取同一 summary pinned state。
+    evidence: unit test / component test
+
+  - id: S4
+    title: Sessions and history row pin toggle
+    status: done
+    description: 在状态栏 sessions/history row 中增加固定尺寸 Pin icon，toggle 调 host mutation，不触发行主导航。
+    exit_signal: 组件测试覆盖 pin/unpin、pending/失败处理、stop propagation、native/compact 可见性和行布局不跳动。
+    evidence: component test
+
+  - id: S5
+    title: Pinned session list entry
+    status: done
+    description: 在 History 入口旁新增 Pin 入口，desktop 用 DropdownMenu，compact 用 AdaptiveModalSheet，渲染 pinned session rows、空态和 stale fallback。
+    exit_signal: 组件测试覆盖有 pin 显示入口、无 pin 隐藏或空态、route/server 切换关闭、缺 workspaceId 仍导航。
+    evidence: component test / screenshot
+
+  - id: S6
+    title: Scope guard and validation
+    status: done
+    description: 运行目标测试、typecheck、lint、format check 和范围 grep，确认没有 app-local session pin、直接路由或 agent lifecycle 越界改动。
+    exit_signal: 验证命令通过或记录明确环境阻塞；scope grep 无越界命中。
+    evidence: command output / grep / diff review
+
+checks:
+  - id: C1
+    source: design §1 明确不做 / §2.1 名词层
+    status: passed
+    assertion: Pin 是 host/daemon 侧持久化状态，不放进 app AsyncStorage，不写入 agent record。
+
+  - id: C2
+    source: design §1 关键决策 2 / §2.2
+    status: passed
+    assertion: status summary additive 返回 pinnedSessions，set RPC 使用 dotted namespace，schema 保持结构纯声明。
+
+  - id: C3
+    source: design §1 关键决策 3
+    status: passed
+    assertion: server 端暴露 server_info.features.statusBarSessionPins，app 通过单点 capability gate 控制 Pin 功能，不写旧 host fallback。
+
+  - id: C4
+    source: design §1 关键决策 4
+    status: passed
+    assertion: sessions/history 行内 Pin toggle 有固定 hit area，native/compact 不依赖 hover，toggle 不触发行导航。
+
+  - id: C5
+    source: design §1 关键决策 5 / §3.1
+    status: passed
+    assertion: host 内按 agentId 去重，缺 workspaceId 仍允许 agent 导航，不从 cwd 推导 workspace ownership。
+
+  - id: C6
+    source: design §2.2 / §3.1
+    status: passed
+    assertion: mutation 成功后广播 status.summary.updated，多客户端看到同一 host pinned state。
+
+  - id: C7
+    source: design §3.3 DoD Contract
+    status: passed
+    assertion: 无直接 router/build route、无 agent archive/stop/delete/cancel 等 lifecycle mutation。
+
+  - id: C8
+    source: design §2.3 / §3.4
+    status: passed
+    assertion: docs/data-model.md 已记录 host session pin store 的路径、schema、原子写和损坏文件回退。
+
+  - id: C9
+    source: design §1 关键决策 3 / §3.3
+    status: passed
+    assertion: 落地代码中的 COMPAT(statusBarSessionPins) 注释使用真实版本号，不保留 v0.1.X 占位。
+
+dod:
+  commands:
+    - id: CMD-001
+      command: npx vitest run packages/protocol/tests/messages.test.ts --bail=1
+      core: true
+      failure_handling: 若目标文件不存在，实现期新增或选择对应 protocol message 测试文件；失败则回 S1 修 schema 兼容。
+    - id: CMD-002
+      command: npx vitest run packages/server/src/server/status-summary/session-pin-store.test.ts --bail=1
+      core: true
+      failure_handling: 失败则回 S1 修 store 持久化或损坏文件处理。
+    - id: CMD-003
+      command: npx vitest run packages/server/src/server/session.test.ts --bail=1
+      core: true
+      failure_handling: 失败则回 S2 修 Session RPC 分发或 summary broadcast。
+    - id: CMD-004
+      command: npx vitest run packages/client/src/daemon-client.test.ts --bail=1
+      core: true
+      failure_handling: 失败则回 S2 修 client RPC。
+    - id: CMD-005
+      command: npx vitest run packages/app/src/status-summary/status-bar-running-sessions.test.tsx --bail=1
+      core: true
+      failure_handling: 失败则回 S3-S5 修 app capability、row toggle、Pin list 或导航。
+    - id: CMD-006
+      command: npm run typecheck
+      core: true
+      failure_handling: 若跨包声明 stale，先按项目指令 build 对应 stack。
+    - id: CMD-007
+      command: npm run lint
+      core: true
+      failure_handling: 只接受无关既有红灯并记录证据。
+    - id: CMD-008
+      command: npm run format:check
+      core: true
+      failure_handling: 失败则运行 npm run format 后复查。
+    - id: CMD-009
+      command: '! rg "AsyncStorage|pinned-tab-targets|usePinnedTargetsStore" packages/app/src/status-summary'
+      core: true
+      failure_handling: 命中说明 session pin 错放到 app-local store，必须移除或回 design。
+    - id: CMD-010
+      command: '! rg "router\\.|buildHostAgentDetailRoute|buildHostWorkspaceRoute|archiveAgent|cancelAgent|deleteAgent|stopAgent" packages/app/src/status-summary packages/server/src/server/status-summary'
+      core: true
+      failure_handling: 越界命中必须移除或回 design。
+    - id: CMD-011
+      command: '! rg "COMPAT\\(statusBarSessionPins\\).*v0\\.1\\.X" packages/app/src packages/server/src packages/protocol/src'
+      core: true
+      failure_handling: 命中说明实现保留版本占位，必须替换为真实版本号。

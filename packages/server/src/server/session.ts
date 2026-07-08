@@ -1676,6 +1676,8 @@ export class Session {
     switch (msg.type) {
       case "status.summary.get.request":
         return this.handleStatusSummaryGetRequest(msg.requestId);
+      case "status.session_pins.set.request":
+        return this.handleStatusSessionPinsSetRequest(msg);
       default:
         return undefined;
     }
@@ -1696,6 +1698,31 @@ export class Session {
     this.emit({
       type: "status.summary.updated",
       payload: summary,
+    });
+  }
+
+  private async handleStatusSessionPinsSetRequest(
+    msg: Extract<SessionInboundMessage, { type: "status.session_pins.set.request" }>,
+  ): Promise<void> {
+    const pinnedSessions = await this.statusSummaryService.setSessionPin({
+      agentId: msg.agentId,
+      pinned: msg.pinned,
+      workspaceId: msg.workspaceId,
+      title: msg.title,
+      provider: msg.provider,
+      cwd: msg.cwd,
+      status: msg.status,
+      requiresAttention: msg.requiresAttention,
+      attentionReason: msg.attentionReason,
+      pendingPermissionCount: msg.pendingPermissionCount,
+      updatedAt: msg.updatedAt,
+    });
+    this.emit({
+      type: "status.session_pins.set.response",
+      payload: {
+        requestId: msg.requestId,
+        pinnedSessions,
+      },
     });
   }
 

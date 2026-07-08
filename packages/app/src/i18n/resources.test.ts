@@ -172,7 +172,10 @@ describe("translation resources", () => {
     expect(en.statusBar.cost.estimateNote).toContain("estimated");
     expect(en.statusBar.sessions.title).toBe("Agent sessions");
     expect(en.statusBar.sessions.actions.openAgent).toBe("Open {{title}}");
+    expect(en.statusBar.pins.title).toBe("Pinned sessions");
+    expect(en.statusBar.pins.actions.pinSession).toBe("Pin {{title}}");
     expect(zhCN.statusBar.sessions.trigger).toBe("会话");
+    expect(zhCN.statusBar.pins.title).toBe("固定会话");
     expect(zhCN.statusBar.rows.cost).toBe("总费用");
     expect(zhCN.statusBar.rows.costToday).toBe("今日费用");
   });

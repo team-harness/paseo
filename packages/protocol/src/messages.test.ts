@@ -308,12 +308,13 @@ describe("status-summary message contract", () => {
     expect(parsed.payload.activity.runningAgents[0]?.parentAgentId).toBe("parent-agent");
   });
 
-  test("parses the statusSummary server feature gate", () => {
+  test("parses the status summary server feature gates", () => {
     const parsed = parseServerInfoStatusPayload({
       status: "server_info",
       serverId: "srv-test",
       features: {
         statusSummary: true,
+        statusBarSessionPins: true,
       },
     });
 
@@ -321,6 +322,7 @@ describe("status-summary message contract", () => {
       throw new Error("Expected server info payload to parse");
     }
     expect(parsed.features?.statusSummary).toBe(true);
+    expect(parsed.features?.statusBarSessionPins).toBe(true);
   });
 });
 
