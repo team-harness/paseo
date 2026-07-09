@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Text, View } from "react-native";
-import { Brain, Folder, GitBranch } from "lucide-react-native";
+import { Bot, Brain, Folder, GitBranch } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import type { ScheduleSummary } from "@getpaseo/protocol/schedule/types";
@@ -19,6 +19,7 @@ import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-moda
 import { ComboboxItem } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { HostStatusDotSlot } from "@/components/hosts/host-picker";
 import { createControlGeometry, type FieldControlSize } from "@/components/ui/control-geometry";
@@ -40,7 +41,7 @@ import {
   type FormPreferences,
 } from "@/hooks/use-form-preferences";
 import { useScheduleMutations } from "@/hooks/use-schedule-mutations";
-import { useAggregatedAgents } from "@/hooks/use-aggregated-agents";
+import { useAggregatedAgents, type AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useProjects } from "@/hooks/use-projects";
 import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
@@ -57,6 +58,7 @@ import type {
 import { validateCron } from "@/utils/schedule-format";
 import { toErrorMessage } from "@/utils/error-messages";
 import { getDeviceTimeZone } from "@/utils/device-timezone";
+import { shortenPath } from "@/utils/shorten-path";
 
 export interface ScheduleFormSheetProps {
   serverId?: string;
@@ -66,9 +68,39 @@ export interface ScheduleFormSheetProps {
   schedule?: ScheduleSummary;
 }
 
+type ScheduleCreateTargetMode = "new-agent" | "agent";
+
+interface ScheduleAgentOptions {
+  options: SelectFieldOption<string>[];
+  agentByKey: Map<string, AggregatedAgent>;
+}
+
 function parseMaxRuns(raw: string): number | null {
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function buildAgentOptionKey(agent: Pick<AggregatedAgent, "serverId" | "id">): string {
+  return `${agent.serverId}:${agent.id}`;
+}
+
+function buildScheduleAgentOptions(input: {
+  agents: readonly AggregatedAgent[];
+  serverId?: string;
+}): ScheduleAgentOptions {
+  const agents = input.agents
+    .filter((agent) => !agent.archivedAt)
+    .filter((agent) => !input.serverId || agent.serverId === input.serverId)
+    .sort((left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime());
+  const agentByKey = new Map(agents.map((agent) => [buildAgentOptionKey(agent), agent]));
+  const options = agents.map((agent) => ({
+    id: buildAgentOptionKey(agent),
+    value: buildAgentOptionKey(agent),
+    label: agent.title?.trim() || "Untitled agent",
+    description: `${agent.serverLabel} - ${shortenPath(agent.cwd)}`,
+    testID: `schedule-agent-option-${agent.id}`,
+  }));
+  return { options, agentByKey };
 }
 
 function resolveCreateServerId(input: {
@@ -258,7 +290,25 @@ function OpenScheduleFormSheet({
   const state = useSyncExternalStore(model.subscribe, model.getState, model.getState);
   const providerSnapshot = useScheduleFormProviderSnapshot(model, state);
   const { agents } = useAggregatedAgents({ includeArchived: true });
-  const mutationServerId = state.selectedServerId ?? serverId ?? "";
+  const [createTargetMode, setCreateTargetMode] = useState<ScheduleCreateTargetMode>("new-agent");
+  const [selectedAgentKey, setSelectedAgentKey] = useState<string | null>(null);
+  const agentOptionServerId = state.selectedServerId ?? serverId;
+  const agentOptions = useMemo(
+    () => buildScheduleAgentOptions({ agents, serverId: agentOptionServerId }),
+    [agentOptionServerId, agents],
+  );
+  useEffect(() => {
+    if (selectedAgentKey && !agentOptions.agentByKey.has(selectedAgentKey)) {
+      setSelectedAgentKey(null);
+    }
+  }, [agentOptions.agentByKey, selectedAgentKey]);
+  const selectedAgent = selectedAgentKey
+    ? (agentOptions.agentByKey.get(selectedAgentKey) ?? null)
+    : null;
+  const isCreatingAgentTarget = mode === "create" && createTargetMode === "agent";
+  const mutationServerId = isCreatingAgentTarget
+    ? (selectedAgent?.serverId ?? state.selectedServerId ?? serverId ?? "")
+    : (state.selectedServerId ?? serverId ?? "");
   const { createSchedule, updateSchedule, isCreating, isUpdating } = useScheduleMutations({
     serverId: mutationServerId,
   });
@@ -266,7 +316,10 @@ function OpenScheduleFormSheet({
   const isSubmitting = isCreating || isUpdating;
   const cadenceError =
     state.cadence.type === "cron" ? validateCron(state.cadence.expression) : null;
-  const canSubmit = state.canSubmit && cadenceError === null && !isSubmitting;
+  const canSubmitBase = isCreatingAgentTarget
+    ? state.prompt.trim().length > 0 && selectedAgent !== null
+    : state.canSubmit;
+  const canSubmit = canSubmitBase && cadenceError === null && !isSubmitting;
   const agentTargetLabel = useMemo(() => {
     if (!schedule || schedule.target.type !== "agent") {
       return null;
@@ -374,21 +427,54 @@ function OpenScheduleFormSheet({
     return true;
   }, [createSchedule, mode, persistPreferences, schedule, state, updateSchedule]);
 
+  const submitExistingAgent = useCallback(async (): Promise<boolean> => {
+    if (!selectedAgent) {
+      return false;
+    }
+    const maxRuns = parseMaxRuns(state.maxRuns);
+    await createSchedule({
+      prompt: state.prompt.trim(),
+      name: state.name.trim() || undefined,
+      cadence: state.submitCadence,
+      target: {
+        type: "agent",
+        agentId: selectedAgent.id,
+      },
+      ...(maxRuns != null ? { maxRuns } : {}),
+    });
+    return true;
+  }, [createSchedule, selectedAgent, state.maxRuns, state.name, state.prompt, state.submitCadence]);
+
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) {
       return;
     }
     model.setSubmitError(null);
     try {
-      const submitted =
-        state.targetKind === "agent" ? await submitAgentTarget() : await submitNewAgent();
+      let submitted = false;
+      if (state.targetKind === "agent") {
+        submitted = await submitAgentTarget();
+      } else if (isCreatingAgentTarget) {
+        submitted = await submitExistingAgent();
+      } else {
+        submitted = await submitNewAgent();
+      }
       if (submitted) {
         onClose();
       }
     } catch (error) {
       model.setSubmitError(toErrorMessage(error));
     }
-  }, [canSubmit, model, onClose, state.targetKind, submitAgentTarget, submitNewAgent]);
+  }, [
+    canSubmit,
+    isCreatingAgentTarget,
+    model,
+    onClose,
+    state.targetKind,
+    submitAgentTarget,
+    submitExistingAgent,
+    submitNewAgent,
+  ]);
 
   const handleSubmitPress = useCallback(() => {
     void handleSubmit();
@@ -440,6 +526,11 @@ function OpenScheduleFormSheet({
         state={state}
         providerSnapshot={providerSnapshot}
         agentTargetLabel={agentTargetLabel}
+        createTargetMode={createTargetMode}
+        onCreateTargetModeChange={setCreateTargetMode}
+        agentOptions={agentOptions.options}
+        selectedAgentKey={selectedAgentKey}
+        onSelectAgentKey={setSelectedAgentKey}
         controlSize={controlSize}
         cadenceError={cadenceError}
         mutationServerId={mutationServerId}
@@ -453,6 +544,11 @@ interface ScheduleFormFieldsProps {
   state: ScheduleFormState;
   providerSnapshot: ReturnType<typeof useScheduleFormProviderSnapshot>;
   agentTargetLabel: string | null;
+  createTargetMode: ScheduleCreateTargetMode;
+  onCreateTargetModeChange: (mode: ScheduleCreateTargetMode) => void;
+  agentOptions: SelectFieldOption<string>[];
+  selectedAgentKey: string | null;
+  onSelectAgentKey: (agentKey: string | null) => void;
   controlSize: FieldControlSize;
   cadenceError: string | null;
   mutationServerId: string;
@@ -463,6 +559,11 @@ function ScheduleFormFields({
   state,
   providerSnapshot,
   agentTargetLabel,
+  createTargetMode,
+  onCreateTargetModeChange,
+  agentOptions,
+  selectedAgentKey,
+  onSelectAgentKey,
   controlSize,
   cadenceError,
   mutationServerId,
@@ -504,6 +605,11 @@ function ScheduleFormFields({
         state={state}
         providerSnapshot={providerSnapshot}
         agentTargetLabel={agentTargetLabel}
+        createTargetMode={createTargetMode}
+        onCreateTargetModeChange={onCreateTargetModeChange}
+        agentOptions={agentOptions}
+        selectedAgentKey={selectedAgentKey}
+        onSelectAgentKey={onSelectAgentKey}
         controlSize={controlSize}
         mutationServerId={mutationServerId}
       />
@@ -538,6 +644,11 @@ interface ScheduleTargetFieldsProps {
   state: ScheduleFormState;
   providerSnapshot: ReturnType<typeof useScheduleFormProviderSnapshot>;
   agentTargetLabel: string | null;
+  createTargetMode: ScheduleCreateTargetMode;
+  onCreateTargetModeChange: (mode: ScheduleCreateTargetMode) => void;
+  agentOptions: SelectFieldOption<string>[];
+  selectedAgentKey: string | null;
+  onSelectAgentKey: (agentKey: string | null) => void;
   controlSize: FieldControlSize;
   mutationServerId: string;
 }
@@ -547,9 +658,63 @@ function ScheduleTargetFields({
   state,
   providerSnapshot,
   agentTargetLabel,
+  createTargetMode,
+  onCreateTargetModeChange,
+  agentOptions,
+  selectedAgentKey,
+  onSelectAgentKey,
   controlSize,
   mutationServerId,
 }: ScheduleTargetFieldsProps): ReactElement {
+  if (state.targetKind === "agent") {
+    return <ScheduleAgentTargetField label={agentTargetLabel} size={controlSize} />;
+  }
+
+  return (
+    <>
+      {state.mode === "create" ? (
+        <ScheduleTargetModeField
+          value={createTargetMode}
+          onChange={onCreateTargetModeChange}
+          size={controlSize}
+        />
+      ) : null}
+
+      {state.mode === "edit" || state.hosts.length > 1 ? (
+        <ScheduleHostField model={model} state={state} size={controlSize} />
+      ) : null}
+
+      {state.mode === "create" && createTargetMode === "agent" ? (
+        <ScheduleExistingAgentField
+          agentOptions={agentOptions}
+          selectedAgentKey={selectedAgentKey}
+          onSelectAgentKey={onSelectAgentKey}
+          size={controlSize}
+        />
+      ) : null}
+
+      {createTargetMode === "new-agent" ? (
+        <ScheduleNewAgentFields
+          model={model}
+          state={state}
+          providerSnapshot={providerSnapshot}
+          size={controlSize}
+          mutationServerId={mutationServerId}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function ScheduleHostField({
+  model,
+  state,
+  size,
+}: {
+  model: ScheduleFormModel;
+  state: ScheduleFormState;
+  size: FieldControlSize;
+}): ReactElement {
   const hostOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
       state.hosts.map((host) => ({
@@ -570,6 +735,84 @@ function ScheduleTargetFields({
     }
     return null;
   }, [selectedHost, state.selectedServerId]);
+  const handleSelectHost = useCallback(
+    (nextServerId: string) => {
+      model.setHost(nextServerId);
+    },
+    [model],
+  );
+  const renderHostOption = useCallback(
+    (input: SelectFieldRenderOptionInput<string>) => <HostOptionItem {...input} />,
+    [],
+  );
+
+  return (
+    <SelectField
+      label="Host"
+      value={state.selectedServerId}
+      selectedDisplay={selectedHostDisplay}
+      options={hostOptions}
+      onChange={handleSelectHost}
+      placeholder="Select host"
+      emptyText="No hosts found"
+      disabled={state.mode === "edit"}
+      searchable={false}
+      title="Host"
+      size={size}
+      triggerTestID="schedule-host-trigger"
+      renderOption={renderHostOption}
+    />
+  );
+}
+
+function ScheduleExistingAgentField({
+  agentOptions,
+  selectedAgentKey,
+  onSelectAgentKey,
+  size,
+}: {
+  agentOptions: SelectFieldOption<string>[];
+  selectedAgentKey: string | null;
+  onSelectAgentKey: (agentKey: string | null) => void;
+  size: FieldControlSize;
+}): ReactElement {
+  const renderAgentOption = useCallback(
+    (input: SelectFieldRenderOptionInput<string>) => <AgentOptionItem {...input} />,
+    [],
+  );
+
+  return (
+    <SelectField
+      label="Agent"
+      value={selectedAgentKey}
+      selectedDisplay={agentOptions.find((option) => option.value === selectedAgentKey) ?? null}
+      options={agentOptions}
+      onChange={onSelectAgentKey}
+      placeholder="Select agent"
+      emptyText="No agents found"
+      searchable
+      searchPlaceholder="Search agents..."
+      title="Select agent"
+      size={size}
+      triggerTestID="schedule-agent-trigger"
+      renderOption={renderAgentOption}
+    />
+  );
+}
+
+function ScheduleNewAgentFields({
+  model,
+  state,
+  providerSnapshot,
+  size,
+  mutationServerId,
+}: {
+  model: ScheduleFormModel;
+  state: ScheduleFormState;
+  providerSnapshot: ReturnType<typeof useScheduleFormProviderSnapshot>;
+  size: FieldControlSize;
+  mutationServerId: string;
+}): ReactElement {
   const projectOptions = state.projectOptions;
   const modeOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
@@ -589,12 +832,6 @@ function ScheduleTargetFields({
         testID: buildThinkingOptionTestId(option.id),
       })),
     [state.availableThinkingOptions],
-  );
-  const handleSelectHost = useCallback(
-    (nextServerId: string) => {
-      model.setHost(nextServerId);
-    },
-    [model],
   );
   const handleSelectProject = useCallback(
     (optionId: string, display: ScheduleFormDisplay) => {
@@ -628,10 +865,6 @@ function ScheduleTargetFields({
       void providerSnapshot.refresh([provider]);
     },
     [providerSnapshot],
-  );
-  const renderHostOption = useCallback(
-    (input: SelectFieldRenderOptionInput<string>) => <HostOptionItem {...input} />,
-    [],
   );
   const renderProjectOption = useCallback(
     (input: SelectFieldRenderOptionInput<string>) => <ProjectOptionItem {...input} />,
@@ -669,38 +902,16 @@ function ScheduleTargetFields({
           leading={modelTriggerLeading}
           disabled={disabled}
           active={hovered || pressed || isOpen}
-          size={controlSize}
+          size={size}
           testID="schedule-model-trigger"
         />
       );
     },
-    [controlSize, modelTriggerLeading, state.selectedModel, state.selectedModelDisplay],
+    [modelTriggerLeading, size, state.selectedModel, state.selectedModelDisplay],
   );
-
-  if (state.targetKind === "agent") {
-    return <ScheduleAgentTargetField label={agentTargetLabel} size={controlSize} />;
-  }
 
   return (
     <>
-      {state.mode === "edit" || state.hosts.length > 1 ? (
-        <SelectField
-          label="Host"
-          value={state.selectedServerId}
-          selectedDisplay={selectedHostDisplay}
-          options={hostOptions}
-          onChange={handleSelectHost}
-          placeholder="Select host"
-          emptyText="No hosts found"
-          disabled={state.mode === "edit"}
-          searchable={false}
-          title="Host"
-          size={controlSize}
-          triggerTestID="schedule-host-trigger"
-          renderOption={renderHostOption}
-        />
-      ) : null}
-
       {state.disclosure.showProjectField ? (
         <SelectField
           label="Project"
@@ -715,7 +926,7 @@ function ScheduleTargetFields({
           searchable
           searchPlaceholder="Search projects..."
           title="Select project"
-          size={controlSize}
+          size={size}
           triggerTestID="schedule-project-trigger"
           renderOption={renderProjectOption}
         />
@@ -751,7 +962,7 @@ function ScheduleTargetFields({
           emptyText="No thinking options found"
           searchable={thinkingOptions.length > 6}
           title="Select thinking"
-          size={controlSize}
+          size={size}
           triggerTestID="schedule-thinking-trigger"
           renderOption={renderThinkingOption}
         />
@@ -770,13 +981,13 @@ function ScheduleTargetFields({
           hint={modeOptions.length === 0 ? "No modes are available for this model." : undefined}
           searchable={modeOptions.length > 6}
           title="Select mode"
-          size={controlSize}
+          size={size}
           triggerTestID="schedule-mode-trigger"
         />
       ) : null}
 
       {state.disclosure.showIsolationField ? (
-        <ScheduleIsolationField model={model} state={state} size={controlSize} />
+        <ScheduleIsolationField model={model} state={state} size={size} />
       ) : null}
 
       {state.disclosure.showArchiveOnFinishField ? (
@@ -868,6 +1079,36 @@ function ScheduleIsolationField({
   );
 }
 
+function ScheduleTargetModeField({
+  value,
+  onChange,
+  size,
+}: {
+  value: ScheduleCreateTargetMode;
+  onChange: (value: ScheduleCreateTargetMode) => void;
+  size: FieldControlSize;
+}): ReactElement {
+  const options = useMemo<Array<SegmentedControlOption<ScheduleCreateTargetMode>>>(
+    () => [
+      { value: "new-agent", label: "New agent", testID: "schedule-target-mode-new-agent" },
+      { value: "agent", label: "Existing agent", testID: "schedule-target-mode-agent" },
+    ],
+    [],
+  );
+
+  return (
+    <Field label="Target">
+      <SegmentedControl
+        options={options}
+        value={value}
+        onValueChange={onChange}
+        size={size}
+        testID="schedule-target-mode"
+      />
+    </Field>
+  );
+}
+
 function ScheduleAgentTargetField({
   label,
   size,
@@ -892,6 +1133,34 @@ function ScheduleAgentTargetField({
         </Text>
       </View>
     </Field>
+  );
+}
+
+function AgentOptionItem({
+  option,
+  selected,
+  active,
+  onPress,
+}: SelectFieldRenderOptionInput<string>): ReactElement {
+  const leadingSlot = useMemo(
+    () => (
+      <View style={styles.optionIconBox}>
+        <Bot size={16} color={styles.providerIcon.color} />
+      </View>
+    ),
+    [],
+  );
+
+  return (
+    <ComboboxItem
+      testID={option.testID}
+      label={option.label}
+      description={option.description}
+      selected={selected}
+      active={active}
+      onPress={onPress}
+      leadingSlot={leadingSlot}
+    />
   );
 }
 
