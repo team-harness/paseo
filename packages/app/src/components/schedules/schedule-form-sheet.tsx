@@ -297,11 +297,6 @@ function OpenScheduleFormSheet({
     () => buildScheduleAgentOptions({ agents, serverId: agentOptionServerId }),
     [agentOptionServerId, agents],
   );
-  useEffect(() => {
-    if (selectedAgentKey && !agentOptions.agentByKey.has(selectedAgentKey)) {
-      setSelectedAgentKey(null);
-    }
-  }, [agentOptions.agentByKey, selectedAgentKey]);
   const selectedAgent = selectedAgentKey
     ? (agentOptions.agentByKey.get(selectedAgentKey) ?? null)
     : null;
@@ -666,6 +661,10 @@ function ScheduleTargetFields({
   controlSize,
   mutationServerId,
 }: ScheduleTargetFieldsProps): ReactElement {
+  const handleChangeHost = useCallback(() => {
+    onSelectAgentKey(null);
+  }, [onSelectAgentKey]);
+
   if (state.targetKind === "agent") {
     return <ScheduleAgentTargetField label={agentTargetLabel} size={controlSize} />;
   }
@@ -681,7 +680,12 @@ function ScheduleTargetFields({
       ) : null}
 
       {state.mode === "edit" || state.hosts.length > 1 ? (
-        <ScheduleHostField model={model} state={state} size={controlSize} />
+        <ScheduleHostField
+          model={model}
+          state={state}
+          size={controlSize}
+          onChangeHost={handleChangeHost}
+        />
       ) : null}
 
       {state.mode === "create" && createTargetMode === "agent" ? (
@@ -710,10 +714,12 @@ function ScheduleHostField({
   model,
   state,
   size,
+  onChangeHost,
 }: {
   model: ScheduleFormModel;
   state: ScheduleFormState;
   size: FieldControlSize;
+  onChangeHost: () => void;
 }): ReactElement {
   const hostOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
@@ -738,8 +744,9 @@ function ScheduleHostField({
   const handleSelectHost = useCallback(
     (nextServerId: string) => {
       model.setHost(nextServerId);
+      onChangeHost();
     },
-    [model],
+    [model, onChangeHost],
   );
   const renderHostOption = useCallback(
     (input: SelectFieldRenderOptionInput<string>) => <HostOptionItem {...input} />,
@@ -776,6 +783,10 @@ function ScheduleExistingAgentField({
   onSelectAgentKey: (agentKey: string | null) => void;
   size: FieldControlSize;
 }): ReactElement {
+  const selectedDisplay = useMemo(
+    () => agentOptions.find((option) => option.value === selectedAgentKey) ?? null,
+    [agentOptions, selectedAgentKey],
+  );
   const renderAgentOption = useCallback(
     (input: SelectFieldRenderOptionInput<string>) => <AgentOptionItem {...input} />,
     [],
@@ -784,8 +795,8 @@ function ScheduleExistingAgentField({
   return (
     <SelectField
       label="Agent"
-      value={selectedAgentKey}
-      selectedDisplay={agentOptions.find((option) => option.value === selectedAgentKey) ?? null}
+      value={selectedDisplay ? selectedAgentKey : null}
+      selectedDisplay={selectedDisplay}
       options={agentOptions}
       onChange={onSelectAgentKey}
       placeholder="Select agent"
