@@ -785,11 +785,19 @@ export const ja: TranslationResources = {
         tooLarge: "差分が大きすぎて表示できません",
         unified: "ユニファイド差分",
         split: "左右比較",
+        switchToUnified: "ユニファイド差分に切り替え",
+        switchToSplit: "左右比較差分に切り替え",
+        showTreeView: "フォルダツリーを表示",
+        showFlatView: "フラットなファイル一覧を表示",
+        options: "差分オプション",
         hideWhitespace: "空白を非表示",
+        showWhitespace: "空白を表示",
         scrollLongLines: "長い行をスクロール",
         wrapLongLines: "長い行を折り返す",
         collapseAll: "すべて折りたたむ",
         expandAll: "すべて展開",
+        collapseAllFolders: "すべてのフォルダを折りたたむ",
+        expandAllFolders: "すべてのフォルダを展開",
         refreshing: "更新中",
         refresh: "更新",
         refreshState: "gitとGitHubの状態を更新",
@@ -1127,6 +1135,12 @@ export const ja: TranslationResources = {
         uninstallFailed: "オーケストレーションスキルをアンインストールできません。",
       },
     },
+  },
+  rootError: {
+    kicker: "問題が発生しました",
+    title: "Paseo で問題が発生しました。",
+    body: "アプリを再読み込みするにはもう一度お試しください。繰り返し発生する場合は、以下の詳細を添えて報告してください。",
+    details: "詳細",
   },
   startup: {
     errorTitle: "問題が発生しました",
@@ -1487,6 +1501,7 @@ export const ja: TranslationResources = {
     },
     backToWorkspace: "戻る",
     addHost: "ホストを追加",
+    enableBuiltInDaemon: "組み込みデーモンを有効にする",
     projects: "プロジェクト",
     projectList: {
       hostLoadFailed: "ホスト{{hostName}}からプロジェクトを読み込めませんでした: {{message}}",
@@ -1495,7 +1510,6 @@ export const ja: TranslationResources = {
     groupInfo: "{{title}}について",
     sections: {
       general: "一般",
-      daemon: "デーモン",
       appearance: "外観",
       shortcuts: "ショートカット",
       integrations: "連携",
@@ -1510,7 +1524,7 @@ export const ja: TranslationResources = {
       providers: "プロバイダー",
       usage: "使用状況",
       terminals: "ターミナル",
-      host: "ホスト",
+      host: "概要",
     },
     general: {
       title: "一般",
@@ -1538,6 +1552,10 @@ export const ja: TranslationResources = {
         label: "ターミナルスクロールバック",
         description: "組み込みターミナルバッファに保持する行数",
         accessibilityLabel: "ターミナルスクロールバック行数",
+      },
+      autoExpandReasoning: {
+        label: "常に思考プロセスを展開",
+        description: "デフォルトでAIのエージェント思考・推論ブロックを完全に展開して表示します",
       },
       language: {
         label: "言語",
@@ -1619,6 +1637,9 @@ export const ja: TranslationResources = {
           ghostty: "Ghostty",
           auto: "システム",
         },
+      },
+      detailLevel: {
+        title: "詳細レベル",
       },
       fonts: {
         title: "フォント",

@@ -767,11 +767,19 @@ export const zhCN: TranslationResources = {
         tooLarge: "Diff 过大，无法显示",
         unified: "Unified diff",
         split: "Side-by-side diff",
+        switchToUnified: "切换到统一差异视图",
+        switchToSplit: "切换到并排差异视图",
+        showTreeView: "显示文件夹树",
+        showFlatView: "显示平铺文件列表",
+        options: "Diff 选项",
         hideWhitespace: "隐藏空白差异",
+        showWhitespace: "显示空白差异",
         scrollLongLines: "滚动长行",
         wrapLongLines: "自动换行长行",
         collapseAll: "折叠所有文件",
         expandAll: "展开所有文件",
+        collapseAllFolders: "折叠所有文件夹",
+        expandAllFolders: "展开所有文件夹",
         refreshing: "正在刷新",
         refresh: "刷新",
         refreshState: "刷新 git 和 GitHub 状态",
@@ -1099,6 +1107,12 @@ export const zhCN: TranslationResources = {
         uninstallFailed: "无法卸载编排 skills。",
       },
     },
+  },
+  rootError: {
+    kicker: "出现问题",
+    title: "Paseo 遇到了问题。",
+    body: "请重试以重新加载应用。如果问题持续发生，请在报告时附上下面的详细信息。",
+    details: "详情",
   },
   startup: {
     errorTitle: "出现问题",
@@ -1453,6 +1467,7 @@ export const zhCN: TranslationResources = {
     },
     backToWorkspace: "返回",
     addHost: "添加主机",
+    enableBuiltInDaemon: "启用内置 daemon",
     projects: "项目",
     projectList: {
       hostLoadFailed: "无法从 Host {{hostName}} 加载 projects：{{message}}",
@@ -1461,7 +1476,6 @@ export const zhCN: TranslationResources = {
     groupInfo: "关于 {{title}}",
     sections: {
       general: "通用",
-      daemon: "Daemon",
       appearance: "外观",
       shortcuts: "快捷键",
       integrations: "集成",
@@ -1476,7 +1490,7 @@ export const zhCN: TranslationResources = {
       providers: "Providers",
       usage: "使用情况",
       terminals: "Terminals",
-      host: "Host",
+      host: "概览",
     },
     general: {
       title: "通用",
@@ -1504,6 +1518,10 @@ export const zhCN: TranslationResources = {
         label: "终端回滚",
         description: "内置终端缓冲区保留的行数",
         accessibilityLabel: "终端回滚行数",
+      },
+      autoExpandReasoning: {
+        label: "始终展开推理过程",
+        description: "默认情况下完全展开 AI 的思考和推理过程",
       },
       language: {
         label: "语言",
@@ -1585,6 +1603,9 @@ export const zhCN: TranslationResources = {
           ghostty: "Ghostty",
           auto: "系统",
         },
+      },
+      detailLevel: {
+        title: "详细程度",
       },
       fonts: {
         title: "字体",
