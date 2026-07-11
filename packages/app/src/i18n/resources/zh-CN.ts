@@ -1144,7 +1144,8 @@ export const zhCN: TranslationResources = {
     },
   },
   projectPicker: {
-    placeholder: "输入目录路径...",
+    placeholder: "输入以搜索...",
+    browse: "浏览…",
     opening: "正在打开 project...",
     searching: "正在搜索...",
     empty: "开始输入路径",

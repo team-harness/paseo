@@ -1,6 +1,7 @@
 import path from "node:path";
 import { test, expect, type Page } from "./fixtures";
 import { gotoAppShell } from "./helpers/app";
+import { expectOpenedProject } from "./helpers/project-picker-ui";
 import { connectSeedClient, seedWorkspace } from "./helpers/seed-client";
 import { getServerId } from "./helpers/server-id";
 import { createTempGitRepo } from "./helpers/workspace";
@@ -50,7 +51,7 @@ async function removeProjectFromSidebar(page: Page, projectId: string): Promise<
 async function addProjectFromPicker(page: Page, projectPath: string): Promise<string> {
   await page.getByTestId("sidebar-add-project").click();
 
-  const input = page.getByPlaceholder("Type a directory path...");
+  const input = page.getByTestId("project-picker-input");
   await expect(input).toBeVisible({ timeout: 30_000 });
   await input.fill(projectPath);
   await page.keyboard.press("Enter");
@@ -74,6 +75,26 @@ async function waitForSidebarProjectListReady(page: Page): Promise<void> {
 }
 
 test.describe("Project picker search", () => {
+  test("opens a project from a fuzzy directory-name search", async ({
+    page,
+    projectPickerFixture,
+  }) => {
+    await gotoAppShell(page);
+    await waitForSidebarProjectListReady(page);
+    await page.getByTestId("sidebar-add-project").click();
+
+    const input = page.getByTestId("project-picker-input");
+    await expect(input).toBeVisible({ timeout: 30_000 });
+    await input.fill(projectPickerFixture.fuzzyQuery);
+
+    const suggestion = page.getByText(projectPickerFixture.projectName, { exact: false }).first();
+    await expect(suggestion).toBeVisible({ timeout: 30_000 });
+    await suggestion.click();
+
+    const projectId = await expectOpenedProject(page, projectPickerFixture.projectName);
+    projectPickerFixture.rememberProjectId(projectId);
+  });
+
   test("shows a loading state after typing while directory suggestions are pending", async ({
     page,
   }) => {
@@ -81,7 +102,7 @@ test.describe("Project picker search", () => {
     await waitForSidebarProjectListReady(page);
     await page.getByTestId("sidebar-add-project").click();
 
-    const input = page.getByPlaceholder("Type a directory path...");
+    const input = page.getByTestId("project-picker-input");
     await expect(input).toBeVisible({ timeout: 30_000 });
     await input.fill("paseo-loading-state-no-match");
 

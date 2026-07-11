@@ -1159,7 +1159,8 @@ export const ar: TranslationResources = {
     },
   },
   projectPicker: {
-    placeholder: "اكتب مسار الدليل...",
+    placeholder: "اكتب للبحث...",
+    browse: "استعراض…",
     opening: "افتتاح المشروع...",
     searching: "جارٍ البحث...",
     empty: "ابدأ بكتابة المسار",

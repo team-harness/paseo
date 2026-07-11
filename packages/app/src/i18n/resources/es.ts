@@ -1195,7 +1195,8 @@ export const es: TranslationResources = {
     },
   },
   projectPicker: {
-    placeholder: "Escriba una ruta de directorio...",
+    placeholder: "Escriba para buscar...",
+    browse: "Explorar…",
     opening: "Proyecto de apertura...",
     searching: "Buscando...",
     empty: "Comience a escribir una ruta",
