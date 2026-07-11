@@ -913,6 +913,14 @@ interface OpenAiModelPricing {
 
 const OPENAI_MODEL_PRICING: Array<{ pattern: RegExp; pricing: OpenAiModelPricing }> = [
   {
+    pattern: /^gpt-5\.6(?:$|-)/,
+    pricing: {
+      inputPerMillionUsd: 5,
+      cachedInputPerMillionUsd: 0.5,
+      outputPerMillionUsd: 30,
+    },
+  },
+  {
     pattern: /^gpt-5\.5(?:$|-)/,
     pricing: {
       inputPerMillionUsd: 5,

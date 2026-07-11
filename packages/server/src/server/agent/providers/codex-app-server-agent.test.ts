@@ -3324,6 +3324,22 @@ describe("Codex app-server provider", () => {
   test("estimates OpenAI model cost from token usage for known Codex models only", () => {
     expect(
       estimateOpenAiModelCostUsd({
+        modelId: "gpt-5.6",
+        inputTokens: 30_000,
+        cachedInputTokens: 5_000,
+        outputTokens: 15_000,
+      }),
+    ).toBe(0.5775);
+    expect(
+      estimateOpenAiModelCostUsd({
+        modelId: "gpt-5.6-codex",
+        inputTokens: 30_000,
+        cachedInputTokens: 5_000,
+        outputTokens: 15_000,
+      }),
+    ).toBe(0.5775);
+    expect(
+      estimateOpenAiModelCostUsd({
         modelId: "gpt-5.5",
         inputTokens: 30_000,
         cachedInputTokens: 5_000,
