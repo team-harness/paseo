@@ -122,6 +122,8 @@ vi.mock("lucide-react-native", () => ({
   CircleX: () => React.createElement("span"),
   FolderGit2: () => React.createElement("span"),
   GitBranch: () => React.createElement("span"),
+  Pin: () => React.createElement("span"),
+  PinOff: () => React.createElement("span"),
   RefreshCw: () => React.createElement("span"),
   ShieldQuestion: () => React.createElement("span"),
   TriangleAlert: () => React.createElement("span"),
@@ -356,10 +358,20 @@ describe("GlobalStatusBar", () => {
     expect(
       container?.querySelector('[data-testid="global-status-bar-row-today-tokens"]'),
     ).not.toBeNull();
+    expect(container?.querySelector('[data-testid="global-status-bar-row-running"]')).toBeNull();
+    expect(container?.querySelector('[data-testid="global-status-bar-row-attention"]')).toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-sessions-static"]')).not.toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-sessions-static"]')?.tagName).toBe(
+      "DIV",
+    );
     expect(
-      container?.querySelector('[data-testid="global-status-bar-row-running"]')?.textContent,
-    ).toContain("2");
+      container?.querySelector('[data-testid="status-bar-sessions-running-count"]')?.textContent,
+    ).toBe("0");
+    expect(
+      container?.querySelector('[data-testid="status-bar-sessions-attention-count"]'),
+    ).toBeNull();
     expect(container?.querySelector('[data-testid="status-bar-sessions-trigger"]')).toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-sessions-panel"]')).toBeNull();
     expect(container?.querySelector('[data-testid="status-bar-history-trigger"]')).not.toBeNull();
     expect(container?.querySelector('[data-testid="global-status-bar-row-cost"]')).not.toBeNull();
   });
@@ -468,9 +480,9 @@ describe("GlobalStatusBar", () => {
 
     expect(container?.querySelector('[data-testid="global-status-bar-row-cost"]')).not.toBeNull();
     expect(container?.querySelector('[data-testid="global-status-bar-row-errors"]')).toBeNull();
-    expect(
-      container?.querySelector('[data-testid="global-status-bar-row-running"]'),
-    ).not.toBeNull();
+    expect(container?.querySelector('[data-testid="global-status-bar-row-running"]')).toBeNull();
+    expect(container?.querySelector('[data-testid="global-status-bar-row-attention"]')).toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-sessions-static"]')).not.toBeNull();
   });
 
   it("opens compact cost details in a sheet", () => {

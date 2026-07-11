@@ -23,6 +23,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useAgentHistory } from "@/hooks/use-agent-history";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
@@ -139,6 +140,41 @@ interface StatusBarRunningSessionsTriggerProps {
 }
 
 export function StatusBarRunningSessionsTrigger({
+  runningAgents,
+  needsAttentionAgents,
+  recentlyCompletedAgents,
+  ...interactiveProps
+}: StatusBarRunningSessionsTriggerProps) {
+  const hasSessionSnapshots =
+    runningAgents.length > 0 ||
+    needsAttentionAgents.length > 0 ||
+    recentlyCompletedAgents.length > 0;
+
+  if (!hasSessionSnapshots) {
+    return <SessionStatusStaticView />;
+  }
+
+  return (
+    <InteractiveRunningSessionsTrigger
+      {...interactiveProps}
+      runningAgents={runningAgents}
+      needsAttentionAgents={needsAttentionAgents}
+      recentlyCompletedAgents={recentlyCompletedAgents}
+    />
+  );
+}
+
+function SessionStatusStaticView() {
+  const { t } = useTranslation();
+
+  return (
+    <View style={styles.trigger} testID="status-bar-sessions-static">
+      <TriggerContent runningCount={0} label={t("statusBar.sessions.trigger")} />
+    </View>
+  );
+}
+
+function InteractiveRunningSessionsTrigger({
   serverId,
   runningAgents,
   needsAttentionAgents,
@@ -295,7 +331,10 @@ export function StatusBarSessionHistoryTrigger({
   const [open, setOpen] = useState(false);
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const sheetHeader = useMemo(() => ({ title: t("statusBar.history.title") }), [t]);
-  const items = useMemo(() => agents.slice(0, HISTORY_LIMIT), [agents]);
+  const items = useMemo(
+    () => agents.filter(isStatusBarHistoryVisible).slice(0, HISTORY_LIMIT),
+    [agents],
+  );
   const isRefreshing = isManualRefresh || isRevalidating;
 
   useEffect(() => {
@@ -440,6 +479,10 @@ export function StatusBarSessionHistoryTrigger({
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+function isStatusBarHistoryVisible(agent: AggregatedAgent): boolean {
+  return agent.status !== "closed" && getParentAgentIdFromLabels(agent.labels) === null;
 }
 
 function TriggerContent({

@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import type { StatusAgentSnapshot } from "@getpaseo/protocol/messages";
+import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import type { StatusSummaryViewModel } from "./view-model";
 
 const { theme, runtimeState, navigationSpies } = vi.hoisted(() => {
@@ -708,6 +709,44 @@ describe("status bar running sessions", () => {
     expect(runtimeState.refreshHistory).toHaveBeenCalledTimes(1);
   });
 
+  it("filters closed and child agents before applying the history limit", async () => {
+    runtimeState.historyAgents = [
+      historyAgent({ id: "closed-latest", offsetMinutes: 0, status: "closed" }),
+      historyAgent({
+        id: "child-latest",
+        offsetMinutes: 1,
+        labels: { [PARENT_AGENT_ID_LABEL]: "parent-agent" },
+      }),
+      ...Array.from({ length: 10 }, (_, index) =>
+        historyAgent({ id: `root-history-${index + 1}`, offsetMinutes: index + 2 }),
+      ),
+    ];
+
+    act(() => {
+      root?.render(renderStatusBar());
+    });
+
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
+        ?.click();
+      await flushPromises();
+    });
+
+    expect(container?.querySelectorAll('[data-testid^="status-bar-history-row-"]')).toHaveLength(
+      10,
+    );
+    expect(
+      container?.querySelector('[data-testid="status-bar-history-row-closed-latest"]'),
+    ).toBeNull();
+    expect(
+      container?.querySelector('[data-testid="status-bar-history-row-child-latest"]'),
+    ).toBeNull();
+    expect(
+      container?.querySelector('[data-testid="status-bar-history-row-root-history-10"]'),
+    ).not.toBeNull();
+  });
+
   it("hides session pin controls when the host lacks the feature gate", async () => {
     runtimeState.historyAgents = [historyAgent({ id: "history-1", offsetMinutes: 0 })];
 
@@ -893,6 +932,31 @@ describe("status bar running sessions", () => {
 
     expect(container?.querySelector('[data-testid="status-bar-history-panel"]')).not.toBeNull();
     expect(container?.querySelector('[data-testid="status-bar-history-empty"]')).not.toBeNull();
+  });
+
+  it("shows the history empty state when every loaded history session is filtered out", async () => {
+    runtimeState.historyAgents = [
+      historyAgent({ id: "closed-only", offsetMinutes: 0, status: "closed" }),
+      historyAgent({
+        id: "child-only",
+        offsetMinutes: 1,
+        labels: { [PARENT_AGENT_ID_LABEL]: "parent-agent" },
+      }),
+    ];
+
+    act(() => {
+      root?.render(renderStatusBar());
+    });
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
+        ?.click();
+      await flushPromises();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-history-panel"]')).not.toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-history-empty"]')).not.toBeNull();
+    expect(container?.querySelector('[data-testid^="status-bar-history-row-"]')).toBeNull();
   });
 
   it("refreshes history on demand from the history panel", async () => {

@@ -1,0 +1,39 @@
+{
+  "gate_id": "scope-gate",
+  "stage": "implementation.before_review",
+  "status": "passed",
+  "blocking": [],
+  "warnings": [],
+  "evidence": [
+    {
+      "changed_files": [
+        "packages/app/src/status-summary/global-status-bar.test.tsx",
+        "packages/app/src/status-summary/global-status-bar.tsx",
+        "packages/app/src/status-summary/status-bar-running-sessions.test.tsx",
+        "packages/app/src/status-summary/status-bar-running-sessions.tsx",
+        ".codestable/features/2026-07-11-status-bar-history-and-errors/goal-plan.md",
+        ".codestable/features/2026-07-11-status-bar-history-and-errors/goal-protocol.md",
+        ".codestable/features/2026-07-11-status-bar-history-and-errors/goal-state.yaml",
+        ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-checklist.yaml",
+        ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-design-review.md",
+        ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-design.md",
+        ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-evidence-pack.json",
+        ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-evidence-pack.md",
+        ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-implementation.md",
+        ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-scope-gate.json"
+      ],
+      "ignored_machine_artifacts": [
+        ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-dod-results.json"
+      ],
+      "allowed_prefixes": [
+        ".codestable/features/2026-07-11-status-bar-history-and-errors",
+        ".codestable/features/2026-07-11-status-bar-history-and-errors",
+        "packages/app/src/status-summary/global-status-bar.tsx",
+        "packages/app/src/status-summary/status-bar-running-sessions.tsx",
+        "packages/app/src/status-summary/global-status-bar.test.tsx",
+        "packages/app/src/status-summary/status-bar-running-sessions.test.tsx"
+      ]
+    }
+  ],
+  "providers": {}
+}

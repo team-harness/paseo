@@ -1,0 +1,61 @@
+feature: 2026-07-11-status-bar-history-and-errors
+created: 2026-07-11
+
+steps:
+  - action: "历史选择：在已加载的状态栏 history 集合中先过滤关闭和子 agent，再应用十条上限"
+    exit_signal: "目标测试证明过滤项不出现，当前已加载集合内后续根 agent 可补足可见 history"
+    status: done
+  - action: "统一静态结构：始终挂载既有会话状态入口，移除 running/attention 的空闲 primary chip 分支"
+    exit_signal: "空闲状态显示同形的 running 0 入口，且没有独立 running/attention chips"
+    status: done
+  - action: "空闲交互边界：无条目时只挂载静态视图，有条目时才挂载既有跨端会话面板和导航"
+    exit_signal: "空闲静态视图不是 button，且不挂载 open state、route effect 或 panel；活跃入口仍可打开并导航"
+    status: done
+  - action: "回归验证：覆盖 history 过滤、空闲/活跃 UI 一致性及既有会话行为"
+    exit_signal: "目标测试、格式、lint 和 typecheck 通过，或记录可复现的既有阻塞"
+    status: done
+
+checks:
+  - item: "历史只在 useAgentHistory 已加载集合内显示未关闭且没有有效父 agent 标签的条目，并在过滤后截断"
+    source: 名词契约
+    status: passed
+  - item: "ready status bar 始终使用会话状态入口，不在空闲时回退为 running/attention primary chips"
+    source: 编排骨架
+    status: passed
+  - item: "空闲静态视图没有 button role、onPress、open state、route effect 或 panel；活跃入口保留既有 overlay 和 navigation"
+    source: 流程级约束
+    status: passed
+  - item: "attention 为零时不展示 attention 0，running 数始终展示"
+    source: 流程级约束
+    status: passed
+  - item: "global status bar 和 running sessions trigger 是本 feature 的唯一公共 UI 挂入点"
+    source: 挂载点
+    status: passed
+  - item: "不修改 protocol、server、client SDK、feature capability、RPC、错误入口或 lifecycle"
+    source: 范围守护
+    status: passed
+  - item: "history 过滤、空闲不可交互、活跃可导航和静态 errors 计数均可观察"
+    source: 验收场景
+    status: passed
+
+dod:
+  commands:
+    - id: CMD-001
+      command: "mise exec nodejs@22.20.0 -- npx vitest run packages/app/src/status-summary/status-bar-running-sessions.test.tsx packages/app/src/status-summary/global-status-bar.test.tsx --bail=1"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-002
+      command: "mise exec nodejs@22.20.0 -- npm run format:files -- packages/app/src/status-summary/global-status-bar.tsx packages/app/src/status-summary/status-bar-running-sessions.tsx packages/app/src/status-summary/global-status-bar.test.tsx packages/app/src/status-summary/status-bar-running-sessions.test.tsx"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-003
+      command: "mise exec nodejs@22.20.0 -- npm run lint -- packages/app/src/status-summary/global-status-bar.tsx packages/app/src/status-summary/status-bar-running-sessions.tsx packages/app/src/status-summary/global-status-bar.test.tsx packages/app/src/status-summary/status-bar-running-sessions.test.tsx"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-004
+      command: "mise exec nodejs@22.20.0 -- npm run typecheck"
+      core: true
+      failure_handling: fix-or-block
+  evidence_required: [command_output, diff_summary]
+  cleanliness:
+    debug_output: forbidden

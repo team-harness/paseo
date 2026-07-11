@@ -90,13 +90,7 @@ function StatusBarContent({
   t: (key: string, options?: Record<string, unknown>) => string;
 }) {
   if (view.kind === "ready") {
-    const hasSessionSnapshots =
-      view.runningAgents.length > 0 ||
-      view.needsAttentionAgents.length > 0 ||
-      view.recentlyCompletedAgents.length > 0;
-    let rows = hasSessionSnapshots
-      ? view.primaryRows.filter((row) => row.id !== "running" && row.id !== "attention")
-      : view.primaryRows;
+    let rows = view.primaryRows.filter((row) => row.id !== "running" && row.id !== "attention");
     if (isCompact) {
       rows = rows.filter((row) => COMPACT_ROW_IDS.has(row.id));
     }
@@ -110,16 +104,14 @@ function StatusBarContent({
             <StatusBarChip key={row.id} row={row} t={t} />
           ),
         )}
-        {hasSessionSnapshots ? (
-          <StatusBarRunningSessionsTrigger
-            serverId={serverId}
-            runningAgents={view.runningAgents}
-            needsAttentionAgents={view.needsAttentionAgents}
-            recentlyCompletedAgents={view.recentlyCompletedAgents}
-            pinnedSessions={view.pinnedSessions}
-            canUseStatusBarSessionPins={view.canUseStatusBarSessionPins}
-          />
-        ) : null}
+        <StatusBarRunningSessionsTrigger
+          serverId={serverId}
+          runningAgents={view.runningAgents}
+          needsAttentionAgents={view.needsAttentionAgents}
+          recentlyCompletedAgents={view.recentlyCompletedAgents}
+          pinnedSessions={view.pinnedSessions}
+          canUseStatusBarSessionPins={view.canUseStatusBarSessionPins}
+        />
         <StatusBarSessionHistoryTrigger
           serverId={serverId}
           pinnedSessions={view.pinnedSessions}

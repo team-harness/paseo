@@ -1,0 +1,45 @@
+feature: "2026-07-11-status-bar-history-and-errors"
+status: passed
+baseline_ref: "c7132c19783169db8248a0f741fe9329388bfc33"
+stage: complete
+driver_kind: none
+driver_id: ""
+handoff_reason: ""
+handoff_next: ""
+design: ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-design.md"
+checklist: ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-checklist.yaml"
+review: ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-review.md"
+qa: ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-qa.md"
+acceptance: ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-acceptance.md"
+ledger:
+  - stage: implementation
+    status: passed
+    report: ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-implementation.md"
+    evidence_pack: ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-evidence-pack.md"
+    scope_gate: ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-scope-gate.json"
+    dod_results: ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-dod-results.json"
+    commands:
+      - id: CMD-001
+        status: passed
+      - id: CMD-002
+        status: passed
+      - id: CMD-003
+        status: passed
+      - id: CMD-004
+        status: passed
+  - stage: review
+    status: passed
+    report: ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-review.md"
+    reviewer: subagent
+    reviewer_agents:
+      - "019f4f06-430c-78b1-a625-265ef312ee21"
+      - "019f4f0b-c545-7c32-82fd-32bb08c43834"
+    next: qa
+  - stage: qa
+    status: passed
+    report: ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-qa.md"
+    next: acceptance
+  - stage: acceptance
+    status: passed
+    report: ".codestable/features/2026-07-11-status-bar-history-and-errors/status-bar-history-and-errors-acceptance.md"
+    next: complete
