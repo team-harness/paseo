@@ -37,6 +37,7 @@ import {
   buildStatusBarSessionList,
   navigateToStatusBarSession,
   type StatusBarSessionListItem,
+  type StatusBarSessionIdentity,
   type StatusBarSessionTarget,
 } from "./status-bar-session-navigation";
 import {
@@ -188,7 +189,25 @@ function InteractiveRunningSessionsTrigger({
   const [open, setOpen] = useState(false);
   const sheetHeader = useMemo(() => ({ title: t("statusBar.sessions.title") }), [t]);
   const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
+  const agents = useSessionStore((state) => state.sessions[serverId]?.agents);
   const liveWorkspaceIds = useMemo(() => new Set(workspaces?.keys() ?? []), [workspaces]);
+  const agentHierarchy = useMemo<ReadonlyMap<string, StatusBarSessionIdentity>>(
+    () =>
+      new Map(
+        [...(agents?.values() ?? [])].map((agent) => [
+          agent.id,
+          {
+            agentId: agent.id,
+            parentAgentId: agent.parentAgentId,
+            provider: agent.provider,
+            cwd: agent.cwd,
+            workspaceId: agent.workspaceId ?? null,
+            title: agent.title,
+          },
+        ]),
+      ),
+    [agents],
+  );
   const items = useMemo(
     () =>
       buildStatusBarSessionList({
@@ -197,8 +216,16 @@ function InteractiveRunningSessionsTrigger({
         runningAgents,
         recentlyCompletedAgents,
         liveWorkspaceIds,
+        agentHierarchy,
       }),
-    [liveWorkspaceIds, needsAttentionAgents, recentlyCompletedAgents, runningAgents, serverId],
+    [
+      agentHierarchy,
+      liveWorkspaceIds,
+      needsAttentionAgents,
+      recentlyCompletedAgents,
+      runningAgents,
+      serverId,
+    ],
   );
   const hasItems = items.length > 0;
   const attentionCount = needsAttentionAgents.length;

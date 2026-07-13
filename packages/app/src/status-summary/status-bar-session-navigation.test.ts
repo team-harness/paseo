@@ -54,6 +54,65 @@ describe("status bar session navigation", () => {
     ]);
   });
 
+  it("folds descendant activity into its top-level agent", () => {
+    const items = buildStatusBarSessionList({
+      serverId: "server-1",
+      needsAttentionAgents: [
+        snapshot({
+          agentId: "grandchild",
+          parentAgentId: "child",
+          attentionReason: "permission",
+        }),
+      ],
+      runningAgents: [
+        snapshot({ agentId: "child", parentAgentId: "parent" }),
+        snapshot({ agentId: "independent" }),
+      ],
+      recentlyCompletedAgents: [],
+      liveWorkspaceIds: new Set(["workspace-parent", "workspace-independent"]),
+      agentHierarchy: new Map([
+        [
+          "parent",
+          {
+            agentId: "parent",
+            parentAgentId: null,
+            provider: "codex",
+            cwd: "/work/parent",
+            workspaceId: "workspace-parent",
+            title: "Parent agent",
+          },
+        ],
+        [
+          "child",
+          {
+            agentId: "child",
+            parentAgentId: "parent",
+            provider: "codex",
+            cwd: "/work/child",
+            workspaceId: "workspace-parent",
+            title: "Child agent",
+          },
+        ],
+      ]),
+    });
+
+    expect(items.map((item) => `${item.group}:${item.snapshot.agentId}`)).toEqual([
+      "attention:parent",
+      "running:independent",
+    ]);
+    expect(items[0]?.snapshot).toMatchObject({
+      agentId: "parent",
+      title: "Parent agent",
+      attentionReason: "permission",
+    });
+    expect(items[0]?.primaryTarget).toEqual({
+      kind: "agent",
+      serverId: "server-1",
+      agentId: "parent",
+      workspaceId: "workspace-parent",
+    });
+  });
+
   it("builds agent targets while hiding workspace actions for missing or unknown workspaces", () => {
     const items = buildStatusBarSessionList({
       serverId: "server-1",

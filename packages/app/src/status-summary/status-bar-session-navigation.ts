@@ -30,35 +30,57 @@ export interface StatusBarSessionListItem {
   workspaceTarget?: StatusBarWorkspaceTarget;
 }
 
+export interface StatusBarSessionIdentity {
+  agentId: string;
+  parentAgentId: string | null;
+  provider: StatusAgentSnapshot["provider"];
+  cwd: string;
+  workspaceId: string | null;
+  title: string | null;
+}
+
 export interface BuildStatusBarSessionListInput {
   serverId: string;
   needsAttentionAgents: StatusAgentSnapshot[];
   runningAgents: StatusAgentSnapshot[];
   recentlyCompletedAgents: StatusAgentSnapshot[];
   liveWorkspaceIds: ReadonlySet<string>;
+  agentHierarchy?: ReadonlyMap<string, StatusBarSessionIdentity>;
 }
 
 export function buildStatusBarSessionList(
   input: BuildStatusBarSessionListInput,
 ): StatusBarSessionListItem[] {
+  const snapshotsByAgentId = createActivitySnapshotIndex(input);
   const seen = new Set<string>();
   const items: StatusBarSessionListItem[] = [];
 
   const appendGroup = (group: StatusBarSessionGroupKind, snapshots: StatusAgentSnapshot[]) => {
     for (const snapshot of snapshots) {
-      if (seen.has(snapshot.agentId)) {
+      const topLevelAgentId = findTopLevelAgentId(
+        snapshot,
+        snapshotsByAgentId,
+        input.agentHierarchy,
+      );
+      if (seen.has(topLevelAgentId)) {
         continue;
       }
-      seen.add(snapshot.agentId);
-      const workspaceId = normalizeWorkspaceId(snapshot.workspaceId);
-      items.push({
-        key: `${group}:${snapshot.agentId}`,
-        group,
+      seen.add(topLevelAgentId);
+      const topLevelSnapshot = toTopLevelSnapshot({
         snapshot,
+        topLevelAgentId,
+        snapshotsByAgentId,
+        agentHierarchy: input.agentHierarchy,
+      });
+      const workspaceId = normalizeWorkspaceId(topLevelSnapshot.workspaceId);
+      items.push({
+        key: `${group}:${topLevelSnapshot.agentId}`,
+        group,
+        snapshot: topLevelSnapshot,
         primaryTarget: {
           kind: "agent",
           serverId: input.serverId,
-          agentId: snapshot.agentId,
+          agentId: topLevelSnapshot.agentId,
           workspaceId,
         },
         workspaceTarget:
@@ -78,6 +100,73 @@ export function buildStatusBarSessionList(
   appendGroup("recent", input.recentlyCompletedAgents);
 
   return items;
+}
+
+function createActivitySnapshotIndex(
+  input: BuildStatusBarSessionListInput,
+): ReadonlyMap<string, StatusAgentSnapshot> {
+  const snapshotsByAgentId = new Map<string, StatusAgentSnapshot>();
+  for (const snapshots of [
+    sortAttentionSnapshots(input.needsAttentionAgents),
+    input.runningAgents,
+    input.recentlyCompletedAgents,
+  ]) {
+    for (const snapshot of snapshots) {
+      if (!snapshotsByAgentId.has(snapshot.agentId)) {
+        snapshotsByAgentId.set(snapshot.agentId, snapshot);
+      }
+    }
+  }
+  return snapshotsByAgentId;
+}
+
+function findTopLevelAgentId(
+  snapshot: StatusAgentSnapshot,
+  snapshotsByAgentId: ReadonlyMap<string, StatusAgentSnapshot>,
+  agentHierarchy: ReadonlyMap<string, StatusBarSessionIdentity> | undefined,
+): string {
+  const visitedAgentIds = new Set([snapshot.agentId]);
+  let topLevelAgentId = snapshot.agentId;
+  let parentAgentId = snapshot.parentAgentId;
+
+  while (parentAgentId && !visitedAgentIds.has(parentAgentId)) {
+    const parent = snapshotsByAgentId.get(parentAgentId) ?? agentHierarchy?.get(parentAgentId);
+    if (!parent) {
+      break;
+    }
+    visitedAgentIds.add(parentAgentId);
+    topLevelAgentId = parent.agentId;
+    parentAgentId = parent.parentAgentId;
+  }
+
+  return topLevelAgentId;
+}
+
+function toTopLevelSnapshot({
+  snapshot,
+  topLevelAgentId,
+  snapshotsByAgentId,
+  agentHierarchy,
+}: {
+  snapshot: StatusAgentSnapshot;
+  topLevelAgentId: string;
+  snapshotsByAgentId: ReadonlyMap<string, StatusAgentSnapshot>;
+  agentHierarchy: ReadonlyMap<string, StatusBarSessionIdentity> | undefined;
+}): StatusAgentSnapshot {
+  const topLevelAgent =
+    snapshotsByAgentId.get(topLevelAgentId) ?? agentHierarchy?.get(topLevelAgentId);
+  if (!topLevelAgent || topLevelAgent.agentId === snapshot.agentId) {
+    return snapshot;
+  }
+  return {
+    ...snapshot,
+    agentId: topLevelAgent.agentId,
+    provider: topLevelAgent.provider,
+    cwd: topLevelAgent.cwd,
+    workspaceId: topLevelAgent.workspaceId,
+    title: topLevelAgent.title,
+    parentAgentId: null,
+  };
 }
 
 export interface NavigateToStatusBarSessionDeps {
