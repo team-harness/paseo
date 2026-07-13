@@ -40,6 +40,7 @@ import {
   type StatusBarSessionIdentity,
   type StatusBarSessionTarget,
 } from "./status-bar-session-navigation";
+import type { StatusBarHostSummary } from "./view-model";
 import {
   formatStatusBarSessionMeta,
   formatStatusBarSessionSubtitle,
@@ -136,6 +137,7 @@ interface StatusBarRunningSessionsTriggerProps {
   runningAgents: StatusAgentSnapshot[];
   needsAttentionAgents: StatusAgentSnapshot[];
   recentlyCompletedAgents: StatusAgentSnapshot[];
+  hostSummaries?: StatusBarHostSummary[];
   pinnedSessions?: StatusPinnedSession[];
   canUseStatusBarSessionPins?: boolean;
 }
@@ -144,12 +146,20 @@ export function StatusBarRunningSessionsTrigger({
   runningAgents,
   needsAttentionAgents,
   recentlyCompletedAgents,
+  hostSummaries,
   ...interactiveProps
 }: StatusBarRunningSessionsTriggerProps) {
-  const hasSessionSnapshots =
-    runningAgents.length > 0 ||
-    needsAttentionAgents.length > 0 ||
-    recentlyCompletedAgents.length > 0;
+  const hasHostSummaries = hostSummaries !== undefined;
+  const hasSessionSnapshots = hasHostSummaries
+    ? hostSummaries.some(
+        (host) =>
+          host.summary.activity.runningAgents.length > 0 ||
+          host.summary.activity.needsAttentionAgents.length > 0 ||
+          host.summary.activity.recentlyCompletedAgents.length > 0,
+      )
+    : runningAgents.length > 0 ||
+      needsAttentionAgents.length > 0 ||
+      recentlyCompletedAgents.length > 0;
 
   if (!hasSessionSnapshots) {
     return <SessionStatusStaticView />;
@@ -161,6 +171,7 @@ export function StatusBarRunningSessionsTrigger({
       runningAgents={runningAgents}
       needsAttentionAgents={needsAttentionAgents}
       recentlyCompletedAgents={recentlyCompletedAgents}
+      hostSummaries={hostSummaries}
     />
   );
 }
@@ -180,6 +191,7 @@ function InteractiveRunningSessionsTrigger({
   runningAgents,
   needsAttentionAgents,
   recentlyCompletedAgents,
+  hostSummaries,
   pinnedSessions = EMPTY_PINNED_SESSIONS,
   canUseStatusBarSessionPins = false,
 }: StatusBarRunningSessionsTriggerProps) {
@@ -188,48 +200,64 @@ function InteractiveRunningSessionsTrigger({
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const sheetHeader = useMemo(() => ({ title: t("statusBar.sessions.title") }), [t]);
-  const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
-  const agents = useSessionStore((state) => state.sessions[serverId]?.agents);
-  const liveWorkspaceIds = useMemo(() => new Set(workspaces?.keys() ?? []), [workspaces]);
-  const agentHierarchy = useMemo<ReadonlyMap<string, StatusBarSessionIdentity>>(
+  const sessions = useSessionStore((state) => state.sessions);
+  const sessionSources = useMemo(
     () =>
-      new Map(
-        [...(agents?.values() ?? [])].map((agent) => [
-          agent.id,
-          {
-            agentId: agent.id,
-            parentAgentId: agent.parentAgentId,
-            provider: agent.provider,
-            cwd: agent.cwd,
-            workspaceId: agent.workspaceId ?? null,
-            title: agent.title,
-          },
-        ]),
-      ),
-    [agents],
+      hostSummaries?.map((host) => ({
+        serverId: host.serverId,
+        serverLabel: host.serverLabel,
+        runningAgents: host.summary.activity.runningAgents,
+        needsAttentionAgents: host.summary.activity.needsAttentionAgents,
+        recentlyCompletedAgents: host.summary.activity.recentlyCompletedAgents,
+      })) ?? [
+        {
+          serverId,
+          serverLabel: undefined,
+          runningAgents,
+          needsAttentionAgents,
+          recentlyCompletedAgents,
+        },
+      ],
+    [hostSummaries, needsAttentionAgents, recentlyCompletedAgents, runningAgents, serverId],
   );
   const items = useMemo(
     () =>
-      buildStatusBarSessionList({
-        serverId,
-        needsAttentionAgents,
-        runningAgents,
-        recentlyCompletedAgents,
-        liveWorkspaceIds,
-        agentHierarchy,
+      sessionSources.flatMap((source) => {
+        const session = sessions[source.serverId];
+        const agentHierarchy = new Map<string, StatusBarSessionIdentity>(
+          [...(session?.agents?.values() ?? [])].map((agent) => [
+            agent.id,
+            {
+              agentId: agent.id,
+              parentAgentId: agent.parentAgentId,
+              provider: agent.provider,
+              cwd: agent.cwd,
+              workspaceId: agent.workspaceId ?? null,
+              title: agent.title,
+            },
+          ]),
+        );
+        return buildStatusBarSessionList({
+          serverId: source.serverId,
+          ...(sessionSources.length > 1 ? { serverLabel: source.serverLabel } : {}),
+          needsAttentionAgents: source.needsAttentionAgents,
+          runningAgents: source.runningAgents,
+          recentlyCompletedAgents: source.recentlyCompletedAgents,
+          liveWorkspaceIds: new Set(session?.workspaces?.keys() ?? []),
+          agentHierarchy,
+        });
       }),
-    [
-      agentHierarchy,
-      liveWorkspaceIds,
-      needsAttentionAgents,
-      recentlyCompletedAgents,
-      runningAgents,
-      serverId,
-    ],
+    [sessionSources, sessions],
   );
   const hasItems = items.length > 0;
-  const attentionCount = needsAttentionAgents.length;
-  const runningCount = runningAgents.length;
+  const attentionCount = sessionSources.reduce(
+    (count, source) => count + source.needsAttentionAgents.length,
+    0,
+  );
+  const runningCount = sessionSources.reduce(
+    (count, source) => count + source.runningAgents.length,
+    0,
+  );
 
   useEffect(() => {
     setOpen(false);
@@ -341,10 +369,14 @@ function InteractiveRunningSessionsTrigger({
 
 export function StatusBarSessionHistoryTrigger({
   serverId,
+  showAllHosts = false,
+  hostServerIds,
   pinnedSessions = EMPTY_PINNED_SESSIONS,
   canUseStatusBarSessionPins = false,
 }: {
   serverId: string;
+  showAllHosts?: boolean;
+  hostServerIds?: readonly string[];
   pinnedSessions?: StatusPinnedSession[];
   canUseStatusBarSessionPins?: boolean;
 }) {
@@ -353,7 +385,8 @@ export function StatusBarSessionHistoryTrigger({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { agents, isInitialLoad, isError, isRevalidating, refreshAll } = useAgentHistory({
-    serverId,
+    serverId: showAllHosts ? undefined : serverId,
+    serverIds: showAllHosts ? (hostServerIds ?? []) : undefined,
   });
   const [open, setOpen] = useState(false);
   const [isManualRefresh, setIsManualRefresh] = useState(false);
@@ -366,7 +399,7 @@ export function StatusBarSessionHistoryTrigger({
 
   useEffect(() => {
     setOpen(false);
-  }, [pathname, serverId]);
+  }, [hostServerIds, pathname, serverId, showAllHosts]);
 
   const refreshHistory = useCallback(() => {
     if (isInitialLoad || isRefreshing) {
@@ -467,6 +500,7 @@ export function StatusBarSessionHistoryTrigger({
             isRefreshing={isRefreshing}
             pinnedSessions={pinnedSessions}
             canUseStatusBarSessionPins={canUseStatusBarSessionPins}
+            showServerLabel={showAllHosts}
             onRefresh={refreshHistory}
             onNavigate={handleNavigate}
           />
@@ -500,6 +534,7 @@ export function StatusBarSessionHistoryTrigger({
           isRefreshing={isRefreshing}
           pinnedSessions={pinnedSessions}
           canUseStatusBarSessionPins={canUseStatusBarSessionPins}
+          showServerLabel={showAllHosts}
           onRefresh={refreshHistory}
           onNavigate={handleNavigate}
         />
@@ -624,6 +659,7 @@ function StatusBarHistoryList({
   isRefreshing,
   pinnedSessions,
   canUseStatusBarSessionPins,
+  showServerLabel,
   onRefresh,
   onNavigate,
 }: {
@@ -633,6 +669,7 @@ function StatusBarHistoryList({
   isRefreshing: boolean;
   pinnedSessions: StatusPinnedSession[];
   canUseStatusBarSessionPins: boolean;
+  showServerLabel: boolean;
   onRefresh: () => void;
   onNavigate: (agent: AggregatedAgent) => void;
 }) {
@@ -676,6 +713,7 @@ function StatusBarHistoryList({
             onNavigate={onNavigate}
             pinnedSessions={pinnedSessions}
             canUseStatusBarSessionPins={canUseStatusBarSessionPins}
+            showServerLabel={showServerLabel}
           />
         ))}
       </View>
@@ -712,16 +750,20 @@ function StatusBarHistoryRow({
   onNavigate,
   pinnedSessions,
   canUseStatusBarSessionPins,
+  showServerLabel,
 }: {
   item: AggregatedAgent;
   onNavigate: (agent: AggregatedAgent) => void;
   pinnedSessions: StatusPinnedSession[];
   canUseStatusBarSessionPins: boolean;
+  showServerLabel: boolean;
 }) {
   const { t } = useTranslation();
   const title = item.title?.trim() || t("agentList.fallbackTitle");
   const subtitle = formatHistorySubtitle(item);
-  const meta = formatStatusBarHistoryMeta(item);
+  const meta = [showServerLabel ? item.serverLabel : null, formatStatusBarHistoryMeta(item)]
+    .filter(Boolean)
+    .join(" · ");
   const handlePress = useCallback(() => {
     onNavigate(item);
   }, [item, onNavigate]);
@@ -891,7 +933,7 @@ function StatusBarSessionRow({
   const { t } = useTranslation();
   const usage = formatStatusBarSessionUsage(item.snapshot);
   const statusLabel = formatStatusBarSessionStatus(item.snapshot, item.group, t);
-  const meta = [statusLabel, usage, formatStatusBarSessionMeta(item.snapshot)]
+  const meta = [item.serverLabel, statusLabel, usage, formatStatusBarSessionMeta(item.snapshot)]
     .filter(Boolean)
     .join(" · ");
   const title = formatStatusBarSessionTitle(item.snapshot);

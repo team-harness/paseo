@@ -176,6 +176,8 @@ Writes use `writeJsonFileAtomic`. Files are parsed with Zod at daemon bootstrap;
 
 Session pins are host-owned shortcuts for returning to specific agent sessions from the global status bar. They are daemon-side state, not app-local cache, so every client connected to the same host sees the same pinned sessions through `status.summary.get.response` and `status.summary.updated`.
 
+状态栏客户端可以聚合所有已连接且支持 status summary 的 Host，用于展示总 Token、费用、活动计数、会话和历史；聚合列表中的会话与历史条目必须保留来源 Host，并使用该条目的 `serverId` 导航。固定会话不参与跨 Host 聚合，始终只显示和修改当前 Host 的固定状态。
+
 The file contains:
 
 | Field            | Type                    | Description                                    |

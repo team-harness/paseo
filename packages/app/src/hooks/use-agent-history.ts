@@ -149,6 +149,7 @@ export async function fetchAgentHistoryBatch(input: {
 
 export function useAgentHistory(options: {
   serverId?: string | null;
+  serverIds?: readonly string[];
   enabled?: boolean;
 }): AgentHistoryResult {
   const { t } = useTranslation();
@@ -163,11 +164,21 @@ export function useAgentHistory(options: {
     const value = options.serverId;
     return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
   }, [options.serverId]);
+  const requestedServerIds = useMemo(() => {
+    if (!options.serverIds) {
+      return undefined;
+    }
+    return Array.from(
+      new Set(options.serverIds.map((value) => value.trim()).filter((value) => value.length > 0)),
+    );
+  }, [options.serverIds]);
   const enabled = options.enabled ?? true;
   const targetHosts = useMemo(() => {
     void runtimeVersion;
     const serverLabelById = new Map(daemons.map((daemon) => [daemon.serverId, daemon.label]));
-    const serverIds = serverId ? [serverId] : daemons.map((daemon) => daemon.serverId);
+    const serverIds = serverId
+      ? [serverId]
+      : (requestedServerIds ?? daemons.map((daemon) => daemon.serverId));
     const hosts: AgentHistoryHost[] = [];
 
     for (const targetServerId of serverIds) {
@@ -184,7 +195,7 @@ export function useAgentHistory(options: {
     }
 
     return hosts;
-  }, [daemons, runtime, runtimeVersion, serverId]);
+  }, [daemons, requestedServerIds, runtime, runtimeVersion, serverId]);
   const targetServerIds = useMemo(() => targetHosts.map((host) => host.serverId), [targetHosts]);
   const queryKey = useMemo(
     () => (serverId ? agentHistoryQueryKey(serverId) : allAgentHistoryQueryKey(targetServerIds)),

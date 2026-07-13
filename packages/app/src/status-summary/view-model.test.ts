@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HostStatusSummaryPayload } from "@getpaseo/protocol/messages";
-import { buildStatusSummaryViewModel } from "./view-model";
+import { buildMultiHostStatusSummaryViewModel, buildStatusSummaryViewModel } from "./view-model";
 
 function summary(overrides: Partial<HostStatusSummaryPayload> = {}): HostStatusSummaryPayload {
   return {
@@ -107,6 +107,93 @@ describe("buildStatusSummaryViewModel", () => {
     expect(view.canUseStatusBarSessionPins).toBe(false);
     expect(view.generatedAt).toBe("2026-07-06T04:00:00.000Z");
     expect(view.isRefreshing).toBe(true);
+  });
+
+  it("aggregates ready summaries from multiple hosts while retaining their sources", () => {
+    const first = summary();
+    const second = summary({
+      generatedAt: "2026-07-06T05:00:00.000Z",
+      usage: {
+        lifetime: {
+          inputTokens: 2_000,
+          cachedInputTokens: 1_000,
+          outputTokens: 500,
+          totalTokens: 10_000,
+          totalCostUsd: 2,
+        },
+        today: {
+          inputTokens: 200,
+          outputTokens: 50,
+          totalTokens: 5_000,
+          totalCostUsd: 0.5,
+          windowStart: "2026-07-06T01:00:00.000Z",
+          windowEnd: "2026-07-06T05:00:00.000Z",
+        },
+        byProvider: [],
+        byModel: [],
+      },
+      activity: {
+        runningAgents: [
+          {
+            agentId: "agent-running-2",
+            provider: "claude",
+            cwd: "/repo-2",
+            workspaceId: "workspace-2",
+            title: "Running agent two",
+            status: "running",
+            stateBucket: "running",
+            updatedAt: "2026-07-06T04:59:00.000Z",
+          },
+        ],
+        needsAttentionAgents: [],
+        recentlyCompletedAgents: [],
+        counts: {
+          running: 1,
+          needsAttention: 1,
+          idle: 2,
+          error: 0,
+        },
+      },
+    });
+
+    const view = buildMultiHostStatusSummaryViewModel([
+      {
+        serverId: "host-1",
+        serverLabel: "MacBook Pro",
+        state: { kind: "ready", summary: first, isRefreshing: false },
+        canUseStatusBarSessionPins: true,
+      },
+      {
+        serverId: "host-2",
+        serverLabel: "Build host",
+        state: { kind: "ready", summary: second, isRefreshing: true },
+        canUseStatusBarSessionPins: true,
+      },
+    ]);
+
+    expect(view.kind).toBe("ready");
+    if (view.kind !== "ready") throw new Error("Expected ready view");
+    expect(view.summary.usage.lifetime.totalTokens).toBe(112_010_000);
+    expect(view.summary.usage.today.totalTokens).toBe(61_005_000);
+    expect(view.summary.usage.today.totalCostUsd).toBeCloseTo(0.6234);
+    expect(view.summary.activity.counts).toEqual({
+      running: 2,
+      needsAttention: 3,
+      idle: 5,
+      error: 1,
+    });
+    expect(view.runningAgents.map((agent) => agent.agentId)).toEqual([
+      "agent-running",
+      "agent-running-2",
+    ]);
+    expect(view.hostSummaries?.map((host) => host.serverLabel)).toEqual([
+      "MacBook Pro",
+      "Build host",
+    ]);
+    expect(view.pinnedSessions).toEqual([]);
+    expect(view.canUseStatusBarSessionPins).toBe(false);
+    expect(view.isRefreshing).toBe(true);
+    expect(view.generatedAt).toBe("2026-07-06T05:00:00.000Z");
   });
 
   it("exposes host pinned sessions only behind the single capability gate", () => {

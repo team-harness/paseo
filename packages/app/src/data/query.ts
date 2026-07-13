@@ -1,6 +1,7 @@
 import {
   keepPreviousData,
   skipToken,
+  useQueries,
   useQuery,
   type QueryKey,
   type UseQueryOptions,
@@ -11,7 +12,7 @@ type QueryFnOption<TQueryFnData, TError, TData, TQueryKey extends QueryKey> = No
   UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>["queryFn"]
 >;
 
-type ReplicaQueryInput<TQueryFnData, TError, TData, TQueryKey extends QueryKey> = Omit<
+export type ReplicaQueryInput<TQueryFnData, TError, TData, TQueryKey extends QueryKey> = Omit<
   UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
   | "gcTime"
   | "initialData"
@@ -39,6 +40,19 @@ export function useReplicaQuery<
   TQueryKey extends QueryKey = QueryKey,
 >(input: ReplicaQueryInput<TQueryFnData, TError, TData, TQueryKey>): UseQueryResult<TData, TError> {
   return useQuery(replicaQueryOptions(input));
+}
+
+export function useReplicaQueries<
+  TQueryFnData,
+  TError = Error,
+  TData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+>(
+  inputs: readonly ReplicaQueryInput<TQueryFnData, TError, TData, TQueryKey>[],
+): UseQueryResult<TData, TError>[] {
+  return useQueries({
+    queries: inputs.map((input) => replicaQueryOptions(input)),
+  }) as UseQueryResult<TData, TError>[];
 }
 
 export function useFetchQuery<

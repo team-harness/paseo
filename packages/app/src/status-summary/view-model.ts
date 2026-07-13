@@ -27,6 +27,20 @@ export interface StatusBarRowDetail {
   value: string;
 }
 
+export interface StatusBarHostSummary {
+  serverId: string;
+  serverLabel: string;
+  summary: HostStatusSummaryPayload;
+  canUseStatusBarSessionPins: boolean;
+}
+
+export interface StatusSummaryHostViewState {
+  serverId: string;
+  serverLabel: string;
+  state: StatusSummaryQueryState;
+  canUseStatusBarSessionPins: boolean;
+}
+
 export type StatusSummaryViewModel =
   | { kind: "hidden"; reason: "no-host" }
   | {
@@ -43,6 +57,7 @@ export type StatusSummaryViewModel =
       recentlyCompletedAgents: StatusAgentSnapshot[];
       pinnedSessions: StatusPinnedSession[];
       canUseStatusBarSessionPins: boolean;
+      hostSummaries?: StatusBarHostSummary[];
       generatedAt: string;
       isRefreshing: boolean;
     };
@@ -90,6 +105,128 @@ export function buildStatusSummaryViewModel(
     generatedAt: summary.generatedAt,
     isRefreshing: state.isRefreshing,
   };
+}
+
+export function buildMultiHostStatusSummaryViewModel(
+  hosts: StatusSummaryHostViewState[],
+): StatusSummaryViewModel {
+  const readyHosts = hosts.filter(
+    (
+      host,
+    ): host is StatusSummaryHostViewState & {
+      state: Extract<StatusSummaryQueryState, { kind: "ready" }>;
+    } => host.state.kind === "ready",
+  );
+  if (readyHosts.length > 0) {
+    const hostSummaries = readyHosts.map((host) => ({
+      serverId: host.serverId,
+      serverLabel: host.serverLabel,
+      summary: host.state.summary,
+      canUseStatusBarSessionPins: host.canUseStatusBarSessionPins,
+    }));
+    const summary = aggregateHostStatusSummaries(hostSummaries);
+    return {
+      kind: "ready",
+      summary,
+      primaryRows: buildPrimaryRows(summary),
+      runningAgents: summary.activity.runningAgents,
+      needsAttentionAgents: summary.activity.needsAttentionAgents,
+      recentlyCompletedAgents: summary.activity.recentlyCompletedAgents,
+      pinnedSessions: summary.pinnedSessions ?? [],
+      canUseStatusBarSessionPins:
+        hostSummaries.length === 1 && hostSummaries[0]?.canUseStatusBarSessionPins === true,
+      hostSummaries,
+      generatedAt: summary.generatedAt,
+      isRefreshing: readyHosts.some((host) => host.state.isRefreshing),
+    };
+  }
+  if (hosts.length === 0) {
+    return { kind: "hidden", reason: "no-host" };
+  }
+  if (hosts.some((host) => host.state.kind === "loading")) {
+    return { kind: "loading" };
+  }
+  const error = hosts.find((host) => host.state.kind === "error")?.state;
+  if (error?.kind === "error") {
+    return { kind: "error", message: error.message };
+  }
+  if (
+    hosts.every((host) => host.state.kind === "disabled" && host.state.reason === "unsupported")
+  ) {
+    return { kind: "unsupported" };
+  }
+  return { kind: "offline" };
+}
+
+export function aggregateHostStatusSummaries(
+  hosts: StatusBarHostSummary[],
+): HostStatusSummaryPayload {
+  const summaries = hosts.map((host) => host.summary);
+  const firstSummary = summaries[0];
+  if (!firstSummary) {
+    throw new Error("At least one host summary is required");
+  }
+  const generatedAt = summaries.reduce(
+    (latest, summary) => (summary.generatedAt > latest ? summary.generatedAt : latest),
+    firstSummary.generatedAt,
+  );
+  const windowStart = summaries.reduce(
+    (earliest, summary) =>
+      summary.usage.today.windowStart < earliest ? summary.usage.today.windowStart : earliest,
+    firstSummary.usage.today.windowStart,
+  );
+  const windowEnds = summaries
+    .map((summary) => summary.usage.today.windowEnd)
+    .filter((windowEnd): windowEnd is string => typeof windowEnd === "string");
+
+  return {
+    generatedAt,
+    usage: {
+      lifetime: sumUsageTotals(summaries.map((summary) => summary.usage.lifetime)),
+      today: {
+        ...sumUsageTotals(summaries.map((summary) => summary.usage.today)),
+        windowStart,
+        windowEnd: windowEnds.length > 0 ? (windowEnds.sort().at(-1) ?? null) : null,
+      },
+      byProvider: [],
+      byModel: [],
+    },
+    activity: {
+      runningAgents: summaries.flatMap((summary) => summary.activity.runningAgents),
+      needsAttentionAgents: summaries.flatMap((summary) => summary.activity.needsAttentionAgents),
+      recentlyCompletedAgents: summaries.flatMap(
+        (summary) => summary.activity.recentlyCompletedAgents,
+      ),
+      counts: {
+        running: sumNumbers(summaries.map((summary) => summary.activity.counts.running)),
+        needsAttention: sumNumbers(
+          summaries.map((summary) => summary.activity.counts.needsAttention),
+        ),
+        idle: sumNumbers(summaries.map((summary) => summary.activity.counts.idle)),
+        error: sumNumbers(summaries.map((summary) => summary.activity.counts.error)),
+      },
+    },
+    pinnedSessions: summaries.length === 1 ? (firstSummary.pinnedSessions ?? []) : [],
+  };
+}
+
+function sumUsageTotals(totals: StatusSummaryUsageTotals[]): StatusSummaryUsageTotals {
+  return {
+    inputTokens: sumOptionalNumbers(totals.map((total) => total.inputTokens)),
+    cachedInputTokens: sumOptionalNumbers(totals.map((total) => total.cachedInputTokens)),
+    outputTokens: sumOptionalNumbers(totals.map((total) => total.outputTokens)),
+    totalCostUsd: sumOptionalNumbers(totals.map((total) => total.totalCostUsd)),
+    totalTokens: sumNumbers(totals.map((total) => total.totalTokens)),
+  };
+}
+
+function sumOptionalNumbers(values: Array<number | undefined>): number | undefined {
+  const definedValues = values.filter((value): value is number => value !== undefined);
+  return definedValues.length > 0 ? sumNumbers(definedValues) : undefined;
+}
+
+function sumNumbers(values: number[]): number {
+  return values.reduce((total, value) => total + value, 0);
 }
 
 export function buildPrimaryRows(summary: HostStatusSummaryPayload): StatusBarRow[] {

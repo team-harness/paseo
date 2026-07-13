@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { FolderGit2, GitBranch } from "lucide-react-native";
+import type { StatusPinnedSession } from "@getpaseo/protocol/messages";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import {
   DropdownMenu,
@@ -39,6 +40,7 @@ const COMPACT_ROW_IDS: ReadonlySet<StatusBarRowId> = new Set([
   "attention",
 ]);
 const COST_SHEET_SNAP_POINTS = ["30%", "55%"];
+const EMPTY_PINNED_SESSIONS: StatusPinnedSession[] = [];
 const ThemedGitBranch = withUnistyles(GitBranch, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
@@ -90,41 +92,7 @@ function StatusBarContent({
   t: (key: string, options?: Record<string, unknown>) => string;
 }) {
   if (view.kind === "ready") {
-    let rows = view.primaryRows.filter((row) => row.id !== "running" && row.id !== "attention");
-    if (isCompact) {
-      rows = rows.filter((row) => COMPACT_ROW_IDS.has(row.id));
-    }
-
-    return (
-      <View style={styles.rowGroup} testID="global-status-bar-ready">
-        {rows.map((row) =>
-          row.id === "cost" && row.details ? (
-            <StatusBarCostChip key={row.id} row={row} isCompact={isCompact} t={t} />
-          ) : (
-            <StatusBarChip key={row.id} row={row} t={t} />
-          ),
-        )}
-        <StatusBarRunningSessionsTrigger
-          serverId={serverId}
-          runningAgents={view.runningAgents}
-          needsAttentionAgents={view.needsAttentionAgents}
-          recentlyCompletedAgents={view.recentlyCompletedAgents}
-          pinnedSessions={view.pinnedSessions}
-          canUseStatusBarSessionPins={view.canUseStatusBarSessionPins}
-        />
-        <StatusBarSessionHistoryTrigger
-          serverId={serverId}
-          pinnedSessions={view.pinnedSessions}
-          canUseStatusBarSessionPins={view.canUseStatusBarSessionPins}
-        />
-        <StatusBarSessionPinsTrigger
-          serverId={serverId}
-          pinnedSessions={view.pinnedSessions}
-          canUseStatusBarSessionPins={view.canUseStatusBarSessionPins}
-        />
-        <StatusBarWorkspaceInfo serverId={serverId} />
-      </View>
-    );
+    return <StatusBarReadyContent serverId={serverId} view={view} isCompact={isCompact} t={t} />;
   }
   if (view.kind === "hidden") {
     return null;
@@ -136,6 +104,71 @@ function StatusBarContent({
       <Text style={styles.stateText} numberOfLines={1}>
         {message}
       </Text>
+    </View>
+  );
+}
+
+function StatusBarReadyContent({
+  serverId,
+  view,
+  isCompact,
+  t,
+}: {
+  serverId: string;
+  view: Extract<StatusSummaryViewModel, { kind: "ready" }>;
+  isCompact: boolean;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const currentHostSummary = view.hostSummaries?.find((host) => host.serverId === serverId);
+  const hasHostSummaries = view.hostSummaries !== undefined;
+  const isMultiHost = (view.hostSummaries?.length ?? 1) > 1;
+  const currentHostPinnedSessions =
+    currentHostSummary?.summary.pinnedSessions ??
+    (hasHostSummaries ? EMPTY_PINNED_SESSIONS : view.pinnedSessions);
+  const currentHostCanUseSessionPins =
+    currentHostSummary?.canUseStatusBarSessionPins ??
+    (!hasHostSummaries && view.canUseStatusBarSessionPins);
+  const canUseListSessionPins = !isMultiHost && currentHostCanUseSessionPins;
+  const listPinnedSessions = isMultiHost ? EMPTY_PINNED_SESSIONS : currentHostPinnedSessions;
+  const historyHostServerIds = isMultiHost
+    ? view.hostSummaries?.map((host) => host.serverId)
+    : undefined;
+  let rows = view.primaryRows.filter((row) => row.id !== "running" && row.id !== "attention");
+  if (isCompact) {
+    rows = rows.filter((row) => COMPACT_ROW_IDS.has(row.id));
+  }
+
+  return (
+    <View style={styles.rowGroup} testID="global-status-bar-ready">
+      {rows.map((row) =>
+        row.id === "cost" && row.details ? (
+          <StatusBarCostChip key={row.id} row={row} isCompact={isCompact} t={t} />
+        ) : (
+          <StatusBarChip key={row.id} row={row} t={t} />
+        ),
+      )}
+      <StatusBarRunningSessionsTrigger
+        serverId={serverId}
+        runningAgents={view.runningAgents}
+        needsAttentionAgents={view.needsAttentionAgents}
+        recentlyCompletedAgents={view.recentlyCompletedAgents}
+        hostSummaries={view.hostSummaries}
+        pinnedSessions={listPinnedSessions}
+        canUseStatusBarSessionPins={canUseListSessionPins}
+      />
+      <StatusBarSessionHistoryTrigger
+        serverId={serverId}
+        showAllHosts={isMultiHost}
+        hostServerIds={historyHostServerIds}
+        pinnedSessions={listPinnedSessions}
+        canUseStatusBarSessionPins={canUseListSessionPins}
+      />
+      <StatusBarSessionPinsTrigger
+        serverId={serverId}
+        pinnedSessions={currentHostPinnedSessions}
+        canUseStatusBarSessionPins={currentHostCanUseSessionPins}
+      />
+      <StatusBarWorkspaceInfo serverId={serverId} />
     </View>
   );
 }

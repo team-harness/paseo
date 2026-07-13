@@ -25,6 +25,7 @@ export type StatusBarSessionTarget = StatusBarAgentTarget | StatusBarWorkspaceTa
 export interface StatusBarSessionListItem {
   key: string;
   group: StatusBarSessionGroupKind;
+  serverLabel?: string;
   snapshot: StatusAgentSnapshot;
   primaryTarget: StatusBarAgentTarget;
   workspaceTarget?: StatusBarWorkspaceTarget;
@@ -41,6 +42,7 @@ export interface StatusBarSessionIdentity {
 
 export interface BuildStatusBarSessionListInput {
   serverId: string;
+  serverLabel?: string;
   needsAttentionAgents: StatusAgentSnapshot[];
   runningAgents: StatusAgentSnapshot[];
   recentlyCompletedAgents: StatusAgentSnapshot[];
@@ -74,8 +76,9 @@ export function buildStatusBarSessionList(
       });
       const workspaceId = normalizeWorkspaceId(topLevelSnapshot.workspaceId);
       items.push({
-        key: `${group}:${topLevelSnapshot.agentId}`,
+        key: `${input.serverId}:${group}:${topLevelSnapshot.agentId}`,
         group,
+        serverLabel: input.serverLabel,
         snapshot: topLevelSnapshot,
         primaryTarget: {
           kind: "agent",

@@ -113,6 +113,30 @@ describe("status bar session navigation", () => {
     });
   });
 
+  it("keeps sessions with the same agent id on different hosts", () => {
+    const first = buildStatusBarSessionList({
+      serverId: "host-1",
+      serverLabel: "MacBook Pro",
+      needsAttentionAgents: [],
+      runningAgents: [snapshot({ agentId: "shared-agent" })],
+      recentlyCompletedAgents: [],
+      liveWorkspaceIds: new Set(),
+    });
+    const second = buildStatusBarSessionList({
+      serverId: "host-2",
+      serverLabel: "Build host",
+      needsAttentionAgents: [],
+      runningAgents: [snapshot({ agentId: "shared-agent" })],
+      recentlyCompletedAgents: [],
+      liveWorkspaceIds: new Set(),
+    });
+
+    expect([...first, ...second].map((item) => [item.key, item.serverLabel])).toEqual([
+      ["host-1:running:shared-agent", "MacBook Pro"],
+      ["host-2:running:shared-agent", "Build host"],
+    ]);
+  });
+
   it("builds agent targets while hiding workspace actions for missing or unknown workspaces", () => {
     const items = buildStatusBarSessionList({
       serverId: "server-1",
