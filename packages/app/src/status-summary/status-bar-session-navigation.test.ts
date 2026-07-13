@@ -193,6 +193,9 @@ describe("status bar session navigation", () => {
       agentId: "agent-1",
       workspaceId: "workspace-1",
     });
-    expect(navigateToWorkspace).toHaveBeenCalledWith("server-1", "workspace-1");
+    expect(navigateToWorkspace).toHaveBeenCalledWith({
+      serverId: "server-1",
+      workspaceId: "workspace-1",
+    });
   });
 });

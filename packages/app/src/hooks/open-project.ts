@@ -58,7 +58,7 @@ interface WorkspaceOpenCallbacks {
   mergeWorkspaces: (serverId: string, workspaces: Iterable<WorkspaceDescriptor>) => void;
   setHasHydratedWorkspaces: (serverId: string, hydrated: boolean) => void;
   openDraftTab: (workspaceKey: string) => string | null;
-  navigateToWorkspace: (serverId: string, workspaceId: string) => void;
+  navigateToWorkspace: (input: { serverId: string; workspaceId: string }) => unknown;
 }
 
 export interface OpenGithubRepoDirectlyInput extends WorkspaceOpenCallbacks {
@@ -123,7 +123,7 @@ function finishWorkspaceOpen(
   input.mergeWorkspaces(normalizedServerId, [workspace]);
   input.setHasHydratedWorkspaces(normalizedServerId, true);
   input.openDraftTab(workspaceKey);
-  input.navigateToWorkspace(normalizedServerId, workspace.id);
+  input.navigateToWorkspace({ serverId: normalizedServerId, workspaceId: workspace.id });
   return true;
 }
 

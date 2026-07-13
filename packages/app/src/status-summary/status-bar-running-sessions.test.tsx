@@ -715,7 +715,10 @@ describe("status bar running sessions", () => {
       flushAnimationFrames();
     });
 
-    expect(navigationSpies.navigateToWorkspace).toHaveBeenCalledWith("server-1", "workspace-1");
+    expect(navigationSpies.navigateToWorkspace).toHaveBeenCalledWith({
+      serverId: "server-1",
+      workspaceId: "workspace-1",
+    });
   });
 
   it("closes an open panel on route change", () => {

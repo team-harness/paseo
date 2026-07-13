@@ -174,7 +174,7 @@ function toTopLevelSnapshot({
 
 export interface NavigateToStatusBarSessionDeps {
   navigateToAgent?: (input: NavigateToAgentInput) => unknown;
-  navigateToWorkspace?: (serverId: string, workspaceId: string) => unknown;
+  navigateToWorkspace?: (input: { serverId: string; workspaceId: string }) => unknown;
 }
 
 export function navigateToStatusBarSession(
@@ -192,7 +192,7 @@ export function navigateToStatusBarSession(
   }
 
   const navigateToWorkspace = deps.navigateToWorkspace ?? defaultNavigateToWorkspace;
-  navigateToWorkspace(target.serverId, target.workspaceId);
+  navigateToWorkspace({ serverId: target.serverId, workspaceId: target.workspaceId });
 }
 
 function normalizeWorkspaceId(value: string | null | undefined): string | null {
