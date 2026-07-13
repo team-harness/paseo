@@ -690,7 +690,7 @@ export const ru: TranslationResources = {
           success: "Обновлено",
         },
         archive: {
-          label: "Архив рабочего дерева",
+          label: "Архивировать рабочее пространство",
           pending: "Архивирование...",
           success: "В архиве",
         },
@@ -741,8 +741,6 @@ export const ru: TranslationResources = {
             "Обновление недоступно, пока у вас есть локальные изменения, поэтому сначала зафиксируйте или сохраните их.",
           updateCurrent:
             "Обновление недоступно, поскольку эта ветка уже обновлена ​​до версии{{baseRef}}.",
-          archiveNotWorktree:
-            "Архив здесь недоступен, поскольку это рабочее пространство не было создано как рабочее дерево Paseo.",
           mergePrNoGithub: "Объединение PR сейчас недоступно, поскольку GitHub не подключен.",
           mergePrMissing: "Объединение PR недоступно, поскольку еще нет запроса на включение",
           mergePrDraft:
@@ -770,11 +768,9 @@ export const ru: TranslationResources = {
           baseRefUnavailable: "Базовый номер недоступен.",
           failedMerge: "Не удалось объединиться",
           failedMergeFromBase: "Не удалось объединиться с базой.",
-          worktreePathUnavailable: "Путь к рабочему дереву недоступен.",
-          failedArchive: "Не удалось заархивировать рабочее дерево.",
         },
         archiveWarning: {
-          title: 'Архив "{{worktreeName}}"?',
+          title: 'Архив "{{workspaceName}}"?',
           confirm: "Архив",
           cancel: "Отмена",
           uncommittedChanges: "Незафиксированные изменения",
@@ -871,6 +867,7 @@ export const ru: TranslationResources = {
     actions: {
       addProject: "Добавить проект",
       newWorkspace: "Новое рабочее пространство",
+      hosts: "Хосты",
       home: "Дом",
       settings: "Настройки",
       closeSidebar: "Закрыть боковую панель",
@@ -924,7 +921,7 @@ export const ru: TranslationResources = {
         copyBranchName: "Скопировать название ветки",
         rename: "Переименовать рабочую область",
         archive: "Архив",
-        archiveWorktree: "Архив рабочего дерева",
+        archiveWorkspace: "Архивировать рабочее пространство",
         hideFromSidebar: "Скрыть с боковой панели",
         archiving: "Архивирование...",
         hiding: "Скрытие...",
@@ -947,7 +944,7 @@ export const ru: TranslationResources = {
         branchNameCopied: "Название филиала скопировано.",
         hostDisconnected: "Host не подключен",
         hideFailed: "Не удалось скрыть рабочую область.",
-        archiveFailed: "Не удалось заархивировать рабочее дерево.",
+        archiveFailed: "Не удалось заархивировать рабочее пространство.",
       },
     },
   },
@@ -1705,7 +1702,7 @@ export const ru: TranslationResources = {
         openProject: "Открыть проект",
         newWorkspace: "Новое рабочее пространство",
         newWorktree: "Новое рабочее дерево",
-        archiveWorktree: "Архив рабочего дерева",
+        archiveWorkspace: "Архивировать рабочее пространство",
         newTab: "Новая вкладка",
         closeCurrentTab: "Закрыть текущую вкладку",
         jumpToWorkspace: "Перейти в рабочую область",

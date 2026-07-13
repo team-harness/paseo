@@ -1271,7 +1271,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
       ref={streamViewRef}
       agentId={agent.id}
       serverId={serverId}
-      agent={agent}
+      context={agent}
       streamItems={streamItems}
       pendingPermissions={pendingPermissions}
       routeBottomAnchorRequest={routeBottomAnchorRequest}
@@ -1365,7 +1365,7 @@ function ActiveAgentComposer({
     { initialIsBelow: isCompactFormFactor },
   );
   const paneContext = usePaneContext();
-  const { workspaceId, tabId, retargetCurrentTab } = paneContext;
+  const { workspaceId, tabId, retargetCurrentTab, openTab } = paneContext;
   const { archiveAgent } = useArchiveAgent();
   const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
   const hideWorkspaceAgent = useWorkspaceLayoutStore((state) => state.hideAgent);
@@ -1382,6 +1382,12 @@ function ActiveAgentComposer({
       navigateToAgent({ serverId, agentId: subagentId });
     },
     [serverId],
+  );
+  const handleOpenProviderSubagent = useCallback(
+    (parentAgentId: string, subagentId: string) => {
+      openTab({ kind: "provider_subagent", parentAgentId, subagentId });
+    },
+    [openTab],
   );
   const handleArchiveSubagent = useArchiveSubagent({ serverId });
   const handleDetachSubagent = useDetachSubagent({ serverId });
@@ -1484,6 +1490,7 @@ function ActiveAgentComposer({
       <SubagentsTrack
         rows={subagentRows}
         onOpenSubagent={handleOpenSubagent}
+        onOpenProviderSubagent={handleOpenProviderSubagent}
         onArchiveSubagent={handleArchiveSubagent}
         onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
       />
