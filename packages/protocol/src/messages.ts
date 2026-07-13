@@ -831,6 +831,13 @@ export const WorkspaceTitleSetRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const WorkspacePinSetRequestSchema = z.object({
+  type: z.literal("workspace.pin.set.request"),
+  workspaceId: z.string(),
+  pinned: z.boolean(),
+  requestId: z.string(),
+});
+
 export const SetVoiceModeMessageSchema = z.object({
   type: z.literal("set_voice_mode"),
   enabled: z.boolean(),
@@ -1471,6 +1478,19 @@ export const WorkspaceTitleSetResponseSchema = z.object({
   payload: WorkspaceTitleSetResponsePayloadSchema,
 });
 
+export const WorkspacePinSetResponsePayloadSchema = z.object({
+  requestId: z.string(),
+  workspaceId: z.string(),
+  accepted: z.boolean(),
+  pinnedAt: z.string().nullable(),
+  error: z.string().nullable(),
+});
+
+export const WorkspacePinSetResponseSchema = z.object({
+  type: z.literal("workspace.pin.set.response"),
+  payload: WorkspacePinSetResponsePayloadSchema,
+});
+
 export const SetVoiceModeResponseMessageSchema = z.object({
   type: z.literal("set_voice_mode_response"),
   payload: z.object({
@@ -1795,6 +1815,18 @@ export const ProjectAddRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// Smallest shorthand repo path is "a/b": owner, slash, repository.
+const MIN_REPOSITORY_PATH_LENGTH = 3;
+export const WorkspaceGithubCloneProtocolSchema = z.enum(["https", "ssh"]);
+
+export const WorkspaceGithubCloneRequestSchema = z.object({
+  type: z.literal("workspace.github.clone.request"),
+  repo: z.string().trim().min(MIN_REPOSITORY_PATH_LENGTH),
+  cloneProtocol: WorkspaceGithubCloneProtocolSchema.optional(),
+  targetDirectory: z.string().trim().min(1),
+  requestId: z.string(),
+});
+
 export const ArchiveWorkspaceRequestSchema = z.object({
   type: z.literal("archive_workspace_request"),
   workspaceId: z.string(),
@@ -2105,6 +2137,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProjectRenameRequestSchema,
   ProjectRemoveRequestSchema,
   WorkspaceTitleSetRequestSchema,
+  WorkspacePinSetRequestSchema,
   SetVoiceModeMessageSchema,
   SendAgentMessageRequestSchema,
   WaitForFinishRequestSchema,
@@ -2180,6 +2213,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   LegacyOpenInEditorRequestSchema,
   OpenProjectRequestSchema,
   ProjectAddRequestSchema,
+  WorkspaceGithubCloneRequestSchema,
   ArchiveWorkspaceRequestSchema,
   WorkspaceCreateRequestSchema,
   WorkspaceClearAttentionRequestSchema,
@@ -2424,6 +2458,10 @@ export const ServerInfoStatusPayloadSchema = z
         agentForkContext: z.boolean().optional(),
         // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
         providerSubagents: z.boolean().optional(),
+        // COMPAT(workspacePinning): added in v0.1.107, remove gate after 2027-01-12.
+        workspacePinning: z.boolean().optional(),
+        // COMPAT(workspaceGithubClone): added in v0.1.108, remove gate after 2027-01-13.
+        workspaceGithubClone: z.boolean().optional(),
       })
       .optional(),
   })
@@ -2702,6 +2740,8 @@ export const WorkspaceDescriptorPayloadSchema = z
     // its input and offer a "reset to branch name" action. Null means the name
     // is derived from the branch/directory.
     title: z.string().nullable().optional(),
+    // COMPAT(workspacePinning): added in v0.1.107, remove optional after 2027-01-12.
+    pinnedAt: z.string().nullable().optional(),
     archivingAt: z.string().nullable().optional().default(null),
     status: WorkspaceStateBucketSchema,
     // Best-effort workspace status entry timestamp. Old daemons omit the
@@ -2917,6 +2957,17 @@ export const ProjectAddResponseSchema = z.object({
     project: WorkspaceProjectDescriptorPayloadSchema.nullable(),
     error: z.string().nullable(),
     errorCode: z.enum(["directory_not_found"]).nullish().catch(null),
+  }),
+});
+
+export const WorkspaceGithubCloneResponseSchema = z.object({
+  type: z.literal("workspace.github.clone.response"),
+  payload: z.object({
+    requestId: z.string(),
+    repo: z.string().trim().min(MIN_REPOSITORY_PATH_LENGTH),
+    checkoutPath: z.string().nullable(),
+    workspace: WorkspaceDescriptorPayloadSchema.nullable(),
+    error: z.string().nullable(),
   }),
 });
 
@@ -4434,6 +4485,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FetchWorkspacesResponseMessageSchema,
   ProjectAddResponseSchema,
   OpenProjectResponseMessageSchema,
+  WorkspaceGithubCloneResponseSchema,
   StartWorkspaceScriptResponseMessageSchema,
   LegacyListAvailableEditorsResponseMessageSchema,
   LegacyOpenInEditorResponseMessageSchema,
@@ -4467,6 +4519,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProjectRenameResponseSchema,
   ProjectRemoveResponseSchema,
   WorkspaceTitleSetResponseSchema,
+  WorkspacePinSetResponseSchema,
   WaitForFinishResponseMessageSchema,
   AgentPermissionRequestMessageSchema,
   AgentPermissionResolvedMessageSchema,
@@ -4595,6 +4648,7 @@ export type FetchWorkspacesResponseMessage = z.infer<typeof FetchWorkspacesRespo
 export type ProjectAddResponse = z.infer<typeof ProjectAddResponseSchema>;
 export type ScriptStatusUpdateMessage = z.infer<typeof ScriptStatusUpdateMessageSchema>;
 export type OpenProjectResponseMessage = z.infer<typeof OpenProjectResponseMessageSchema>;
+export type WorkspaceGithubCloneResponse = z.infer<typeof WorkspaceGithubCloneResponseSchema>;
 export type StartWorkspaceScriptResponseMessage = z.infer<
   typeof StartWorkspaceScriptResponseMessageSchema
 >;
@@ -4626,6 +4680,8 @@ export type WorkspaceTitleSetResponse = z.infer<typeof WorkspaceTitleSetResponse
 export type WorkspaceTitleSetResponsePayload = z.infer<
   typeof WorkspaceTitleSetResponsePayloadSchema
 >;
+export type WorkspacePinSetResponse = z.infer<typeof WorkspacePinSetResponseSchema>;
+export type WorkspacePinSetResponsePayload = z.infer<typeof WorkspacePinSetResponsePayloadSchema>;
 export type WorkspaceCreateRequest = z.infer<typeof WorkspaceCreateRequestSchema>;
 export type WorkspaceCreateResponse = z.infer<typeof WorkspaceCreateResponseSchema>;
 export type ProjectRenameResponsePayload = z.infer<typeof ProjectRenameResponsePayloadSchema>;
@@ -4769,6 +4825,7 @@ export type UpdateAgentRequestMessage = z.infer<typeof UpdateAgentRequestMessage
 export type ProjectRenameRequest = z.infer<typeof ProjectRenameRequestSchema>;
 export type ProjectRemoveRequest = z.infer<typeof ProjectRemoveRequestSchema>;
 export type WorkspaceTitleSetRequest = z.infer<typeof WorkspaceTitleSetRequestSchema>;
+export type WorkspacePinSetRequest = z.infer<typeof WorkspacePinSetRequestSchema>;
 export type SetAgentModeRequestMessage = z.infer<typeof SetAgentModeRequestMessageSchema>;
 export type SetAgentModelRequestMessage = z.infer<typeof SetAgentModelRequestMessageSchema>;
 export type SetAgentThinkingRequestMessage = z.infer<typeof SetAgentThinkingRequestMessageSchema>;
@@ -4851,6 +4908,8 @@ export type LegacyListAvailableEditorsRequest = z.infer<
 export type LegacyOpenInEditorRequest = z.infer<typeof LegacyOpenInEditorRequestSchema>;
 export type OpenProjectRequest = z.infer<typeof OpenProjectRequestSchema>;
 export type ProjectAddRequest = z.infer<typeof ProjectAddRequestSchema>;
+export type WorkspaceGithubCloneRequest = z.infer<typeof WorkspaceGithubCloneRequestSchema>;
+export type WorkspaceGithubCloneProtocol = z.infer<typeof WorkspaceGithubCloneProtocolSchema>;
 export type ArchiveWorkspaceRequest = z.infer<typeof ArchiveWorkspaceRequestSchema>;
 export type WorkspaceClearAttentionRequest = z.infer<typeof WorkspaceClearAttentionRequestSchema>;
 export type FileExplorerRequest = z.infer<typeof FileExplorerRequestSchema>;

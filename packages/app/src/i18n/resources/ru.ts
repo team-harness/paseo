@@ -859,6 +859,9 @@ export const ru: TranslationResources = {
     },
   },
   sidebar: {
+    pinned: {
+      title: "Закреплённые",
+    },
     host: {
       noHost: "Нет хоста",
       switchTitle: "Сменить хост",
@@ -920,6 +923,8 @@ export const ru: TranslationResources = {
         copyPath: "Копировать путь",
         copyBranchName: "Скопировать название ветки",
         rename: "Переименовать рабочую область",
+        pin: "Закрепить вверху",
+        unpin: "Открепить",
         archive: "Архив",
         archiveWorkspace: "Архивировать рабочее пространство",
         hideFromSidebar: "Скрыть с боковой панели",

@@ -835,6 +835,9 @@ export const zhCN: TranslationResources = {
     },
   },
   sidebar: {
+    pinned: {
+      title: "已置顶",
+    },
     host: {
       noHost: "没有 Host",
       switchTitle: "切换 Host",
@@ -894,6 +897,8 @@ export const zhCN: TranslationResources = {
         copyPath: "复制路径",
         copyBranchName: "复制分支名称",
         rename: "重命名 workspace",
+        pin: "置顶",
+        unpin: "取消置顶",
         archive: "归档",
         archiveWorkspace: "归档工作区",
         hideFromSidebar: "从侧边栏隐藏",
