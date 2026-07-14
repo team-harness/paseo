@@ -128,8 +128,21 @@ function StatusBarReadyContent({
   const currentHostCanUseSessionPins =
     currentHostSummary?.canUseStatusBarSessionPins ??
     (!hasHostSummaries && view.canUseStatusBarSessionPins);
-  const canUseListSessionPins = !isMultiHost && currentHostCanUseSessionPins;
-  const listPinnedSessions = isMultiHost ? EMPTY_PINNED_SESSIONS : currentHostPinnedSessions;
+  const sessionPinSources = useMemo(
+    () =>
+      view.hostSummaries?.map((host) => ({
+        serverId: host.serverId,
+        pinnedSessions: host.summary.pinnedSessions ?? EMPTY_PINNED_SESSIONS,
+        canUseStatusBarSessionPins: host.canUseStatusBarSessionPins,
+      })) ?? [
+        {
+          serverId,
+          pinnedSessions: currentHostPinnedSessions,
+          canUseStatusBarSessionPins: currentHostCanUseSessionPins,
+        },
+      ],
+    [currentHostCanUseSessionPins, currentHostPinnedSessions, serverId, view.hostSummaries],
+  );
   const historyHostServerIds = isMultiHost
     ? view.hostSummaries?.map((host) => host.serverId)
     : undefined;
@@ -153,15 +166,13 @@ function StatusBarReadyContent({
         needsAttentionAgents={view.needsAttentionAgents}
         recentlyCompletedAgents={view.recentlyCompletedAgents}
         hostSummaries={view.hostSummaries}
-        pinnedSessions={listPinnedSessions}
-        canUseStatusBarSessionPins={canUseListSessionPins}
+        sessionPinSources={sessionPinSources}
       />
       <StatusBarSessionHistoryTrigger
         serverId={serverId}
         showAllHosts={isMultiHost}
         hostServerIds={historyHostServerIds}
-        pinnedSessions={listPinnedSessions}
-        canUseStatusBarSessionPins={canUseListSessionPins}
+        sessionPinSources={sessionPinSources}
       />
       <StatusBarSessionPinsTrigger
         serverId={serverId}

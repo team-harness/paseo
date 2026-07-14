@@ -138,8 +138,27 @@ interface StatusBarRunningSessionsTriggerProps {
   needsAttentionAgents: StatusAgentSnapshot[];
   recentlyCompletedAgents: StatusAgentSnapshot[];
   hostSummaries?: StatusBarHostSummary[];
-  pinnedSessions?: StatusPinnedSession[];
-  canUseStatusBarSessionPins?: boolean;
+  sessionPinSources?: StatusBarSessionPinSource[];
+}
+
+interface StatusBarSessionPinSource {
+  serverId: string;
+  pinnedSessions: StatusPinnedSession[];
+  canUseStatusBarSessionPins: boolean;
+}
+
+const EMPTY_SESSION_PIN_SOURCES: StatusBarSessionPinSource[] = [];
+const NO_SESSION_PIN_SOURCE: StatusBarSessionPinSource = {
+  serverId: "",
+  pinnedSessions: EMPTY_PINNED_SESSIONS,
+  canUseStatusBarSessionPins: false,
+};
+
+function getSessionPinSource(
+  sessionPinSources: StatusBarSessionPinSource[],
+  serverId: string,
+): StatusBarSessionPinSource {
+  return sessionPinSources.find((source) => source.serverId === serverId) ?? NO_SESSION_PIN_SOURCE;
 }
 
 export function StatusBarRunningSessionsTrigger({
@@ -192,8 +211,7 @@ function InteractiveRunningSessionsTrigger({
   needsAttentionAgents,
   recentlyCompletedAgents,
   hostSummaries,
-  pinnedSessions = EMPTY_PINNED_SESSIONS,
-  canUseStatusBarSessionPins = false,
+  sessionPinSources = EMPTY_SESSION_PIN_SOURCES,
 }: StatusBarRunningSessionsTriggerProps) {
   const isCompact = useIsCompactFormFactor();
   const pathname = usePathname();
@@ -330,8 +348,7 @@ function InteractiveRunningSessionsTrigger({
           <StatusBarSessionsList
             items={items}
             onNavigate={handleNavigate}
-            pinnedSessions={pinnedSessions}
-            canUseStatusBarSessionPins={canUseStatusBarSessionPins}
+            sessionPinSources={sessionPinSources}
           />
         </AdaptiveModalSheet>
       </>
@@ -359,8 +376,7 @@ function InteractiveRunningSessionsTrigger({
         <StatusBarSessionsList
           items={items}
           onNavigate={handleNavigate}
-          pinnedSessions={pinnedSessions}
-          canUseStatusBarSessionPins={canUseStatusBarSessionPins}
+          sessionPinSources={sessionPinSources}
         />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -371,14 +387,12 @@ export function StatusBarSessionHistoryTrigger({
   serverId,
   showAllHosts = false,
   hostServerIds,
-  pinnedSessions = EMPTY_PINNED_SESSIONS,
-  canUseStatusBarSessionPins = false,
+  sessionPinSources = EMPTY_SESSION_PIN_SOURCES,
 }: {
   serverId: string;
   showAllHosts?: boolean;
   hostServerIds?: readonly string[];
-  pinnedSessions?: StatusPinnedSession[];
-  canUseStatusBarSessionPins?: boolean;
+  sessionPinSources?: StatusBarSessionPinSource[];
 }) {
   const isCompact = useIsCompactFormFactor();
   const pathname = usePathname();
@@ -498,8 +512,7 @@ export function StatusBarSessionHistoryTrigger({
             isLoading={isInitialLoad}
             isError={isError}
             isRefreshing={isRefreshing}
-            pinnedSessions={pinnedSessions}
-            canUseStatusBarSessionPins={canUseStatusBarSessionPins}
+            sessionPinSources={sessionPinSources}
             showServerLabel={showAllHosts}
             onRefresh={refreshHistory}
             onNavigate={handleNavigate}
@@ -532,8 +545,7 @@ export function StatusBarSessionHistoryTrigger({
           isLoading={isInitialLoad}
           isError={isError}
           isRefreshing={isRefreshing}
-          pinnedSessions={pinnedSessions}
-          canUseStatusBarSessionPins={canUseStatusBarSessionPins}
+          sessionPinSources={sessionPinSources}
           showServerLabel={showAllHosts}
           onRefresh={refreshHistory}
           onNavigate={handleNavigate}
@@ -612,13 +624,11 @@ function TriggerMetric({
 function StatusBarSessionsList({
   items,
   onNavigate,
-  pinnedSessions = EMPTY_PINNED_SESSIONS,
-  canUseStatusBarSessionPins = false,
+  sessionPinSources,
 }: {
   items: StatusBarSessionListItem[];
   onNavigate: (target: StatusBarSessionTarget) => void;
-  pinnedSessions?: StatusPinnedSession[];
-  canUseStatusBarSessionPins?: boolean;
+  sessionPinSources: StatusBarSessionPinSource[];
 }) {
   const { t } = useTranslation();
   if (items.length === 0) {
@@ -641,8 +651,10 @@ function StatusBarSessionsList({
                 key={item.key}
                 item={item}
                 onNavigate={onNavigate}
-                pinnedSessions={pinnedSessions}
-                canUseStatusBarSessionPins={canUseStatusBarSessionPins}
+                sessionPinSource={getSessionPinSource(
+                  sessionPinSources,
+                  item.primaryTarget.serverId,
+                )}
               />
             ))}
           </View>
@@ -657,8 +669,7 @@ function StatusBarHistoryList({
   isError,
   isLoading,
   isRefreshing,
-  pinnedSessions,
-  canUseStatusBarSessionPins,
+  sessionPinSources,
   showServerLabel,
   onRefresh,
   onNavigate,
@@ -667,8 +678,7 @@ function StatusBarHistoryList({
   isError: boolean;
   isLoading: boolean;
   isRefreshing: boolean;
-  pinnedSessions: StatusPinnedSession[];
-  canUseStatusBarSessionPins: boolean;
+  sessionPinSources: StatusBarSessionPinSource[];
   showServerLabel: boolean;
   onRefresh: () => void;
   onNavigate: (agent: AggregatedAgent) => void;
@@ -711,8 +721,7 @@ function StatusBarHistoryList({
             key={`${item.serverId}:${item.id}`}
             item={item}
             onNavigate={onNavigate}
-            pinnedSessions={pinnedSessions}
-            canUseStatusBarSessionPins={canUseStatusBarSessionPins}
+            sessionPinSource={getSessionPinSource(sessionPinSources, item.serverId)}
             showServerLabel={showServerLabel}
           />
         ))}
@@ -748,14 +757,12 @@ function StatusBarHistoryList({
 function StatusBarHistoryRow({
   item,
   onNavigate,
-  pinnedSessions,
-  canUseStatusBarSessionPins,
+  sessionPinSource,
   showServerLabel,
 }: {
   item: AggregatedAgent;
   onNavigate: (agent: AggregatedAgent) => void;
-  pinnedSessions: StatusPinnedSession[];
-  canUseStatusBarSessionPins: boolean;
+  sessionPinSource: StatusBarSessionPinSource;
   showServerLabel: boolean;
 }) {
   const { t } = useTranslation();
@@ -792,7 +799,7 @@ function StatusBarHistoryRow({
         </View>
         <ThemedArrowUpRight size={14} />
       </Pressable>
-      {canUseStatusBarSessionPins ? (
+      {sessionPinSource.canUseStatusBarSessionPins ? (
         <SessionPinButton
           serverId={item.serverId}
           agentId={item.id}
@@ -805,7 +812,7 @@ function StatusBarHistoryRow({
           attentionReason={item.attentionReason}
           pendingPermissionCount={item.pendingPermissionCount}
           updatedAt={item.lastActivityAt.toISOString()}
-          pinned={pinnedSessions.some((pin) => pin.agentId === item.id)}
+          pinned={sessionPinSource.pinnedSessions.some((pin) => pin.agentId === item.id)}
           testID={`status-bar-history-pin-${item.id}`}
         />
       ) : null}
@@ -922,13 +929,11 @@ function SessionPinButton({
 function StatusBarSessionRow({
   item,
   onNavigate,
-  pinnedSessions,
-  canUseStatusBarSessionPins,
+  sessionPinSource,
 }: {
   item: StatusBarSessionListItem;
   onNavigate: (target: StatusBarSessionTarget) => void;
-  pinnedSessions: StatusPinnedSession[];
-  canUseStatusBarSessionPins: boolean;
+  sessionPinSource: StatusBarSessionPinSource;
 }) {
   const { t } = useTranslation();
   const usage = formatStatusBarSessionUsage(item.snapshot);
@@ -976,7 +981,7 @@ function StatusBarSessionRow({
           <ThemedBriefcaseBusiness size={14} />
         </IconButton>
       ) : null}
-      {canUseStatusBarSessionPins ? (
+      {sessionPinSource.canUseStatusBarSessionPins ? (
         <SessionPinButton
           serverId={item.primaryTarget.serverId}
           agentId={item.snapshot.agentId}
@@ -989,7 +994,9 @@ function StatusBarSessionRow({
           attentionReason={item.snapshot.attentionReason}
           pendingPermissionCount={0}
           updatedAt={item.snapshot.updatedAt}
-          pinned={pinnedSessions.some((pin) => pin.agentId === item.snapshot.agentId)}
+          pinned={sessionPinSource.pinnedSessions.some(
+            (pin) => pin.agentId === item.snapshot.agentId,
+          )}
           testID={`status-bar-session-pin-${item.snapshot.agentId}`}
         />
       ) : null}

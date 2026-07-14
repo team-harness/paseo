@@ -48,6 +48,7 @@ const { theme, runtimeState, navigationSpies } = vi.hoisted(() => {
       refreshAgent: vi.fn(),
       refreshHistory: vi.fn(),
       setStatusSessionPin: vi.fn(),
+      setStatusSessionPinOnServerTwo: vi.fn(),
     },
     navigationSpies: {
       navigateToAgent: vi.fn(),
@@ -135,6 +136,12 @@ vi.mock("@/stores/session-store", () => ({
               setStatusSessionPin: runtimeState.setStatusSessionPin,
             },
           },
+          "server-2": {
+            workspaces: new Map(),
+            client: {
+              setStatusSessionPin: runtimeState.setStatusSessionPinOnServerTwo,
+            },
+          },
         },
       }),
     {
@@ -145,6 +152,12 @@ vi.mock("@/stores/session-store", () => ({
             client: {
               refreshAgent: runtimeState.refreshAgent,
               setStatusSessionPin: runtimeState.setStatusSessionPin,
+            },
+          },
+          "server-2": {
+            workspaces: new Map(),
+            client: {
+              setStatusSessionPin: runtimeState.setStatusSessionPinOnServerTwo,
             },
           },
         },
@@ -442,6 +455,11 @@ describe("status bar running sessions", () => {
       requestId: "pin-test",
       pinnedSessions: [],
     });
+    runtimeState.setStatusSessionPinOnServerTwo.mockReset();
+    runtimeState.setStatusSessionPinOnServerTwo.mockResolvedValue({
+      requestId: "pin-test-server-two",
+      pinnedSessions: [],
+    });
     navigationSpies.navigateToAgent.mockClear();
     navigationSpies.navigateToWorkspace.mockClear();
     container = document.createElement("div");
@@ -537,7 +555,7 @@ describe("status bar running sessions", () => {
     expect(container?.textContent).toContain("statusBar.sessions.status.finished");
   });
 
-  it("merges session rows from ready hosts, labels their source, and navigates to that host", () => {
+  it("merges session rows from ready hosts and pins through their owning host", async () => {
     const view = readyView();
     const hostTwoRunning = snapshot({
       agentId: "agent-host-two",
@@ -560,13 +578,13 @@ describe("status bar running sessions", () => {
         serverId: "server-1",
         serverLabel: "MacBook Pro",
         summary: firstHostSummary,
-        canUseStatusBarSessionPins: false,
+        canUseStatusBarSessionPins: true,
       },
       {
         serverId: "server-2",
         serverLabel: "Build host",
         summary: secondHostSummary,
-        canUseStatusBarSessionPins: false,
+        canUseStatusBarSessionPins: true,
       },
     ];
 
@@ -581,6 +599,12 @@ describe("status bar running sessions", () => {
 
     expect(container?.textContent).toContain("MacBook Pro");
     expect(container?.textContent).toContain("Build host");
+    expect(
+      container?.querySelector('[data-testid="status-bar-session-pin-agent-running"]'),
+    ).not.toBeNull();
+    expect(
+      container?.querySelector('[data-testid="status-bar-session-pin-agent-host-two"]'),
+    ).not.toBeNull();
     act(() => {
       container
         ?.querySelector<HTMLButtonElement>(
@@ -593,6 +617,32 @@ describe("status bar running sessions", () => {
       serverId: "server-2",
       agentId: "agent-host-two",
       workspaceId: "workspace-host-two",
+    });
+
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-sessions-trigger"]')
+        ?.click();
+    });
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-session-pin-agent-host-two"]')
+        ?.click();
+      await flushPromises();
+    });
+
+    expect(runtimeState.setStatusSessionPinOnServerTwo).toHaveBeenCalledWith({
+      agentId: "agent-host-two",
+      pinned: true,
+      workspaceId: "workspace-host-two",
+      title: "Build the release",
+      provider: "codex",
+      cwd: "/work/agent-host-two",
+      status: "running",
+      requiresAttention: false,
+      attentionReason: undefined,
+      pendingPermissionCount: 0,
+      updatedAt: "2026-07-06T04:00:00.000Z",
     });
   });
 
@@ -858,7 +908,10 @@ describe("status bar running sessions", () => {
     expect(container?.textContent).toContain("Build host");
     expect(
       container?.querySelector('[data-testid="status-bar-history-pin-history-one"]'),
-    ).toBeNull();
+    ).not.toBeNull();
+    expect(
+      container?.querySelector('[data-testid="status-bar-history-pin-history-two"]'),
+    ).not.toBeNull();
 
     act(() => {
       container

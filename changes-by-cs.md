@@ -30,7 +30,7 @@
 **用户可见行为**：
 
 - 底部全局 Status Bar 展示 token、费用、运行/需要注意/最近会话，并提供会话导航。
-- 按 host 获取 `status.summary`；客户端可合并多个已连接 host 的信息，并在会话/历史项显示 host。
+- 按 host 获取 `status.summary`；客户端可合并多个已连接 host 的信息，并在会话/历史项显示 host。会话和历史行按所属 host 的 capability 与持久化数据提供 Pin/Unpin，不会因连接多个 host 而全局隐藏入口。
 - 会话以一级 Agent 聚合；子 Agent 的运行或等待状态汇总到根 Agent，避免大量子 Agent 淹没列表。
 - 历史只显示当前已加载集合中的一级、非 `closed` Agent；支持刷新、会话 pin 和紧凑/桌面布局。
 - 空闲与运行中使用同一状态栏结构；错误目前只显示计数，不新增错误会话面板或旧 RPC fallback。
@@ -45,6 +45,7 @@
 
 - 若上游实现 `status.summary` 或 Status Bar，先比较协议名称、feature gate、payload 和持久化边界。上游协议结构优先；将本 fork 的 usage ledger、root-agent 聚合、多 host 展示、pin 和导航逐项迁移过去。
 - 保留 `server_info.features.statusSummary` 的单一 capability gate；不要回退为 client 对旧接口的 fan-out。
+- 多 host 的 session pin 必须按行的 `serverId` 读取 feature gate 与 pinned sessions，并通过同一 host client 写入；固定会话 trigger 仍只显示当前 host，不能混合不同 daemon 的 pin 持久化数据。
 - 上游若只实现 UI 而无相同的 daemon summary/usage ledger，不能直接替换服务端链路。
 - 必跑：status-summary 相关 Vitest、`packages/app/e2e/status-bar-running-sessions.spec.ts`、`npm run typecheck`。
 
