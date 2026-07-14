@@ -238,9 +238,10 @@ describe("bootstrapWorkspaceRegistries", () => {
 
     expect((await agentStorage.get("legacy-agent"))?.workspaceId).toBe("ws-older");
     expect(await workspaceRegistry.list()).toHaveLength(2);
+    expect((await workspaceRegistry.get("ws-newer"))?.archivedAt).not.toBeNull();
   });
 
-  test("migrated legacy agents stay owned by the deterministic workspace when a same-cwd workspace is added later", async () => {
+  test("consolidates a same-cwd workspace added after initial bootstrap", async () => {
     await projectRegistry.initialize();
     await workspaceRegistry.initialize();
     await projectRegistry.upsert({
@@ -310,9 +311,7 @@ describe("bootstrapWorkspaceRegistries", () => {
     });
 
     expect((await agentStorage.get("legacy-agent"))?.workspaceId).toBe("ws-original-owner");
-    expect(await workspaceRegistry.get("ws-created-later")).toMatchObject({
-      cwd: NON_GIT_PROJECT,
-    });
+    expect((await workspaceRegistry.get("ws-created-later"))?.archivedAt).not.toBeNull();
   });
 
   test("preserves existing workspace IDs when only the projects file is missing", async () => {

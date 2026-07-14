@@ -9,6 +9,7 @@ import {
   generateWorkspaceId,
 } from "./workspace-registry-model.js";
 import { backfillWorkspaceIdForLegacyAgents } from "./migrations/backfill-workspace-id.migration.js";
+import { consolidateDuplicateWorkspaces } from "./migrations/consolidate-duplicate-workspaces.migration.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import {
   createPersistedProjectRecord,
@@ -62,6 +63,7 @@ export async function bootstrapWorkspaceRegistries(options: {
 
   if (projectsExists && workspacesExists) {
     await backfillWorkspaceIdForLegacyAgents(options);
+    await consolidateDuplicateWorkspaces(options);
     return;
   }
 
@@ -171,6 +173,7 @@ export async function bootstrapWorkspaceRegistries(options: {
   );
 
   await backfillWorkspaceIdForLegacyAgents(options);
+  await consolidateDuplicateWorkspaces(options);
 
   options.logger.info(
     {

@@ -35,7 +35,10 @@ export interface ResolveOrCreateWorkspaceIdInput {
 }
 
 export interface WorkspaceProvisioningService {
-  findOrCreateWorkspaceForDirectory(cwd: string): Promise<PersistedWorkspaceRecord>;
+  findOrCreateWorkspaceForDirectory(
+    cwd: string,
+    title?: string | null,
+  ): Promise<PersistedWorkspaceRecord>;
   resolveOrCreateWorkspaceIdForCreateAgent(input: ResolveOrCreateWorkspaceIdInput): Promise<string>;
   createWorkspaceForDirectory(
     cwd: string,
@@ -74,7 +77,16 @@ export function createWorkspaceProvisioningService(deps: {
   ): Promise<PersistedWorkspaceRecord | null> {
     const normalizedCwd = await resolveWorkspaceDirectory(cwd, options);
     const workspaces = await workspaceRegistry.list();
-    return workspaces.find((workspace) => workspace.cwd === normalizedCwd) ?? null;
+    const matchingWorkspaces = workspaces.filter((workspace) => workspace.cwd === normalizedCwd);
+    return (
+      matchingWorkspaces.find((workspace) => !workspace.archivedAt) ??
+      matchingWorkspaces.sort(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.workspaceId.localeCompare(right.workspaceId),
+      )[0] ??
+      null
+    );
   }
 
   async function resolveProjectRecordForPlacement(input: {
@@ -151,7 +163,10 @@ export function createWorkspaceProvisioningService(deps: {
     return nextWorkspace;
   }
 
-  async function findOrCreateWorkspaceForDirectory(cwd: string): Promise<PersistedWorkspaceRecord> {
+  async function findOrCreateWorkspaceForDirectory(
+    cwd: string,
+    title?: string | null,
+  ): Promise<PersistedWorkspaceRecord> {
     const inputCwd = resolve(cwd);
     const normalizedCwd = await resolveWorkspaceDirectory(cwd);
     const existingWorkspace = await findExactWorkspaceByDirectory(normalizedCwd, {
@@ -193,7 +208,7 @@ export function createWorkspaceProvisioningService(deps: {
       });
     }
 
-    return createWorkspaceForDirectory(normalizedCwd);
+    return createWorkspaceForDirectory(normalizedCwd, title);
   }
 
   async function resolveOrCreateWorkspaceIdForCreateAgent(
@@ -207,7 +222,7 @@ export function createWorkspaceProvisioningService(deps: {
       return input.requestedWorkspaceId;
     }
 
-    return (await createWorkspaceForDirectory(input.cwd, input.initialTitle)).workspaceId;
+    return (await findOrCreateWorkspaceForDirectory(input.cwd, input.initialTitle)).workspaceId;
   }
 
   async function createWorkspaceForDirectory(

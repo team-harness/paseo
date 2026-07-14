@@ -109,6 +109,19 @@ test("re-opening an active workspace by exact path returns the same record witho
   expect(await workspaceRegistry.list()).toHaveLength(1);
 });
 
+test("re-opening a path prefers its active workspace over an archived duplicate", async () => {
+  const repo = path.join(tmpDir, "repo");
+  gitRoots.add(repo);
+  const archived = await provisioning.createWorkspaceForDirectory(repo);
+  const active = await provisioning.createWorkspaceForDirectory(repo);
+  await workspaceRegistry.archive(archived.workspaceId, ARCHIVED_AT);
+
+  const reopened = await provisioning.findOrCreateWorkspaceForDirectory(repo);
+
+  expect(reopened.workspaceId).toBe(active.workspaceId);
+  expect((await workspaceRegistry.get(archived.workspaceId))?.archivedAt).toBe(ARCHIVED_AT);
+});
+
 test("re-opening an archived workspace by its exact path unarchives it and keeps the id", async () => {
   const repo = path.join(tmpDir, "repo");
   gitRoots.add(repo);
@@ -191,6 +204,25 @@ test("resolveOrCreateWorkspaceIdForCreateAgent creates a titled workspace when n
   const created = await workspaceRegistry.get(id);
   expect(created?.cwd).toBe(dir);
   expect(created?.title).toBe("My Title");
+});
+
+test("resolveOrCreateWorkspaceIdForCreateAgent reuses the workspace for repeated creates", async () => {
+  const dir = path.join(tmpDir, "plain");
+
+  const first = await provisioning.resolveOrCreateWorkspaceIdForCreateAgent({
+    createdWorktree: null,
+    cwd: dir,
+    initialTitle: "First Agent",
+  });
+  const second = await provisioning.resolveOrCreateWorkspaceIdForCreateAgent({
+    createdWorktree: null,
+    cwd: dir,
+    initialTitle: "Second Agent",
+  });
+
+  expect(second).toBe(first);
+  expect(await workspaceRegistry.list()).toHaveLength(1);
+  expect((await workspaceRegistry.get(first))?.title).toBe("First Agent");
 });
 
 test("createWorkspaceForDirectory always mints a fresh workspace even when one already occupies the cwd", async () => {
