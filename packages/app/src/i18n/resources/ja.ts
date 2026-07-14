@@ -1455,6 +1455,8 @@ export const ja: TranslationResources = {
       binaryPreviewUnavailable: "バイナリプレビューが利用できません",
       failedToLoad: "ファイルの読み込みに失敗しました",
       failedToLoadPreview: "ファイルプレビューの読み込みに失敗しました",
+      showSource: "ソースを表示",
+      showPreview: "プレビューを表示",
     },
   },
   toolCallDetails: {

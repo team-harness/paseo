@@ -1463,6 +1463,8 @@ export const ptBR: TranslationResources = {
       binaryPreviewUnavailable: "Prévia binária indisponível",
       failedToLoad: "Falha ao carregar arquivo",
       failedToLoadPreview: "Falha ao carregar prévia do arquivo",
+      showSource: "Mostrar código-fonte",
+      showPreview: "Mostrar visualização",
     },
   },
   toolCallDetails: {

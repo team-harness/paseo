@@ -1422,6 +1422,8 @@ export const zhCN: TranslationResources = {
       binaryPreviewUnavailable: "二进制预览不可用",
       failedToLoad: "加载文件失败",
       failedToLoadPreview: "加载文件预览失败",
+      showSource: "显示原始内容",
+      showPreview: "显示预览",
     },
   },
   toolCallDetails: {

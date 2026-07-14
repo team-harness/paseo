@@ -1480,6 +1480,8 @@ export const fr: TranslationResources = {
       binaryPreviewUnavailable: "Aperçu binaire indisponible",
       failedToLoad: "Échec du chargement du fichier",
       failedToLoadPreview: "Échec du chargement de l'aperçu du fichier",
+      showSource: "Afficher la source",
+      showPreview: "Afficher l'aperçu",
     },
   },
   toolCallDetails: {

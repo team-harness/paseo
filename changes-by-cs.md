@@ -120,6 +120,24 @@
 - 若上游引入 workspace identity / reconciliation 改动，优先接入上游接口，但保留此数据迁移直到所有受支持版本都不再产生重复记录。
 - 必跑：workspace provisioning、workspace bootstrap、duplicate-workspace migration 目标测试。
 
+### 6. Markdown 预览切换原始内容
+
+**状态**：待提交的本地功能。
+
+**行为**：Markdown 文件仍默认渲染预览；文件页顶部提供图标按钮，可切换到带行号和语法高亮的原始内容视图。切换状态仅作用于当前文件，切换到其他文件时恢复预览。带行号定位的 Markdown 链接保持原始内容视图，以保留定位高亮。
+
+**关键文件**：
+
+- `packages/app/src/components/file-pane.tsx`
+- `packages/app/src/components/file-pane-render-mode.ts`
+- `packages/app/src/i18n/resources/*.ts`
+
+**同步规则**：
+
+- 上游若加入 Markdown source/preview 模式，优先采用其状态模型和控件位置；保留“行定位时强制原始内容”的行为，除非上游提供等价定位能力。
+- 不新增文件读取 RPC 或缓存层，继续复用 `FilePane` 的既有文件读取与代码高亮路径。
+- 必跑：`file-pane-render-mode.test.ts`、`resources.test.ts`、`npm run typecheck`。
+
 ## 同步上游操作清单
 
 1. 先确认工作区干净或把本地未提交改动隔离；当前待提交的变更必须单独处理，不能混入上游 merge。

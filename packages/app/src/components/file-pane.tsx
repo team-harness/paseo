@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { FileReadResult } from "@getpaseo/client/internal/daemon-client";
 import {
   ActivityIndicator,
   Image as RNImage,
+  Pressable,
   ScrollView as RNScrollView,
   Text,
   View,
@@ -11,6 +12,7 @@ import {
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
@@ -20,7 +22,10 @@ import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { lineNumberGutterWidth } from "@/components/code-insets";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
-import { isRenderedMarkdownFile } from "@/components/file-pane-render-mode";
+import {
+  type MarkdownRenderMode,
+  shouldRenderMarkdownPreview,
+} from "@/components/file-pane-render-mode";
 import { isWeb } from "@/constants/platform";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
@@ -32,6 +37,7 @@ import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
 import { isFileQueryEnabled } from "@/components/file-pane-enabled";
+import { Code2, Eye } from "lucide-react-native";
 
 interface CodeLineProps {
   tokens: HighlightToken[];
@@ -47,6 +53,7 @@ interface FilePreviewBodyProps {
   isMobile: boolean;
   location: WorkspaceFileLocation;
   imagePreviewUri: string | null;
+  markdownRenderMode: MarkdownRenderMode;
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -196,12 +203,18 @@ function FilePreviewBody({
   isMobile,
   location,
   imagePreviewUri,
+  markdownRenderMode,
 }: FilePreviewBodyProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const filePath = location.path;
-  const isMarkdownFile =
-    preview?.kind === "text" && isRenderedMarkdownFile(filePath) && !location.lineStart;
+  const isMarkdownPreview =
+    preview?.kind === "text" &&
+    shouldRenderMarkdownPreview({
+      filePath,
+      lineStart: location.lineStart,
+      mode: markdownRenderMode,
+    });
 
   const previewScrollRef = useRef<RNScrollView>(null);
   const webScrollbarStyle = useWebScrollbarStyle();
@@ -210,12 +223,12 @@ function FilePreviewBody({
   });
 
   const highlightedLines = useMemo(() => {
-    if (!preview || preview.kind !== "text" || isMarkdownFile) {
+    if (!preview || preview.kind !== "text" || isMarkdownPreview) {
       return null;
     }
 
     return highlightCode(preview.content ?? "", filePath);
-  }, [isMarkdownFile, preview, filePath]);
+  }, [isMarkdownPreview, preview, filePath]);
 
   const gutterWidth = useMemo(() => {
     if (!highlightedLines) return 0;
@@ -269,7 +282,7 @@ function FilePreviewBody({
   }
 
   if (preview.kind === "text") {
-    if (isMarkdownFile) {
+    if (isMarkdownPreview) {
       return (
         <View style={styles.previewScrollContainer}>
           <RNScrollView
@@ -394,12 +407,14 @@ export function FilePane({
   location: WorkspaceFileLocation;
 }) {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
   const isMobile = useIsCompactFormFactor();
   const showDesktopWebScrollbar = isWeb && !isMobile;
 
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
   const normalizedFilePath = useMemo(() => trimNonEmpty(location.path), [location.path]);
+  const [markdownRenderMode, setMarkdownRenderMode] = useState<MarkdownRenderMode>("preview");
   const readTarget = useMemo(
     () =>
       normalizedFilePath
@@ -451,9 +466,53 @@ export function FilePane({
     refetchOnMount: true,
   });
   const imagePreviewUri = useAttachmentPreviewUrl(query.data?.imageAttachment ?? null);
+  const canToggleMarkdownRenderMode = Boolean(
+    normalizedFilePath &&
+    shouldRenderMarkdownPreview({
+      filePath: normalizedFilePath,
+      lineStart: location.lineStart,
+      mode: "preview",
+    }),
+  );
+
+  useEffect(() => {
+    setMarkdownRenderMode("preview");
+  }, [normalizedFilePath]);
+
+  const handleToggleMarkdownRenderMode = useCallback(() => {
+    setMarkdownRenderMode((current) => (current === "preview" ? "source" : "preview"));
+  }, []);
+  const isMarkdownPreview = markdownRenderMode === "preview";
+  const markdownModeAccessibilityLabel = isMarkdownPreview
+    ? t("panels.file.showSource")
+    : t("panels.file.showPreview");
 
   return (
     <View style={styles.container} testID="workspace-file-pane">
+      {canToggleMarkdownRenderMode ? (
+        <View style={styles.previewModeBar}>
+          <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
+            <TooltipTrigger asChild>
+              <Pressable
+                onPress={handleToggleMarkdownRenderMode}
+                style={styles.previewModeButton}
+                accessibilityRole="button"
+                accessibilityLabel={markdownModeAccessibilityLabel}
+                testID="file-pane-markdown-mode-toggle"
+              >
+                {isMarkdownPreview ? (
+                  <Code2 size={16} color={theme.colors.foregroundMuted} />
+                ) : (
+                  <Eye size={16} color={theme.colors.foregroundMuted} />
+                )}
+              </Pressable>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="end" offset={8}>
+              <Text style={styles.tooltipText}>{markdownModeAccessibilityLabel}</Text>
+            </TooltipContent>
+          </Tooltip>
+        </View>
+      ) : null}
       {query.data?.error ? (
         <View style={styles.centerState}>
           <Text style={styles.errorText}>{query.data.error}</Text>
@@ -467,6 +526,7 @@ export function FilePane({
         isMobile={isMobile}
         location={location}
         imagePreviewUri={imagePreviewUri}
+        markdownRenderMode={markdownRenderMode}
       />
     </View>
   );
@@ -511,6 +571,25 @@ const styles = StyleSheet.create((theme) => ({
   previewContent: {
     flex: 1,
     minHeight: 0,
+  },
+  previewModeBar: {
+    height: 32,
+    paddingHorizontal: theme.spacing[3],
+    alignItems: "flex-end",
+    justifyContent: "center",
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.border,
+  },
+  previewModeButton: {
+    width: 24,
+    height: 24,
+    borderRadius: theme.borderRadius.base,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tooltipText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
   },
   previewCodeScrollContent: {
     padding: theme.spacing[4],

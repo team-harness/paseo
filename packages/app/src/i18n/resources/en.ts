@@ -1446,6 +1446,8 @@ export const en = {
       binaryPreviewUnavailable: "Binary preview unavailable",
       failedToLoad: "Failed to load file",
       failedToLoadPreview: "Failed to load file preview",
+      showSource: "Show source",
+      showPreview: "Show preview",
     },
   },
   toolCallDetails: {

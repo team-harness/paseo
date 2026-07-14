@@ -1477,6 +1477,8 @@ export const es: TranslationResources = {
       binaryPreviewUnavailable: "Vista previa binaria no disponible",
       failedToLoad: "No se pudo cargar el archivo",
       failedToLoadPreview: "No se pudo cargar la vista previa del archivo",
+      showSource: "Mostrar código fuente",
+      showPreview: "Mostrar vista previa",
     },
   },
   toolCallDetails: {
