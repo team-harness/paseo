@@ -241,6 +241,7 @@ interface CodexAppServerAgentDeps {
     logger: Logger,
     getTraceContext: () => CodexAppServerTraceContext,
   ) => CodexAppServerClientLike;
+  _randomUUID?: () => string;
 }
 
 interface CodexModePreset {
@@ -873,36 +874,132 @@ export function toAgentUsage(tokenUsage: unknown): AgentUsage | undefined {
   return toAgentUsageForModel(tokenUsage, undefined);
 }
 
+interface CodexTokenCounts {
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+}
+
+interface ParsedCodexTokenUsage {
+  total: CodexTokenCounts | undefined;
+  last: CodexTokenCounts | undefined;
+  contextWindowMaxTokens: number | undefined;
+  contextWindowUsedTokens: number | undefined;
+}
+
+const CODEX_TOKEN_COUNT_FIELDS = ["inputTokens", "cachedInputTokens", "outputTokens"] as const;
+
+function parseCodexTokenCounts(value: unknown): CodexTokenCounts | undefined {
+  const record = toObjectRecord(value);
+  if (!record) return undefined;
+  return {
+    inputTokens: typeof record.inputTokens === "number" ? record.inputTokens : undefined,
+    cachedInputTokens:
+      typeof record.cachedInputTokens === "number" ? record.cachedInputTokens : undefined,
+    outputTokens: typeof record.outputTokens === "number" ? record.outputTokens : undefined,
+  };
+}
+
+function parseCodexTokenUsage(tokenUsage: unknown): ParsedCodexTokenUsage | undefined {
+  const usage = toObjectRecord(tokenUsage);
+  if (!usage) return undefined;
+  const lastRecord = toObjectRecord(usage.last);
+  return {
+    total: parseCodexTokenCounts(usage.total),
+    last: parseCodexTokenCounts(usage.last),
+    contextWindowMaxTokens: firstPositiveFiniteNumber(
+      usage.model_context_window,
+      usage.modelContextWindow,
+    ),
+    contextWindowUsedTokens: firstPositiveFiniteNumber(
+      lastRecord?.total_tokens,
+      lastRecord?.totalTokens,
+    ),
+  };
+}
+
+function hasCodexTokenCounts(counts: CodexTokenCounts | undefined): counts is CodexTokenCounts {
+  return (
+    counts !== undefined &&
+    CODEX_TOKEN_COUNT_FIELDS.some((field) => typeof counts[field] === "number")
+  );
+}
+
+function subtractCodexTokenCounts(
+  next: CodexTokenCounts,
+  previous: CodexTokenCounts,
+): CodexTokenCounts | undefined {
+  const delta: CodexTokenCounts = {};
+  for (const field of CODEX_TOKEN_COUNT_FIELDS) {
+    const nextValue = next[field];
+    const previousValue = previous[field];
+    if (nextValue === undefined || previousValue === undefined) {
+      return undefined;
+    }
+    const difference = nextValue - previousValue;
+    if (difference < 0) {
+      return undefined;
+    }
+    if (difference > 0) {
+      delta[field] = difference;
+    }
+  }
+  return delta;
+}
+
+function addCodexTokenCounts(
+  current: CodexTokenCounts | undefined,
+  increment: CodexTokenCounts,
+): CodexTokenCounts {
+  const sum: CodexTokenCounts = {};
+  for (const field of CODEX_TOKEN_COUNT_FIELDS) {
+    const currentValue = current?.[field];
+    const incrementValue = increment[field];
+    if (currentValue !== undefined || incrementValue !== undefined) {
+      sum[field] = (currentValue ?? 0) + (incrementValue ?? 0);
+    }
+  }
+  return sum;
+}
+
+function buildAgentUsageForModel(input: {
+  counts: CodexTokenCounts;
+  modelId: string | null | undefined;
+  contextWindowMaxTokens: number | undefined;
+  contextWindowUsedTokens: number | undefined;
+}): AgentUsage {
+  const totalCostUsd = estimateOpenAiModelCostUsd({
+    modelId: input.modelId,
+    inputTokens: input.counts.inputTokens,
+    cachedInputTokens: input.counts.cachedInputTokens,
+    outputTokens: input.counts.outputTokens,
+  });
+  return {
+    inputTokens: input.counts.inputTokens,
+    cachedInputTokens: input.counts.cachedInputTokens,
+    outputTokens: input.counts.outputTokens,
+    ...(totalCostUsd !== undefined ? { totalCostUsd } : {}),
+    ...(input.contextWindowMaxTokens !== undefined
+      ? { contextWindowMaxTokens: input.contextWindowMaxTokens }
+      : {}),
+    ...(input.contextWindowUsedTokens !== undefined
+      ? { contextWindowUsedTokens: input.contextWindowUsedTokens }
+      : {}),
+  };
+}
+
 export function toAgentUsageForModel(
   tokenUsage: unknown,
   modelId: string | null | undefined,
 ): AgentUsage | undefined {
-  const usage = toObjectRecord(tokenUsage);
-  if (!usage) return undefined;
-  const last = toObjectRecord(usage.last);
-  const contextWindowMaxTokens = firstPositiveFiniteNumber(
-    usage.model_context_window,
-    usage.modelContextWindow,
-  );
-  const contextWindowUsedTokens = firstPositiveFiniteNumber(last?.total_tokens, last?.totalTokens);
-  const inputTokens = typeof last?.inputTokens === "number" ? last.inputTokens : undefined;
-  const cachedInputTokens =
-    typeof last?.cachedInputTokens === "number" ? last.cachedInputTokens : undefined;
-  const outputTokens = typeof last?.outputTokens === "number" ? last.outputTokens : undefined;
-  const totalCostUsd = estimateOpenAiModelCostUsd({
+  const parsed = parseCodexTokenUsage(tokenUsage);
+  if (!parsed) return undefined;
+  return buildAgentUsageForModel({
+    counts: parsed.last ?? {},
     modelId,
-    inputTokens,
-    cachedInputTokens,
-    outputTokens,
+    contextWindowMaxTokens: parsed.contextWindowMaxTokens,
+    contextWindowUsedTokens: parsed.contextWindowUsedTokens,
   });
-  return {
-    inputTokens,
-    cachedInputTokens,
-    outputTokens,
-    ...(totalCostUsd !== undefined ? { totalCostUsd } : {}),
-    ...(contextWindowMaxTokens !== undefined ? { contextWindowMaxTokens } : {}),
-    ...(contextWindowUsedTokens !== undefined ? { contextWindowUsedTokens } : {}),
-  };
 }
 
 interface OpenAiModelPricing {
@@ -2100,6 +2197,7 @@ const TurnDiffUpdatedNotificationSchema = z
 const ThreadTokenUsageUpdatedNotificationSchema = z
   .object({
     threadId: z.string().optional(),
+    turnId: z.string().optional(),
     tokenUsage: z.unknown(),
   })
   .passthrough();
@@ -2348,7 +2446,12 @@ type ParsedCodexNotification =
       threadId: string | null;
     }
   | { kind: "diff_updated"; diff: string; threadId: string | null }
-  | { kind: "token_usage_updated"; tokenUsage: unknown; threadId: string | null }
+  | {
+      kind: "token_usage_updated";
+      tokenUsage: unknown;
+      threadId: string | null;
+      turnId: string | null;
+    }
   | { kind: "agent_message_delta"; itemId: string; delta: string; threadId: string | null }
   | { kind: "reasoning_delta"; itemId: string; delta: string; threadId: string | null }
   | {
@@ -2545,6 +2648,7 @@ const CodexNotificationSchema = z.union([
         kind: "token_usage_updated",
         tokenUsage: params.tokenUsage,
         threadId: params.threadId ?? null,
+        turnId: params.turnId ?? null,
       }),
     ),
   z.object({ method: z.literal("thread/tokenUsage/updated"), params: z.unknown() }).transform(
@@ -3178,7 +3282,6 @@ export class CodexAppServerAgentSession implements AgentSession {
   private currentTurnId: string | null = null;
   private client: CodexAppServerClient | null = null;
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
-  private nextTurnOrdinal = 0;
   private activeForegroundTurnId: string | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
   private serviceTier: "fast" | null = null;
@@ -3223,6 +3326,8 @@ export class CodexAppServerAgentSession implements AgentSession {
   private warnedInvalidNotificationPayloads = new Set<string>();
   private warnedIncompleteEditToolCallIds = new Set<string>();
   private latestUsage: AgentUsage | undefined;
+  private previousThreadTokenCounts: CodexTokenCounts | undefined;
+  private currentTurnTokenCounts: CodexTokenCounts | undefined;
   private latestPlanResult: { callId: string; text: string; turnId: string | null } | null = null;
   private readonly userMessageTurnIndexes = new Map<string, number>();
   private readonly userMessageTurnIds: string[] = [];
@@ -4641,7 +4746,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private createTurnId(): string {
-    return `codex-turn-${this.nextTurnOrdinal++}`;
+    return `codex-turn-${this.deps._randomUUID?.() ?? randomUUID()}`;
   }
 
   private handleNotification(method: string, params: unknown): void {
@@ -5301,6 +5406,9 @@ export class CodexAppServerAgentSession implements AgentSession {
     parsed: Extract<ParsedCodexNotification, { kind: "thread_started" }>,
   ): void {
     this.currentThreadId = parsed.threadId;
+    this.previousThreadTokenCounts = undefined;
+    this.currentTurnTokenCounts = undefined;
+    this.latestUsage = undefined;
     this.emitEvent({
       type: "thread_started",
       provider: CODEX_PROVIDER,
@@ -5354,11 +5462,14 @@ export class CodexAppServerAgentSession implements AgentSession {
       });
     }
     this.activeForegroundTurnId = null;
+    this.currentTurnId = null;
     this.pendingSubAgentNotificationsByThreadId.clear();
     this.resetTurnTrackingState();
   }
 
   private resetTurnTrackingState(): void {
+    this.currentTurnTokenCounts = undefined;
+    this.latestUsage = undefined;
     this.latestPlanResult = null;
     this.emittedItemStartedIds.clear();
     this.emittedItemCompletedIds.clear();
@@ -5402,7 +5513,45 @@ export class CodexAppServerAgentSession implements AgentSession {
   private handleTokenUsageUpdatedNotification(
     parsed: Extract<ParsedCodexNotification, { kind: "token_usage_updated" }>,
   ): void {
-    this.latestUsage = toAgentUsageForModel(parsed.tokenUsage, this.config.model);
+    if (!this.activeForegroundTurnId) {
+      return;
+    }
+    if (parsed.turnId && parsed.turnId !== this.currentTurnId) {
+      return;
+    }
+
+    const tokenUsage = parseCodexTokenUsage(parsed.tokenUsage);
+    if (!tokenUsage) {
+      return;
+    }
+
+    if (hasCodexTokenCounts(tokenUsage.total)) {
+      const increment = hasCodexTokenCounts(this.previousThreadTokenCounts)
+        ? subtractCodexTokenCounts(tokenUsage.total, this.previousThreadTokenCounts)
+        : tokenUsage.last;
+      this.previousThreadTokenCounts = tokenUsage.total;
+      const safeIncrement = increment ?? tokenUsage.last;
+      if (hasCodexTokenCounts(safeIncrement)) {
+        this.currentTurnTokenCounts = addCodexTokenCounts(
+          this.currentTurnTokenCounts,
+          safeIncrement,
+        );
+      }
+    } else if (hasCodexTokenCounts(tokenUsage.last)) {
+      // Older app-server payloads did not expose a cumulative total. Preserve
+      // their single-snapshot behavior rather than summing possible duplicates.
+      this.currentTurnTokenCounts = tokenUsage.last;
+    }
+
+    if (!hasCodexTokenCounts(this.currentTurnTokenCounts)) {
+      return;
+    }
+    this.latestUsage = buildAgentUsageForModel({
+      counts: this.currentTurnTokenCounts,
+      modelId: this.config.model,
+      contextWindowMaxTokens: tokenUsage.contextWindowMaxTokens,
+      contextWindowUsedTokens: tokenUsage.contextWindowUsedTokens,
+    });
     if (this.latestUsage) {
       this.notifySubscribers({
         type: "usage_updated",

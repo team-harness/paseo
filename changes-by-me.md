@@ -29,3 +29,26 @@ Archive，canonical `wks_35e47cc23645bab5` 与其中运行的 Agent 未受影响
 实时 API 与 health 三层清理验收。
 
 **未包含**：生产 daemon/桌面应用尚未更新或重启；源码提交不会自动替换当前运行版本。
+
+### Codex Status bar 费用少记修复
+
+**结果**：Codex app-server 的 thread 累计 `total` 与单次请求 `last` 现在会在 provider
+边界归一化为 Paseo foreground turn 内的单调累计 usage。Usage ledger 不再把同一 turn 的后续
+模型调用当作 stale 丢弃，两个已连接 Host 的 Status summary 可以继续按现有客户端逻辑正确求和。
+
+**关键改动**：
+
+- 以 thread `total` delta 计算新增 Token，首次观察、resume 或 native counter reset 时使用
+  `last` 作为安全基线，并在当前 Paseo turn 内累计。
+- foreground turn id 改为 UUID，避免 session/daemon 重建后碰撞持久化 ledger basis。
+- 严格校验 native turn id，覆盖 foreground turn 已激活但 native `turn/started` 尚未到达的
+  迟到通知窗口；缺失 turn id 的旧 payload 兼容路径保持不变。
+- 补充多调用、重复 total、跨 turn、resume、counter reset、迟到通知与 turn id 唯一性回归，
+  并记录 provider-to-ledger usage contract。
+
+**验证**：Codex usage/turn-id 聚焦测试 10 项；usage ledger 10 项；AgentManager usage bridge
+3 项；多 Host Status summary 6 项；`npm run typecheck`；`npm run lint`；两轮独立双环节 review
+最终无 blocking/important。
+
+**边界**：不自动回填修复前已经少记的 ledger；Codex child-thread usage 归属仍待单独定义；
+生产 daemon/桌面应用未在本次修复中重启或替换。
