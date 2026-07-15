@@ -38,7 +38,7 @@ export function addRunOptions(cmd: Command): Command {
     .option("--base <branch>", "Base branch for worktree (default: current branch)")
     .option(
       "--workspace <id>",
-      "Run in an existing workspace (default: a new workspace is created per run; falls back to $PASEO_WORKSPACE_ID)",
+      "Run in an existing workspace (falls back to $PASEO_WORKSPACE_ID, then the current Paseo agent workspace; external runs create a new workspace)",
     )
     .option(
       "--image <path>",
@@ -413,15 +413,79 @@ interface RunWorkspace {
   cwd: string;
 }
 
+function currentAgentWorkspaceUnavailable(agentId: string, reason?: unknown): CommandError {
+  const reasonMessage = reason instanceof Error ? ` Daemon lookup failed: ${reason.message}` : "";
+  return {
+    code: "CURRENT_AGENT_WORKSPACE_UNAVAILABLE",
+    message: `Current Paseo agent ${agentId} is unavailable or has no workspace`,
+    details:
+      "Pass --workspace <id>, use --worktree, or unset PASEO_AGENT_ID only when creating a new workspace is intentional." +
+      reasonMessage,
+  };
+}
+
+function currentAgentWorkspaceUnsupported(): CommandError {
+  return {
+    code: "CURRENT_AGENT_WORKSPACE_UNSUPPORTED",
+    message: "Connected Paseo daemon does not support current Agent workspace inheritance",
+    details: "Update the host to use this. Alternatively, pass --workspace <id> explicitly.",
+  };
+}
+
+async function resolveCurrentAgentWorkspaceId(
+  client: ConnectedDaemonClient,
+  agentId: string,
+): Promise<string> {
+  if (client.getLastServerInfoMessage()?.features?.agentWorkspaceInheritance !== true) {
+    throw currentAgentWorkspaceUnsupported();
+  }
+
+  let currentAgent: Awaited<ReturnType<ConnectedDaemonClient["fetchAgent"]>>;
+  try {
+    currentAgent = await client.fetchAgent({ agentId });
+  } catch (error) {
+    throw currentAgentWorkspaceUnavailable(agentId, error);
+  }
+
+  const workspaceId = currentAgent?.agent.workspaceId?.trim();
+  if (!currentAgent || currentAgent.agent.archivedAt || !workspaceId) {
+    throw currentAgentWorkspaceUnavailable(agentId);
+  }
+
+  try {
+    let cursor: string | undefined;
+    for (;;) {
+      const page = await client.fetchWorkspaces({
+        page: { limit: 200, ...(cursor ? { cursor } : {}) },
+      });
+      if (page.entries.some((workspace) => workspace.id === workspaceId)) {
+        return workspaceId;
+      }
+      const nextCursor = page.pageInfo.hasMore
+        ? (page.pageInfo.nextCursor ?? undefined)
+        : undefined;
+      if (!nextCursor || nextCursor === cursor) {
+        break;
+      }
+      cursor = nextCursor;
+    }
+  } catch (error) {
+    throw currentAgentWorkspaceUnavailable(agentId, error);
+  }
+
+  throw currentAgentWorkspaceUnavailable(agentId);
+}
+
 // Workspace policy for `paseo run`. Precedence:
 //   1. --workspace <id>            -> run in that existing workspace
 //   2. $PASEO_WORKSPACE_ID         -> exported by workspace terminals
 //   3. --worktree <name>           -> mint a new worktree-backed workspace
-//   4. bare run                    -> mint a new local-backed workspace for cwd
+//   4. $PASEO_AGENT_ID             -> inherit the current agent's workspace
+//   5. external bare run           -> mint a new local-backed workspace for cwd
 // --worktree is rejected alongside both --workspace and an ambient
 // $PASEO_WORKSPACE_ID (validateRunOptions), so worktree resolution here never
 // races an existing-workspace selection.
-async function resolveRunWorkspace(
+export async function resolveRunWorkspace(
   client: ConnectedDaemonClient,
   options: AgentRunOptions,
   cwd: string,
@@ -434,6 +498,17 @@ async function resolveRunWorkspace(
   if (explicit) {
     console.error(`Using workspace ${explicit}`);
     return { id: explicit, cwd };
+  }
+
+  // PASEO_AGENT_ID belongs to the daemon that launched this process. An
+  // explicit host may target another daemon, so it cannot inherit locally.
+  const hasExplicitHost = Boolean(options.host?.trim() || process.env.PASEO_HOST?.trim());
+  const currentAgentId =
+    options.worktree || hasExplicitHost ? undefined : process.env.PASEO_AGENT_ID?.trim();
+  if (currentAgentId) {
+    const currentWorkspaceId = await resolveCurrentAgentWorkspaceId(client, currentAgentId);
+    console.error(`Using current agent workspace ${currentWorkspaceId}`);
+    return { id: currentWorkspaceId, cwd };
   }
 
   // TODO: thread the run `prompt` as firstAgentContext so workspace-level

@@ -2462,6 +2462,8 @@ export const ServerInfoStatusPayloadSchema = z
         workspacePinning: z.boolean().optional(),
         // COMPAT(workspaceGithubClone): added in v0.1.108, remove gate after 2027-01-13.
         workspaceGithubClone: z.boolean().optional(),
+        // COMPAT(agentWorkspaceInheritance): added in v0.1.108, remove gate after 2027-01-15.
+        agentWorkspaceInheritance: z.boolean().optional(),
       })
       .optional(),
   })

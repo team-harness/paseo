@@ -105,23 +105,27 @@
 - 本地构建前删除同版本的 `Paseo-*.dmg`、`*.blockmap`、`*.zip` 和 `release/mac-arm64/`，防止误将旧产物当成新包上传。
 - 上传前检查 DMG 修改时间、SHA-256 和打包后的 `app-dist` 是否包含本次功能；OSS 使用 `版本/commit SHA` 的不可变路径，不能只覆盖同名 URL。
 
-### 5. 同路径 workspace 去重与历史数据修复
+### 5. Task Agent CLI workspace 继承
 
-**状态**：待提交的本地修复，尚未进入 `origin/main`。
+**状态**：fork 修复；替代 `80bd2adfe` 的宽泛同路径归并方案。
 
-**行为**：同一路径的新建 Agent 复用已有活跃 workspace；daemon 启动时将历史重复 workspace 的 Agent 归属迁回最早记录，再软归档重复项。解决侧边栏同路径、同分支重复项目条目。
+**行为**：Paseo-managed Agent 内的裸 `paseo run` 通过 `PASEO_AGENT_ID` 继承调用者 workspace，不再为每个 Task Agent 创建侧边栏条目。外部裸 run 与显式新 workspace/worktree 仍保持独立 workspace 语义。legacy create-agent fallback 继续复用已有目录记录，但 daemon 不再按 cwd 合并所有 workspace。
 
 **关键文件**：
 
+- `packages/cli/src/commands/agent/run.ts`
+- `packages/protocol/src/messages.ts`
+- `packages/server/src/server/websocket-server.ts`
+- `skills/paseo/SKILL.md`
 - `packages/server/src/server/session/workspace-provisioning/workspace-provisioning-service.ts`
-- `packages/server/src/server/migrations/consolidate-duplicate-workspaces.migration.ts`
 - `packages/server/src/server/workspace-registry-bootstrap.ts`
 
 **同步规则**：
 
-- 必须保留“先重关联 Agent，后归档重复 workspace”的顺序；不能直接从 `workspaces.json` 删除记录。
-- 若上游引入 workspace identity / reconciliation 改动，优先接入上游接口，但保留此数据迁移直到所有受支持版本都不再产生重复记录。
-- 必跑：workspace provisioning、workspace bootstrap、duplicate-workspace migration 目标测试。
+- 同 cwd workspace 可以合法并存，不能只凭路径自动合并或在 UI 层去重。
+- Agent 内 CLI 回退必须复用 `PASEO_AGENT_ID` 对应的 workspace；无法恢复时显式失败，不能静默创建。
+- 保留 `server_info.features.agentWorkspaceInheritance` 的单一 capability gate；旧 daemon 提示更新 host，不用旧 RPC 组合降级实现。
+- 必跑：CLI run、workspace provisioning、workspace bootstrap 目标测试。
 
 ### 6. Markdown 预览切换原始内容
 

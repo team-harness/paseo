@@ -45,6 +45,9 @@ baseline_verified: true|false|not-required
 2. Use `list_providers`; use `inspect_provider` for candidate modes/features and `list_models` only
    when a model id is uncertain. Prefer MCP tools when exposed. Use the CLI only when MCP is absent
    and the CLI passes a health/config check.
+   A Task Agent CLI fallback is eligible only from an Agent process with `PASEO_AGENT_ID`; an
+   external bare `paseo run` intentionally creates a new workspace and cannot satisfy the current
+   workspace contract. When an explicit existing workspace id is available, pass `--workspace`.
 3. Honor `explicit_provider` as binding. If it is unavailable, return `blocked`; do not silently
    replace an owner-pinned configuration.
 4. For `preferred_isolation: heterogeneous`, prefer an available provider or model family proven
@@ -73,6 +76,13 @@ observed paths; do not revert or absorb the changes.
 
 - Create workflow-owned workers with `relationship: { kind: "subagent" }`, the caller's current
   workspace/cwd, `notifyOnFinish: true`, and labels for the generic task role and `adapter: paseo`.
+- For CLI fallback, let `paseo run` inherit the caller workspace through `PASEO_AGENT_ID` and pass
+  `--label paseo.parent-agent-id=$PASEO_AGENT_ID`. For inherited placement, require stderr to contain
+  `Using current agent workspace <expected-id>`; with explicit `--workspace`, require
+  `Using workspace <expected-id>`. If stderr contains `Created workspace`, stop the batch and return
+  `blocked` rather than creating more workers. If the CLI returns
+  `CURRENT_AGENT_WORKSPACE_UNSUPPORTED`, return `blocked` and request a host update; do not unset
+  `PASEO_AGENT_ID` or emulate inheritance with legacy RPCs.
 - Pass raw materials, scope, expected output, and read-only constraints. Do not include the caller's
   draft findings or desired verdict.
 - Return the `agent_id` as soon as creation succeeds so the caller can persist an awaiting state.
@@ -203,6 +213,14 @@ paseo ls
 paseo worktree ls
 paseo schedule create --cron "*/15 * * * *" "ping main build"
 ```
+
+A bare `paseo run` launched by a Paseo-managed Agent inherits that Agent's workspace through
+`PASEO_AGENT_ID` when it targets the launching Agent's default daemon. A bare run from an external
+shell, or one with an explicit `--host`, has no provable caller workspace and intentionally creates a
+new local-backed workspace. Inheritance requires
+`server_info.features.agentWorkspaceInheritance`; update an older host instead of falling back to
+legacy workspace queries. Use `--workspace <id>` when external or cross-host automation needs to
+attach to an existing workspace.
 
 Discover with `paseo --help` and `paseo <cmd> --help`.
 

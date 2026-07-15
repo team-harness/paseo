@@ -1,44 +1,65 @@
 ---
-doc_type: issue-fix-note
+doc_type: issue-fix
 issue: 2026-07-14-sidebar-duplicate-project-workspaces
-status: implemented
+status: confirmed
+path: standard
+fix_date: 2026-07-15
 related:
   - sidebar-duplicate-project-workspaces-report.md
   - sidebar-duplicate-project-workspaces-analysis.md
-tags: [sidebar, workspace, persistence, migration]
+tags: [sidebar, workspace, task-agent, cli]
 ---
 
-# 侧边栏重复项目条目修复记录
+# Task Agent 产生重复 workspace 条目修复记录
 
-## 根因
+## 1. 根因摘要
 
-`resolveOrCreateWorkspaceIdForCreateAgent` 在无显式 workspace、且没有新建 Paseo worktree 时，直接调用总会生成新 ID 的 `createWorkspaceForDirectory`。同一 cwd 每新建一个 Agent 就写入一条新的活跃 workspace 记录。
+Task Agent 适配器要求 reviewer 使用调用者当前 workspace，但 MCP 不可用时实际执行了 Agent 内裸 `paseo run`。`packages/cli/src/commands/agent/run.ts:resolveRunWorkspace` 只识别显式 `--workspace` 和 `PASEO_WORKSPACE_ID`，没有利用 provider 进程已有的 `PASEO_AGENT_ID` 恢复父 Agent 的 `workspaceId`，因此每个 reviewer 都合法地走入 `workspace.create.request`。
 
-## 改动
+父 Agent 的本地 Codex 会话记录给出直接证据：批量命令没有 `--workspace`/`--host`，每次 stderr 都输出 `Created workspace ...`；生产 registry 最初形成 17 条同 cwd 活跃记录，修复期间旧生产 daemon 又由一轮 Task Agent 创建第 18 条。
 
-- 创建 Agent 改用 `findOrCreateWorkspaceForDirectory`，首次创建保留 `initialTitle`，后续创建复用已有活跃 workspace，不覆盖其标题。
-- 路径解析优先选择活跃 workspace；只存在归档记录时才按确定性顺序选择归档记录，避免历史重复项被错误重新激活。
-- 新增启动时幂等迁移：同一规范 cwd 的活跃重复 workspace 选择最早创建的记录为规范记录，先将所有关联 Agent 的 `workspaceId` 重定向，再软归档其余记录。
-- 在 registry bootstrap 的已有数据和首次物化两条路径都运行迁移。
+旧修复新增的 `consolidateDuplicateWorkspaces` 又把所有同 cwd workspace 视为重复，违反 Paseo 明确支持的 same-directory workspace multiplicity，不能作为通用数据修复保留。
 
-## 现有数据处理
+## 2. 实际采用方案
 
-已确认 `~/.paseo/projects/workspaces.json` 中目标目录存在 14 条活跃重复记录。运行中的生产 daemon 持有 registry 和 Agent storage 的内存缓存；直接离线修改 JSON 既不会更新侧边栏，又可能被旧缓存写回，因此没有执行不安全的文件级删除。
+- `resolveRunWorkspace` 在未显式选择 workspace/worktree/host、且存在 `PASEO_AGENT_ID` 时，通过 daemon `fetchAgent` 读取父 Agent 的 `workspaceId` 并复用。
+- 继承要求 `server_info.features.agentWorkspaceInheritance`；旧 daemon 返回 `CURRENT_AGENT_WORKSPACE_UNSUPPORTED` 并提示更新 host，不走降级 RPC 路径。
+- 父 Agent 查询失败、已归档、没有 workspace，或 workspace/project 不再 active 时，统一返回 `CURRENT_AGENT_WORKSPACE_UNAVAILABLE`，不静默创建新 workspace。
+- capability 存在时，CLI 用分页 `fetchWorkspaces` 确认 exact active workspace ID，不把 `fetchAgent.project` 的存在误当作未归档证明。
+- 显式 `--workspace`、ambient `PASEO_WORKSPACE_ID`、`--worktree`、`--host`/`PASEO_HOST` 跨 daemon 调用和外部裸 run 的既有语义不变。
+- Task Agent skill 的 CLI 回退要求继承父 workspace、写入真实 parent label，并在 stderr 出现 `Created workspace` 时立即阻断后续批次。
+- 删除按 cwd 全量合并的迁移、测试和 bootstrap 调用；legacy cwd-only Agent backfill 与 create-agent fallback 保持原有兼容行为。
 
-修复版 daemon 在首次启动时自动完成重关联和软归档，目标目录将只保留最早创建的规范工作区记录，所有关联 Agent 均保留可用归属。
+## 3. 改动文件清单
 
-## 验证
+- `packages/cli/src/commands/agent/run.ts`
+- `packages/cli/src/commands/agent/run.test.ts`
+- `packages/server/src/server/workspace-registry-bootstrap.ts`
+- `packages/server/src/server/workspace-registry-bootstrap.test.ts`
+- 删除 `packages/server/src/server/migrations/consolidate-duplicate-workspaces.migration.ts`
+- 删除 `packages/server/src/server/migrations/consolidate-duplicate-workspaces.migration.test.ts`
+- `skills/paseo/SKILL.md`
+- `docs/agent-lifecycle.md`
+- `changes-by-cs.md`
+- 本 issue 的 report、analysis、approval 与 fix-note
 
-- `mise exec nodejs@22.20.0 -- npx vitest run packages/server/src/server/migrations/consolidate-duplicate-workspaces.migration.test.ts packages/server/src/server/session/workspace-provisioning/workspace-provisioning-service.test.ts packages/server/src/server/workspace-registry-bootstrap.test.ts --bail=1`
-  - 通过：3 个文件、20 个测试。
-- `npm run format`
-  - 通过。
-- `npm run lint -- {6 个本次 server 文件}`
-  - 通过，0 warnings / 0 errors。
-- `npm run typecheck`
-  - 通过，全部 workspace 成功。
+## 4. 验证结果
 
-## 遗留风险
+- 红灯验证：新增 CLI 测试最初以 `resolveRunWorkspace is not a function` 失败，证明旧实现缺少当前 Agent workspace 解析。
+- `npm run build:server`：通过；server 依赖、server 与 CLI 全部重建，已删除迁移不再残留于生成产物。
+- `npx vitest run packages/cli/src/commands/agent/run.test.ts packages/protocol/src/messages.server-info.test.ts packages/server/src/server/workspace-registry-bootstrap.test.ts packages/server/src/server/session/workspace-provisioning/workspace-provisioning-service.test.ts packages/server/src/server/cli-run-workspace-precedence.e2e.test.ts packages/server/src/server/workspace-same-cwd-isolation.e2e.test.ts --bail=1`：6 个文件、43 个测试通过。
+- `npx vitest run packages/server/src/server/daemon-client.e2e.test.ts -t "receives server_info on websocket connect" --bail=1`：目标 server_info E2E 通过，确认 daemon 实际发送 capability；同文件全跑在范围外 provider mock 缺少 `fetchCatalog` 处失败，不属于本修复。
+- `npm run typecheck`：全部 workspace 通过。
+- `npm run lint -- packages/cli/src/commands/agent/run.ts packages/cli/src/commands/agent/run.test.ts packages/server/src/server/workspace-registry-bootstrap.ts packages/server/src/server/workspace-registry-bootstrap.test.ts`：0 warnings、0 errors。
+- capability gate 加入前，已构建 CLI 对当前生产 daemon 的只读解析命中 `wks_35e47cc23645bab5` 且没有调用 workspace create；最终实现会把尚未更新、未宣告 capability 的生产 daemon 明确阻断为 `CURRENT_AGENT_WORKSPACE_UNSUPPORTED`。
+- 目标文件已通过 `npm run format:files -- ...`；复审收口后的 `git diff --check` 通过。
+- 第四轮独立 full rereview：`blocking: none`、`important: none`，verdict `passed`；复审前后 Git 三类基线哈希一致，确认 reviewer 未写入。
 
-- 现有桌面应用需要运行包含该修复的 daemon，启动迁移后才能安全清理已落盘的 14 条记录；本次不重启主 daemon，避免中断正在运行的 Agent。
-- 未做人工 UI 验证，因为本次没有客户端 UI 改动；迁移完成后应确认 `CodeStable/main` 仅显示一条 workspace，随后在同一路径新建 Agent 确认仍不产生重复项。
+## 5. 遗留事项
+
+- 运行中的端口 `6767` 生产 daemon 与桌面应用尚未替换为本次构建；遵守项目规则，本轮没有重启它。
+- owner 授权直接清理后，先备份到 `/Users/wyatt/.paseo/backups/sidebar-duplicate-cleanup-20260715-194221`，workspace registry 原件与备份 SHA-256 均为 `22b2f0a967473d7a7c20bb917964a9324fb046c52e91dd77a34af796eaa584a6`。
+- 通过运行中 daemon 的正式 `archiveWorkspace` RPC 依次软归档 17 个重复 workspace；对应 17 个 reviewer Agent 一并进入 Archive，历史 JSON 保留但没有重关联到 canonical workspace。没有直接编辑 `~/.paseo` JSON，也没有停止或重启 daemon。
+- 清理后磁盘 registry 与 daemon 实时 API 均只保留 canonical `wks_35e47cc23645bab5` 为 active；17 个重复 workspace 和 17 个受影响 Agent 均有 `archivedAt`。canonical 中运行的 Agent `241a549c-b7e8-4e8d-810d-7253b8c14f7f` 未受影响，daemon health 为 `ok`。
+- 尚未做生产 UI 截图与修复版真实批量 Task Agent 验收。当前 daemon/CLI 仍是旧版本，在更新并重启前仍可能再次创建重复 workspace。
+- 旧修复 `80bd2adfe` 的宽泛迁移已从源码撤销；其历史结论由本次 report、analysis 和 fix-note 取代。

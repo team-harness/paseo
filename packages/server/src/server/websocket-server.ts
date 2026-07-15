@@ -1278,6 +1278,8 @@ export class VoiceAssistantWebSocketServer {
         workspacePinning: true,
         // COMPAT(workspaceGithubClone): added in v0.1.108, remove gate after 2027-01-13.
         workspaceGithubClone: true,
+        // COMPAT(agentWorkspaceInheritance): added in v0.1.108, remove gate after 2027-01-15.
+        agentWorkspaceInheritance: true,
       },
     };
   }
