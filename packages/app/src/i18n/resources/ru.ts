@@ -875,6 +875,17 @@ export const ru: TranslationResources = {
       settings: "Настройки",
       closeSidebar: "Закрыть боковую панель",
     },
+    help: {
+      trigger: "Помощь и поддержка",
+      sectionHelp: "Помощь",
+      diagnostics: "Запустить диагностику",
+      shortcuts: "Сочетания клавиш",
+      reportIssue: "Сообщить о проблеме",
+      discord: "Discord",
+      github: "Создать issue в GitHub",
+      whatsNew: "Что нового",
+      version: "Paseo {{version}}",
+    },
     sections: {
       sessions: "История",
       schedules: "Расписания",
@@ -1456,6 +1467,8 @@ export const ru: TranslationResources = {
     detachTooltip: "Отсоединить субагент",
     archiveAction: "Архив{{label}}",
     archiveTooltip: "Архивный субагент",
+    archiveFinishedAction: "Архивировать завершенные субагенты",
+    archiveFinishedTooltip: "Архивировать завершенные",
   },
   panels: {
     draft: {
@@ -1479,6 +1492,34 @@ export const ru: TranslationResources = {
     subAgentActivity: "Субагентская деятельность",
     input: "Вход",
     output: "Выход",
+  },
+  toolCallGroup: {
+    editedFiles: {
+      one: "изменён {{count}} файл",
+      other: "изменено {{count}} файлов",
+    },
+    commands: {
+      one: "выполнена {{count}} команда",
+      other: "выполнено {{count}} команд",
+    },
+    readFiles: {
+      one: "прочитан {{count}} файл",
+      other: "прочитано {{count}} файлов",
+    },
+    searches: {
+      one: "выполнен {{count}} поиск",
+      other: "выполнено {{count}} поисков",
+    },
+    otherTools: {
+      one: "использован {{count}} другой инструмент",
+      other: "использовано {{count}} других инструментов",
+    },
+    paseoCalls: {
+      one: "Paseo вызван {{count}} раз",
+      other: "Paseo вызван {{count}} раз",
+    },
+    and: "и",
+    failed: "С ошибкой: {{count}}",
   },
   renameModal: {
     rename: "Переименовать",
@@ -1576,6 +1617,15 @@ export const ru: TranslationResources = {
         label: "Всегда разворачивать размышления",
         description:
           "По умолчанию показывать блоки размышлений и логики агента полностью развернутыми",
+      },
+      toolCallDetail: {
+        label: "Отображение вызовов инструментов",
+        description: "Как вызовы инструментов отображаются на временной шкале",
+        accessibilityLabel: "Выбрать отображение вызовов инструментов ({{value}})",
+        options: {
+          overview: "Сводка",
+          detailed: "Полная детализация",
+        },
       },
       language: {
         label: "Язык",

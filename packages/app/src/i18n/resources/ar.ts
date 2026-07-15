@@ -856,6 +856,17 @@ export const ar: TranslationResources = {
       settings: "إعدادات",
       closeSidebar: "إغلاق الشريط الجانبي",
     },
+    help: {
+      trigger: "المساعدة والدعم",
+      sectionHelp: "المساعدة",
+      diagnostics: "تشغيل التشخيص",
+      shortcuts: "اختصارات لوحة المفاتيح",
+      reportIssue: "الإبلاغ عن مشكلة",
+      discord: "Discord",
+      github: "إنشاء مشكلة على GitHub",
+      whatsNew: "ما الجديد",
+      version: "Paseo {{version}}",
+    },
     sections: {
       sessions: "السجل",
       schedules: "الجداول",
@@ -1425,6 +1436,8 @@ export const ar: TranslationResources = {
     detachTooltip: "فصل الوكيل الفرعي",
     archiveAction: "أرشيف{{label}}",
     archiveTooltip: "أرشفة الوكيل الفرعي",
+    archiveFinishedAction: "أرشفة الوكلاء الفرعيين المكتملين",
+    archiveFinishedTooltip: "أرشفة المكتملين",
   },
   panels: {
     draft: {
@@ -1448,6 +1461,34 @@ export const ar: TranslationResources = {
     subAgentActivity: "نشاط الوكيل الفرعي",
     input: "مدخل",
     output: "الإخراج",
+  },
+  toolCallGroup: {
+    editedFiles: {
+      one: "حرّر {{count}} ملفًا",
+      other: "حرّر {{count}} ملفات",
+    },
+    commands: {
+      one: "شغّل {{count}} أمرًا",
+      other: "شغّل {{count}} أوامر",
+    },
+    readFiles: {
+      one: "قرأ {{count}} ملفًا",
+      other: "قرأ {{count}} ملفات",
+    },
+    searches: {
+      one: "بحث {{count}} مرة",
+      other: "بحث {{count}} مرات",
+    },
+    otherTools: {
+      one: "استخدم {{count}} أداة أخرى",
+      other: "استخدم {{count}} أدوات أخرى",
+    },
+    paseoCalls: {
+      one: "استدعى Paseo {{count}} مرة",
+      other: "استدعى Paseo {{count}} مرات",
+    },
+    and: "و",
+    failed: "فشل {{count}}",
   },
   renameModal: {
     rename: "إعادة تسمية",
@@ -1545,6 +1586,15 @@ export const ar: TranslationResources = {
       autoExpandReasoning: {
         label: "عرض التفكير دائماً",
         description: "إظهار تفكير الوكيل وخطوات الاستدلال بشكل كامل بشكل افتراضي",
+      },
+      toolCallDetail: {
+        label: "عرض استدعاءات الأدوات",
+        description: "كيفية ظهور استدعاءات الأدوات في المخطط الزمني",
+        accessibilityLabel: "حدد عرض استدعاءات الأدوات ({{value}})",
+        options: {
+          overview: "ملخص",
+          detailed: "التفاصيل الكاملة",
+        },
       },
       language: {
         label: "لغة",

@@ -35,7 +35,6 @@ import {
   SquareTerminal,
 } from "lucide-react-native";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
-import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
@@ -58,7 +57,7 @@ import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { orderHostsLocalFirst, type HostProfile } from "@/types/host-connection";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
-import { useWindowControlsPadding } from "@/utils/desktop-window";
+import { WindowChromeRegion, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { BackHeader } from "@/components/headers/back-header";
 import { ScreenHeader } from "@/components/headers/screen-header";
@@ -77,6 +76,7 @@ import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater"
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
 import { useHostBottomChromeInset } from "@/status-summary/bottom-chrome-inset";
+import { useAppDiagnosticStore } from "@/diagnostics/store";
 import { settingsStyles } from "@/styles/settings";
 import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
@@ -98,13 +98,12 @@ import {
 } from "@/screens/settings/host-page";
 import ProjectsScreen from "@/screens/projects-screen";
 import ProjectSettingsScreen from "@/screens/project-settings-screen";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import { SETTINGS_DESKTOP_SIDEBAR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
   type EnableBuiltInDaemonOption,
   useEnableBuiltInDaemonOption,
 } from "@/desktop/hooks/use-enable-built-in-daemon-option";
-import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import {
   buildOpenProjectRoute,
   buildProjectsSettingsRoute,
@@ -446,8 +445,6 @@ interface DiagnosticsSectionProps {
   isPlaybackTestRunning: boolean;
   playbackTestResult: string | null;
   handlePlaybackTest: () => Promise<void>;
-  appVersion: string | null;
-  isDesktopApp: boolean;
 }
 
 function DiagnosticsSection({
@@ -455,16 +452,12 @@ function DiagnosticsSection({
   isPlaybackTestRunning,
   playbackTestResult,
   handlePlaybackTest,
-  appVersion,
-  isDesktopApp,
 }: DiagnosticsSectionProps) {
   const { t } = useTranslation();
-  const [diagnosticSheetOpen, setDiagnosticSheetOpen] = useState(false);
+  const openAppDiagnostic = useAppDiagnosticStore((state) => state.open);
   const handlePlayPress = useCallback(() => {
     void handlePlaybackTest();
   }, [handlePlaybackTest]);
-  const handleOpenDiagnostic = useCallback(() => setDiagnosticSheetOpen(true), []);
-  const handleCloseDiagnostic = useCallback(() => setDiagnosticSheetOpen(false), []);
   return (
     <SettingsSection title={t("settings.diagnostics.title")}>
       <View style={settingsStyles.card}>
@@ -473,7 +466,7 @@ function DiagnosticsSection({
             <Text style={settingsStyles.rowTitle}>{t("settings.diagnostics.app.rowTitle")}</Text>
             <Text style={settingsStyles.rowHint}>{t("settings.diagnostics.app.rowHint")}</Text>
           </View>
-          <Button variant="secondary" size="sm" onPress={handleOpenDiagnostic}>
+          <Button variant="secondary" size="sm" onPress={openAppDiagnostic}>
             {t("settings.diagnostics.app.run")}
           </Button>
         </View>
@@ -496,12 +489,6 @@ function DiagnosticsSection({
           </Button>
         </View>
       </View>
-      <AppDiagnosticSheet
-        visible={diagnosticSheetOpen}
-        onClose={handleCloseDiagnostic}
-        appVersion={appVersion}
-        isDesktopApp={isDesktopApp}
-      />
     </SettingsSection>
   );
 }
@@ -1006,7 +993,6 @@ function SettingsSidebar({
   const isDesktopApp = isElectronRuntime();
   const items = SIDEBAR_SECTION_ITEMS.filter((item) => !item.desktopOnly || isDesktopApp);
   const insets = useSafeAreaInsets();
-  const padding = useWindowControlsPadding("sidebar");
   const isDesktop = layout === "desktop";
   const outerContainerStyle = useMemo(
     () => [isDesktop ? sidebarStyles.desktopContainer : sidebarStyles.mobileContainer],
@@ -1019,7 +1005,6 @@ function SettingsSidebar({
   const selectedSectionId = view.kind === "section" ? view.section : null;
   const selectedHostSection = view.kind === "host" ? view.section : null;
   const isProjectsSelected = view.kind === "projects" || view.kind === "project";
-  const paddingTopStyle = useMemo(() => ({ height: padding.top }), [padding.top]);
 
   const sidebarBody = (
     <>
@@ -1101,7 +1086,7 @@ function SettingsSidebar({
         <View style={innerContainerStyle}>
           <View style={sidebarStyles.sidebarDragArea}>
             <TitlebarDragRegion />
-            {padding.top > 0 ? <View style={paddingTopStyle} /> : null}
+            <WindowChromeSafeArea placement="below" />
             <SidebarHeaderRow
               icon={ArrowLeft}
               label={t("settings.backToWorkspace")}
@@ -1150,11 +1135,6 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const insetBottomStyle = useMemo(
     () => ({ paddingBottom: effectiveBottomInset }),
     [effectiveBottomInset],
-  );
-  const webScrollbarStyle = useWebScrollbarStyle();
-  const scrollViewStyle = useMemo(
-    () => [styles.scrollView, webScrollbarStyle],
-    [webScrollbarStyle],
   );
   const hosts = useHosts();
   const localServerId = useLocalDaemonServerId();
@@ -1434,8 +1414,6 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               isPlaybackTestRunning={isPlaybackTestRunning}
               playbackTestResult={playbackTestResult}
               handlePlaybackTest={handlePlaybackTest}
-              appVersion={appVersion}
-              isDesktopApp={isDesktopApp}
             />
           );
         case "about":
@@ -1458,6 +1436,16 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
       </View>
     );
   }
+
+  const desktopDetailHeaderLeft = detailHeader ? (
+    <>
+      <HeaderIconBadge>
+        <detailHeader.Icon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+      </HeaderIconBadge>
+      <ScreenTitle testID="settings-detail-header-title">{detailHeader.title}</ScreenTitle>
+      {detailHeader.titleAccessory}
+    </>
+  ) : null;
 
   const addHostModals = (
     <>
@@ -1488,7 +1476,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     return (
       <View style={styles.container}>
         <BackHeader title={t("settings.title")} onBack={handleBackToWorkspace} />
-        <ScrollView style={scrollViewStyle} contentContainerStyle={insetBottomStyle}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
           <SettingsSidebar
             view={view}
             onSelectSection={handleSelectSection}
@@ -1519,7 +1507,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
           titleAccessory={detailHeader?.titleAccessory}
           onBack={detailBackHandler}
         />
-        <ScrollView style={scrollViewStyle} contentContainerStyle={insetBottomStyle}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
           <View style={styles.content}>{content}</View>
         </ScrollView>
         {addHostModals}
@@ -1533,43 +1521,31 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   return (
     <View style={styles.container}>
       <View style={desktopStyles.row}>
-        <SettingsSidebar
-          view={view}
-          onSelectSection={handleSelectSection}
-          onSelectHostSection={handleSelectHostSection}
-          onSelectHost={handleSelectHost}
-          onSelectProjects={handleSelectProjects}
-          onAddHost={handleAddHost}
-          onBackToWorkspace={handleBackToWorkspace}
-          activeHostServerId={activeHostServerId}
-          layout="desktop"
-        />
-        <View style={desktopStyles.contentPane}>
-          <ScreenHeader
-            borderless={!detailHeader}
-            windowControlsPaddingRole="detailHeader"
-            left={
-              detailHeader ? (
-                <>
-                  <HeaderIconBadge>
-                    <detailHeader.Icon
-                      size={theme.iconSize.md}
-                      color={theme.colors.foregroundMuted}
-                    />
-                  </HeaderIconBadge>
-                  <ScreenTitle testID="settings-detail-header-title">
-                    {detailHeader.title}
-                  </ScreenTitle>
-                  {detailHeader.titleAccessory}
-                </>
-              ) : null
-            }
-            leftStyle={desktopStyles.detailLeft}
+        <WindowChromeRegion corners="top-left">
+          <SettingsSidebar
+            view={view}
+            onSelectSection={handleSelectSection}
+            onSelectHostSection={handleSelectHostSection}
+            onSelectHost={handleSelectHost}
+            onSelectProjects={handleSelectProjects}
+            onAddHost={handleAddHost}
+            onBackToWorkspace={handleBackToWorkspace}
+            activeHostServerId={activeHostServerId}
+            layout="desktop"
           />
-          <ScrollView style={scrollViewStyle} contentContainerStyle={insetBottomStyle}>
-            <View style={styles.content}>{content}</View>
-          </ScrollView>
-        </View>
+        </WindowChromeRegion>
+        <WindowChromeRegion corners="top-right">
+          <View style={desktopStyles.contentPane} testID="settings-detail-pane">
+            <ScreenHeader
+              borderless={!detailHeader}
+              left={desktopDetailHeaderLeft}
+              leftStyle={desktopStyles.detailLeft}
+            />
+            <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
+              <View style={styles.content}>{content}</View>
+            </ScrollView>
+          </View>
+        </WindowChromeRegion>
       </View>
       {addHostModals}
     </View>
@@ -1679,7 +1655,7 @@ const desktopStyles = StyleSheet.create((theme) => ({
 
 const sidebarStyles = StyleSheet.create((theme) => ({
   desktopContainer: {
-    width: 320,
+    width: SETTINGS_DESKTOP_SIDEBAR_WIDTH,
     borderRightWidth: 1,
     borderRightColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceSidebar,

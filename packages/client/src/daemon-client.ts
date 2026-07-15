@@ -542,6 +542,7 @@ function normalizeListCommandsOptions(
   return { agentId: input, ...legacyOptions };
 }
 export interface AgentForkContextOptions {
+  boundaryCursor?: FetchAgentTimelineCursor;
   boundaryMessageId?: string;
   requestId?: string;
 }
@@ -2559,6 +2560,7 @@ export class DaemonClient {
       type: "agent.fork_context.request",
       agentId,
       requestId: resolvedRequestId,
+      ...(options.boundaryCursor ? { boundaryCursor: options.boundaryCursor } : {}),
       ...(options.boundaryMessageId ? { boundaryMessageId: options.boundaryMessageId } : {}),
     });
 
@@ -2668,7 +2670,7 @@ export class DaemonClient {
       agentId,
       requestId,
     });
-    await this.sendRequest({
+    const payload = await this.sendRequest({
       requestId,
       message,
       options: { skipQueue: true },
@@ -2682,6 +2684,9 @@ export class DaemonClient {
         return msg.payload;
       },
     });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
   }
 
   async setAgentMode(agentId: string, modeId: string): Promise<AgentProviderNotice | null> {

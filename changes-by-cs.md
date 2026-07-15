@@ -9,7 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 当前 fork 提交端点：`main` / `origin/main` = `74d5820ba`。
+- 最近同步基线：`upstream/main` = `04e893417`，同步于 2026-07-16。
+- 本次同步前 fork 端点：`main` / `origin/main` = `dfc5e2456`；同步后的准确端点以本次 merge commit 为准。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -20,6 +21,14 @@
 3. 对现有 Agent 的 `workspaceId`、usage ledger、session pin 等持久化数据，不能直接删除记录；先检查迁移和归属关系。
 4. `.codestable/` 是 fork 的工程流程和审计资产，不改变 Paseo 运行时行为。上游若也引入同名流程文件，保留双方必要约束，避免用上游版本整目录覆盖。
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
+
+## 最近同步判断
+
+### 2026-07-16: `upstream/main` `04e893417`
+
+- 合入上游的桌面 stale daemon lock 恢复、子 Agent 可见性、工具调用展示、desktop/sidebar 布局和项目打开流程修复。
+- 上游没有实现 Status Bar 汇总与多 Host pin、既有 Agent 计划任务、GPT-5.5/GPT-5.6 usage 定价、Markdown 预览/原始内容切换或 Task Agent workspace 继承，fork 对应实现全部保留。
+- 冲突处理采用上游的 `NavigateToWorkspaceInput` draft target API，删除 fork 旧的 `openDraftTab` 路径；保留 Markdown 切换、Status Bar 底部 inset、usage ledger 终态清理，并与上游 agent run settle 逻辑组合。
 
 ## 变更清单
 

@@ -1342,6 +1342,7 @@ export const ProviderSubagentTimelineRequestMessageSchema = z.object({
 export const AgentForkContextRequestMessageSchema = z.object({
   type: z.literal("agent.fork_context.request"),
   agentId: z.string(),
+  boundaryCursor: AgentTimelineCursorSchema.optional(),
   boundaryMessageId: z.string().optional(),
   requestId: z.string(),
 });
@@ -2456,6 +2457,8 @@ export const ServerInfoStatusPayloadSchema = z
         statusBarSessionPins: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
+        // COMPAT(agentForkContextCursor): added in v0.1.108, remove gate after 2027-01-14.
+        agentForkContextCursor: z.boolean().optional(),
         // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
         providerSubagents: z.boolean().optional(),
         // COMPAT(workspacePinning): added in v0.1.107, remove gate after 2027-01-12.
@@ -3158,6 +3161,7 @@ export const AgentForkContextResponseMessageSchema = z.object({
     attachment: TextAttachmentSchema.nullable(),
     itemCount: z.number().int().nonnegative(),
     boundaryMessageId: z.string().nullable(),
+    boundaryCursor: AgentTimelineCursorSchema.nullable().optional(),
     error: z.string().nullable(),
   }),
 });
@@ -3168,6 +3172,7 @@ export const CancelAgentResponseMessageSchema = z.object({
     requestId: z.string(),
     agentId: z.string(),
     agent: AgentSnapshotPayloadSchema.nullable(),
+    error: z.string().nullable().optional(),
   }),
 });
 

@@ -883,6 +883,17 @@ export const es: TranslationResources = {
       settings: "Ajustes",
       closeSidebar: "Cerrar barra lateral",
     },
+    help: {
+      trigger: "Ayuda y soporte",
+      sectionHelp: "Ayuda",
+      diagnostics: "Ejecutar diagnóstico",
+      shortcuts: "Atajos de teclado",
+      reportIssue: "Informar de un problema",
+      discord: "Discord",
+      github: "Crear incidencia en GitHub",
+      whatsNew: "Novedades",
+      version: "Paseo {{version}}",
+    },
     sections: {
       sessions: "Historial",
       schedules: "Horarios",
@@ -1464,6 +1475,8 @@ export const es: TranslationResources = {
     detachTooltip: "Separar subagente",
     archiveAction: "Archivo{{label}}",
     archiveTooltip: "Subagente de archivo",
+    archiveFinishedAction: "Archivar subagentes finalizados",
+    archiveFinishedTooltip: "Archivar finalizados",
   },
   panels: {
     draft: {
@@ -1487,6 +1500,34 @@ export const es: TranslationResources = {
     subAgentActivity: "Actividad de subagente",
     input: "Aporte",
     output: "Producción",
+  },
+  toolCallGroup: {
+    editedFiles: {
+      one: "editó {{count}} archivo",
+      other: "editó {{count}} archivos",
+    },
+    commands: {
+      one: "ejecutó {{count}} comando",
+      other: "ejecutó {{count}} comandos",
+    },
+    readFiles: {
+      one: "leyó {{count}} archivo",
+      other: "leyó {{count}} archivos",
+    },
+    searches: {
+      one: "buscó {{count}} vez",
+      other: "buscó {{count}} veces",
+    },
+    otherTools: {
+      one: "usó {{count}} herramienta adicional",
+      other: "usó {{count}} herramientas adicionales",
+    },
+    paseoCalls: {
+      one: "llamó a Paseo {{count}} vez",
+      other: "llamó a Paseo {{count}} veces",
+    },
+    and: "y",
+    failed: "{{count}} con error",
   },
   renameModal: {
     rename: "Rebautizar",
@@ -1586,6 +1627,15 @@ export const es: TranslationResources = {
         label: "Siempre expandir razonamiento",
         description:
           "Mostrar los bloques de pensamiento y razonamiento del agente totalmente expandidos de forma predeterminada",
+      },
+      toolCallDetail: {
+        label: "Visualización de llamadas a herramientas",
+        description: "Cómo aparecen las llamadas a herramientas en la cronología",
+        accessibilityLabel: "Seleccionar visualización de llamadas a herramientas ({{value}})",
+        options: {
+          overview: "Resumen",
+          detailed: "Detalle completo",
+        },
       },
       language: {
         label: "Idioma",
