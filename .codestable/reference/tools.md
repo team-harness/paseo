@@ -32,7 +32,7 @@ python3 <cs-onboard skill 目录>/tools/search-yaml.py --dir {目录} [--filter 
 
 ### 常用命令
 
-`search-yaml.py` 用于扫**带 frontmatter 的产物**——feature spec / issue spec / requirements / adrs / guides / library-docs。
+`search-yaml.py` 用于扫**带 frontmatter 的产物**——feature spec / issue spec / requirements / adrs / `docs/dev|user|api`。
 
 `.codestable/compound/` 由 `cs-keep` 写纯 markdown（无 frontmatter），**不用 search-yaml**，直接 grep：
 
@@ -49,12 +49,12 @@ ls -lt .codestable/compound/ | head        # 看最近沉淀
 python3 <cs-onboard skill 目录>/tools/search-yaml.py --dir .codestable/features --filter doc_type=feature-design --filter status=approved
 
 # 按时间排序
-python <cs-onboard skill 目录>/tools/search-yaml.py --dir .codestable/library-docs --sort-by last_reviewed --order asc
-python <cs-onboard skill 目录>/tools/search-yaml.py --dir .codestable/guides --filter status=current --sort-by last_reviewed --order asc
+python3 <cs-onboard skill 目录>/tools/search-yaml.py --dir docs/api --sort-by last_reviewed --order asc
+python3 <cs-onboard skill 目录>/tools/search-yaml.py --dir docs/dev --filter status=current --sort-by last_reviewed --order asc
 
 # 输出控制
-python <cs-onboard skill 目录>/tools/search-yaml.py --dir .codestable/features --filter status=approved --full
-python <cs-onboard skill 目录>/tools/search-yaml.py --dir .codestable/features --filter tags~=llm --json
+python3 <cs-onboard skill 目录>/tools/search-yaml.py --dir .codestable/features --filter status=approved --full
+python3 <cs-onboard skill 目录>/tools/search-yaml.py --dir .codestable/features --filter tags~=llm --json
 ```
 
 ### 典型使用场景
@@ -101,7 +101,7 @@ python3 <cs-onboard skill 目录>/tools/codestable-goal-consistency-gate.py --ro
 
 `roadmap-goal-gates.yaml` 是阶段配置入口；`codestable-scope-gate.py`、`codestable-dod-runner.py` 和 `codestable-evidence-pack.py` 是 implementation.before_review 的最小 runtime。`status: protocol-only` 的 gate 只表示协议占位，由 review / QA / acceptance / audit 技能读取证据后执行，不代表已有独立脚本。
 `codestable-goal-consistency-gate.py` 是 roadmap_audit.before_complete 的 runtime，检查 goal-state、items、每个 feature 的 review/QA/acceptance/evidence/gate/DoD 产物和 checklist 状态，防止 goal-state 早于证据推进。
-`codestable-workflow-next.py` 是只读下一步解析器，输出 `next_action`、`must_continue` 和 `final_answer_allowed`；`cs-epic` / `cs-feat` 在 child design batch 边界必须按它的 JSON 继续或停 gate。
+`codestable-workflow-next.py` 是只读下一步解析器，输出 `next_action`、`must_continue` 和 `final_answer_allowed`；`cs-epic` / `cs-feat` 在 child design batch 边界必须按它的 JSON 继续或停 gate。单 feature 按仓库事实恢复：feature goal-state 优先为 Goal；design 的完整 roadmap metadata 经 parent items 唯一证明，或被 parent items / roadmap goal-state 反向唯一认领的 child 交回 Epic；显式 feature 指针具有权威性，目录回退按精确 feature slug，多 claim 与错误 owner 结构/路径 fail-closed；ff-note 或 design 的 `execution_lane: quick` 恢复 Quick；旧 design 缺 lane 时恢复 Standard。Quick/Standard 的 passed review 必须有独立 reviewer 锚点，Quick 不得吞掉既有非 passed QA/acceptance；损坏的 YAML/frontmatter 或合法 YAML 中错误的路径/容器在 `--json` 下返回含具体路径的结构化 `blocked`，不得输出 traceback。
 如果 skill 包缺少这些 runtime 脚本，说明本机 CodeStable 安装不完整；先更新 / 重装 CodeStable。项目缺少 `gates/` 或 `reference/` 时运行 runtime sync。
 
 ---
@@ -117,7 +117,7 @@ python3 <cs-onboard skill 目录>/tools/codestable-doctor.py --root . --json
 JSON 关键字段：
 
 - `status`：`idle` / `planning-safe` / `dirty` / `implementation-active` / `attention-needed` / `blocked`
-- `tooling.runtime`：repo-local runtime 与 skill-global tool 静态体检；`version-mismatch` 时运行 runtime sync
+- `tooling.runtime`：repo-local runtime 与 skill-global tool 静态体检；`version-mismatch` 时运行 runtime sync，`version-unavailable` 时先重装或更新 `cs-onboard`
 - `tooling.runtime.capabilities`：`base` / `workflow-next` / `goal-gates` 的 `repo_paths`、`skill_tool_paths` 和缺失列表
 - `checkout`：当前分支、默认分支
 - `dirty_buckets`：按 `code` / `tests` / `docs` / `migrations` / `data` / `logs` / `codestable` / `unknown` 分组的 dirty paths
