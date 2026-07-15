@@ -80,9 +80,9 @@
 
 ### 3. Codex 模型价格表
 
-**状态**：fork 维护项。主要提交：`40cc55580`（GPT-5.5）、`7bdd79b17`（GPT-5.6）。
+**状态**：fork 维护项。主要提交：`40cc55580`（GPT-5.5）、`7bdd79b17`（GPT-5.6）、`21ac8b8fe`（Codex usage accounting）。
 
-**行为**：为 Codex usage 计费增加 GPT-5.5 和 GPT-5.6 定价，供 usage ledger 与 Status Bar 费用展示使用。
+**行为**：为 Codex usage 计费增加 GPT-5.5 和 GPT-5.6 定价；将 Codex app-server 的 thread 累计 token usage 归一化为 foreground turn 内的单调累计值，避免多模型调用、重复通知、resume 或 native counter reset 导致 Status Bar 费用少记。
 
 **关键文件**：
 
@@ -92,7 +92,8 @@
 **同步规则**：
 
 - 上游更新同一价格表时，以其模型标识和金额为准，逐项核对 GPT-5.5 / GPT-5.6 是否已覆盖，避免重复 case 或错误覆盖顺序。
-- 必跑：`codex-app-server-agent.test.ts` 与 Status Bar usage 目标测试。
+- 上游调整 Codex token usage payload 或 ledger 记账时，保留 turn 内累计、native turn id 校验和旧 payload 的单次快照兼容路径；修复不回填既有 ledger 数据。
+- 必跑：`codex-app-server-agent.test.ts`、usage ledger 与 Status Bar usage 目标测试。
 
 ### 4. 桌面端本地打包兼容
 
