@@ -166,6 +166,8 @@ Each file contains:
 
 The ledger uses turn-scoped snapshot bases. `usage_updated` and `turn_completed` for the same turn share one `basisKey`, and identical final snapshots do not double-count. Provider snapshot regressions within the same turn are treated as stale events and do not write negative contribution or lower the stored basis.
 
+Provider adapters must normalize native usage semantics into a monotonic, turn-scoped snapshot before emitting usage events. In particular, Codex app-server reports both a thread-cumulative `total` and a request-scoped `last`; its adapter derives thread-total deltas, accumulates them within the active Paseo turn, and uses `last` only as the safe baseline for the first observation or a native counter reset. Passing `last` through directly causes valid later requests to look stale, while passing the full thread `total` through would recount resumed history. A `usageTurnKey` must also remain unique across provider-session and daemon restarts because snapshot bases persist beyond either process.
+
 Writes use `writeJsonFileAtomic`. Files are parsed with Zod at daemon bootstrap; corrupt or schema-invalid ledger files are logged and skipped instead of blocking agent lifecycle. There is no migration framework. Compatibility is maintained by accepting optional fields and keeping new persisted data isolated from the agent record schema.
 
 ---

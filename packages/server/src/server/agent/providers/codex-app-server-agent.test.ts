@@ -87,7 +87,11 @@ function createConfig(overrides: Partial<AgentSessionConfig> = {}): AgentSession
 
 function createSession(
   configOverrides: Partial<AgentSessionConfig> = {},
-  options: { goalsEnabled?: boolean; autoReviewEnabled?: boolean } = {},
+  options: {
+    goalsEnabled?: boolean;
+    autoReviewEnabled?: boolean;
+    randomUUID?: () => string;
+  } = {},
 ): CodexTestSession {
   const session = new CodexAppServerAgentSession(
     createConfig(configOverrides),
@@ -96,7 +100,7 @@ function createSession(
     () => {
       throw new Error("Test session cannot spawn Codex app-server");
     },
-    {},
+    options.randomUUID ? { _randomUUID: options.randomUUID } : {},
     false,
     options.goalsEnabled === true,
     options.autoReviewEnabled === true,
@@ -109,6 +113,28 @@ function createSession(
 
 function asInternals(session: CodexTestSession): CodexSessionTestAccess {
   return castInternals<CodexSessionTestAccess>(session);
+}
+
+type TokenCountsFixture = [inputTokens: number, cachedInputTokens: number, outputTokens: number];
+
+function createTokenUsageFixture(input: {
+  total: TokenCountsFixture;
+  last?: TokenCountsFixture;
+  modelContextWindow?: number;
+}) {
+  const toBreakdown = ([inputTokens, cachedInputTokens, outputTokens]: TokenCountsFixture) => ({
+    totalTokens: inputTokens + outputTokens,
+    inputTokens,
+    cachedInputTokens,
+    outputTokens,
+  });
+  return {
+    total: toBreakdown(input.total),
+    last: toBreakdown(input.last ?? input.total),
+    ...(input.modelContextWindow !== undefined
+      ? { modelContextWindow: input.modelContextWindow }
+      : {}),
+  };
 }
 
 function markdownImageSource(markdown: string): string {
@@ -417,6 +443,33 @@ describe("Codex app-server provider", () => {
         approvalsReviewer: "auto_review",
       }),
     );
+  });
+
+  test("uses process-independent foreground turn ids", async () => {
+    const createReadySession = (uuid: string) => {
+      const session = createSession({}, { randomUUID: () => uuid });
+      session.activeForegroundTurnId = null;
+      session.client = {
+        request: vi.fn(async (method: string) => {
+          if (method === "thread/loaded/list") {
+            return { data: ["test-thread"] };
+          }
+          if (method === "turn/start") {
+            return {};
+          }
+          throw new Error(`Unexpected request: ${method}`);
+        }),
+      };
+      return session;
+    };
+    const firstSession = createReadySession("session-a-turn");
+    const secondSession = createReadySession("session-b-turn");
+
+    const firstTurn = await firstSession.startTurn("first");
+    const secondTurn = await secondSession.startTurn("second");
+
+    expect(firstTurn.turnId).toBe("codex-turn-session-a-turn");
+    expect(secondTurn.turnId).toBe("codex-turn-session-b-turn");
   });
 
   test("passes ephemeral: true to thread/start when constructed as ephemeral", async () => {
@@ -4025,6 +4078,214 @@ describe("Codex app-server provider", () => {
         contextWindowUsedTokens: 50000,
       },
     });
+  });
+
+  test("emits monotonic turn usage across multiple model calls", () => {
+    const session = createSession({ model: "gpt-5.4-mini" });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("turn/started", {
+      threadId: "test-thread",
+      turn: { id: "native-turn-1" },
+    });
+    asInternals(session).handleNotification("thread/tokenUsage/updated", {
+      threadId: "test-thread",
+      turnId: "native-turn-1",
+      tokenUsage: createTokenUsageFixture({
+        total: [100, 40, 10],
+        modelContextWindow: 200_000,
+      }),
+    });
+    asInternals(session).handleNotification("thread/tokenUsage/updated", {
+      threadId: "test-thread",
+      turnId: "native-turn-1",
+      tokenUsage: createTokenUsageFixture({
+        total: [160, 70, 25],
+        last: [60, 30, 15],
+        modelContextWindow: 200_000,
+      }),
+    });
+
+    const usageEvents = events.filter((event) => event.type === "usage_updated");
+    expect(usageEvents).toEqual([
+      {
+        type: "usage_updated",
+        provider: "codex",
+        turnId: "test-turn",
+        usage: {
+          inputTokens: 100,
+          cachedInputTokens: 40,
+          outputTokens: 10,
+          totalCostUsd: estimateOpenAiModelCostUsd({
+            modelId: "gpt-5.4-mini",
+            inputTokens: 100,
+            cachedInputTokens: 40,
+            outputTokens: 10,
+          }),
+          contextWindowMaxTokens: 200_000,
+          contextWindowUsedTokens: 110,
+        },
+      },
+      {
+        type: "usage_updated",
+        provider: "codex",
+        turnId: "test-turn",
+        usage: {
+          inputTokens: 160,
+          cachedInputTokens: 70,
+          outputTokens: 25,
+          totalCostUsd: estimateOpenAiModelCostUsd({
+            modelId: "gpt-5.4-mini",
+            inputTokens: 160,
+            cachedInputTokens: 70,
+            outputTokens: 25,
+          }),
+          contextWindowMaxTokens: 200_000,
+          contextWindowUsedTokens: 75,
+        },
+      },
+    ]);
+  });
+
+  test("deduplicates totals, ignores late usage, and resets between native turns", () => {
+    const session = createSession({ model: "gpt-5.4-mini" });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    const firstTokenUsage = createTokenUsageFixture({
+      total: [100, 40, 10],
+      modelContextWindow: 200_000,
+    });
+
+    asInternals(session).handleNotification("turn/started", {
+      threadId: "test-thread",
+      turn: { id: "native-turn-1" },
+    });
+    asInternals(session).handleNotification("thread/tokenUsage/updated", {
+      threadId: "test-thread",
+      turnId: "native-turn-1",
+      tokenUsage: firstTokenUsage,
+    });
+    asInternals(session).handleNotification("thread/tokenUsage/updated", {
+      threadId: "test-thread",
+      turnId: "native-turn-1",
+      tokenUsage: firstTokenUsage,
+    });
+    asInternals(session).handleNotification("turn/completed", {
+      threadId: "test-thread",
+      turn: { status: "completed", error: null },
+    });
+
+    session.activeForegroundTurnId = "test-turn-2";
+    asInternals(session).handleNotification("thread/tokenUsage/updated", {
+      threadId: "test-thread",
+      turnId: "native-turn-1",
+      tokenUsage: createTokenUsageFixture({
+        total: [120, 48, 12],
+        last: [20, 8, 2],
+      }),
+    });
+    asInternals(session).handleNotification("turn/started", {
+      threadId: "test-thread",
+      turn: { id: "native-turn-2" },
+    });
+    asInternals(session).handleNotification("thread/tokenUsage/updated", {
+      threadId: "test-thread",
+      turnId: "native-turn-1",
+      tokenUsage: firstTokenUsage,
+    });
+    asInternals(session).handleNotification("thread/tokenUsage/updated", {
+      threadId: "test-thread",
+      turnId: "native-turn-2",
+      tokenUsage: createTokenUsageFixture({
+        total: [140, 55, 15],
+        last: [40, 15, 5],
+        modelContextWindow: 200_000,
+      }),
+    });
+    asInternals(session).handleNotification("turn/completed", {
+      threadId: "test-thread",
+      turn: { status: "completed", error: null },
+    });
+
+    const usageEvents = events.filter((event) => event.type === "usage_updated");
+    expect(usageEvents.map((event) => event.usage)).toEqual([
+      expect.objectContaining({ inputTokens: 100, cachedInputTokens: 40, outputTokens: 10 }),
+      expect.objectContaining({ inputTokens: 100, cachedInputTokens: 40, outputTokens: 10 }),
+      expect.objectContaining({ inputTokens: 40, cachedInputTokens: 15, outputTokens: 5 }),
+    ]);
+    const completedEvents = events.filter((event) => event.type === "turn_completed");
+    expect(completedEvents.map((event) => event.usage)).toEqual([
+      expect.objectContaining({ inputTokens: 100, cachedInputTokens: 40, outputTokens: 10 }),
+      expect.objectContaining({ inputTokens: 40, cachedInputTokens: 15, outputTokens: 5 }),
+    ]);
+  });
+
+  test("uses last usage as the baseline when resuming an existing thread", () => {
+    const session = createSession({ model: "gpt-5.4-mini" });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("turn/started", {
+      threadId: "test-thread",
+      turn: { id: "native-turn-resumed" },
+    });
+    asInternals(session).handleNotification("thread/tokenUsage/updated", {
+      threadId: "test-thread",
+      turnId: "native-turn-resumed",
+      tokenUsage: createTokenUsageFixture({
+        total: [1_000, 400, 100],
+        last: [100, 40, 10],
+        modelContextWindow: 200_000,
+      }),
+    });
+
+    expect(events.filter((event) => event.type === "usage_updated")).toEqual([
+      {
+        type: "usage_updated",
+        provider: "codex",
+        turnId: "test-turn",
+        usage: {
+          inputTokens: 100,
+          cachedInputTokens: 40,
+          outputTokens: 10,
+          totalCostUsd: estimateOpenAiModelCostUsd({
+            modelId: "gpt-5.4-mini",
+            inputTokens: 100,
+            cachedInputTokens: 40,
+            outputTokens: 10,
+          }),
+          contextWindowMaxTokens: 200_000,
+          contextWindowUsedTokens: 110,
+        },
+      },
+    ]);
+  });
+
+  test("continues the turn from last usage when thread totals reset", () => {
+    const session = createSession({ model: "gpt-5.4-mini" });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("turn/started", {
+      threadId: "test-thread",
+      turn: { id: "native-turn-reset" },
+    });
+    asInternals(session).handleNotification("thread/tokenUsage/updated", {
+      threadId: "test-thread",
+      turnId: "native-turn-reset",
+      tokenUsage: createTokenUsageFixture({ total: [100, 40, 10] }),
+    });
+    asInternals(session).handleNotification("thread/tokenUsage/updated", {
+      threadId: "test-thread",
+      turnId: "native-turn-reset",
+      tokenUsage: createTokenUsageFixture({ total: [20, 8, 2] }),
+    });
+
+    const usageEvents = events.filter((event) => event.type === "usage_updated");
+    expect(usageEvents.at(-1)?.usage).toEqual(
+      expect.objectContaining({ inputTokens: 120, cachedInputTokens: 48, outputTokens: 12 }),
+    );
   });
 
   test("estimates OpenAI model cost from token usage for known Codex models only", () => {
