@@ -1,9 +1,89 @@
 ---
 name: paseo
-description: Paseo reference for managing agents and worktrees. Load whenever you need to create agents, send them prompts, or manage worktrees.
+description: Paseo host adapter for creating and managing observable agents and worktrees. Load whenever a workflow needs an independent or heterogeneous reviewer, QA runner, auditor, acceptance agent, implementation agent, agent follow-up, or managed worktree.
 ---
 
 Paseo is a daemon that supervises AI coding agents on your machine. Control it through tools or a CLI.
+
+## Task Agent adapter
+
+Act as a host adapter when another workflow requests an independent Task Agent. The calling workflow
+owns review semantics, verdicts, reports, and checkpoints. This skill owns provider discovery, agent
+creation, observable lifecycle, read-only control, and returning findings. Do not write the calling
+workflow's artifacts or decide its final verdict.
+
+Treat the request as this logical contract:
+
+```yaml
+role: review|qa|audit|acceptance|implementation
+cwd: /absolute/workspace/path
+caller_family: known provider/model family or unknown
+preferred_isolation: heterogeneous|independent
+read_only_required: true|false
+materials: [paths or repository facts]
+prompt: raw task without the caller's conclusions
+explicit_provider: optional owner-pinned provider/model
+```
+
+Return a receipt to the calling workflow:
+
+```yaml
+adapter: paseo
+agent_id: observable id
+provider: resolved provider
+model: resolved model
+isolation: heterogeneous|independent
+read_only_control: enforced-read-only|verified-no-write|not-required
+state: active|finished|failed|blocked
+result: findings or failure reason
+baseline_verified: true|false|not-required
+```
+
+### Capability selection
+
+1. Read `~/.paseo/orchestration-preferences.json` before choosing a provider.
+2. Use `list_providers`; use `inspect_provider` for candidate modes/features and `list_models` only
+   when a model id is uncertain. Prefer MCP tools when exposed. Use the CLI only when MCP is absent
+   and the CLI passes a health/config check.
+3. Honor `explicit_provider` as binding. If it is unavailable, return `blocked`; do not silently
+   replace an owner-pinned configuration.
+4. For `preferred_isolation: heterogeneous`, prefer an available provider or model family proven
+   different from `caller_family`. Treat `providers.audit` as the preferred review candidate when
+   it satisfies that requirement; otherwise follow the user's preferences and discover another
+   available family. If caller identity or model-family difference cannot be proved, label the
+   result `independent`, never `heterogeneous`.
+5. If no heterogeneous candidate is available, use a separate-context agent as `independent`.
+   Absence of heterogeneity does not by itself authorize local-only execution.
+6. A candidate is eligible only when its id, state, final result, and permission state are
+   observable.
+
+### Read-only control
+
+For read-only roles, inspect provider capabilities and select a mode that explicitly prevents
+writes. Label it `enforced-read-only` only when the provider capability proves that property; do not
+infer it from a mode name.
+
+When no enforced read-only capability exists, record the workspace baseline before launch using
+`git status --porcelain=v1 --untracked-files=all`, unstaged diff, and staged diff. Give the agent a
+strict no-write prompt, then compare the same facts after completion. Label the run
+`verified-no-write` only when the baseline is unchanged. If it changed, return `blocked` with the
+observed paths; do not revert or absorb the changes.
+
+### Dispatch and lifecycle
+
+- Create workflow-owned workers with `relationship: { kind: "subagent" }`, the caller's current
+  workspace/cwd, `notifyOnFinish: true`, and labels for the generic task role and `adapter: paseo`.
+- Pass raw materials, scope, expected output, and read-only constraints. Do not include the caller's
+  draft findings or desired verdict.
+- Return the `agent_id` as soon as creation succeeds so the caller can persist an awaiting state.
+- Do not poll a running agent. Resume from the completion/error/permission notification and use the
+  observable agent status when recovery needs confirmation.
+- Return findings to the caller for local verification. Never promote external findings directly
+  to blocking or passed status.
+- Archive only after the result was consumed and no permission is pending. A close failure is a
+  warning and does not rewrite a verified result.
+- On create/run/permission failure, return an explicit failed or blocked receipt. Never silently
+  downgrade to local execution.
 
 ## Worktrees
 
@@ -80,7 +160,9 @@ User-specific configuration at `~/.paseo/orchestration-preferences.json`. **Befo
 
 Two parts:
 
-- `providers` — map of role categories to provider strings. Pass straight to `create_agent`'s `provider` field.
+- `providers` — map of role categories to default provider strings. Pass the selected category to
+  `create_agent` unless an explicit provider is pinned or a requested heterogeneous isolation
+  requires another user-allowed, discovered provider family.
 - `preferences` — freeform string array. Read on startup; weave into agent prompts contextually.
 
 Categories: `impl`, `ui`, `research`, `planning`, `audit`. Skills pick the category that matches the role they're launching.
