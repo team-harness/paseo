@@ -88,6 +88,15 @@ review 优先选择与主 agent provider 或 model family 不同的 `Heterogeneo
 每轮 review 都调用同一 `selectTaskAgent` / `reviewGate`。批量、赶时间、已自查或自评低风险
 都不构成 `ApproveLocalOnly`；降级前按 `approval-conventions.md` 取得 owner 明确授权。
 
+**启动 mode**：review / QA / audit / acceptance / 功能验收这类只读隔离 Task agent 用该
+provider 的 **plan / read-only 等价 mode** 启动——mode 表达的是只读审查意图，具体 modeId
+启动前按 provider capability 发现，不硬编码 mode 名（不同 provider 未必有同名 mode，例如
+Claude 有 plan mode、codex 只有 auto / full-access）；provider 没有只读等价 mode 时，记录
+降级并用严格只读 prompt + gate fallback 兜底。只读隔离最终以 provider sandbox / permission
+实际结果为准，不假设 mode 名本身保证文件隔离。一步到位，不要先用默认 mode 起一次再改 mode
+重起（同一 Task agent 重复创建）。Goal driver 例外：它执行实现落盘，按「Goal Driver 派发」
+用可写 mode。
+
 ## Task Agent 生命周期
 
 ```haskell
