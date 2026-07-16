@@ -1,6 +1,20 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
+// This preload runs in Electron's sandbox and is tsc-compiled (not bundled), so it MUST
+// NOT emit any runtime module load other than "electron" — a require() of a local or
+// third-party module throws and aborts the preload before exposeInMainWorld runs, leaving
+// window.paseoDesktop undefined (the 0.1.108 regression, #2103). Keep this literal in sync
+// with PASEO_BROWSER_PROFILE_PARTITION in features/browser-profile.ts; preload-sandbox.test.ts
+// guards both the no-local-import rule and this drift. Type-only imports are fine (erased at emit).
+const PASEO_BROWSER_PROFILE_PARTITION = "persist:paseo-browser";
+
 type EventHandler = (payload: unknown) => void;
+
+interface AttachedBrowserRegistration {
+  browserId: string;
+  workspaceId: string;
+  webContentsId: number;
+}
 
 contextBridge.exposeInMainWorld("paseoDesktop", {
   platform: process.platform,
@@ -63,9 +77,10 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
     listTargets: () => ipcRenderer.invoke("paseo:editor:listTargets"),
     openTarget: (input: {
       editorId: string;
-      path: string;
-      cwd?: string;
-      mode?: "open" | "reveal";
+      workspacePath: string;
+      filePath?: string;
+      line?: number;
+      column?: number;
     }) => ipcRenderer.invoke("paseo:editor:openTarget", input),
   },
   webUtils: {
@@ -78,16 +93,17 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       ipcRenderer.invoke("paseo:menu:set-capturing-shortcut", capturing),
   },
   browser: {
-    registerWorkspaceBrowser: (input: { browserId: string; workspaceId: string }) =>
-      ipcRenderer.invoke("paseo:browser:register-workspace-browser", input),
+    profilePartition: PASEO_BROWSER_PROFILE_PARTITION,
+    registerAttachedBrowser: (input: AttachedBrowserRegistration) =>
+      ipcRenderer.invoke("paseo:browser:register-attached", input),
     unregisterWorkspaceBrowser: (browserId: string) =>
       ipcRenderer.invoke("paseo:browser:unregister-workspace-browser", browserId),
     setWorkspaceActiveBrowser: (input: { workspaceId: string; browserId: string | null }) =>
       ipcRenderer.invoke("paseo:browser:set-workspace-active-browser", input),
     openDevTools: (browserId: string) =>
       ipcRenderer.invoke("paseo:browser:open-devtools", browserId),
-    clearPartition: (browserId: string) =>
-      ipcRenderer.invoke("paseo:browser:clear-partition", browserId),
+    clearProfile: (legacyBrowserIds: string[]) =>
+      ipcRenderer.invoke("paseo:browser:clear-profile", legacyBrowserIds),
     executeAutomationCommand: (request: Record<string, unknown>) =>
       ipcRenderer.invoke("paseo:browser:execute-automation-command", request),
     captureElement: (

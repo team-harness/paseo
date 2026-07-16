@@ -54,12 +54,13 @@ export const ru: TranslationResources = {
       close: "Закрыть меню",
     },
     commandCenter: {
-      placeholder: "Введите команду или найдите агентов...",
+      placeholder: "Поиск команд, рабочих пространств и агентов...",
       noMatches: "Нет совпадений",
       actions: "Действия",
+      workspaces: "Рабочие пространства",
       agents: "Агенты",
       newAgent: "Новый агент",
-      openProject: "Открыть проект",
+      addProject: "Добавить проект",
       home: "Дом",
     },
   },
@@ -402,16 +403,25 @@ export const ru: TranslationResources = {
   workspace: {
     route: {
       loading: "Загрузка рабочей области",
-      restoring: "Восстановление рабочей области",
-      restoreFailed:
-        "Не удалось восстановить эту рабочую область — каталог мог быть перемещён или удалён",
       connecting: "Подключение",
       hostOffline: "{{hostName}}не в сети",
       cannotReachHost: "Невозможно связаться с{{hostName}}",
       hostStatus: "Статус Host:{{status}}",
-      missing: "Workspace не найден",
       needsHostUpgrade: "Обновите хост, чтобы восстановить эту рабочую область",
       manageHost: "Управление хостом",
+      recovery: {
+        archivedTitle: "Рабочая область в архиве",
+        restoreDescription:
+          "{{workspaceName}} была архивирована, а её worktree удалён. Восстановите ветку {{branch}}, чтобы открыть её снова.",
+        unarchiveDescription:
+          "{{workspaceName}} находится в архиве. Разархивируйте её, чтобы открыть снова.",
+        restoreAction: "Восстановить",
+        unarchiveAction: "Разархивировать",
+        restoringTitle: "Восстановление рабочей области",
+        restoringAction: "Восстановление...",
+        unavailableTitle: "Рабочая область недоступна",
+        checkFailedTitle: "Не удалось проверить рабочую область",
+      },
     },
     hoverCard: {
       scriptsAccessibility: "Скрипты Workspace",
@@ -817,6 +827,17 @@ export const ru: TranslationResources = {
         base: "база",
         newFile: "Новый",
         deletedFile: "Удалено",
+        commits: {
+          title: "Коммиты",
+          legendLocal: "локально",
+          legendRemote: "на удалённом",
+          countLabel: "{{count}} коммитов впереди базы",
+          fileDiffEmpty: "Нет изменений для отображения",
+          fileDiffError: "Не удалось загрузить различия файла",
+          loading: "Загрузка коммитов…",
+          loadError: "Не удалось загрузить коммиты",
+          empty: "Нет коммитов впереди базы",
+        },
       },
       openInEditor: {
         open: "Открыть",
@@ -1485,6 +1506,15 @@ export const ru: TranslationResources = {
       showSource: "Показать исходный код",
       showPreview: "Показать предварительный просмотр",
     },
+    diff: {
+      changesLabel: "Изменения",
+      changesSubtitle: "Различия рабочего дерева",
+      commitSubtitle: "Различия коммита",
+      directoryMissing: "Каталог Workspace не найден.",
+      empty: "Нет изменений",
+      loadError: "Не удалось загрузить различия",
+      capabilityMissing: "Обновите хост, чтобы просматривать различия коммитов.",
+    },
   },
   toolCallDetails: {
     error: "Ошибка",
@@ -1519,7 +1549,6 @@ export const ru: TranslationResources = {
       other: "Paseo вызван {{count}} раз",
     },
     and: "и",
-    failed: "С ошибкой: {{count}}",
   },
   renameModal: {
     rename: "Переименовать",
@@ -1588,6 +1617,18 @@ export const ru: TranslationResources = {
     },
     general: {
       title: "Общий",
+      browserData: {
+        title: "Данные браузера",
+        siteData: "Файлы cookie и данные сайтов",
+        description: "Вкладки браузера используют общие данные входа и данные сайтов в Paseo.",
+        clear: "Очистить данные браузера",
+        clearing: "Очистка...",
+        confirmTitle: "Очистить данные браузера?",
+        confirmMessage:
+          "На сайтах будет выполнен выход, а открытые вкладки браузера перезагрузятся.",
+        success: "Данные браузера очищены.",
+        error: "Не удалось очистить данные браузера.",
+      },
       defaultSend: {
         label: "Отправка по умолчанию",
         descriptions: {
@@ -1952,6 +1993,8 @@ export const ru: TranslationResources = {
           dialogFailedMessage: "Невозможно открыть диалоговое окно подтверждения перезапуска.",
         },
         update: {
+          desktopManagedHint:
+            "Этот демон управляется Paseo Desktop. Обновите Paseo Desktop на хосте.",
           title: "Update daemon",
           hint: "Update the daemon to the latest version and restart it",
           confirm: "Update",
@@ -2000,6 +2043,17 @@ export const ru: TranslationResources = {
       loading: "Загрузка...",
       addErrorTitle: "Unable to add provider",
       updateErrorTitle: "Невозможно обновить провайдера",
+      actions: {
+        menu: "{{name}} actions",
+        remove: "Remove provider",
+        removing: "Removing...",
+      },
+      remove: {
+        confirmTitle: "Remove {{name}}?",
+        confirmMessage: "This deletes the provider entry from config.json. It cannot be undone.",
+        confirm: "Remove",
+        errorTitle: "Unable to remove provider",
+      },
       statuses: {
         disabled: "Неполноценный",
         loading: "Загрузка",

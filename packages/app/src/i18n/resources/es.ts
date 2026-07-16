@@ -54,12 +54,13 @@ export const es: TranslationResources = {
       close: "Cerrar menú",
     },
     commandCenter: {
-      placeholder: "Escriba un comando o busque agentes...",
+      placeholder: "Buscar comandos, espacios de trabajo y agentes...",
       noMatches: "No hay coincidencias",
       actions: "Comportamiento",
+      workspaces: "Espacios de trabajo",
       agents: "Agentes",
       newAgent: "Nuevo agente",
-      openProject: "Abrir proyecto",
+      addProject: "Agregar proyecto",
       home: "Hogar",
     },
   },
@@ -403,16 +404,25 @@ export const es: TranslationResources = {
   workspace: {
     route: {
       loading: "Cargando espacio de trabajo",
-      restoring: "Restaurando espacio de trabajo",
-      restoreFailed:
-        "No se pudo restaurar este espacio de trabajo — es posible que el directorio se haya movido o eliminado",
       connecting: "Conectando",
       hostOffline: "{{hostName}}está desconectado",
       cannotReachHost: "No se puede alcanzar{{hostName}}",
       hostStatus: "Estado deHost:{{status}}",
-      missing: "Workspaceno encontrado",
       needsHostUpgrade: "Actualiza tu host para restaurar este espacio de trabajo",
       manageHost: "Administrar host",
+      recovery: {
+        archivedTitle: "Espacio de trabajo archivado",
+        restoreDescription:
+          "{{workspaceName}} se archivó y se eliminó su worktree. Restaura la rama {{branch}} para volver a abrirlo.",
+        unarchiveDescription:
+          "{{workspaceName}} está archivado. Desarchívalo para volver a abrirlo.",
+        restoreAction: "Restaurar",
+        unarchiveAction: "Desarchivar",
+        restoringTitle: "Restaurando espacio de trabajo",
+        restoringAction: "Restaurando...",
+        unavailableTitle: "Espacio de trabajo no disponible",
+        checkFailedTitle: "No se pudo comprobar el espacio de trabajo",
+      },
     },
     hoverCard: {
       scriptsAccessibility: "GuionesWorkspace",
@@ -825,6 +835,17 @@ export const es: TranslationResources = {
         base: "base",
         newFile: "Nuevo",
         deletedFile: "Eliminado",
+        commits: {
+          title: "Commits",
+          legendLocal: "local",
+          legendRemote: "en remoto",
+          countLabel: "{{count}} commits por delante de la base",
+          fileDiffEmpty: "No hay cambios para mostrar",
+          fileDiffError: "Error al cargar el diff del archivo",
+          loading: "Cargando commits…",
+          loadError: "Error al cargar los commits",
+          empty: "No hay commits por delante de la base",
+        },
       },
       openInEditor: {
         open: "Abierto",
@@ -1493,6 +1514,15 @@ export const es: TranslationResources = {
       showSource: "Mostrar código fuente",
       showPreview: "Mostrar vista previa",
     },
+    diff: {
+      changesLabel: "Cambios",
+      changesSubtitle: "Diferencias del árbol de trabajo",
+      commitSubtitle: "Diferencias del commit",
+      directoryMissing: "No se encontró el directorio de Workspace.",
+      empty: "Sin cambios",
+      loadError: "No se pudieron cargar las diferencias",
+      capabilityMissing: "Actualiza el host para ver las diferencias de los commits.",
+    },
   },
   toolCallDetails: {
     error: "Error",
@@ -1527,7 +1557,6 @@ export const es: TranslationResources = {
       other: "llamó a Paseo {{count}} veces",
     },
     and: "y",
-    failed: "{{count}} con error",
   },
   renameModal: {
     rename: "Rebautizar",
@@ -1596,6 +1625,19 @@ export const es: TranslationResources = {
     },
     general: {
       title: "General",
+      browserData: {
+        title: "Datos del navegador",
+        siteData: "Cookies y datos de sitios",
+        description:
+          "Las pestañas del navegador comparten inicios de sesión y datos de sitios en Paseo.",
+        clear: "Borrar datos del navegador",
+        clearing: "Borrando...",
+        confirmTitle: "¿Borrar los datos del navegador?",
+        confirmMessage:
+          "Se cerrarán las sesiones de los sitios y se recargarán las pestañas abiertas del navegador.",
+        success: "Datos del navegador borrados.",
+        error: "No se pudieron borrar los datos del navegador.",
+      },
       defaultSend: {
         label: "Envío predeterminado",
         descriptions: {
@@ -1961,6 +2003,8 @@ export const es: TranslationResources = {
             "No se puede abrir el cuadro de diálogo de confirmación de reinicio.",
         },
         update: {
+          desktopManagedHint:
+            "Este daemon está administrado por Paseo Desktop. Actualiza Paseo Desktop en el host.",
           title: "Update daemon",
           hint: "Update the daemon to the latest version and restart it",
           confirm: "Update",
@@ -2009,6 +2053,17 @@ export const es: TranslationResources = {
       loading: "Cargando...",
       addErrorTitle: "Unable to add provider",
       updateErrorTitle: "No se puede actualizar el proveedor",
+      actions: {
+        menu: "{{name}} actions",
+        remove: "Remove provider",
+        removing: "Removing...",
+      },
+      remove: {
+        confirmTitle: "Remove {{name}}?",
+        confirmMessage: "This deletes the provider entry from config.json. It cannot be undone.",
+        confirm: "Remove",
+        errorTitle: "Unable to remove provider",
+      },
       statuses: {
         disabled: "Desactivado",
         loading: "Cargando",
