@@ -132,6 +132,7 @@ function StatusBarReadyContent({
     () =>
       view.hostSummaries?.map((host) => ({
         serverId: host.serverId,
+        serverLabel: host.serverLabel,
         pinnedSessions: host.summary.pinnedSessions ?? EMPTY_PINNED_SESSIONS,
         canUseStatusBarSessionPins: host.canUseStatusBarSessionPins,
       })) ?? [
@@ -174,11 +175,7 @@ function StatusBarReadyContent({
         hostServerIds={historyHostServerIds}
         sessionPinSources={sessionPinSources}
       />
-      <StatusBarSessionPinsTrigger
-        serverId={serverId}
-        pinnedSessions={currentHostPinnedSessions}
-        canUseStatusBarSessionPins={currentHostCanUseSessionPins}
-      />
+      <StatusBarSessionPinsTrigger serverId={serverId} sessionPinSources={sessionPinSources} />
       <StatusBarWorkspaceInfo serverId={serverId} />
     </View>
   );

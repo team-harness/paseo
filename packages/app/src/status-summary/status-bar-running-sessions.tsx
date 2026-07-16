@@ -28,6 +28,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useAgentHistory } from "@/hooks/use-agent-history";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useSessionStore } from "@/stores/session-store";
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
 import { useQueryClient } from "@tanstack/react-query";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
@@ -47,8 +48,8 @@ import {
   formatStatusBarSessionTitle,
   formatStatusBarSessionUsage,
 } from "./status-bar-session-format";
+import { refreshStatusSummary } from "./query-core";
 
-const HISTORY_LIMIT = 10;
 const EMPTY_PINNED_SESSIONS: StatusPinnedSession[] = [];
 
 const ThemedArrowUpRight = withUnistyles(ArrowUpRight, (theme) => ({
@@ -141,8 +142,9 @@ interface StatusBarRunningSessionsTriggerProps {
   sessionPinSources?: StatusBarSessionPinSource[];
 }
 
-interface StatusBarSessionPinSource {
+export interface StatusBarSessionPinSource {
   serverId: string;
+  serverLabel?: string;
   pinnedSessions: StatusPinnedSession[];
   canUseStatusBarSessionPins: boolean;
 }
@@ -216,6 +218,8 @@ function InteractiveRunningSessionsTrigger({
   const isCompact = useIsCompactFormFactor();
   const pathname = usePathname();
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const runtime = getHostRuntimeStore();
   const [open, setOpen] = useState(false);
   const sheetHeader = useMemo(() => ({ title: t("statusBar.sessions.title") }), [t]);
   const sessions = useSessionStore((state) => state.sessions);
@@ -268,14 +272,8 @@ function InteractiveRunningSessionsTrigger({
     [sessionSources, sessions],
   );
   const hasItems = items.length > 0;
-  const attentionCount = sessionSources.reduce(
-    (count, source) => count + source.needsAttentionAgents.length,
-    0,
-  );
-  const runningCount = sessionSources.reduce(
-    (count, source) => count + source.runningAgents.length,
-    0,
-  );
+  const attentionCount = items.filter((item) => item.group === "attention").length;
+  const runningCount = items.filter((item) => item.group === "running").length;
 
   useEffect(() => {
     setOpen(false);
@@ -287,11 +285,25 @@ function InteractiveRunningSessionsTrigger({
     }
   }, [hasItems]);
 
+  const refreshSessions = useCallback(() => {
+    const refreshes = sessionSources.flatMap((source) => {
+      const client = runtime.getClient(source.serverId);
+      return client
+        ? [refreshStatusSummary({ queryClient, serverId: source.serverId, client })]
+        : [];
+    });
+    void Promise.allSettled(refreshes);
+  }, [queryClient, runtime, sessionSources]);
+
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
-      setOpen(hasItems ? nextOpen : false);
+      const shouldOpen = hasItems && nextOpen;
+      setOpen(shouldOpen);
+      if (shouldOpen) {
+        refreshSessions();
+      }
     },
-    [hasItems],
+    [hasItems, refreshSessions],
   );
 
   const handleNavigate = useCallback(
@@ -405,10 +417,7 @@ export function StatusBarSessionHistoryTrigger({
   const [open, setOpen] = useState(false);
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const sheetHeader = useMemo(() => ({ title: t("statusBar.history.title") }), [t]);
-  const items = useMemo(
-    () => agents.filter(isStatusBarHistoryVisible).slice(0, HISTORY_LIMIT),
-    [agents],
-  );
+  const items = useMemo(() => agents.filter(isStatusBarHistoryVisible), [agents]);
   const isRefreshing = isManualRefresh || isRevalidating;
 
   useEffect(() => {

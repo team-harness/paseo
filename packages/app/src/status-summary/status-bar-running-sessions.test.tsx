@@ -47,6 +47,7 @@ const { theme, runtimeState, navigationSpies } = vi.hoisted(() => {
       historyOptions: null as { serverId?: string | null; serverIds?: readonly string[] } | null,
       refreshAgent: vi.fn(),
       refreshHistory: vi.fn(),
+      refreshStatusSummary: vi.fn(),
       setStatusSessionPin: vi.fn(),
       setStatusSessionPinOnServerTwo: vi.fn(),
     },
@@ -166,6 +167,20 @@ vi.mock("@/stores/session-store", () => ({
   ),
 }));
 
+vi.mock("@/runtime/host-runtime", () => ({
+  getHostRuntimeStore: () => ({
+    getClient: (serverId: string) => {
+      if (serverId === "server-1") {
+        return { id: "client-server-1" };
+      }
+      if (serverId === "server-2") {
+        return { id: "client-server-2" };
+      }
+      return null;
+    },
+  }),
+}));
+
 vi.mock("@/stores/panel-store", () => ({
   usePanelStore: (selector: (state: { desktop: { focusModeEnabled: boolean } }) => unknown) =>
     selector({ desktop: { focusModeEnabled: false } }),
@@ -209,6 +224,10 @@ vi.mock("@getpaseo/protocol/agent-state-bucket", () => ({
 
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+}));
+
+vi.mock("./query-core", () => ({
+  refreshStatusSummary: runtimeState.refreshStatusSummary,
 }));
 
 vi.mock("@/hooks/use-agent-history", () => ({
@@ -450,6 +469,8 @@ describe("status bar running sessions", () => {
     runtimeState.refreshAgent.mockResolvedValue(undefined);
     runtimeState.refreshHistory.mockReset();
     runtimeState.refreshHistory.mockResolvedValue(undefined);
+    runtimeState.refreshStatusSummary.mockReset();
+    runtimeState.refreshStatusSummary.mockResolvedValue(undefined);
     runtimeState.setStatusSessionPin.mockReset();
     runtimeState.setStatusSessionPin.mockResolvedValue({
       requestId: "pin-test",
@@ -503,6 +524,68 @@ describe("status bar running sessions", () => {
     expect(
       container?.querySelector('[data-testid="status-bar-session-row-agent-attention"]'),
     ).not.toBeNull();
+  });
+
+  it("derives badge counts from the deduplicated visible session rows", () => {
+    const view = readyView();
+    const parentSession = snapshot({ agentId: "agent-parent", stateBucket: "attention" });
+    const childSession = snapshot({ agentId: "agent-child", parentAgentId: "agent-parent" });
+    view.runningAgents = [childSession];
+    view.needsAttentionAgents = [parentSession];
+    view.summary.activity.runningAgents = view.runningAgents;
+    view.summary.activity.needsAttentionAgents = view.needsAttentionAgents;
+
+    act(() => {
+      root?.render(renderStatusBar(view));
+    });
+
+    expect(
+      container?.querySelector('[data-testid="status-bar-sessions-attention-count"]')?.textContent,
+    ).toBe("1");
+    expect(
+      container?.querySelector('[data-testid="status-bar-sessions-running-count"]')?.textContent,
+    ).toBe("0");
+
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-sessions-trigger"]')
+        ?.click();
+    });
+    expect(container?.querySelectorAll('[data-testid^="status-bar-session-row-"]')).toHaveLength(1);
+  });
+
+  it("refreshes every ready host summary when opening the sessions panel", async () => {
+    const view = readyView();
+    view.hostSummaries = [
+      {
+        serverId: "server-1",
+        serverLabel: "MacBook Pro",
+        summary: view.summary,
+        canUseStatusBarSessionPins: true,
+      },
+      {
+        serverId: "server-2",
+        serverLabel: "Build host",
+        summary: view.summary,
+        canUseStatusBarSessionPins: true,
+      },
+    ];
+
+    act(() => {
+      root?.render(renderStatusBar(view));
+    });
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-sessions-trigger"]')
+        ?.click();
+      await flushPromises();
+    });
+
+    expect(runtimeState.refreshStatusSummary).toHaveBeenCalledTimes(2);
+    expect(runtimeState.refreshStatusSummary.mock.calls.map(([input]) => input.serverId)).toEqual([
+      "server-1",
+      "server-2",
+    ]);
   });
 
   it("prioritizes actionable attention rows and labels session status", () => {
@@ -791,7 +874,7 @@ describe("status bar running sessions", () => {
     expect(container?.querySelector('[data-testid="status-bar-sessions-panel"]')).toBeNull();
   });
 
-  it("shows a history trigger next to sessions and lists the 10 latest host sessions", async () => {
+  it("shows every loaded visible host session in history", async () => {
     runtimeState.historyAgents = Array.from({ length: 12 }, (_, index) =>
       historyAgent({ id: `history-${index + 1}`, offsetMinutes: index }),
     );
@@ -812,7 +895,7 @@ describe("status bar running sessions", () => {
 
     expect(container?.querySelector('[data-testid="status-bar-history-panel"]')).not.toBeNull();
     expect(container?.querySelectorAll('[data-testid^="status-bar-history-row-"]')).toHaveLength(
-      10,
+      12,
     );
     expect(
       container?.querySelector('[data-testid="status-bar-history-row-history-1"]'),
@@ -822,11 +905,14 @@ describe("status bar running sessions", () => {
     ).not.toBeNull();
     expect(
       container?.querySelector('[data-testid="status-bar-history-row-history-11"]'),
-    ).toBeNull();
+    ).not.toBeNull();
+    expect(
+      container?.querySelector('[data-testid="status-bar-history-row-history-12"]'),
+    ).not.toBeNull();
     expect(runtimeState.refreshHistory).toHaveBeenCalledTimes(1);
   });
 
-  it("filters closed and child agents before applying the history limit", async () => {
+  it("filters closed and child agents from the complete loaded history", async () => {
     runtimeState.historyAgents = [
       historyAgent({ id: "closed-latest", offsetMinutes: 0, status: "closed" }),
       historyAgent({
@@ -928,7 +1014,7 @@ describe("status bar running sessions", () => {
     });
   });
 
-  it("keeps pinned sessions scoped to the current host", () => {
+  it("merges pinned sessions from ready hosts and navigates through the owning host", () => {
     const view = readyView();
     view.hostSummaries = [
       {
@@ -961,7 +1047,31 @@ describe("status bar running sessions", () => {
       root?.render(renderStatusBar(view));
     });
 
-    expect(container?.querySelector('[data-testid="status-bar-pins-trigger"]')).toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-pins-trigger"]')).not.toBeNull();
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-pins-trigger"]')
+        ?.click();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-pins-panel"]')).not.toBeNull();
+    expect(container?.textContent).toContain("Build host");
+    expect(
+      container?.querySelector('[data-testid="status-bar-pin-row-agent-pinned-elsewhere"]'),
+    ).not.toBeNull();
+
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>(
+          '[data-testid="status-bar-pin-row-agent-pinned-elsewhere"] button',
+        )
+        ?.click();
+    });
+    expect(navigationSpies.navigateToAgent).toHaveBeenCalledWith({
+      serverId: "server-2",
+      agentId: "agent-pinned-elsewhere",
+      workspaceId: "workspace-2",
+    });
   });
 
   it("hides session pin controls when the host lacks the feature gate", async () => {

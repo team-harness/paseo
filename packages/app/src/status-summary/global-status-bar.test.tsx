@@ -145,6 +145,10 @@ vi.mock("@/stores/session-store", () => ({
   ),
 }));
 
+vi.mock("@/runtime/host-runtime", () => ({
+  getHostRuntimeStore: () => ({ getClient: () => null }),
+}));
+
 vi.mock("@/utils/navigate-to-agent", () => ({
   navigateToAgent: () => undefined,
 }));

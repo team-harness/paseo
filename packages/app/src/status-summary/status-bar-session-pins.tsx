@@ -21,6 +21,7 @@ import {
   formatHistorySubtitle,
   formatStatusBarHistoryMeta,
   formatStatusBarHistoryStatus,
+  type StatusBarSessionPinSource,
 } from "./status-bar-running-sessions";
 
 const COMPACT_SNAP_POINTS = ["45%", "85%"];
@@ -57,33 +58,51 @@ const rowPrimaryStyle = ({ pressed, hovered = false }: { pressed: boolean; hover
   pressed ? styles.rowPressed : null,
 ];
 
+interface StatusBarSessionPinListItem {
+  serverId: string;
+  serverLabel?: string;
+  pin: StatusPinnedSession;
+}
+
 export function StatusBarSessionPinsTrigger({
   serverId,
-  pinnedSessions,
-  canUseStatusBarSessionPins,
+  sessionPinSources,
 }: {
   serverId: string;
-  pinnedSessions: StatusPinnedSession[];
-  canUseStatusBarSessionPins: boolean;
+  sessionPinSources: StatusBarSessionPinSource[];
 }) {
   const isCompact = useIsCompactFormFactor();
   const pathname = usePathname();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const sheetHeader = useMemo(() => ({ title: t("statusBar.pins.title") }), [t]);
-  const hasPins = pinnedSessions.length > 0;
+  const items = useMemo(
+    () =>
+      sessionPinSources.flatMap((source) =>
+        source.canUseStatusBarSessionPins
+          ? source.pinnedSessions.map((pin) => ({
+              serverId: source.serverId,
+              serverLabel: source.serverLabel,
+              pin,
+            }))
+          : [],
+      ),
+    [sessionPinSources],
+  );
+  const hasPins = items.length > 0;
+  const showServerLabel = sessionPinSources.length > 1;
 
   useEffect(() => {
     setOpen(false);
   }, [pathname, serverId]);
 
   const handleNavigate = useCallback(
-    (pin: StatusPinnedSession) => {
+    (item: StatusBarSessionPinListItem) => {
       const target: StatusBarSessionTarget = {
         kind: "agent",
-        serverId,
-        agentId: pin.agentId,
-        workspaceId: pin.workspaceId ?? null,
+        serverId: item.serverId,
+        agentId: item.pin.agentId,
+        workspaceId: item.pin.workspaceId ?? null,
       };
       setOpen(false);
       if (isCompact) {
@@ -94,7 +113,7 @@ export function StatusBarSessionPinsTrigger({
       }
       navigateToStatusBarSession(target);
     },
-    [isCompact, serverId],
+    [isCompact],
   );
   const handleCompactOpen = useCallback(() => {
     setOpen(true);
@@ -103,11 +122,17 @@ export function StatusBarSessionPinsTrigger({
     setOpen(false);
   }, []);
 
-  if (!canUseStatusBarSessionPins || !hasPins) {
+  if (!hasPins) {
     return null;
   }
 
-  const content = <StatusBarSessionPinsList pins={pinnedSessions} onNavigate={handleNavigate} />;
+  const content = (
+    <StatusBarSessionPinsList
+      items={items}
+      onNavigate={handleNavigate}
+      showServerLabel={showServerLabel}
+    />
+  );
   const triggerBody = (
     <>
       <ThemedPin size={12} />
@@ -115,7 +140,7 @@ export function StatusBarSessionPinsTrigger({
         {t("statusBar.pins.trigger")}
       </Text>
       <Text style={styles.triggerValue} numberOfLines={1}>
-        {pinnedSessions.length}
+        {items.length}
       </Text>
     </>
   );
@@ -170,14 +195,16 @@ export function StatusBarSessionPinsTrigger({
 }
 
 function StatusBarSessionPinsList({
+  items,
   onNavigate,
-  pins,
+  showServerLabel,
 }: {
-  onNavigate: (pin: StatusPinnedSession) => void;
-  pins: StatusPinnedSession[];
+  items: StatusBarSessionPinListItem[];
+  onNavigate: (item: StatusBarSessionPinListItem) => void;
+  showServerLabel: boolean;
 }) {
   const { t } = useTranslation();
-  if (pins.length === 0) {
+  if (items.length === 0) {
     return (
       <View style={styles.emptyState} testID="status-bar-pins-empty">
         <Text style={styles.emptyText}>{t("statusBar.pins.empty")}</Text>
@@ -186,31 +213,44 @@ function StatusBarSessionPinsList({
   }
   return (
     <View style={styles.list} testID="status-bar-pins-list">
-      {pins.map((pin) => (
-        <StatusBarSessionPinRow key={pin.agentId} pin={pin} onNavigate={onNavigate} />
+      {items.map((item) => (
+        <StatusBarSessionPinRow
+          key={`${item.serverId}:${item.pin.agentId}`}
+          item={item}
+          onNavigate={onNavigate}
+          showServerLabel={showServerLabel}
+        />
       ))}
     </View>
   );
 }
 
 function StatusBarSessionPinRow({
+  item,
   onNavigate,
-  pin,
+  showServerLabel,
 }: {
-  onNavigate: (pin: StatusPinnedSession) => void;
-  pin: StatusPinnedSession;
+  item: StatusBarSessionPinListItem;
+  onNavigate: (item: StatusBarSessionPinListItem) => void;
+  showServerLabel: boolean;
 }) {
   const { t } = useTranslation();
+  const { pin } = item;
   const title = pin.title?.trim() || t("agentList.fallbackTitle");
   const hasHistorySnapshot = Boolean(pin.provider && pin.cwd && pin.status);
   const updatedAt = parsePinUpdatedAt(pin.updatedAt);
   const subtitle = hasHistorySnapshot
     ? formatHistorySubtitle({ cwd: pin.cwd ?? "", provider: pin.provider ?? "" })
     : (pin.provider ?? pin.agentId);
-  const meta = updatedAt ? formatStatusBarHistoryMeta({ lastActivityAt: updatedAt }) : "";
+  const meta = [
+    showServerLabel ? item.serverLabel : null,
+    updatedAt ? formatStatusBarHistoryMeta({ lastActivityAt: updatedAt }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const handlePress = useCallback(() => {
-    onNavigate(pin);
-  }, [onNavigate, pin]);
+    onNavigate(item);
+  }, [item, onNavigate]);
 
   return (
     <View style={styles.row} testID={`status-bar-pin-row-${pin.agentId}`}>
