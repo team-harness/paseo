@@ -1288,6 +1288,7 @@ export const ImportAgentRequestMessageSchema = z.object({
   sessionId: z.string().optional(),
   providerHandleId: z.string().optional(),
   cwd: z.string().optional(),
+  workspaceId: z.string().optional(),
   labels: z.record(z.string(), z.string()).optional(),
   requestId: z.string(),
 });
@@ -2142,10 +2143,10 @@ export const CreateTerminalRequestSchema = z.object({
   agentId: z.string().optional(),
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
-  // COMPAT(createTerminalSize): added in v0.1.107, drop the optional gate when floor >= v0.1.107.
-  // The client seeds the PTY with its measured viewport size so a new terminal isn't born at the
-  // 80x24 default and then visibly reflowed. Old daemons ignore this field and start at 80x24;
-  // the client's first resize corrects it as before.
+  // Initial PTY size. Added in v0.1.107; the app no longer sends it (the estimate cache that fed
+  // it was removed — the pane-focus resize claim sizes the PTY instead). Kept and honored
+  // permanently: released v0.1.107 clients still send it, and programmatic callers may pass an
+  // exact size. Daemons without it start at 80x24 and the first resize corrects that.
   size: z
     .object({
       rows: z.number().int().positive(),
@@ -2591,6 +2592,8 @@ export const ServerInfoStatusPayloadSchema = z
         commitsList: z.boolean().optional(),
         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
         providerRemoval: z.boolean().optional(),
+        // COMPAT(importSessionWorkspaceTarget): added in v0.1.110, remove gate after 2027-01-16.
+        importSessionWorkspaceTarget: z.boolean().optional(),
       })
       .optional(),
   })

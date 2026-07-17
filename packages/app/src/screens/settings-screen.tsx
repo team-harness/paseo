@@ -1082,7 +1082,12 @@ function SettingsSidebar({
   );
 
   return (
-    <View style={outerContainerStyle} testID="settings-sidebar">
+    <View
+      accessibilityLabel={t("settings.title")}
+      role="navigation"
+      style={outerContainerStyle}
+      testID="settings-sidebar"
+    >
       {isDesktop ? (
         <View style={innerContainerStyle}>
           <View style={sidebarStyles.sidebarDragArea}>
