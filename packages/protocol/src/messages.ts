@@ -1258,22 +1258,6 @@ export const StatusSummaryGetRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
-export const StatusSessionPinsSetRequestMessageSchema = z.object({
-  type: z.literal("status.session_pins.set.request"),
-  requestId: z.string(),
-  agentId: z.string(),
-  pinned: z.boolean(),
-  workspaceId: z.string().nullable().optional(),
-  title: z.string().nullable().optional(),
-  provider: AgentProviderSchema.nullable().optional(),
-  cwd: z.string().nullable().optional(),
-  status: AgentStatusSchema.nullable().optional(),
-  requiresAttention: z.boolean().optional(),
-  attentionReason: z.enum(["finished", "error", "permission"]).nullable().optional(),
-  pendingPermissionCount: z.number().int().nonnegative().optional(),
-  updatedAt: z.string().nullable().optional(),
-});
-
 export const ResumeAgentRequestMessageSchema = z.object({
   type: z.literal("resume_agent_request"),
   handle: AgentPersistenceHandleSchema,
@@ -2270,7 +2254,6 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProviderDiagnosticRequestMessageSchema,
   ProviderUsageListRequestMessageSchema,
   StatusSummaryGetRequestMessageSchema,
-  StatusSessionPinsSetRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
   RefreshAgentRequestMessageSchema,
@@ -2568,8 +2551,6 @@ export const ServerInfoStatusPayloadSchema = z
         daemonSelfUpdate: z.boolean().optional(),
         // COMPAT(statusSummary): added in v0.1.104, drop the gate when floor >= v0.1.104.
         statusSummary: z.boolean().optional(),
-        // COMPAT(statusBarSessionPins): added in v0.1.105, drop the gate when floor >= v0.1.105.
-        statusBarSessionPins: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
         // COMPAT(agentForkContextCursor): added in v0.1.108, remove gate after 2027-01-14.
@@ -4428,20 +4409,6 @@ export const StatusAgentSnapshotSchema = z.object({
   parentAgentId: z.string().nullable().optional(),
 });
 
-export const StatusPinnedSessionSchema = z.object({
-  agentId: z.string(),
-  workspaceId: z.string().nullable().optional(),
-  title: z.string().nullable().optional(),
-  provider: AgentProviderSchema.nullable().optional(),
-  cwd: z.string().nullable().optional(),
-  status: AgentStatusSchema.nullable().optional(),
-  requiresAttention: z.boolean().optional(),
-  attentionReason: z.enum(["finished", "error", "permission"]).nullable().optional(),
-  pendingPermissionCount: z.number().int().nonnegative().optional(),
-  updatedAt: z.string().nullable().optional(),
-  pinnedAt: z.string(),
-});
-
 export const HostStatusSummaryPayloadSchema = z.object({
   generatedAt: z.string(),
   usage: z.object({
@@ -4461,7 +4428,6 @@ export const HostStatusSummaryPayloadSchema = z.object({
       error: z.number().int().nonnegative(),
     }),
   }),
-  pinnedSessions: z.array(StatusPinnedSessionSchema).optional(),
 });
 
 export const StatusSummaryGetResponseMessageSchema = z.object({
@@ -4477,14 +4443,6 @@ export const StatusSummaryGetResponseMessageSchema = z.object({
 export const StatusSummaryUpdatedMessageSchema = z.object({
   type: z.literal("status.summary.updated"),
   payload: HostStatusSummaryPayloadSchema,
-});
-
-export const StatusSessionPinsSetResponseMessageSchema = z.object({
-  type: z.literal("status.session_pins.set.response"),
-  payload: z.object({
-    requestId: z.string(),
-    pinnedSessions: z.array(StatusPinnedSessionSchema),
-  }),
 });
 
 const AgentSlashCommandSchema = z.object({
@@ -4791,7 +4749,6 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProviderUsageListResponseMessageSchema,
   StatusSummaryGetResponseMessageSchema,
   StatusSummaryUpdatedMessageSchema,
-  StatusSessionPinsSetResponseMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
   TerminalsChangedSchema,
@@ -4960,13 +4917,9 @@ export type StatusSummaryUsageTotals = z.infer<typeof StatusSummaryUsageTotalsSc
 export type StatusSummaryTodayUsageTotals = z.infer<typeof StatusSummaryTodayUsageTotalsSchema>;
 export type StatusSummaryUsageBucket = z.infer<typeof StatusSummaryUsageBucketSchema>;
 export type StatusAgentSnapshot = z.infer<typeof StatusAgentSnapshotSchema>;
-export type StatusPinnedSession = z.infer<typeof StatusPinnedSessionSchema>;
 export type HostStatusSummaryPayload = z.infer<typeof HostStatusSummaryPayloadSchema>;
 export type StatusSummaryGetResponseMessage = z.infer<typeof StatusSummaryGetResponseMessageSchema>;
 export type StatusSummaryUpdatedMessage = z.infer<typeof StatusSummaryUpdatedMessageSchema>;
-export type StatusSessionPinsSetResponseMessage = z.infer<
-  typeof StatusSessionPinsSetResponseMessageSchema
->;
 export type ChatCreateResponse = z.infer<typeof ChatCreateResponseSchema>;
 export type ChatListResponse = z.infer<typeof ChatListResponseSchema>;
 export type ChatInspectResponse = z.infer<typeof ChatInspectResponseSchema>;

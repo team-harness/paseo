@@ -314,7 +314,6 @@ describe("status-summary message contract", () => {
       serverId: "srv-test",
       features: {
         statusSummary: true,
-        statusBarSessionPins: true,
       },
     });
 
@@ -322,7 +321,6 @@ describe("status-summary message contract", () => {
       throw new Error("Expected server info payload to parse");
     }
     expect(parsed.features?.statusSummary).toBe(true);
-    expect(parsed.features?.statusBarSessionPins).toBe(true);
   });
 });
 

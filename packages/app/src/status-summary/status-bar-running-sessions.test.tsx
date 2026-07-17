@@ -48,8 +48,14 @@ const { theme, runtimeState, navigationSpies } = vi.hoisted(() => {
       refreshAgent: vi.fn(),
       refreshHistory: vi.fn(),
       refreshStatusSummary: vi.fn(),
-      setStatusSessionPin: vi.fn(),
-      setStatusSessionPinOnServerTwo: vi.fn(),
+      setWorkspacePinned: vi.fn(),
+      setWorkspacePinnedOnServerTwo: vi.fn(),
+      workspacePinningEnabled: true,
+      sidebarProjects: [] as Array<{ workspaces: Array<Record<string, string>> }>,
+      sidebarPinnedKeys: {
+        pinnedWorkspaceKeys: [] as string[],
+        pinnedAtByKey: {} as Record<string, string>,
+      },
     },
     navigationSpies: {
       navigateToAgent: vi.fn(),
@@ -134,14 +140,11 @@ vi.mock("@/stores/session-store", () => ({
             workspaces: new Map(runtimeState.liveWorkspaceIds.map((id) => [id, { id }])),
             client: {
               refreshAgent: runtimeState.refreshAgent,
-              setStatusSessionPin: runtimeState.setStatusSessionPin,
             },
           },
           "server-2": {
             workspaces: new Map(),
-            client: {
-              setStatusSessionPin: runtimeState.setStatusSessionPinOnServerTwo,
-            },
+            client: {},
           },
         },
       }),
@@ -152,14 +155,11 @@ vi.mock("@/stores/session-store", () => ({
             workspaces: new Map(runtimeState.liveWorkspaceIds.map((id) => [id, { id }])),
             client: {
               refreshAgent: runtimeState.refreshAgent,
-              setStatusSessionPin: runtimeState.setStatusSessionPin,
             },
           },
           "server-2": {
             workspaces: new Map(),
-            client: {
-              setStatusSessionPin: runtimeState.setStatusSessionPinOnServerTwo,
-            },
+            client: {},
           },
         },
       }),
@@ -168,13 +168,17 @@ vi.mock("@/stores/session-store", () => ({
 }));
 
 vi.mock("@/runtime/host-runtime", () => ({
+  useHosts: () => [],
   getHostRuntimeStore: () => ({
     getClient: (serverId: string) => {
       if (serverId === "server-1") {
-        return { id: "client-server-1" };
+        return { id: "client-server-1", setWorkspacePinned: runtimeState.setWorkspacePinned };
       }
       if (serverId === "server-2") {
-        return { id: "client-server-2" };
+        return {
+          id: "client-server-2",
+          setWorkspacePinned: runtimeState.setWorkspacePinnedOnServerTwo,
+        };
       }
       return null;
     },
@@ -224,6 +228,46 @@ vi.mock("@getpaseo/protocol/agent-state-bucket", () => ({
 
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  useMutation: (options: {
+    mutationFn: (input: unknown) => Promise<unknown>;
+    onSettled?: (_data: unknown, _error: unknown, input: unknown) => void;
+  }) => ({
+    mutate: (input: unknown) => {
+      void options.mutationFn(input).then(
+        (data) => options.onSettled?.(data, null, input),
+        (error) => options.onSettled?.(undefined, error, input),
+      );
+    },
+  }),
+}));
+
+vi.mock("@/contexts/toast-context", () => ({
+  useToast: () => ({ error: vi.fn() }),
+}));
+
+vi.mock("@/runtime/host-features", () => ({
+  useHostFeatureMap: (serverIds: readonly string[]) =>
+    new Map(serverIds.map((serverId) => [serverId, runtimeState.workspacePinningEnabled])),
+}));
+
+vi.mock("@/hooks/use-sidebar-workspaces-list", () => ({
+  useSidebarWorkspacesList: () => ({ projects: runtimeState.sidebarProjects }),
+}));
+
+vi.mock("@/hooks/use-sidebar-pins", () => ({
+  usePinnedSidebarKeys: () => runtimeState.sidebarPinnedKeys,
+  splitPinnedSidebarGroups: ({
+    projects,
+    keys,
+  }: {
+    projects: Array<{ workspaces: Array<Record<string, string>> }>;
+    keys: { pinnedWorkspaceKeys: string[] };
+  }) => ({
+    pinnedChats: projects
+      .flatMap((project) => project.workspaces)
+      .filter((workspace) => keys.pinnedWorkspaceKeys.includes(workspace.workspaceKey ?? "")),
+    unpinnedProjects: projects,
+  }),
 }));
 
 vi.mock("./query-core", () => ({
@@ -423,7 +467,6 @@ function readyView(): ReadyStatusSummaryViewModel {
         recentlyCompletedAgents: [],
         counts: { running: 1, needsAttention: 1, idle: 0, error: 0 },
       },
-      pinnedSessions: [],
     },
     primaryRows: [
       { id: "lifetime-tokens", label: "Total tokens", value: "1,500", tone: "default" },
@@ -436,8 +479,6 @@ function readyView(): ReadyStatusSummaryViewModel {
     runningAgents: [running],
     needsAttentionAgents: [attention],
     recentlyCompletedAgents: [],
-    pinnedSessions: [],
-    canUseStatusBarSessionPins: false,
     generatedAt: "2026-07-06T04:00:00.000Z",
     isRefreshing: false,
   };
@@ -471,16 +512,15 @@ describe("status bar running sessions", () => {
     runtimeState.refreshHistory.mockResolvedValue(undefined);
     runtimeState.refreshStatusSummary.mockReset();
     runtimeState.refreshStatusSummary.mockResolvedValue(undefined);
-    runtimeState.setStatusSessionPin.mockReset();
-    runtimeState.setStatusSessionPin.mockResolvedValue({
-      requestId: "pin-test",
-      pinnedSessions: [],
+    runtimeState.setWorkspacePinned.mockReset();
+    runtimeState.setWorkspacePinned.mockResolvedValue({ pinnedAt: "2026-07-06T04:01:00.000Z" });
+    runtimeState.setWorkspacePinnedOnServerTwo.mockReset();
+    runtimeState.setWorkspacePinnedOnServerTwo.mockResolvedValue({
+      pinnedAt: "2026-07-06T04:01:00.000Z",
     });
-    runtimeState.setStatusSessionPinOnServerTwo.mockReset();
-    runtimeState.setStatusSessionPinOnServerTwo.mockResolvedValue({
-      requestId: "pin-test-server-two",
-      pinnedSessions: [],
-    });
+    runtimeState.sidebarProjects = [];
+    runtimeState.sidebarPinnedKeys = { pinnedWorkspaceKeys: [], pinnedAtByKey: {} };
+    runtimeState.workspacePinningEnabled = true;
     navigationSpies.navigateToAgent.mockClear();
     navigationSpies.navigateToWorkspace.mockClear();
     container = document.createElement("div");
@@ -561,13 +601,11 @@ describe("status bar running sessions", () => {
         serverId: "server-1",
         serverLabel: "MacBook Pro",
         summary: view.summary,
-        canUseStatusBarSessionPins: true,
       },
       {
         serverId: "server-2",
         serverLabel: "Build host",
         summary: view.summary,
-        canUseStatusBarSessionPins: true,
       },
     ];
 
@@ -586,6 +624,31 @@ describe("status bar running sessions", () => {
       "server-1",
       "server-2",
     ]);
+  });
+
+  it("refreshes session summaries after navigating from an attention row", async () => {
+    act(() => {
+      root?.render(renderStatusBar());
+    });
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-sessions-trigger"]')
+        ?.click();
+      await flushPromises();
+    });
+
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>(
+          '[data-testid="status-bar-session-row-agent-attention"] button',
+        )
+        ?.click();
+    });
+    await act(async () => {
+      await flushPromises();
+    });
+
+    expect(runtimeState.refreshStatusSummary).toHaveBeenCalledTimes(2);
   });
 
   it("prioritizes actionable attention rows and labels session status", () => {
@@ -661,13 +724,11 @@ describe("status bar running sessions", () => {
         serverId: "server-1",
         serverLabel: "MacBook Pro",
         summary: firstHostSummary,
-        canUseStatusBarSessionPins: true,
       },
       {
         serverId: "server-2",
         serverLabel: "Build host",
         summary: secondHostSummary,
-        canUseStatusBarSessionPins: true,
       },
     ];
 
@@ -682,12 +743,6 @@ describe("status bar running sessions", () => {
 
     expect(container?.textContent).toContain("MacBook Pro");
     expect(container?.textContent).toContain("Build host");
-    expect(
-      container?.querySelector('[data-testid="status-bar-session-pin-agent-running"]'),
-    ).not.toBeNull();
-    expect(
-      container?.querySelector('[data-testid="status-bar-session-pin-agent-host-two"]'),
-    ).not.toBeNull();
     act(() => {
       container
         ?.querySelector<HTMLButtonElement>(
@@ -700,32 +755,6 @@ describe("status bar running sessions", () => {
       serverId: "server-2",
       agentId: "agent-host-two",
       workspaceId: "workspace-host-two",
-    });
-
-    act(() => {
-      container
-        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-sessions-trigger"]')
-        ?.click();
-    });
-    await act(async () => {
-      container
-        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-session-pin-agent-host-two"]')
-        ?.click();
-      await flushPromises();
-    });
-
-    expect(runtimeState.setStatusSessionPinOnServerTwo).toHaveBeenCalledWith({
-      agentId: "agent-host-two",
-      pinned: true,
-      workspaceId: "workspace-host-two",
-      title: "Build the release",
-      provider: "codex",
-      cwd: "/work/agent-host-two",
-      status: "running",
-      requiresAttention: false,
-      attentionReason: undefined,
-      pendingPermissionCount: 0,
-      updatedAt: "2026-07-06T04:00:00.000Z",
     });
   });
 
@@ -784,12 +813,8 @@ describe("status bar running sessions", () => {
   });
 
   it("toggles a running session pin without navigating the row", async () => {
-    const view = readyView();
-    view.canUseStatusBarSessionPins = true;
-    view.summary.pinnedSessions = [];
-
     act(() => {
-      root?.render(renderStatusBar(view));
+      root?.render(renderStatusBar());
     });
     act(() => {
       container
@@ -804,19 +829,7 @@ describe("status bar running sessions", () => {
       await flushPromises();
     });
 
-    expect(runtimeState.setStatusSessionPin).toHaveBeenCalledWith({
-      agentId: "agent-running",
-      pinned: true,
-      workspaceId: "workspace-1",
-      title: "agent-running",
-      provider: "codex",
-      cwd: "/work/agent-running",
-      status: "running",
-      requiresAttention: false,
-      attentionReason: undefined,
-      pendingPermissionCount: 0,
-      updatedAt: "2026-07-06T04:00:00.000Z",
-    });
+    expect(runtimeState.setWorkspacePinned).toHaveBeenCalledWith("workspace-1", true);
     expect(navigationSpies.navigateToAgent).not.toHaveBeenCalled();
   });
 
@@ -957,13 +970,11 @@ describe("status bar running sessions", () => {
         serverId: "server-1",
         serverLabel: "MacBook Pro",
         summary: view.summary,
-        canUseStatusBarSessionPins: true,
       },
       {
         serverId: "server-2",
         serverLabel: "Build host",
         summary: view.summary,
-        canUseStatusBarSessionPins: true,
       },
     ];
     runtimeState.historyAgents = [
@@ -992,13 +1003,6 @@ describe("status bar running sessions", () => {
     });
     expect(container?.textContent).toContain("MacBook Pro");
     expect(container?.textContent).toContain("Build host");
-    expect(
-      container?.querySelector('[data-testid="status-bar-history-pin-history-one"]'),
-    ).not.toBeNull();
-    expect(
-      container?.querySelector('[data-testid="status-bar-history-pin-history-two"]'),
-    ).not.toBeNull();
-
     act(() => {
       container
         ?.querySelector<HTMLButtonElement>(
@@ -1014,67 +1018,45 @@ describe("status bar running sessions", () => {
     });
   });
 
-  it("merges pinned sessions from ready hosts and navigates through the owning host", () => {
+  it("keeps the history panel open when its host summaries refresh", async () => {
     const view = readyView();
     view.hostSummaries = [
       {
         serverId: "server-1",
         serverLabel: "MacBook Pro",
-        summary: { ...view.summary, pinnedSessions: [] },
-        canUseStatusBarSessionPins: true,
+        summary: view.summary,
       },
       {
         serverId: "server-2",
         serverLabel: "Build host",
-        summary: {
-          ...view.summary,
-          pinnedSessions: [
-            {
-              agentId: "agent-pinned-elsewhere",
-              workspaceId: "workspace-2",
-              title: "Pinned elsewhere",
-              provider: "codex",
-              updatedAt: "2026-07-06T04:00:00.000Z",
-              pinnedAt: "2026-07-06T04:00:00.000Z",
-            },
-          ],
-        },
-        canUseStatusBarSessionPins: true,
+        summary: view.summary,
       },
     ];
 
     act(() => {
       root?.render(renderStatusBar(view));
     });
-
-    expect(container?.querySelector('[data-testid="status-bar-pins-trigger"]')).not.toBeNull();
-    act(() => {
+    await act(async () => {
       container
-        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-pins-trigger"]')
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-history-trigger"]')
         ?.click();
+      await flushPromises();
     });
-
-    expect(container?.querySelector('[data-testid="status-bar-pins-panel"]')).not.toBeNull();
-    expect(container?.textContent).toContain("Build host");
-    expect(
-      container?.querySelector('[data-testid="status-bar-pin-row-agent-pinned-elsewhere"]'),
-    ).not.toBeNull();
 
     act(() => {
-      container
-        ?.querySelector<HTMLButtonElement>(
-          '[data-testid="status-bar-pin-row-agent-pinned-elsewhere"] button',
-        )
-        ?.click();
+      root?.render(
+        renderStatusBar({
+          ...view,
+          hostSummaries: (view.hostSummaries ?? []).toReversed(),
+        }),
+      );
     });
-    expect(navigationSpies.navigateToAgent).toHaveBeenCalledWith({
-      serverId: "server-2",
-      agentId: "agent-pinned-elsewhere",
-      workspaceId: "workspace-2",
-    });
+
+    expect(container?.querySelector('[data-testid="status-bar-history-panel"]')).not.toBeNull();
   });
 
   it("hides session pin controls when the host lacks the feature gate", async () => {
+    runtimeState.workspacePinningEnabled = false;
     runtimeState.historyAgents = [historyAgent({ id: "history-1", offsetMinutes: 0 })];
 
     act(() => {
@@ -1098,12 +1080,10 @@ describe("status bar running sessions", () => {
   });
 
   it("toggles a history session pin without navigating the row", async () => {
-    const view = readyView();
-    view.canUseStatusBarSessionPins = true;
     runtimeState.historyAgents = [historyAgent({ id: "history-1", offsetMinutes: 0 })];
 
     act(() => {
-      root?.render(renderStatusBar(view));
+      root?.render(renderStatusBar());
     });
     await act(async () => {
       container
@@ -1119,44 +1099,31 @@ describe("status bar running sessions", () => {
       await flushPromises();
     });
 
-    expect(runtimeState.setStatusSessionPin).toHaveBeenCalledWith({
-      agentId: "history-1",
-      pinned: true,
-      workspaceId: "workspace-1",
-      title: "history-1",
-      provider: "codex",
-      cwd: "/work/history-1",
-      status: "idle",
-      requiresAttention: undefined,
-      attentionReason: undefined,
-      pendingPermissionCount: 0,
-      updatedAt: "2026-07-06T04:00:00.000Z",
-    });
+    expect(runtimeState.setWorkspacePinned).toHaveBeenCalledWith("workspace-1", true);
     expect(navigationSpies.navigateToAgent).not.toHaveBeenCalled();
   });
 
-  it("opens pinned sessions next to history and navigates without requiring workspaceId", () => {
-    const view = readyView();
-    view.canUseStatusBarSessionPins = true;
-    view.pinnedSessions = [
+  it("shows the sidebar's pinned workspaces and navigates to the same workspace", () => {
+    runtimeState.sidebarProjects = [
       {
-        agentId: "pinned-1",
-        workspaceId: null,
-        title: "Pinned one",
-        provider: "codex",
-        cwd: "/work/pinned-1",
-        status: "running",
-        requiresAttention: false,
-        attentionReason: null,
-        pendingPermissionCount: 0,
-        updatedAt: "2026-07-06T04:00:00.000Z",
-        pinnedAt: "2026-07-06T04:01:00.000Z",
+        workspaces: [
+          {
+            workspaceKey: "server-1:workspace-pinned",
+            serverId: "server-1",
+            workspaceId: "workspace-pinned",
+            projectName: "Paseo",
+            name: "Pinned chat",
+          },
+        ],
       },
     ];
-    view.summary.pinnedSessions = view.pinnedSessions;
+    runtimeState.sidebarPinnedKeys = {
+      pinnedWorkspaceKeys: ["server-1:workspace-pinned"],
+      pinnedAtByKey: { "server-1:workspace-pinned": "2026-07-06T04:01:00.000Z" },
+    };
 
     act(() => {
-      root?.render(renderStatusBar(view));
+      root?.render(renderStatusBar());
     });
 
     expect(container?.querySelector('[data-testid="status-bar-history-trigger"]')).not.toBeNull();
@@ -1168,23 +1135,21 @@ describe("status bar running sessions", () => {
         ?.click();
     });
     expect(container?.querySelector('[data-testid="status-bar-pins-panel"]')).not.toBeNull();
-    expect(
-      container?.querySelector('[data-testid="status-bar-pin-status-pinned-1"]'),
-    ).not.toBeNull();
-    expect(container?.textContent).toContain("codex · pinned-1");
-    expect(container?.textContent).toContain("agentList.status.running");
+    expect(container?.textContent).toContain("Pinned chat");
+    expect(container?.textContent).toContain("Paseo");
 
     act(() => {
       container
-        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-pin-row-pinned-1"] button')
+        ?.querySelector<HTMLButtonElement>(
+          '[data-testid="status-bar-pin-row-workspace-pinned"] button',
+        )
         ?.click();
     });
 
     expect(container?.querySelector('[data-testid="status-bar-pins-panel"]')).toBeNull();
-    expect(navigationSpies.navigateToAgent).toHaveBeenCalledWith({
+    expect(navigationSpies.navigateToWorkspace).toHaveBeenCalledWith({
       serverId: "server-1",
-      agentId: "pinned-1",
-      workspaceId: null,
+      workspaceId: "workspace-pinned",
     });
   });
 

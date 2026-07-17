@@ -16,7 +16,7 @@ import {
   ShieldQuestion,
   TriangleAlert,
 } from "lucide-react-native";
-import type { StatusAgentSnapshot, StatusPinnedSession } from "@getpaseo/protocol/messages";
+import type { StatusAgentSnapshot } from "@getpaseo/protocol/messages";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import {
   DropdownMenu,
@@ -27,6 +27,7 @@ import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useAgentHistory } from "@/hooks/use-agent-history";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
+import { useSidebarWorkspacePinController } from "@/hooks/use-sidebar-workspace-pin";
 import { useSessionStore } from "@/stores/session-store";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
@@ -49,8 +50,6 @@ import {
   formatStatusBarSessionUsage,
 } from "./status-bar-session-format";
 import { refreshStatusSummary } from "./query-core";
-
-const EMPTY_PINNED_SESSIONS: StatusPinnedSession[] = [];
 
 const ThemedArrowUpRight = withUnistyles(ArrowUpRight, (theme) => ({
   color: theme.colors.foregroundMuted,
@@ -139,28 +138,27 @@ interface StatusBarRunningSessionsTriggerProps {
   needsAttentionAgents: StatusAgentSnapshot[];
   recentlyCompletedAgents: StatusAgentSnapshot[];
   hostSummaries?: StatusBarHostSummary[];
-  sessionPinSources?: StatusBarSessionPinSource[];
+  workspacePinSources?: StatusBarWorkspacePinSource[];
 }
 
-export interface StatusBarSessionPinSource {
+export interface StatusBarWorkspacePinSource {
   serverId: string;
-  serverLabel?: string;
-  pinnedSessions: StatusPinnedSession[];
-  canUseStatusBarSessionPins: boolean;
+  canUseWorkspacePinning: boolean;
 }
 
-const EMPTY_SESSION_PIN_SOURCES: StatusBarSessionPinSource[] = [];
-const NO_SESSION_PIN_SOURCE: StatusBarSessionPinSource = {
+const EMPTY_WORKSPACE_PIN_SOURCES: StatusBarWorkspacePinSource[] = [];
+const NO_WORKSPACE_PIN_SOURCE: StatusBarWorkspacePinSource = {
   serverId: "",
-  pinnedSessions: EMPTY_PINNED_SESSIONS,
-  canUseStatusBarSessionPins: false,
+  canUseWorkspacePinning: false,
 };
 
-function getSessionPinSource(
-  sessionPinSources: StatusBarSessionPinSource[],
+function getWorkspacePinSource(
+  workspacePinSources: StatusBarWorkspacePinSource[],
   serverId: string,
-): StatusBarSessionPinSource {
-  return sessionPinSources.find((source) => source.serverId === serverId) ?? NO_SESSION_PIN_SOURCE;
+): StatusBarWorkspacePinSource {
+  return (
+    workspacePinSources.find((source) => source.serverId === serverId) ?? NO_WORKSPACE_PIN_SOURCE
+  );
 }
 
 export function StatusBarRunningSessionsTrigger({
@@ -213,7 +211,7 @@ function InteractiveRunningSessionsTrigger({
   needsAttentionAgents,
   recentlyCompletedAgents,
   hostSummaries,
-  sessionPinSources = EMPTY_SESSION_PIN_SOURCES,
+  workspacePinSources = EMPTY_WORKSPACE_PIN_SOURCES,
 }: StatusBarRunningSessionsTriggerProps) {
   const isCompact = useIsCompactFormFactor();
   const pathname = usePathname();
@@ -292,7 +290,7 @@ function InteractiveRunningSessionsTrigger({
         ? [refreshStatusSummary({ queryClient, serverId: source.serverId, client })]
         : [];
     });
-    void Promise.allSettled(refreshes);
+    return Promise.allSettled(refreshes);
   }, [queryClient, runtime, sessionSources]);
 
   const handleOpenChange = useCallback(
@@ -300,7 +298,7 @@ function InteractiveRunningSessionsTrigger({
       const shouldOpen = hasItems && nextOpen;
       setOpen(shouldOpen);
       if (shouldOpen) {
-        refreshSessions();
+        void refreshSessions();
       }
     },
     [hasItems, refreshSessions],
@@ -309,6 +307,7 @@ function InteractiveRunningSessionsTrigger({
   const handleNavigate = useCallback(
     (target: StatusBarSessionTarget) => {
       setOpen(false);
+      void refreshSessions();
       if (isCompact) {
         requestAnimationFrame(() => {
           navigateToStatusBarSession(target);
@@ -317,7 +316,7 @@ function InteractiveRunningSessionsTrigger({
       }
       navigateToStatusBarSession(target);
     },
-    [isCompact],
+    [isCompact, refreshSessions],
   );
   const handleCompactOpen = useCallback(() => {
     handleOpenChange(true);
@@ -360,7 +359,7 @@ function InteractiveRunningSessionsTrigger({
           <StatusBarSessionsList
             items={items}
             onNavigate={handleNavigate}
-            sessionPinSources={sessionPinSources}
+            workspacePinSources={workspacePinSources}
           />
         </AdaptiveModalSheet>
       </>
@@ -388,7 +387,7 @@ function InteractiveRunningSessionsTrigger({
         <StatusBarSessionsList
           items={items}
           onNavigate={handleNavigate}
-          sessionPinSources={sessionPinSources}
+          workspacePinSources={workspacePinSources}
         />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -399,12 +398,12 @@ export function StatusBarSessionHistoryTrigger({
   serverId,
   showAllHosts = false,
   hostServerIds,
-  sessionPinSources = EMPTY_SESSION_PIN_SOURCES,
+  workspacePinSources = EMPTY_WORKSPACE_PIN_SOURCES,
 }: {
   serverId: string;
   showAllHosts?: boolean;
   hostServerIds?: readonly string[];
-  sessionPinSources?: StatusBarSessionPinSource[];
+  workspacePinSources?: StatusBarWorkspacePinSource[];
 }) {
   const isCompact = useIsCompactFormFactor();
   const pathname = usePathname();
@@ -418,11 +417,12 @@ export function StatusBarSessionHistoryTrigger({
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const sheetHeader = useMemo(() => ({ title: t("statusBar.history.title") }), [t]);
   const items = useMemo(() => agents.filter(isStatusBarHistoryVisible), [agents]);
+  const hostServerIdsKey = JSON.stringify([...new Set(hostServerIds ?? [])].sort());
   const isRefreshing = isManualRefresh || isRevalidating;
 
   useEffect(() => {
     setOpen(false);
-  }, [hostServerIds, pathname, serverId, showAllHosts]);
+  }, [hostServerIdsKey, pathname, serverId, showAllHosts]);
 
   const refreshHistory = useCallback(() => {
     if (isInitialLoad || isRefreshing) {
@@ -521,7 +521,7 @@ export function StatusBarSessionHistoryTrigger({
             isLoading={isInitialLoad}
             isError={isError}
             isRefreshing={isRefreshing}
-            sessionPinSources={sessionPinSources}
+            workspacePinSources={workspacePinSources}
             showServerLabel={showAllHosts}
             onRefresh={refreshHistory}
             onNavigate={handleNavigate}
@@ -554,7 +554,7 @@ export function StatusBarSessionHistoryTrigger({
           isLoading={isInitialLoad}
           isError={isError}
           isRefreshing={isRefreshing}
-          sessionPinSources={sessionPinSources}
+          workspacePinSources={workspacePinSources}
           showServerLabel={showAllHosts}
           onRefresh={refreshHistory}
           onNavigate={handleNavigate}
@@ -633,11 +633,11 @@ function TriggerMetric({
 function StatusBarSessionsList({
   items,
   onNavigate,
-  sessionPinSources,
+  workspacePinSources,
 }: {
   items: StatusBarSessionListItem[];
   onNavigate: (target: StatusBarSessionTarget) => void;
-  sessionPinSources: StatusBarSessionPinSource[];
+  workspacePinSources: StatusBarWorkspacePinSource[];
 }) {
   const { t } = useTranslation();
   if (items.length === 0) {
@@ -660,8 +660,8 @@ function StatusBarSessionsList({
                 key={item.key}
                 item={item}
                 onNavigate={onNavigate}
-                sessionPinSource={getSessionPinSource(
-                  sessionPinSources,
+                workspacePinSource={getWorkspacePinSource(
+                  workspacePinSources,
                   item.primaryTarget.serverId,
                 )}
               />
@@ -678,7 +678,7 @@ function StatusBarHistoryList({
   isError,
   isLoading,
   isRefreshing,
-  sessionPinSources,
+  workspacePinSources,
   showServerLabel,
   onRefresh,
   onNavigate,
@@ -687,7 +687,7 @@ function StatusBarHistoryList({
   isError: boolean;
   isLoading: boolean;
   isRefreshing: boolean;
-  sessionPinSources: StatusBarSessionPinSource[];
+  workspacePinSources: StatusBarWorkspacePinSource[];
   showServerLabel: boolean;
   onRefresh: () => void;
   onNavigate: (agent: AggregatedAgent) => void;
@@ -730,7 +730,7 @@ function StatusBarHistoryList({
             key={`${item.serverId}:${item.id}`}
             item={item}
             onNavigate={onNavigate}
-            sessionPinSource={getSessionPinSource(sessionPinSources, item.serverId)}
+            workspacePinSource={getWorkspacePinSource(workspacePinSources, item.serverId)}
             showServerLabel={showServerLabel}
           />
         ))}
@@ -766,12 +766,12 @@ function StatusBarHistoryList({
 function StatusBarHistoryRow({
   item,
   onNavigate,
-  sessionPinSource,
+  workspacePinSource,
   showServerLabel,
 }: {
   item: AggregatedAgent;
   onNavigate: (agent: AggregatedAgent) => void;
-  sessionPinSource: StatusBarSessionPinSource;
+  workspacePinSource: StatusBarWorkspacePinSource;
   showServerLabel: boolean;
 }) {
   const { t } = useTranslation();
@@ -808,20 +808,10 @@ function StatusBarHistoryRow({
         </View>
         <ThemedArrowUpRight size={14} />
       </Pressable>
-      {sessionPinSource.canUseStatusBarSessionPins ? (
-        <SessionPinButton
+      {workspacePinSource.canUseWorkspacePinning ? (
+        <WorkspacePinButton
           serverId={item.serverId}
-          agentId={item.id}
           workspaceId={item.workspaceId ?? null}
-          title={title}
-          provider={item.provider}
-          cwd={item.cwd}
-          status={item.status}
-          requiresAttention={item.requiresAttention}
-          attentionReason={item.attentionReason}
-          pendingPermissionCount={item.pendingPermissionCount}
-          updatedAt={item.lastActivityAt.toISOString()}
-          pinned={sessionPinSource.pinnedSessions.some((pin) => pin.agentId === item.id)}
           testID={`status-bar-history-pin-${item.id}`}
         />
       ) : null}
@@ -849,87 +839,40 @@ function StatusBarHistoryStatus({ agent }: { agent: AggregatedAgent }) {
   );
 }
 
-function SessionPinButton({
-  agentId,
-  attentionReason,
-  cwd,
-  pendingPermissionCount,
-  pinned,
-  provider,
-  requiresAttention,
+function WorkspacePinButton({
   serverId,
-  status,
   testID,
-  title,
-  updatedAt,
   workspaceId,
 }: {
-  agentId: string;
-  attentionReason?: "finished" | "error" | "permission" | null;
-  cwd: string | null;
-  pendingPermissionCount?: number;
-  pinned: boolean;
-  provider: StatusAgentSnapshot["provider"];
-  requiresAttention?: boolean;
   serverId: string;
-  status: StatusAgentSnapshot["status"] | null;
   testID: string;
-  title: string | null;
-  updatedAt: string | null;
   workspaceId: string | null;
 }) {
   const { t } = useTranslation();
-  const [pending, setPending] = useState(false);
-  const nextPinned = !pinned;
-  const label = t(
-    pinned ? "statusBar.pins.actions.unpinSession" : "statusBar.pins.actions.pinSession",
-    { title: title ?? agentId },
+  const toggleWorkspacePin = useSidebarWorkspacePinController();
+  const workspace = useSessionStore((state) =>
+    workspaceId ? (state.sessions[serverId]?.workspaces.get(workspaceId) ?? null) : null,
   );
+  const pinned = workspace?.pinnedAt != null;
+  const label = t(pinned ? "sidebar.workspace.actions.unpin" : "sidebar.workspace.actions.pin");
   const handlePress = useCallback(() => {
-    if (pending) {
+    if (!workspace || !workspaceId) {
       return;
     }
-    const client = useSessionStore.getState().sessions[serverId]?.client;
-    if (!client?.setStatusSessionPin) {
-      return;
-    }
-    setPending(true);
-    void client
-      .setStatusSessionPin({
-        agentId,
-        pinned: nextPinned,
-        workspaceId,
-        title,
-        provider,
-        cwd,
-        status,
-        requiresAttention,
-        attentionReason,
-        pendingPermissionCount,
-        updatedAt,
-      })
-      .catch(() => {})
-      .finally(() => {
-        setPending(false);
-      });
-  }, [
-    agentId,
-    attentionReason,
-    cwd,
-    nextPinned,
-    pending,
-    pendingPermissionCount,
-    provider,
-    requiresAttention,
-    serverId,
-    status,
-    title,
-    updatedAt,
-    workspaceId,
-  ]);
+    toggleWorkspacePin({
+      serverId,
+      workspaceId,
+      workspaceKey: `${serverId}:${workspaceId}`,
+      pinnedAt: workspace.pinnedAt,
+    });
+  }, [serverId, toggleWorkspacePin, workspace, workspaceId]);
+
+  if (!workspace || !workspaceId) {
+    return null;
+  }
 
   return (
-    <IconButton accessibilityLabel={label} disabled={pending} onPress={handlePress} testID={testID}>
+    <IconButton accessibilityLabel={label} onPress={handlePress} testID={testID}>
       {pinned ? <ThemedPinOff size={14} /> : <ThemedPin size={14} />}
     </IconButton>
   );
@@ -938,11 +881,11 @@ function SessionPinButton({
 function StatusBarSessionRow({
   item,
   onNavigate,
-  sessionPinSource,
+  workspacePinSource,
 }: {
   item: StatusBarSessionListItem;
   onNavigate: (target: StatusBarSessionTarget) => void;
-  sessionPinSource: StatusBarSessionPinSource;
+  workspacePinSource: StatusBarWorkspacePinSource;
 }) {
   const { t } = useTranslation();
   const usage = formatStatusBarSessionUsage(item.snapshot);
@@ -990,22 +933,10 @@ function StatusBarSessionRow({
           <ThemedBriefcaseBusiness size={14} />
         </IconButton>
       ) : null}
-      {sessionPinSource.canUseStatusBarSessionPins ? (
-        <SessionPinButton
+      {workspacePinSource.canUseWorkspacePinning ? (
+        <WorkspacePinButton
           serverId={item.primaryTarget.serverId}
-          agentId={item.snapshot.agentId}
           workspaceId={item.snapshot.workspaceId ?? null}
-          title={title}
-          provider={item.snapshot.provider}
-          cwd={item.snapshot.cwd}
-          status={item.snapshot.status}
-          requiresAttention={Boolean(item.snapshot.attentionReason)}
-          attentionReason={item.snapshot.attentionReason}
-          pendingPermissionCount={0}
-          updatedAt={item.snapshot.updatedAt}
-          pinned={sessionPinSource.pinnedSessions.some(
-            (pin) => pin.agentId === item.snapshot.agentId,
-          )}
           testID={`status-bar-session-pin-${item.snapshot.agentId}`}
         />
       ) : null}

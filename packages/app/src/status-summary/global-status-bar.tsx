@@ -3,7 +3,6 @@ import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { FolderGit2, GitBranch } from "lucide-react-native";
-import type { StatusPinnedSession } from "@getpaseo/protocol/messages";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import {
   DropdownMenu,
@@ -15,6 +14,7 @@ import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
+import { useHostFeatureMap } from "@/runtime/host-features";
 import { shortenPath } from "@/utils/shorten-path";
 import { useGlobalStatusBarView } from "./use-status-summary";
 import {
@@ -40,7 +40,6 @@ const COMPACT_ROW_IDS: ReadonlySet<StatusBarRowId> = new Set([
   "attention",
 ]);
 const COST_SHEET_SNAP_POINTS = ["30%", "55%"];
-const EMPTY_PINNED_SESSIONS: StatusPinnedSession[] = [];
 const ThemedGitBranch = withUnistyles(GitBranch, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
@@ -119,34 +118,21 @@ function StatusBarReadyContent({
   isCompact: boolean;
   t: (key: string, options?: Record<string, unknown>) => string;
 }) {
-  const currentHostSummary = view.hostSummaries?.find((host) => host.serverId === serverId);
-  const hasHostSummaries = view.hostSummaries !== undefined;
   const isMultiHost = (view.hostSummaries?.length ?? 1) > 1;
-  const currentHostPinnedSessions =
-    currentHostSummary?.summary.pinnedSessions ??
-    (hasHostSummaries ? EMPTY_PINNED_SESSIONS : view.pinnedSessions);
-  const currentHostCanUseSessionPins =
-    currentHostSummary?.canUseStatusBarSessionPins ??
-    (!hasHostSummaries && view.canUseStatusBarSessionPins);
-  const sessionPinSources = useMemo(
-    () =>
-      view.hostSummaries?.map((host) => ({
-        serverId: host.serverId,
-        serverLabel: host.serverLabel,
-        pinnedSessions: host.summary.pinnedSessions ?? EMPTY_PINNED_SESSIONS,
-        canUseStatusBarSessionPins: host.canUseStatusBarSessionPins,
-      })) ?? [
-        {
-          serverId,
-          pinnedSessions: currentHostPinnedSessions,
-          canUseStatusBarSessionPins: currentHostCanUseSessionPins,
-        },
-      ],
-    [currentHostCanUseSessionPins, currentHostPinnedSessions, serverId, view.hostSummaries],
+  const hostServerIds = useMemo(
+    () => view.hostSummaries?.map((host) => host.serverId) ?? [serverId],
+    [serverId, view.hostSummaries],
   );
-  const historyHostServerIds = isMultiHost
-    ? view.hostSummaries?.map((host) => host.serverId)
-    : undefined;
+  const workspacePinningByServerId = useHostFeatureMap(hostServerIds, "workspacePinning");
+  const workspacePinSources = useMemo(
+    () =>
+      hostServerIds.map((hostServerId) => ({
+        serverId: hostServerId,
+        canUseWorkspacePinning: workspacePinningByServerId.get(hostServerId) === true,
+      })),
+    [hostServerIds, workspacePinningByServerId],
+  );
+  const historyHostServerIds = isMultiHost ? hostServerIds : undefined;
   let rows = view.primaryRows.filter((row) => row.id !== "running" && row.id !== "attention");
   if (isCompact) {
     rows = rows.filter((row) => COMPACT_ROW_IDS.has(row.id));
@@ -167,15 +153,15 @@ function StatusBarReadyContent({
         needsAttentionAgents={view.needsAttentionAgents}
         recentlyCompletedAgents={view.recentlyCompletedAgents}
         hostSummaries={view.hostSummaries}
-        sessionPinSources={sessionPinSources}
+        workspacePinSources={workspacePinSources}
       />
       <StatusBarSessionHistoryTrigger
         serverId={serverId}
         showAllHosts={isMultiHost}
         hostServerIds={historyHostServerIds}
-        sessionPinSources={sessionPinSources}
+        workspacePinSources={workspacePinSources}
       />
-      <StatusBarSessionPinsTrigger serverId={serverId} sessionPinSources={sessionPinSources} />
+      <StatusBarSessionPinsTrigger serverId={serverId} />
       <StatusBarWorkspaceInfo serverId={serverId} />
     </View>
   );

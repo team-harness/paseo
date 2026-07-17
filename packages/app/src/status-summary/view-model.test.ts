@@ -103,8 +103,6 @@ describe("buildStatusSummaryViewModel", () => {
     ]);
     expect(view.runningAgents).toHaveLength(1);
     expect(view.needsAttentionAgents).toHaveLength(0);
-    expect(view.pinnedSessions).toEqual([]);
-    expect(view.canUseStatusBarSessionPins).toBe(false);
     expect(view.generatedAt).toBe("2026-07-06T04:00:00.000Z");
     expect(view.isRefreshing).toBe(true);
   });
@@ -161,13 +159,11 @@ describe("buildStatusSummaryViewModel", () => {
         serverId: "host-1",
         serverLabel: "MacBook Pro",
         state: { kind: "ready", summary: first, isRefreshing: false },
-        canUseStatusBarSessionPins: true,
       },
       {
         serverId: "host-2",
         serverLabel: "Build host",
         state: { kind: "ready", summary: second, isRefreshing: true },
-        canUseStatusBarSessionPins: true,
       },
     ]);
 
@@ -190,46 +186,8 @@ describe("buildStatusSummaryViewModel", () => {
       "MacBook Pro",
       "Build host",
     ]);
-    expect(view.pinnedSessions).toEqual([]);
-    expect(view.canUseStatusBarSessionPins).toBe(false);
     expect(view.isRefreshing).toBe(true);
     expect(view.generatedAt).toBe("2026-07-06T05:00:00.000Z");
-  });
-
-  it("exposes host pinned sessions only behind the single capability gate", () => {
-    const view = buildStatusSummaryViewModel(
-      {
-        kind: "ready",
-        summary: summary({
-          pinnedSessions: [
-            {
-              agentId: "agent-pinned",
-              workspaceId: "workspace-1",
-              title: "Pinned agent",
-              provider: "codex",
-              updatedAt: "2026-07-06T03:59:00.000Z",
-              pinnedAt: "2026-07-06T04:00:00.000Z",
-            },
-          ],
-        }),
-        isRefreshing: false,
-      },
-      { canUseStatusBarSessionPins: true },
-    );
-
-    expect(view.kind).toBe("ready");
-    if (view.kind !== "ready") throw new Error("Expected ready view");
-    expect(view.canUseStatusBarSessionPins).toBe(true);
-    expect(view.pinnedSessions).toEqual([
-      {
-        agentId: "agent-pinned",
-        workspaceId: "workspace-1",
-        title: "Pinned agent",
-        provider: "codex",
-        updatedAt: "2026-07-06T03:59:00.000Z",
-        pinnedAt: "2026-07-06T04:00:00.000Z",
-      },
-    ]);
   });
 
   it("preserves previous summary for loading and error states", () => {

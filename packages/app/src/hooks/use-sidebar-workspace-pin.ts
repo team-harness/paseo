@@ -2,10 +2,16 @@ import { useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/contexts/toast-context";
-import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 
-export type ToggleSidebarWorkspacePin = (workspace: SidebarWorkspaceEntry) => void;
+export interface SidebarWorkspacePinTarget {
+  serverId: string;
+  workspaceId: string;
+  workspaceKey: string;
+  pinnedAt?: string | null;
+}
+
+export type ToggleSidebarWorkspacePin = (workspace: SidebarWorkspacePinTarget) => void;
 
 export function useSidebarWorkspacePinController(): ToggleSidebarWorkspacePin {
   const { t } = useTranslation();
@@ -16,7 +22,7 @@ export function useSidebarWorkspacePinController(): ToggleSidebarWorkspacePin {
       workspace,
       pinned,
     }: {
-      workspace: SidebarWorkspaceEntry;
+      workspace: SidebarWorkspacePinTarget;
       pinned: boolean;
     }) => {
       const client = getHostRuntimeStore().getClient(workspace.serverId);
@@ -37,7 +43,7 @@ export function useSidebarWorkspacePinController(): ToggleSidebarWorkspacePin {
   const mutate = mutation.mutate;
 
   return useCallback(
-    (workspace: SidebarWorkspaceEntry) => {
+    (workspace: SidebarWorkspacePinTarget) => {
       if (pendingWorkspaceKeysRef.current.has(workspace.workspaceKey)) {
         return;
       }

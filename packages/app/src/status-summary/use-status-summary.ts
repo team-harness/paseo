@@ -28,7 +28,6 @@ export function useGlobalStatusBarView(
   );
   const serverIds = useMemo(() => hosts.map((host) => host.serverId), [hosts]);
   const statusSummaryFeatures = useHostFeatureMap(serverIds, "statusSummary");
-  const sessionPinFeatures = useHostFeatureMap(serverIds, "statusBarSessionPins");
   const queryInputs = useMemo(() => {
     void runtimeVersion;
     return hosts.map((host) => {
@@ -80,10 +79,9 @@ export function useGlobalStatusBarView(
             isError: query?.isError ?? false,
             error: query?.error,
           }),
-          canUseStatusBarSessionPins: sessionPinFeatures.get(input.host.serverId) === true,
         };
       }),
-    [queries, queryInputs, sessionPinFeatures],
+    [queries, queryInputs],
   );
 
   return useMemo(() => buildMultiHostStatusSummaryViewModel(hostStates), [hostStates]);

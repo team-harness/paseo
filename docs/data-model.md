@@ -172,28 +172,7 @@ Writes use `writeJsonFileAtomic`. Files are parsed with Zod at daemon bootstrap;
 
 ---
 
-## 3. Status Summary Session Pins
-
-**Path:** `$PASEO_HOME/status-summary/session-pins.json`
-
-Session pins are host-owned shortcuts for returning to specific agent sessions from the global status bar. They are daemon-side state, not app-local cache, so every client connected to the same host sees the same pinned sessions through `status.summary.get.response` and `status.summary.updated`.
-
-状态栏客户端可以聚合所有已连接且支持 status summary 的 Host，用于展示总 Token、费用、活动计数、会话和历史；聚合列表中的会话与历史条目必须保留来源 Host，并使用该条目的 `serverId` 导航。固定会话不参与跨 Host 聚合，始终只显示和修改当前 Host 的固定状态。
-
-The file contains:
-
-| Field            | Type                    | Description                                    |
-| ---------------- | ----------------------- | ---------------------------------------------- |
-| `version`        | `1`                     | Store payload version                          |
-| `pinnedSessions` | `StatusPinnedSession[]` | One entry per pinned agent, keyed by `agentId` |
-
-`StatusPinnedSession` stores `agentId`, optional `workspaceId`, a display snapshot captured when the user pins the session, and `pinnedAt`. The display snapshot includes `title`, `provider`, `cwd`, `status`, `requiresAttention`, `attentionReason`, `pendingPermissionCount`, and `updatedAt` so the pinned list can render the same summary information as the history list even after the source agent leaves the live/history result set. `workspaceId` is only a navigation hint; runtime code must not infer workspace ownership from `cwd`.
-
-Writes use `writeJsonFileAtomic`. The file is parsed with Zod at daemon bootstrap; corrupt or schema-invalid files are logged and treated as an empty pin list instead of blocking daemon startup. Session pins do not modify agent records and do not affect archive, delete, stop, or cancel lifecycle behavior.
-
----
-
-## 4. Daemon Configuration
+## 3. Daemon Configuration
 
 **Path:** `$PASEO_HOME/config.json`
 

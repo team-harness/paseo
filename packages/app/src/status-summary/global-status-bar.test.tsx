@@ -49,6 +49,7 @@ const { theme, runtimeState } = vi.hoisted(() => ({
 }));
 
 vi.mock("react-native", () => ({
+  Platform: { OS: "web" },
   Text: ({ children, testID }: { children?: React.ReactNode; testID?: string }) =>
     React.createElement("span", { "data-testid": testID }, children),
   Pressable: ({
@@ -146,7 +147,13 @@ vi.mock("@/stores/session-store", () => ({
 }));
 
 vi.mock("@/runtime/host-runtime", () => ({
+  useHosts: () => [],
   getHostRuntimeStore: () => ({ getClient: () => null }),
+}));
+
+vi.mock("@/runtime/host-features", () => ({
+  useHostFeatureMap: (serverIds: readonly string[]) =>
+    new Map(serverIds.map((serverId) => [serverId, false])),
 }));
 
 vi.mock("@/utils/navigate-to-agent", () => ({
@@ -159,6 +166,20 @@ vi.mock("@getpaseo/protocol/agent-state-bucket", () => ({
 
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  useMutation: () => ({ mutate: vi.fn() }),
+}));
+
+vi.mock("@/contexts/toast-context", () => ({
+  useToast: () => ({ error: vi.fn() }),
+}));
+
+vi.mock("@/hooks/use-sidebar-workspaces-list", () => ({
+  useSidebarWorkspacesList: () => ({ projects: [] }),
+}));
+
+vi.mock("@/hooks/use-sidebar-pins", () => ({
+  usePinnedSidebarKeys: () => ({ pinnedWorkspaceKeys: [], pinnedAtByKey: {} }),
+  splitPinnedSidebarGroups: () => ({ pinnedChats: [], unpinnedProjects: [] }),
 }));
 
 vi.mock("@/hooks/use-agent-history", () => ({
@@ -302,8 +323,6 @@ function readyView(): StatusSummaryViewModel {
     runningAgents: [],
     needsAttentionAgents: [],
     recentlyCompletedAgents: [],
-    pinnedSessions: [],
-    canUseStatusBarSessionPins: false,
     generatedAt: "2026-07-06T04:00:00.000Z",
     isRefreshing: false,
   };

@@ -1,83 +1,9 @@
 import { describe, expect, test } from "vitest";
 
 import type { AgentStreamEvent } from "./agent/agent-sdk-types.js";
-import {
-  HostStatusSummaryPayloadSchema,
-  SessionInboundMessageSchema,
-  SessionOutboundMessageSchema,
-  serializeAgentStreamEvent,
-} from "./messages.js";
+import { SessionInboundMessageSchema, serializeAgentStreamEvent } from "./messages.js";
 
 describe("serializeAgentStreamEvent", () => {
-  test("accepts status summary pinned sessions and session pin mutation messages", () => {
-    const summary = HostStatusSummaryPayloadSchema.parse({
-      generatedAt: "2026-07-08T00:00:00.000Z",
-      usage: {
-        lifetime: { totalTokens: 0 },
-        today: {
-          totalTokens: 0,
-          windowStart: "2026-07-08T00:00:00.000Z",
-          windowEnd: "2026-07-08T00:00:00.000Z",
-        },
-      },
-      activity: {
-        runningAgents: [],
-        needsAttentionAgents: [],
-        recentlyCompletedAgents: [],
-        counts: {
-          running: 0,
-          needsAttention: 0,
-          idle: 0,
-          error: 0,
-        },
-      },
-      pinnedSessions: [
-        {
-          agentId: "agent-1",
-          workspaceId: "workspace-1",
-          title: "Pinned work",
-          provider: "codex",
-          updatedAt: "2026-07-08T00:00:00.000Z",
-          pinnedAt: "2026-07-08T00:00:01.000Z",
-        },
-      ],
-    });
-
-    expect(summary.pinnedSessions?.[0]?.agentId).toBe("agent-1");
-
-    expect(
-      SessionInboundMessageSchema.parse({
-        type: "status.session_pins.set.request",
-        requestId: "req-pin",
-        agentId: "agent-1",
-        pinned: true,
-        workspaceId: "workspace-1",
-        title: "Pinned work",
-        provider: "codex",
-        updatedAt: "2026-07-08T00:00:00.000Z",
-      }),
-    ).toMatchObject({
-      type: "status.session_pins.set.request",
-      agentId: "agent-1",
-      pinned: true,
-    });
-
-    expect(
-      SessionOutboundMessageSchema.parse({
-        type: "status.session_pins.set.response",
-        payload: {
-          requestId: "req-pin",
-          pinnedSessions: summary.pinnedSessions,
-        },
-      }),
-    ).toMatchObject({
-      type: "status.session_pins.set.response",
-      payload: {
-        requestId: "req-pin",
-      },
-    });
-  });
-
   test("accepts create_agent_request env records", () => {
     const parsed = SessionInboundMessageSchema.parse({
       type: "create_agent_request",

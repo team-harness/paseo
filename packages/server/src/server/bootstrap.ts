@@ -105,7 +105,6 @@ import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { FileBackedUsageLedger } from "./usage-ledger/index.js";
 import { StatusSummaryService } from "./status-summary/status-summary-service.js";
-import { createSessionPinStorePath, SessionPinStore } from "./status-summary/session-pin-store.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import {
@@ -730,10 +729,6 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     logger,
   });
-  const sessionPinStore = new SessionPinStore({
-    filePath: createSessionPinStorePath(config.paseoHome),
-    logger: logger.child({ module: "session-pins" }),
-  });
   const projectRegistry = new FileBackedProjectRegistry(
     path.join(config.paseoHome, "projects", "projects.json"),
     logger,
@@ -787,15 +782,12 @@ export async function createPaseoDaemon(
   const statusSummaryService = new StatusSummaryService({
     usageLedger,
     agentSource: agentManager,
-    sessionPinStore,
     logger: logger.child({ module: "status-summary" }),
   });
   await agentStorage.initialize();
   logger.info({ elapsed: elapsed() }, "Agent storage initialized");
   await usageLedger.initialize();
   logger.info({ elapsed: elapsed() }, "Usage ledger initialized");
-  await sessionPinStore.initialize();
-  logger.info({ elapsed: elapsed() }, "Status summary session pins initialized");
   await bootstrapWorkspaceRegistries({
     paseoHome: config.paseoHome,
     agentStorage,

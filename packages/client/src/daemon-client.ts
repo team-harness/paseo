@@ -74,7 +74,6 @@ import type {
   ProviderDiagnosticResponseMessage,
   ProviderUsageListResponseMessage,
   StatusSummaryGetResponseMessage,
-  StatusSessionPinsSetResponseMessage,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
   DiagnosticsResponse,
@@ -414,7 +413,6 @@ type RefreshProvidersSnapshotPayload = RefreshProvidersSnapshotResponseMessage["
 type ProviderDiagnosticPayload = ProviderDiagnosticResponseMessage["payload"];
 type ProviderUsageListPayload = ProviderUsageListResponseMessage["payload"];
 type StatusSummaryPayload = StatusSummaryGetResponseMessage["payload"];
-type StatusSessionPinsSetPayload = StatusSessionPinsSetResponseMessage["payload"];
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
 type DaemonPairingOfferPayload = DaemonGetPairingOfferResponse["payload"];
 type DiagnosticsPayload = DiagnosticsResponse["payload"];
@@ -4244,23 +4242,6 @@ export class DaemonClient {
       requestId: options?.requestId,
       message: {
         type: "status.summary.get.request",
-      },
-    });
-  }
-
-  async setStatusSessionPin(
-    input: Omit<
-      Extract<SessionInboundMessage, { type: "status.session_pins.set.request" }>,
-      "type" | "requestId"
-    > & { requestId?: string },
-  ): Promise<StatusSessionPinsSetPayload> {
-    const requestId = this.createRequestId(input.requestId);
-    return this.sendNamespacedCorrelatedSessionRequest<"status.session_pins.set.response">({
-      requestId,
-      message: {
-        type: "status.session_pins.set.request",
-        ...input,
-        requestId,
       },
     });
   }

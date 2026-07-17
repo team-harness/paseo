@@ -4,7 +4,6 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { usePathname } from "expo-router";
 import { ArrowUpRight, Pin } from "lucide-react-native";
-import type { StatusPinnedSession } from "@getpaseo/protocol/messages";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import {
   DropdownMenu,
@@ -12,17 +11,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { AgentStatusDot } from "@/components/agent-status-dot";
+import { splitPinnedSidebarGroups, usePinnedSidebarKeys } from "@/hooks/use-sidebar-pins";
 import {
-  navigateToStatusBarSession,
-  type StatusBarSessionTarget,
-} from "./status-bar-session-navigation";
-import {
-  formatHistorySubtitle,
-  formatStatusBarHistoryMeta,
-  formatStatusBarHistoryStatus,
-  type StatusBarSessionPinSource,
-} from "./status-bar-running-sessions";
+  useSidebarWorkspacesList,
+  type SidebarWorkspacePlacement,
+} from "@/hooks/use-sidebar-workspaces-list";
+import { useHosts } from "@/runtime/host-runtime";
+import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 
 const COMPACT_SNAP_POINTS = ["45%", "85%"];
 
@@ -58,60 +53,40 @@ const rowPrimaryStyle = ({ pressed, hovered = false }: { pressed: boolean; hover
   pressed ? styles.rowPressed : null,
 ];
 
-interface StatusBarSessionPinListItem {
-  serverId: string;
-  serverLabel?: string;
-  pin: StatusPinnedSession;
-}
-
-export function StatusBarSessionPinsTrigger({
-  serverId,
-  sessionPinSources,
-}: {
-  serverId: string;
-  sessionPinSources: StatusBarSessionPinSource[];
-}) {
+export function StatusBarSessionPinsTrigger({ serverId }: { serverId: string }) {
   const isCompact = useIsCompactFormFactor();
   const pathname = usePathname();
   const { t } = useTranslation();
+  const { projects } = useSidebarWorkspacesList();
+  const pinnedKeys = usePinnedSidebarKeys(projects);
+  const { pinnedChats } = useMemo(
+    () => splitPinnedSidebarGroups({ projects, keys: pinnedKeys }),
+    [pinnedKeys, projects],
+  );
+  const hosts = useHosts();
   const [open, setOpen] = useState(false);
   const sheetHeader = useMemo(() => ({ title: t("statusBar.pins.title") }), [t]);
-  const items = useMemo(
-    () =>
-      sessionPinSources.flatMap((source) =>
-        source.canUseStatusBarSessionPins
-          ? source.pinnedSessions.map((pin) => ({
-              serverId: source.serverId,
-              serverLabel: source.serverLabel,
-              pin,
-            }))
-          : [],
-      ),
-    [sessionPinSources],
+  const hostLabelByServerId = useMemo(
+    () => new Map(hosts.map((host) => [host.serverId, host.label?.trim() || host.serverId])),
+    [hosts],
   );
-  const hasPins = items.length > 0;
-  const showServerLabel = sessionPinSources.length > 1;
+  const showHostLabel = new Set(pinnedChats.map((workspace) => workspace.serverId)).size > 1;
 
   useEffect(() => {
     setOpen(false);
   }, [pathname, serverId]);
 
   const handleNavigate = useCallback(
-    (item: StatusBarSessionPinListItem) => {
-      const target: StatusBarSessionTarget = {
-        kind: "agent",
-        serverId: item.serverId,
-        agentId: item.pin.agentId,
-        workspaceId: item.pin.workspaceId ?? null,
-      };
+    (workspace: SidebarWorkspacePlacement) => {
       setOpen(false);
+      const openWorkspace = () => {
+        navigateToWorkspace({ serverId: workspace.serverId, workspaceId: workspace.workspaceId });
+      };
       if (isCompact) {
-        requestAnimationFrame(() => {
-          navigateToStatusBarSession(target);
-        });
+        requestAnimationFrame(openWorkspace);
         return;
       }
-      navigateToStatusBarSession(target);
+      openWorkspace();
     },
     [isCompact],
   );
@@ -122,15 +97,16 @@ export function StatusBarSessionPinsTrigger({
     setOpen(false);
   }, []);
 
-  if (!hasPins) {
+  if (pinnedChats.length === 0) {
     return null;
   }
 
   const content = (
     <StatusBarSessionPinsList
-      items={items}
+      hostLabelByServerId={hostLabelByServerId}
+      items={pinnedChats}
+      showHostLabel={showHostLabel}
       onNavigate={handleNavigate}
-      showServerLabel={showServerLabel}
     />
   );
   const triggerBody = (
@@ -140,7 +116,7 @@ export function StatusBarSessionPinsTrigger({
         {t("statusBar.pins.trigger")}
       </Text>
       <Text style={styles.triggerValue} numberOfLines={1}>
-        {items.length}
+        {pinnedChats.length}
       </Text>
     </>
   );
@@ -195,30 +171,25 @@ export function StatusBarSessionPinsTrigger({
 }
 
 function StatusBarSessionPinsList({
+  hostLabelByServerId,
   items,
+  showHostLabel,
   onNavigate,
-  showServerLabel,
 }: {
-  items: StatusBarSessionPinListItem[];
-  onNavigate: (item: StatusBarSessionPinListItem) => void;
-  showServerLabel: boolean;
+  hostLabelByServerId: ReadonlyMap<string, string>;
+  items: SidebarWorkspacePlacement[];
+  showHostLabel: boolean;
+  onNavigate: (workspace: SidebarWorkspacePlacement) => void;
 }) {
-  const { t } = useTranslation();
-  if (items.length === 0) {
-    return (
-      <View style={styles.emptyState} testID="status-bar-pins-empty">
-        <Text style={styles.emptyText}>{t("statusBar.pins.empty")}</Text>
-      </View>
-    );
-  }
   return (
     <View style={styles.list} testID="status-bar-pins-list">
-      {items.map((item) => (
+      {items.map((workspace) => (
         <StatusBarSessionPinRow
-          key={`${item.serverId}:${item.pin.agentId}`}
-          item={item}
+          hostLabel={hostLabelByServerId.get(workspace.serverId) ?? workspace.serverId}
+          key={workspace.workspaceKey}
+          workspace={workspace}
+          showHostLabel={showHostLabel}
           onNavigate={onNavigate}
-          showServerLabel={showServerLabel}
         />
       ))}
     </View>
@@ -226,98 +197,45 @@ function StatusBarSessionPinsList({
 }
 
 function StatusBarSessionPinRow({
-  item,
+  hostLabel,
+  workspace,
+  showHostLabel,
   onNavigate,
-  showServerLabel,
 }: {
-  item: StatusBarSessionPinListItem;
-  onNavigate: (item: StatusBarSessionPinListItem) => void;
-  showServerLabel: boolean;
+  hostLabel: string;
+  workspace: SidebarWorkspacePlacement;
+  showHostLabel: boolean;
+  onNavigate: (workspace: SidebarWorkspacePlacement) => void;
 }) {
   const { t } = useTranslation();
-  const { pin } = item;
-  const title = pin.title?.trim() || t("agentList.fallbackTitle");
-  const hasHistorySnapshot = Boolean(pin.provider && pin.cwd && pin.status);
-  const updatedAt = parsePinUpdatedAt(pin.updatedAt);
-  const subtitle = hasHistorySnapshot
-    ? formatHistorySubtitle({ cwd: pin.cwd ?? "", provider: pin.provider ?? "" })
-    : (pin.provider ?? pin.agentId);
-  const meta = [
-    showServerLabel ? item.serverLabel : null,
-    updatedAt ? formatStatusBarHistoryMeta({ lastActivityAt: updatedAt }) : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const subtitle = showHostLabel
+    ? `${workspace.projectName} · ${hostLabel}`
+    : workspace.projectName;
   const handlePress = useCallback(() => {
-    onNavigate(item);
-  }, [item, onNavigate]);
+    onNavigate(workspace);
+  }, [onNavigate, workspace]);
 
   return (
-    <View style={styles.row} testID={`status-bar-pin-row-${pin.agentId}`}>
+    <View style={styles.row} testID={`status-bar-pin-row-${workspace.workspaceId}`}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t("statusBar.pins.actions.openSession", { title })}
+        accessibilityLabel={t("statusBar.pins.actions.openSession", { title: workspace.name })}
         onPress={handlePress}
         style={rowPrimaryStyle}
       >
         <ThemedPin size={14} />
         <View style={styles.rowText}>
-          <View style={styles.historyTitleRow}>
-            <Text style={styles.historyTitleText} numberOfLines={1}>
-              {title}
-            </Text>
-            {hasHistorySnapshot ? <StatusBarPinnedSessionStatus pin={pin} /> : null}
-          </View>
+          <Text style={styles.rowTitle} numberOfLines={1}>
+            {workspace.name}
+          </Text>
           <Text style={styles.rowSubtitle} numberOfLines={1}>
             {subtitle}
           </Text>
-          {meta ? (
-            <Text style={styles.rowMeta} numberOfLines={1}>
-              {meta}
-            </Text>
-          ) : null}
         </View>
         <ThemedArrowUpRight size={14} />
       </Pressable>
     </View>
   );
-}
-
-function StatusBarPinnedSessionStatus({ pin }: { pin: StatusPinnedSession }) {
-  const { t } = useTranslation();
-  const status = pin.status ?? "closed";
-  const label = formatStatusBarHistoryStatus(
-    {
-      status,
-      requiresAttention: pin.requiresAttention,
-      attentionReason: pin.attentionReason,
-      pendingPermissionCount: pin.pendingPermissionCount,
-    },
-    t,
-  );
-
-  return (
-    <View style={styles.historyStatus} testID={`status-bar-pin-status-${pin.agentId}`}>
-      <AgentStatusDot
-        status={status}
-        requiresAttention={pin.requiresAttention}
-        attentionReason={pin.attentionReason}
-        pendingPermissionCount={pin.pendingPermissionCount}
-        showInactive
-      />
-      <Text style={styles.historyStatusText} numberOfLines={1}>
-        {label}
-      </Text>
-    </View>
-  );
-}
-
-function parsePinUpdatedAt(updatedAt: string | null | undefined): Date | null {
-  if (!updatedAt) {
-    return null;
-  }
-  const timestamp = Date.parse(updatedAt);
-  return Number.isFinite(timestamp) ? new Date(timestamp) : null;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -385,50 +303,12 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     gap: theme.spacing[0],
   },
-  historyTitleRow: {
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-  },
-  historyTitleText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    minWidth: 0,
-    flexShrink: 1,
-  },
-  historyStatus: {
-    flexShrink: 0,
-    maxWidth: 96,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  historyStatusText: {
-    minWidth: 0,
-    flexShrink: 1,
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
   rowTitle: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
   },
   rowSubtitle: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
-  rowMeta: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
-  emptyState: {
-    padding: theme.spacing[4],
-    alignItems: "center",
-  },
-  emptyText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
   },

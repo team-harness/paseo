@@ -3,7 +3,6 @@ import pino from "pino";
 import type { AgentManagerEvent, ManagedAgent } from "../agent/agent-manager.js";
 import type { UsageLedger, UsageTotalsDelta } from "../usage-ledger/index.js";
 import { StatusSummaryService } from "./status-summary-service.js";
-import type { SessionPinStore } from "./session-pin-store.js";
 
 class FakeUsageLedger {
   lifetime: UsageTotalsDelta = {};
@@ -39,23 +38,6 @@ class FakeAgentSource {
     for (const subscriber of this.subscribers) {
       subscriber(event);
     }
-  }
-}
-
-class FakeSessionPinStore implements Pick<SessionPinStore, "list"> {
-  pinnedSessions = [
-    {
-      agentId: "pinned",
-      workspaceId: "workspace-1",
-      title: "Pinned agent",
-      provider: "codex" as const,
-      updatedAt: "2026-07-06T03:59:00.000Z",
-      pinnedAt: "2026-07-06T04:00:00.000Z",
-    },
-  ];
-
-  async list() {
-    return this.pinnedSessions;
   }
 }
 
@@ -108,7 +90,6 @@ function createService(
   options: {
     ledger?: FakeUsageLedger;
     source?: FakeAgentSource;
-    sessionPinStore?: Pick<SessionPinStore, "list">;
     now?: Date;
     coalesceMs?: number;
   } = {},
@@ -118,7 +99,6 @@ function createService(
   const service = new StatusSummaryService({
     usageLedger: ledger as unknown as UsageLedger,
     agentSource: source,
-    sessionPinStore: options.sessionPinStore,
     logger: pino({ level: "silent" }),
     clock: () => options.now ?? new Date("2026-07-06T04:00:00.000Z"),
     coalesceMs: options.coalesceMs ?? 5,
@@ -156,23 +136,6 @@ describe("StatusSummaryService", () => {
       windowStart: new Date(2026, 6, 6).toISOString(),
       windowEnd: "2026-07-06T04:00:00.000Z",
     });
-  });
-
-  test("includes host-owned pinned sessions in the summary", async () => {
-    const { service } = createService({ sessionPinStore: new FakeSessionPinStore() });
-
-    const summary = await service.getSummary();
-
-    expect(summary.pinnedSessions).toEqual([
-      {
-        agentId: "pinned",
-        workspaceId: "workspace-1",
-        title: "Pinned agent",
-        provider: "codex",
-        updatedAt: "2026-07-06T03:59:00.000Z",
-        pinnedAt: "2026-07-06T04:00:00.000Z",
-      },
-    ]);
   });
 
   test("builds activity snapshots, parentAgentId, counts, and recently completed window", async () => {

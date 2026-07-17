@@ -1,7 +1,6 @@
 import type {
   HostStatusSummaryPayload,
   StatusAgentSnapshot,
-  StatusPinnedSession,
   StatusSummaryUsageTotals,
 } from "@getpaseo/protocol/messages";
 import type { StatusSummaryQueryState } from "./query";
@@ -31,14 +30,12 @@ export interface StatusBarHostSummary {
   serverId: string;
   serverLabel: string;
   summary: HostStatusSummaryPayload;
-  canUseStatusBarSessionPins: boolean;
 }
 
 export interface StatusSummaryHostViewState {
   serverId: string;
   serverLabel: string;
   state: StatusSummaryQueryState;
-  canUseStatusBarSessionPins: boolean;
 }
 
 export type StatusSummaryViewModel =
@@ -55,8 +52,6 @@ export type StatusSummaryViewModel =
       runningAgents: StatusAgentSnapshot[];
       needsAttentionAgents: StatusAgentSnapshot[];
       recentlyCompletedAgents: StatusAgentSnapshot[];
-      pinnedSessions: StatusPinnedSession[];
-      canUseStatusBarSessionPins: boolean;
       hostSummaries?: StatusBarHostSummary[];
       generatedAt: string;
       isRefreshing: boolean;
@@ -64,7 +59,6 @@ export type StatusSummaryViewModel =
 
 export function buildStatusSummaryViewModel(
   state: StatusSummaryQueryState,
-  options: { canUseStatusBarSessionPins?: boolean } = {},
 ): StatusSummaryViewModel {
   if (state.kind === "disabled") {
     if (state.reason === "no-host") {
@@ -100,8 +94,6 @@ export function buildStatusSummaryViewModel(
     runningAgents: summary.activity.runningAgents,
     needsAttentionAgents: summary.activity.needsAttentionAgents,
     recentlyCompletedAgents: summary.activity.recentlyCompletedAgents,
-    pinnedSessions: summary.pinnedSessions ?? [],
-    canUseStatusBarSessionPins: options.canUseStatusBarSessionPins === true,
     generatedAt: summary.generatedAt,
     isRefreshing: state.isRefreshing,
   };
@@ -122,7 +114,6 @@ export function buildMultiHostStatusSummaryViewModel(
       serverId: host.serverId,
       serverLabel: host.serverLabel,
       summary: host.state.summary,
-      canUseStatusBarSessionPins: host.canUseStatusBarSessionPins,
     }));
     const summary = aggregateHostStatusSummaries(hostSummaries);
     return {
@@ -132,9 +123,6 @@ export function buildMultiHostStatusSummaryViewModel(
       runningAgents: summary.activity.runningAgents,
       needsAttentionAgents: summary.activity.needsAttentionAgents,
       recentlyCompletedAgents: summary.activity.recentlyCompletedAgents,
-      pinnedSessions: summary.pinnedSessions ?? [],
-      canUseStatusBarSessionPins:
-        hostSummaries.length === 1 && hostSummaries[0]?.canUseStatusBarSessionPins === true,
       hostSummaries,
       generatedAt: summary.generatedAt,
       isRefreshing: readyHosts.some((host) => host.state.isRefreshing),
@@ -206,7 +194,6 @@ export function aggregateHostStatusSummaries(
         error: sumNumbers(summaries.map((summary) => summary.activity.counts.error)),
       },
     },
-    pinnedSessions: summaries.length === 1 ? (firstSummary.pinnedSessions ?? []) : [],
   };
 }
 
