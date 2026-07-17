@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `04e893417`，同步于 2026-07-16。
-- 本次同步前 fork 端点：`main` / `origin/main` = `dfc5e2456`；同步后的准确端点以本次 merge commit 为准。
+- 最近同步基线：`upstream/main` = `9f5f5fce620684a5a5d2c74940c37482eb45feeb`，同步于 2026-07-17。
+- 本次同步后的 fork 端点：`main` / `origin/main` = `a2c93f414f2ca5541a03bcded8d6016336e752f5`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -24,6 +24,12 @@
 
 ## 最近同步判断
 
+### 2026-07-17: `upstream/main` `9f5f5fce6`
+
+- `git fetch upstream --prune` 后，上游端点仍是当前 fork 已合入的祖先，没有新增提交需要 merge，也没有需要以下游实现替代的同等功能。
+- 计划任务选择已有 Agent 仍没有上游等价实现，保留 fork 的表单、CLI 与持久化语义。
+- Status Bar 不再维护独立 session Pin：已改为直接复用侧边栏 workspace 的 `pinnedAt`、列表投影与 `setWorkspacePinned` API；旧 `status.session_pins` 协议、client API、server store 和 capability gate 已删除（`a2c93f414`）。
+
 ### 2026-07-16: `upstream/main` `04e893417`
 
 - 合入上游的桌面 stale daemon lock 恢复、子 Agent 可见性、工具调用展示、desktop/sidebar 布局和项目打开流程修复。
@@ -34,14 +40,14 @@
 
 ### 1. 全局 Status Bar 与状态汇总
 
-**状态**：fork 核心能力，持续演进中。主要提交：`0319c4a4f`、`242ba12b2`、`c6b9dca11`、`a01e9f27a`、`73ab4efa7`、`74438fc8`、`d8b5e63c8`、`86198719c`、`611d1b093`、`51798b7ff`。
+**状态**：fork 核心能力，持续演进中。主要提交：`0319c4a4f`、`242ba12b2`、`c6b9dca11`、`a01e9f27a`、`73ab4efa7`、`74438fc8`、`d8b5e63c8`、`611d1b093`、`51798b7ff`、`a2c93f414`。
 
 **用户可见行为**：
 
 - 底部全局 Status Bar 展示 token、费用、运行/需要注意/最近会话，并提供会话导航。
-- 按 host 获取 `status.summary`；客户端可合并多个已连接 host 的信息，并在会话/历史项显示 host。会话和历史行按所属 host 的 capability 与持久化数据提供 Pin/Unpin，不会因连接多个 host 而全局隐藏入口。
+- 按 host 获取 `status.summary`；客户端可合并多个已连接 host 的信息，并在会话/历史项显示 host。状态栏的 Pin 直接复用侧边栏 workspace 的 `pinnedAt`、列表投影和 `setWorkspacePinned` API，因此两处展示与置顶/取消置顶行为一致。
 - 会话以一级 Agent 聚合；子 Agent 的运行或等待状态汇总到根 Agent，避免大量子 Agent 淹没列表。
-- 历史只显示当前已加载集合中的一级、非 `closed` Agent；支持刷新、会话 pin 和紧凑/桌面布局。
+- 历史只显示当前已加载集合中的一级、非 `closed` Agent；支持刷新、workspace Pin 和紧凑/桌面布局。
 - 空闲与运行中使用同一状态栏结构；错误目前只显示计数，不新增错误会话面板或旧 RPC fallback。
 
 **关键边界与冲突热点**：
@@ -54,7 +60,7 @@
 
 - 若上游实现 `status.summary` 或 Status Bar，先比较协议名称、feature gate、payload 和持久化边界。上游协议结构优先；将本 fork 的 usage ledger、root-agent 聚合、多 host 展示、pin 和导航逐项迁移过去。
 - 保留 `server_info.features.statusSummary` 的单一 capability gate；不要回退为 client 对旧接口的 fan-out。
-- 多 host 的 session pin 必须按行的 `serverId` 读取 feature gate 与 pinned sessions，并通过同一 host client 写入；固定会话 trigger 仍只显示当前 host，不能混合不同 daemon 的 pin 持久化数据。
+- 不新增 Status Bar 专用的 Pin 数据、RPC 或 capability gate。所有 Pin 都以侧边栏 workspace 为权威，状态栏仅消费共享列表投影，并通过同一 workspace Pin controller 写入。
 - 上游若只实现 UI 而无相同的 daemon summary/usage ledger，不能直接替换服务端链路。
 - 必跑：status-summary 相关 Vitest、`packages/app/e2e/status-bar-running-sessions.spec.ts`、`npm run typecheck`。
 
