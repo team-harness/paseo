@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { usePathname } from "expo-router";
 import { ArrowUpRight, Pin } from "lucide-react-native";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import { SidebarWorkspaceRowContent } from "@/components/sidebar/sidebar-workspace-row-content";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,8 +13,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { splitPinnedSidebarGroups, usePinnedSidebarKeys } from "@/hooks/use-sidebar-pins";
+import { useSidebarWorkspaceEntries } from "@/hooks/use-sidebar-workspace-entries";
 import {
   useSidebarWorkspacesList,
+  type SidebarWorkspaceEntry,
   type SidebarWorkspacePlacement,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useHosts } from "@/runtime/host-runtime";
@@ -57,7 +60,8 @@ export function StatusBarSessionPinsTrigger({ serverId }: { serverId: string }) 
   const isCompact = useIsCompactFormFactor();
   const pathname = usePathname();
   const { t } = useTranslation();
-  const { projects } = useSidebarWorkspacesList();
+  const { projects, workspacePlacements } = useSidebarWorkspacesList();
+  const workspaceEntriesByKey = useSidebarWorkspaceEntries(workspacePlacements);
   const pinnedKeys = usePinnedSidebarKeys(projects);
   const { pinnedChats } = useMemo(
     () => splitPinnedSidebarGroups({ projects, keys: pinnedKeys }),
@@ -70,7 +74,16 @@ export function StatusBarSessionPinsTrigger({ serverId }: { serverId: string }) 
     () => new Map(hosts.map((host) => [host.serverId, host.label?.trim() || host.serverId])),
     [hosts],
   );
-  const showHostLabel = new Set(pinnedChats.map((workspace) => workspace.serverId)).size > 1;
+  const pinnedWorkspaces = useMemo(
+    () =>
+      pinnedChats.flatMap((workspace) => {
+        const entry = workspaceEntriesByKey.get(workspace.workspaceKey);
+        return entry ? [{ workspace, entry }] : [];
+      }),
+    [pinnedChats, workspaceEntriesByKey],
+  );
+  const showHostLabel =
+    new Set(pinnedWorkspaces.map(({ workspace }) => workspace.serverId)).size > 1;
 
   useEffect(() => {
     setOpen(false);
@@ -97,14 +110,14 @@ export function StatusBarSessionPinsTrigger({ serverId }: { serverId: string }) 
     setOpen(false);
   }, []);
 
-  if (pinnedChats.length === 0) {
+  if (pinnedWorkspaces.length === 0) {
     return null;
   }
 
   const content = (
     <StatusBarSessionPinsList
       hostLabelByServerId={hostLabelByServerId}
-      items={pinnedChats}
+      items={pinnedWorkspaces}
       showHostLabel={showHostLabel}
       onNavigate={handleNavigate}
     />
@@ -116,7 +129,7 @@ export function StatusBarSessionPinsTrigger({ serverId }: { serverId: string }) 
         {t("statusBar.pins.trigger")}
       </Text>
       <Text style={styles.triggerValue} numberOfLines={1}>
-        {pinnedChats.length}
+        {pinnedWorkspaces.length}
       </Text>
     </>
   );
@@ -177,14 +190,15 @@ function StatusBarSessionPinsList({
   onNavigate,
 }: {
   hostLabelByServerId: ReadonlyMap<string, string>;
-  items: SidebarWorkspacePlacement[];
+  items: Array<{ workspace: SidebarWorkspacePlacement; entry: SidebarWorkspaceEntry }>;
   showHostLabel: boolean;
   onNavigate: (workspace: SidebarWorkspacePlacement) => void;
 }) {
   return (
     <View style={styles.list} testID="status-bar-pins-list">
-      {items.map((workspace) => (
+      {items.map(({ workspace, entry }) => (
         <StatusBarSessionPinRow
+          entry={entry}
           hostLabel={hostLabelByServerId.get(workspace.serverId) ?? workspace.serverId}
           key={workspace.workspaceKey}
           workspace={workspace}
@@ -197,11 +211,13 @@ function StatusBarSessionPinsList({
 }
 
 function StatusBarSessionPinRow({
+  entry,
   hostLabel,
   workspace,
   showHostLabel,
   onNavigate,
 }: {
+  entry: SidebarWorkspaceEntry;
   hostLabel: string;
   workspace: SidebarWorkspacePlacement;
   showHostLabel: boolean;
@@ -223,16 +239,15 @@ function StatusBarSessionPinRow({
         onPress={handlePress}
         style={rowPrimaryStyle}
       >
-        <ThemedPin size={14} />
-        <View style={styles.rowText}>
-          <Text style={styles.rowTitle} numberOfLines={1}>
-            {workspace.name}
-          </Text>
-          <Text style={styles.rowSubtitle} numberOfLines={1}>
-            {subtitle}
-          </Text>
-        </View>
-        <ThemedArrowUpRight size={14} />
+        <SidebarWorkspaceRowContent
+          workspace={entry}
+          subtitle={subtitle}
+          isHovered={false}
+          isLoading={false}
+          reserveIdleStatusIndicatorSpace={false}
+        >
+          <ThemedArrowUpRight size={14} />
+        </SidebarWorkspaceRowContent>
       </Pressable>
     </View>
   );
@@ -297,19 +312,5 @@ const styles = StyleSheet.create((theme) => ({
   },
   rowPressed: {
     opacity: theme.opacity[50],
-  },
-  rowText: {
-    minWidth: 0,
-    flex: 1,
-    gap: theme.spacing[0],
-  },
-  rowTitle: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-  },
-  rowSubtitle: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
   },
 }));

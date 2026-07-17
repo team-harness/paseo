@@ -56,6 +56,7 @@ const { theme, runtimeState, navigationSpies } = vi.hoisted(() => {
         pinnedWorkspaceKeys: [] as string[],
         pinnedAtByKey: {} as Record<string, string>,
       },
+      sidebarWorkspaceEntries: new Map<string, Record<string, unknown>>(),
     },
     navigationSpies: {
       navigateToAgent: vi.fn(),
@@ -252,6 +253,30 @@ vi.mock("@/runtime/host-features", () => ({
 
 vi.mock("@/hooks/use-sidebar-workspaces-list", () => ({
   useSidebarWorkspacesList: () => ({ projects: runtimeState.sidebarProjects }),
+}));
+
+vi.mock("@/hooks/use-sidebar-workspace-entries", () => ({
+  useSidebarWorkspaceEntries: () => runtimeState.sidebarWorkspaceEntries,
+}));
+
+vi.mock("@/components/sidebar/sidebar-workspace-row-content", () => ({
+  SidebarWorkspaceRowContent: ({
+    workspace,
+    subtitle,
+    children,
+  }: {
+    workspace: { name: string; currentBranch: string | null };
+    subtitle?: string | null;
+    children?: React.ReactNode;
+  }) =>
+    React.createElement(
+      "div",
+      { "data-testid": "sidebar-workspace-row-content" },
+      workspace.name,
+      workspace.currentBranch,
+      subtitle,
+      children,
+    ),
 }));
 
 vi.mock("@/hooks/use-sidebar-pins", () => ({
@@ -520,6 +545,7 @@ describe("status bar running sessions", () => {
     });
     runtimeState.sidebarProjects = [];
     runtimeState.sidebarPinnedKeys = { pinnedWorkspaceKeys: [], pinnedAtByKey: {} };
+    runtimeState.sidebarWorkspaceEntries = new Map();
     runtimeState.workspacePinningEnabled = true;
     navigationSpies.navigateToAgent.mockClear();
     navigationSpies.navigateToWorkspace.mockClear();
@@ -1112,7 +1138,7 @@ describe("status bar running sessions", () => {
             serverId: "server-1",
             workspaceId: "workspace-pinned",
             projectName: "Paseo",
-            name: "Pinned chat",
+            name: "Stale status bar label",
           },
         ],
       },
@@ -1121,6 +1147,18 @@ describe("status bar running sessions", () => {
       pinnedWorkspaceKeys: ["server-1:workspace-pinned"],
       pinnedAtByKey: { "server-1:workspace-pinned": "2026-07-06T04:01:00.000Z" },
     };
+    runtimeState.sidebarWorkspaceEntries = new Map([
+      [
+        "server-1:workspace-pinned",
+        {
+          workspaceKey: "server-1:workspace-pinned",
+          serverId: "server-1",
+          workspaceId: "workspace-pinned",
+          name: "Pinned workspace from sidebar",
+          currentBranch: "sidebar-branch",
+        },
+      ],
+    ]);
 
     act(() => {
       root?.render(renderStatusBar());
@@ -1135,7 +1173,9 @@ describe("status bar running sessions", () => {
         ?.click();
     });
     expect(container?.querySelector('[data-testid="status-bar-pins-panel"]')).not.toBeNull();
-    expect(container?.textContent).toContain("Pinned chat");
+    expect(container?.textContent).toContain("Pinned workspace from sidebar");
+    expect(container?.textContent).not.toContain("Stale status bar label");
+    expect(container?.textContent).toContain("sidebar-branch");
     expect(container?.textContent).toContain("Paseo");
 
     act(() => {

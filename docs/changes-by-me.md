@@ -13,7 +13,9 @@ user-facing pin source.
   `workspace.pin.set.request` RPC exposed by `DaemonClient.setWorkspacePinned`.
 - UI data: `useSidebarWorkspacesList`, `usePinnedSidebarKeys`, and
   `splitPinnedSidebarGroups` provide the same pinned workspace set and ordering
-  as the sidebar.
+  as the sidebar. `useSidebarWorkspaceEntries` and
+  `SidebarWorkspaceRowContent` provide the same title, state, branch, and
+  project metadata as the sidebar's pinned rows.
 - Interaction: session and history rows reuse
   `useSidebarWorkspacePinController`, so they share the sidebar's workspace
   identity, duplicate-click guard, mutation path, and error feedback.
