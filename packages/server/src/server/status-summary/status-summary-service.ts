@@ -227,9 +227,11 @@ function buildActivity(agents: ManagedAgent[], now: Date): HostStatusSummaryPayl
 
 function toStatusAgentSnapshot(agent: ManagedAgent): StatusAgentSnapshot {
   const pendingPermissionCount = agent.pendingPermissions.size;
-  const attentionReason = agent.attention.requiresAttention
-    ? agent.attention.attentionReason
-    : null;
+  let attentionReason = agent.attention.requiresAttention ? agent.attention.attentionReason : null;
+  // Pending permissions are level-triggered and take priority over edge-triggered attention.
+  if (pendingPermissionCount > 0) {
+    attentionReason = "permission";
+  }
   const stateBucket = deriveAgentStateBucket({
     status: agent.lifecycle,
     pendingPermissionCount,

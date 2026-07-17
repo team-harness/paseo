@@ -85,7 +85,7 @@ function agent(overrides: Partial<ManagedAgent>): ManagedAgent {
     },
     availableModes: [],
     currentModeId: null,
-    pendingPermissions: [],
+    pendingPermissions: new Map(),
     attention: {
       requiresAttention: false,
       attentionReason: null,
@@ -223,8 +223,46 @@ describe("StatusSummaryService", () => {
       "done",
       "old-done",
     ]);
+    expect(
+      summary.activity.needsAttentionAgents.find((item) => item.agentId === "permission"),
+    ).toMatchObject({
+      stateBucket: "needs_input",
+      attentionReason: "permission",
+    });
     expect(summary.activity.recentlyCompletedAgents.map((item) => item.agentId)).toEqual(["done"]);
     expect(summary.activity.recentlyCompletedAgents[0]?.parentAgentId).toBe("parent-1");
+  });
+
+  test("prioritizes pending permissions and restores stored attention after resolution", async () => {
+    const { service, source } = createService();
+    const pendingPermissions = new Map([
+      ["perm-1", { id: "perm-1", toolName: "write", description: "Write" }],
+    ]);
+    source.agents = [
+      agent({
+        id: "permission-over-finished",
+        lifecycle: "idle",
+        pendingPermissions,
+        attention: {
+          requiresAttention: true,
+          attentionReason: "finished",
+          attentionTimestamp: new Date("2026-07-06T03:55:00.000Z"),
+        },
+      }),
+    ];
+
+    const pendingSummary = await service.getSummary();
+    expect(pendingSummary.activity.needsAttentionAgents[0]).toMatchObject({
+      stateBucket: "needs_input",
+      attentionReason: "permission",
+    });
+
+    pendingPermissions.clear();
+    const resolvedSummary = await service.getSummary();
+    expect(resolvedSummary.activity.needsAttentionAgents[0]).toMatchObject({
+      stateBucket: "attention",
+      attentionReason: "finished",
+    });
   });
 
   test("coalesces agent events into one full snapshot push", async () => {
