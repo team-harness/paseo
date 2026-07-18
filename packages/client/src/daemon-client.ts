@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import { CLIENT_CAPS, type ClientCapability } from "@getpaseo/protocol/client-capabilities";
+import type { AgentAttentionNotificationPayload } from "@getpaseo/protocol/agent-attention-notification";
 import {
   AgentCreateFailedStatusPayloadSchema,
   AgentCreatedStatusPayloadSchema,
@@ -40,7 +41,9 @@ import type {
   CheckoutPrCreateResponse,
   CheckoutPrMergeResponse,
   CheckoutPrMergeMethod,
+  CheckoutForgeSetAutoMergeResponse,
   CheckoutGithubSetAutoMergeResponse,
+  CheckoutForgeGetCheckDetailsResponse,
   CheckoutGithubGetCheckDetailsResponse,
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
@@ -50,6 +53,8 @@ import type {
   StashListResponse,
   ValidateBranchResponse,
   BranchSuggestionsResponse,
+  ForgeSearchResponse,
+  ForgeSearchRequest,
   GitHubSearchResponse,
   GitHubSearchRequest,
   DirectorySuggestionsResponse,
@@ -246,6 +251,10 @@ export type DaemonEvent =
       payload: Extract<SessionOutboundMessage, { type: "workspace_update" }>["payload"];
     }
   | {
+      type: "project.update";
+      payload: Extract<SessionOutboundMessage, { type: "project.update" }>["payload"];
+    }
+  | {
       type: "workspace_setup_progress";
       workspaceId: string;
       payload: Extract<SessionOutboundMessage, { type: "workspace_setup_progress" }>["payload"];
@@ -314,6 +323,14 @@ export interface SendMessageOptions {
   attachments?: SendAgentMessageRequest["attachments"];
 }
 
+export interface AgentAttentionRequiredNotification {
+  agentId: string;
+  reason: "finished" | "error" | "permission";
+  timestamp: string;
+  shouldNotify: boolean;
+  notification?: AgentAttentionNotificationPayload;
+}
+
 type AgentConfigOverrides = Partial<Omit<AgentSessionConfig, "provider" | "cwd">>;
 
 export interface CreateAgentRequestOptions extends AgentConfigOverrides {
@@ -343,6 +360,7 @@ export interface CreatePaseoWorktreeInput extends Pick<
   | "firstAgentContext"
   | "refName"
   | "action"
+  | "checkoutSource"
   | "githubPrNumber"
 > {}
 
@@ -360,7 +378,9 @@ type CheckoutPushPayload = CheckoutPushResponse["payload"];
 type CheckoutRefreshPayload = CheckoutRefreshResponse["payload"];
 type CheckoutPrCreatePayload = CheckoutPrCreateResponse["payload"];
 type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
+type CheckoutForgeSetAutoMergePayload = CheckoutForgeSetAutoMergeResponse["payload"];
 type CheckoutGithubSetAutoMergePayload = CheckoutGithubSetAutoMergeResponse["payload"];
+type CheckoutForgeGetCheckDetailsPayload = CheckoutForgeGetCheckDetailsResponse["payload"];
 type CheckoutGithubGetCheckDetailsPayload = CheckoutGithubGetCheckDetailsResponse["payload"];
 type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
 type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
@@ -371,6 +391,7 @@ type StashPopPayload = StashPopResponse["payload"];
 type StashListPayload = StashListResponse["payload"];
 type ValidateBranchPayload = ValidateBranchResponse["payload"];
 type BranchSuggestionsPayload = BranchSuggestionsResponse["payload"];
+type ForgeSearchPayload = ForgeSearchResponse["payload"];
 type GitHubSearchPayload = GitHubSearchResponse["payload"];
 type DirectorySuggestionsPayload = DirectorySuggestionsResponse["payload"];
 type PaseoWorktreeListPayload = PaseoWorktreeListResponse["payload"];
@@ -1469,6 +1490,31 @@ export class DaemonClient {
       if (handlers.size === 0) {
         this.messageHandlers.delete(type);
       }
+    };
+  }
+
+  onAgentAttentionRequired(
+    handler: (notification: AgentAttentionRequiredNotification) => void,
+  ): () => void {
+    const unsubscribeLegacy = this.on("agent_stream", (message) => {
+      if (message.payload.event.type !== "attention_required") {
+        return;
+      }
+      const event = message.payload.event;
+      handler({
+        agentId: message.payload.agentId,
+        reason: event.reason,
+        timestamp: event.timestamp,
+        shouldNotify: event.shouldNotify,
+        ...(event.notification ? { notification: event.notification } : {}),
+      });
+    });
+    const unsubscribeDedicated = this.on("agent_attention_required", (message) => {
+      handler(message.payload);
+    });
+    return () => {
+      unsubscribeLegacy();
+      unsubscribeDedicated();
     };
   }
 
@@ -2681,6 +2727,35 @@ export class DaemonClient {
     return payload;
   }
 
+  async setAgentTimelineSubscription(agentIds: string[]): Promise<void> {
+    // COMPAT(selectiveAgentTimeline): added in v0.1.106. Old daemons keep their
+    // legacy global stream and do not understand this RPC. Remove after
+    // 2027-01-12 once the supported daemon floor is >= v0.1.106.
+    if (!this.lastServerInfoMessage?.features?.selectiveAgentTimeline) {
+      return;
+    }
+
+    const requestId = this.createRequestId();
+    const normalizedAgentIds = [...new Set(agentIds)].sort();
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.timeline.set_subscription.request",
+      agentIds: normalizedAgentIds,
+      requestId,
+    });
+
+    await this.sendRequest({
+      requestId,
+      message,
+      options: { skipQueue: true },
+      select: (response) => {
+        if (response.type !== "agent.timeline.set_subscription.response") {
+          return null;
+        }
+        return response.payload.requestId === requestId ? response.payload : null;
+      },
+    });
+  }
+
   async buildAgentForkContext(
     agentId: string,
     options: AgentForkContextOptions = {},
@@ -3581,6 +3656,23 @@ export class DaemonClient {
     });
   }
 
+  async checkoutForgeSetAutoMerge(
+    cwd: string,
+    input: { enabled: true; method: CheckoutPrMergeMethod } | { enabled: false },
+    requestId?: string,
+  ): Promise<CheckoutForgeSetAutoMergePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.forge.set_auto_merge.response">({
+      requestId,
+      message: {
+        type: "checkout.forge.set_auto_merge.request",
+        cwd,
+        enabled: input.enabled,
+        ...(input.enabled ? { mergeMethod: input.method } : {}),
+      },
+      timeout: 60000,
+    });
+  }
+
   async checkoutGithubSetAutoMerge(
     cwd: string,
     input: { enabled: true; method: CheckoutPrMergeMethod } | { enabled: false },
@@ -3597,12 +3689,40 @@ export class DaemonClient {
     });
   }
 
+  async checkoutForgeGetCheckDetails(
+    input: {
+      cwd: string;
+      repoOwner?: string;
+      repoName?: string;
+      checkRunId?: number;
+      workflowRunId?: number;
+      changeRequestNumber?: number;
+    },
+    requestId?: string,
+  ): Promise<CheckoutForgeGetCheckDetailsPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.forge.get_check_details.response">(
+      {
+        requestId,
+        message: {
+          type: "checkout.forge.get_check_details.request",
+          cwd: input.cwd,
+          repoOwner: input.repoOwner,
+          repoName: input.repoName,
+          checkRunId: input.checkRunId,
+          workflowRunId: input.workflowRunId,
+          changeRequestNumber: input.changeRequestNumber,
+        },
+        timeout: 60000,
+      },
+    );
+  }
+
   async checkoutGithubGetCheckDetails(
     input: {
       cwd: string;
-      repoOwner: string;
-      repoName: string;
-      checkRunId: number;
+      repoOwner?: string;
+      repoName?: string;
+      checkRunId?: number;
       workflowRunId?: number;
     },
     requestId?: string,
@@ -3777,6 +3897,7 @@ export class DaemonClient {
           : {}),
         ...(input.refName !== undefined ? { refName: input.refName } : {}),
         ...(input.action !== undefined ? { action: input.action } : {}),
+        ...(input.checkoutSource !== undefined ? { checkoutSource: input.checkoutSource } : {}),
         ...(input.githubPrNumber !== undefined ? { githubPrNumber: input.githubPrNumber } : {}),
       },
       responseType: "create_paseo_worktree_response",
@@ -3833,6 +3954,24 @@ export class DaemonClient {
         limit: options.limit,
       },
       responseType: "branch_suggestions_response",
+    });
+  }
+
+  async searchForge(
+    options: { cwd: string; query: string; limit?: number; kinds?: ForgeSearchRequest["kinds"] },
+    requestId?: string,
+  ): Promise<ForgeSearchPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "forge.search.request",
+        cwd: options.cwd,
+        query: options.query,
+        limit: options.limit,
+        kinds: options.kinds,
+      },
+      responseType: "forge.search.response",
+      timeout: 15000,
     });
   }
 
@@ -4129,6 +4268,33 @@ export class DaemonClient {
       },
       responseType: "daemon.get_status.response",
       timeout: options?.timeout,
+    });
+  }
+
+  async connectHub(hubUrl: string, token: string, requestId?: string) {
+    this.requireHubRelationshipSupport();
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "hub.management.daemon.connect.request", hubUrl, token },
+      responseType: "hub.management.daemon.connect.response",
+    });
+  }
+
+  async getHubStatus(requestId?: string) {
+    this.requireHubRelationshipSupport();
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "hub.management.daemon.get_status.request" },
+      responseType: "hub.management.daemon.get_status.response",
+    });
+  }
+
+  async disconnectHub(force = false, requestId?: string) {
+    this.requireHubRelationshipSupport();
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "hub.management.daemon.disconnect.request", force },
+      responseType: "hub.management.daemon.disconnect.response",
     });
   }
 
@@ -4961,6 +5127,13 @@ export class DaemonClient {
     return this.lastServerInfoMessage;
   }
 
+  private requireHubRelationshipSupport(): void {
+    // COMPAT(hubRelationship): added in v0.1.X, drop the gate when floor >= v0.1.X.
+    if (this.lastServerInfoMessage?.features?.hubRelationship !== true) {
+      throw new Error("Update the host to use Hub relationship management.");
+    }
+  }
+
   private resolveTransportUrlForAttempt(): string {
     return this.config.url;
   }
@@ -4987,6 +5160,7 @@ export class DaemonClient {
             [CLIENT_CAPS.reasoningMergeEnum]: true,
             [CLIENT_CAPS.terminalReflowableSnapshot]: true,
             [CLIENT_CAPS.providerSubagents]: true,
+            [CLIENT_CAPS.projectUpdates]: true,
             ...this.config.capabilities,
           },
           ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
@@ -5457,6 +5631,8 @@ export class DaemonClient {
           workspaceId: msg.payload.kind === "upsert" ? msg.payload.workspace.id : msg.payload.id,
           payload: msg.payload,
         };
+      case "project.update":
+        return { type: "project.update", payload: msg.payload };
       case "workspace_setup_progress":
         return {
           type: "workspace_setup_progress",

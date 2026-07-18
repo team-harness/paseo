@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `9f5f5fce620684a5a5d2c74940c37482eb45feeb`，同步于 2026-07-17。
-- 本次同步后的 fork 端点：`main` / `origin/main` = `54c6ebf0410a41b3389ef995c1b43504043e6487`。
+- 最近同步基线：`upstream/main` = `a1de743ef`，同步于 2026-07-18。
+- 本次同步前 fork 端点：`main` / `origin/main` = `69631deb276d10f91ee30b2c57d274088b55dfec`；同步后的端点以本次 merge commit 为准。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,13 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-07-18: `upstream/main` `a1de743ef`
+
+- 合入上游 `v0.2.0-beta.1`、Hub、Forge、多 Host 同步流量优化、侧边栏及桌面更新改进。
+- 采用上游“每个新增目录独立项目”的 workspace provisioning 模型；保留 fork 的活跃 workspace 优先于已归档同路径记录的回归测试。
+- 上游计划表单没有等价的“创建计划时选择已有 Agent”入口，保留 fork 的表单、CLI 与持久化语义。
+- Status Bar、usage ledger、多 Host 聚合和 Task Agent workspace 继承均保留；Session context 以新的上游目录/时间线同步为底座，重新接入 Status Summary 刷新与推送。
 
 ### 2026-07-17: `upstream/main` `9f5f5fce6`
 
