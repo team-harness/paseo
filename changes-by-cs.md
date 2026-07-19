@@ -9,7 +9,7 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `a1de743ef`，同步于 2026-07-18。
+- 最近同步基线：`upstream/main` = `c9bcfa763`，同步于 2026-07-19。
 - 本次同步前 fork 端点：`main` / `origin/main` = `69631deb276d10f91ee30b2c57d274088b55dfec`；同步后的端点以本次 merge commit 为准。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
@@ -23,6 +23,13 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-07-19: `upstream/main` `c9bcfa763`
+
+- 合入上游的安全自动审批默认值、闲置 Agent runtime 回收、重连恢复、会话时间线同步、Command Center 模型切换和 workspace/CLI 语义更新。
+- 上游已通过 `callerAgentId` 将受管 `paseo run` 的调用上下文交给 daemon，由服务端统一解析 workspace 与父子关系；采用该模型，删除 fork 旧的客户端 workspace 查询与 `agentWorkspaceInheritance` capability gate。
+- 上游计划任务表单仍未提供选择已有 Agent 作为执行目标的等价入口，保留 fork 的表单、CLI 与持久化语义，并合并上游 cron cadence 校验。
+- Status Bar、usage ledger、多 Host 聚合、Codex 使用量修正和 Markdown 原始预览仍为 fork 能力，继续保留并与上游的会话恢复、Pin 可见性和 timeline 同步组合。
 
 ### 2026-07-18: `upstream/main` `a1de743ef`
 
@@ -130,25 +137,24 @@
 
 ### 5. Task Agent CLI workspace 继承
 
-**状态**：fork 修复；替代 `80bd2adfe` 的宽泛同路径归并方案。
+**状态**：已由上游实现替代；fork 不再维护重复的客户端解析路径。
 
-**行为**：Paseo-managed Agent 内的裸 `paseo run` 通过 `PASEO_AGENT_ID` 继承调用者 workspace，不再为每个 Task Agent 创建侧边栏条目。外部裸 run 与显式新 workspace/worktree 仍保持独立 workspace 语义。legacy create-agent fallback 继续复用已有目录记录，但 daemon 不再按 cwd 合并所有 workspace。
+**行为**：Paseo-managed Agent 内的 `paseo run` 将 `PASEO_AGENT_ID` 作为 `callerAgentId` 发送给 daemon，由服务端复用与 agent-scoped MCP 相同的 workspace 与父子关系策略，不再为每个 Task Agent 创建侧边栏条目。外部自动化可使用显式 `--workspace` 选择现有 workspace；daemon 不会按 cwd 合并所有 workspace。
 
 **关键文件**：
 
 - `packages/cli/src/commands/agent/run.ts`
+- `packages/client/src/daemon-client.ts`
 - `packages/protocol/src/messages.ts`
-- `packages/server/src/server/websocket-server.ts`
+- `packages/server/src/server/session.ts`
 - `skills/paseo/SKILL.md`
-- `packages/server/src/server/session/workspace-provisioning/workspace-provisioning-service.ts`
-- `packages/server/src/server/workspace-registry-bootstrap.ts`
 
 **同步规则**：
 
 - 同 cwd workspace 可以合法并存，不能只凭路径自动合并或在 UI 层去重。
-- Agent 内 CLI 回退必须复用 `PASEO_AGENT_ID` 对应的 workspace；无法恢复时显式失败，不能静默创建。
-- 保留 `server_info.features.agentWorkspaceInheritance` 的单一 capability gate；旧 daemon 提示更新 host，不用旧 RPC 组合降级实现。
-- 必跑：CLI run、workspace provisioning、workspace bootstrap 目标测试。
+- Agent 内 CLI 必须将 `PASEO_AGENT_ID` 传递为 `callerAgentId`，由 daemon 解析调用者 workspace；无法解析时显式失败，不能静默创建。
+- 上游变更 caller context 或 workspace 创建 API 时，优先采用其协议和服务端策略，不恢复客户端查询或旧 capability gate。
+- 必跑：CLI run、CLI workspace precedence 与 session 目标测试。
 
 ### 6. Markdown 预览切换原始内容
 

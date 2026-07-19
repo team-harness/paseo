@@ -1,6 +1,6 @@
 ---
 name: paseo
-description: Paseo host adapter for creating and managing observable agents and worktrees. Load whenever a workflow needs an independent or heterogeneous reviewer, QA runner, auditor, acceptance agent, implementation agent, agent follow-up, or managed worktree.
+description: Paseo host adapter and reference for managing observable agents, workspaces, schedules, and heartbeats.
 ---
 
 Paseo is a daemon that supervises AI coding agents on your machine. Control it through tools or a CLI.
@@ -45,9 +45,9 @@ baseline_verified: true|false|not-required
 2. Use `list_providers`; use `inspect_provider` for candidate modes/features and `list_models` only
    when a model id is uncertain. Prefer MCP tools when exposed. Use the CLI only when MCP is absent
    and the CLI passes a health/config check.
-   A Task Agent CLI fallback is eligible only from an Agent process with `PASEO_AGENT_ID`; an
-   external bare `paseo run` intentionally creates a new workspace and cannot satisfy the current
-   workspace contract. When an explicit existing workspace id is available, pass `--workspace`.
+   A Task Agent CLI fallback from a managed Agent carries `PASEO_AGENT_ID` to the daemon, which
+   applies the same workspace and parentage policy as agent-scoped creation. When an explicit
+   existing workspace id is available, pass `--workspace`.
 3. Honor `explicit_provider` as binding. If it is unavailable, return `blocked`; do not silently
    replace an owner-pinned configuration.
 4. For `preferred_isolation: heterogeneous`, prefer an available provider or model family proven
@@ -76,13 +76,9 @@ observed paths; do not revert or absorb the changes.
 
 - Create workflow-owned workers with `relationship: { kind: "subagent" }`, the caller's current
   workspace/cwd, `notifyOnFinish: true`, and labels for the generic task role and `adapter: paseo`.
-- For CLI fallback, let `paseo run` inherit the caller workspace through `PASEO_AGENT_ID` and pass
-  `--label paseo.parent-agent-id=$PASEO_AGENT_ID`. For inherited placement, require stderr to contain
-  `Using current agent workspace <expected-id>`; with explicit `--workspace`, require
-  `Using workspace <expected-id>`. If stderr contains `Created workspace`, stop the batch and return
-  `blocked` rather than creating more workers. If the CLI returns
-  `CURRENT_AGENT_WORKSPACE_UNSUPPORTED`, return `blocked` and request a host update; do not unset
-  `PASEO_AGENT_ID` or emulate inheritance with legacy RPCs.
+- For CLI fallback, preserve `PASEO_AGENT_ID` so `paseo run` carries the caller context to the
+  daemon, and pass `--workspace <id>` when placement must be explicit. If the command reports an
+  unknown caller or workspace, return `blocked`; do not create a replacement workspace implicitly.
 - Pass raw materials, scope, expected output, and read-only constraints. Do not include the caller's
   draft findings or desired verdict.
 - Return the `agent_id` as soon as creation succeeds so the caller can persist an awaiting state.
@@ -95,44 +91,25 @@ observed paths; do not revert or absorb the changes.
 - On create/run/permission failure, return an explicit failed or blocked receipt. Never silently
   downgrade to local execution.
 
-## Worktrees
+## Workspaces
 
-**`create_worktree`** — same target union as `create_agent.workspace.source.worktree.target`:
+**`create_workspace`** — create a workspace independently of any agent. Required: `isolation` (`local` or `worktree`). Worktree isolation supports `mode: "branch-off" | "checkout-branch" | "checkout-pr"`: use `branchName`/`baseBranch` for a new branch, `branch` for an existing branch, or `prNumber` plus optional `forge`/`projectPath` for a change request. `worktreeSlug` controls the managed path. Returns the workspace descriptor centered on `workspaceId`.
 
-- From a PR: `{ target: { kind: "checkout-pr", githubPrNumber: 503 } }`.
-- Branch off a base: `{ target: { kind: "branch-off", worktreeSlug: "foo", branchName: "fix/foo", baseBranch: "main" } }`.
-- Checkout an existing branch: `{ target: { kind: "checkout-branch", branch: "feat/bar" } }`.
+**`list_workspaces`** — list active workspaces.
 
-Returns `{ branchName, worktreePath, workspaceId }`. Pass `cwd` to target a specific repo.
+**`archive_workspace`** — `{ workspaceId }`. Archives the workspace, its agents, and its terminals. Local directories remain; Paseo removes an owned worktree only after its final active workspace reference is archived.
 
-In `branch-off`, `worktreeSlug` controls the worktree path slug and `branchName` controls the git branch. If `branchName` is omitted, Paseo defaults it from `worktreeSlug`. The returned `branchName` is authoritative; checkout and PR flows may return a branch name that differs from any requested slug.
-
-**`list_worktrees`** — current repo (or pass `cwd`).
-**`archive_worktree`** — `{ worktreePath }` or `{ worktreeSlug }`. Removes worktree and branch.
+Worktree creation and reference accounting are implementation details of `isolation: "worktree"`.
 
 ## Agents
 
-**`create_agent`** — required: `relationship`, `workspace`, `title`, `provider` (`claude/opus`, `codex/gpt-5.4`, …), `initialPrompt`. Common: `notifyOnFinish`, `settings`, `labels`. Returns `{ agentId, … }`.
+**`create_agent`** — required: `title`, `provider` (`claude/opus`, `codex/gpt-5.4`, …), `initialPrompt`. Optional: `workspaceId`, `notifyOnFinish`, `settings`, `labels`. Returns `{ agentId, workspaceId, … }`.
 
 Initial runtime settings live under `settings`: `modeId`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }` when creating the agent.
 
-To create a new worktree and launch an agent in it, use `create_agent.workspace.source.kind = "worktree"`. Use `create_worktree` separately only when you need a worktree without launching an agent, or when you need a split flow; in a split flow, pass the returned `workspaceId` to `create_agent` with `workspace: { kind: "existing", workspaceId }`.
+Agent-scoped creation always creates your subagent. Omit `workspaceId` to use your current workspace; pass a workspace returned by `create_workspace` for isolated delegation. Placement never changes parentage.
 
-### Agent relationships
-
-`relationship` controls parentage only:
-
-- `{ kind: "subagent" }` — child under your subagents track. Use for advisors, committee members, planners, implementers, auditors, loop workers, and any agent whose lifetime belongs to your task.
-- `{ kind: "detached" }` — root/sibling agent. Use for handoffs and fire-and-forget delegations the user may continue after you are archived.
-
-`workspace` controls placement only:
-
-- `{ kind: "current" }` — same workspace as the caller, with optional `cwd`.
-- `{ kind: "existing", workspaceId: string, cwd?: string }` — attach to an existing workspace, usually from `create_worktree`.
-- `{ kind: "create", source: { kind: "directory", path?: string } }` — new workspace rooted at a directory.
-- `{ kind: "create", source: { kind: "worktree", cwd?: string, target: { kind: "branch-off", worktreeSlug?: string, branchName?: string, baseBranch?: string } } }`
-- `{ kind: "create", source: { kind: "worktree", cwd?: string, target: { kind: "checkout-branch", branch: string } } }`
-- `{ kind: "create", source: { kind: "worktree", cwd?: string, target: { kind: "checkout-pr", githubPrNumber: number } } }`
+Detach is an explicit user action in the subagents track, not an agent tool. A cross-workspace child remains your subagent even though it also appears as a normal tab in its workspace.
 
 Agent-scoped `create_agent` defaults `notifyOnFinish` to true. Set it to `false` only for truly fire-and-forget agents.
 
@@ -159,6 +136,10 @@ Only set feature IDs returned by `inspect_provider`. For Codex fast mode, look f
 **`create_schedule`** — starts a new agent on a cron cadence. Required: `prompt`, `cron`, `provider`. Optional: `timezone`, `name`, `cwd`, `maxRuns`, `expiresIn`. Use when the recurring work should live in fresh agents.
 
 **`create_heartbeat`** — sends you a prompt on a cron cadence. Required: `prompt`, `cron`. Optional: `timezone`, `name`, `maxRuns`, `expiresIn`. Use for reminders, PR/build babysitting, and status checks that should return to this conversation.
+
+**`delete_heartbeat`** stops it. MCP intentionally exposes no heartbeat update tool; delete and recreate when its task or cadence changes.
+
+Schedules have the full list/inspect/update/pause/resume/run-once/log/delete surface. Heartbeats deliberately do not.
 
 ## Models
 
@@ -202,16 +183,19 @@ For agent-scoped `create_agent` and background `send_agent_prompt`, leave `notif
 
 Don't poll `list_agents` or `get_agent_status` to "check on" a running agent. The notification will tell you.
 
-## CLI parity
+## CLI semantics
 
-The `paseo` CLI is a thin wrapper over the same daemon. Same surface:
+The CLI and tools use the same ownership semantics even where their syntax differs:
 
 ```bash
-paseo run --provider codex/gpt-5.4 --mode full-access --worktree feat/x "<prompt>"
+paseo workspace create --isolation worktree --mode branch-off --new-branch fix-x --base main
+paseo workspace create --isolation worktree --mode checkout-branch --branch existing-work
+paseo workspace create --isolation worktree --mode checkout-pr --pr-number 42
+paseo run --provider codex/gpt-5.4 --mode full-access --workspace <workspace-id> "<prompt>"
 paseo send <agent-id> "<follow-up>"
 paseo ls
-paseo worktree ls
 paseo schedule create --cron "*/15 * * * *" "ping main build"
+paseo heartbeat create --cron "*/15 * * * *" "check the build"
 ```
 
 A bare `paseo run` launched by a Paseo-managed Agent inherits that Agent's workspace through
