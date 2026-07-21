@@ -1068,6 +1068,30 @@ describe("Codex app-server provider", () => {
     await session.close();
   });
 
+  test("correlates a Codex user message with the submitting client message", async () => {
+    const appServer = createFakeCodexAppServer();
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+
+    await session.startTurn("remember this", { clientMessageId: "client-message" });
+    const userMessage = waitForNextTimelineItem(session, "user_message");
+    emitCodexUserMessage(appServer, { id: "codex-message", text: "remember this" });
+
+    await expect(userMessage).resolves.toMatchObject({
+      item: {
+        type: "user_message",
+        messageId: "codex-message",
+        clientMessageId: "client-message",
+      },
+    });
+    appServer.completeTurn();
+    await session.close();
+  });
+
   test("configures Codex app-server to use a custom provider base URL", async () => {
     const capturedRequests = await runCustomCodexProviderTurn(
       "codex-iisb",
@@ -3196,6 +3220,115 @@ describe("Codex app-server provider", () => {
         }),
       },
     ]);
+  });
+
+  test("does not import a parent interaction from child history as another sub-agent", async () => {
+    const appServer = createFakeCodexAppServer({
+      "thread/read": (params) => {
+        const threadId = (params as { threadId?: string }).threadId;
+        if (threadId === "test-thread") {
+          return {
+            thread: {
+              turns: [
+                {
+                  items: [
+                    {
+                      type: "subAgentActivity",
+                      id: "child-started",
+                      kind: "started",
+                      agentThreadId: "child-thread",
+                      agentPath: "/root/child",
+                    },
+                  ],
+                },
+              ],
+            },
+          };
+        }
+        return {
+          thread: {
+            turns: [
+              {
+                items: [
+                  {
+                    type: "subAgentActivity",
+                    id: "parent-interacted",
+                    kind: "interacted",
+                    agentThreadId: "test-thread",
+                    agentPath: "/root",
+                  },
+                ],
+              },
+            ],
+          },
+        };
+      },
+    });
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      { sessionId: "test-thread" },
+      createTestLogger(),
+      async () => appServer.child,
+    );
+
+    try {
+      await session.connect();
+
+      const providerSubagentIds = new Set<string>();
+      for await (const event of session.streamHistory()) {
+        if (event.type === "provider_subagent" && event.event.type === "upsert") {
+          providerSubagentIds.add(event.event.id);
+        }
+      }
+
+      expect(providerSubagentIds).toEqual(new Set(["child-thread"]));
+      appServer.assertNoErrors();
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("does not register a parent interaction on a child thread as another sub-agent", async () => {
+    const appServer = createFakeCodexAppServer();
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+    const providerSubagentIds = new Set<string>();
+    session.subscribe((event) => {
+      if (event.type === "provider_subagent" && event.event.type === "upsert") {
+        providerSubagentIds.add(event.event.id);
+      }
+    });
+
+    try {
+      const resultPromise = session.run("Delegate the investigation.");
+      await appServer.waitForTurnStart();
+
+      const child = waitForProviderSubagent(session, "child-thread");
+      appServer.startsSubAgent({
+        callId: "child-started",
+        threadId: "child-thread",
+        agentPath: "/root/child",
+      });
+      await child;
+      appServer.beginsSubAgentActivity({
+        callId: "parent-interacted",
+        threadId: "thread-1",
+        parentThreadId: "child-thread",
+        kind: "interacted",
+        agentPath: "/root",
+      });
+      appServer.completeTurn();
+      await resultPromise;
+
+      expect(providerSubagentIds).toEqual(new Set(["child-thread"]));
+      appServer.assertNoErrors();
+    } finally {
+      await session.close();
+    }
   });
 
   test("uses Codex turn timestamps for timestamp-less persisted history items", async () => {

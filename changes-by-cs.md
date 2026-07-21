@@ -9,7 +9,7 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `c9bcfa763`，同步于 2026-07-19。
+- 最近同步基线：`upstream/main` = `aa6384bab`，同步于 2026-07-21。
 - 本次同步前 fork 端点：`main` / `origin/main` = `69631deb276d10f91ee30b2c57d274088b55dfec`；同步后的端点以本次 merge commit 为准。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
@@ -24,12 +24,19 @@
 
 ## 最近同步判断
 
+### 2026-07-21: `upstream/main` `aa6384bab`
+
+- 合入上游 workspace 级跨 Provider 会话导入、完整 workspace/Agent 历史同步、网页端直接编辑 workspace 文件、项目首次 workspace 前重命名、服务端端口分配以及 Pi/Codex/OpenCode 修复。
+- 上游文件面板已提供 Markdown Preview/Source 分段切换，并与实时文件刷新、网页编辑、保存冲突处理和 Vim 键位集成；采用其实现并删除 fork 旧的独立切换 UI/文案，保留带行号定位时默认 Source 的行为。
+- 上游仍未提供计划任务选择已有 Agent 的等价入口，继续保留 fork 的表单、CLI 和持久化语义。
+- Status Bar、usage ledger、多 Host 聚合和 Codex usage 归一化仍保留；Codex turn 结束时同时清理上游 client-message 状态和 fork turn usage 状态。
+
 ### 2026-07-19: `upstream/main` `c9bcfa763`
 
 - 合入上游的安全自动审批默认值、闲置 Agent runtime 回收、重连恢复、会话时间线同步、Command Center 模型切换和 workspace/CLI 语义更新。
 - 上游已通过 `callerAgentId` 将受管 `paseo run` 的调用上下文交给 daemon，由服务端统一解析 workspace 与父子关系；采用该模型，删除 fork 旧的客户端 workspace 查询与 `agentWorkspaceInheritance` capability gate。
 - 上游计划任务表单仍未提供选择已有 Agent 作为执行目标的等价入口，保留 fork 的表单、CLI 与持久化语义，并合并上游 cron cadence 校验。
-- Status Bar、usage ledger、多 Host 聚合、Codex 使用量修正和 Markdown 原始预览仍为 fork 能力，继续保留并与上游的会话恢复、Pin 可见性和 timeline 同步组合。
+- Status Bar、usage ledger、多 Host 聚合和 Codex 使用量修正仍为 fork 能力，继续保留并与上游的会话恢复、Pin 可见性和 timeline 同步组合。
 
 ### 2026-07-18: `upstream/main` `a1de743ef`
 
@@ -158,21 +165,21 @@
 
 ### 6. Markdown 预览切换原始内容
 
-**状态**：待提交的本地功能。
+**状态**：已由上游实现替代。
 
-**行为**：Markdown 文件仍默认渲染预览；文件页顶部提供图标按钮，可切换到带行号和语法高亮的原始内容视图。切换状态仅作用于当前文件，切换到其他文件时恢复预览。带行号定位的 Markdown 链接保持原始内容视图，以保留定位高亮。
+**行为**：上游文件面板提供 Markdown Preview/Source 分段切换，并集成网页编辑、实时文件刷新、保存冲突处理和 Vim 键位。切换状态仅作用于当前文件；fork 保留带行号定位的 Markdown 链接默认打开 Source 视图，以保留定位高亮。
 
 **关键文件**：
 
-- `packages/app/src/components/file-pane.tsx`
+- `packages/app/src/file-pane/pane.tsx`
 - `packages/app/src/components/file-pane-render-mode.ts`
 - `packages/app/src/i18n/resources/*.ts`
 
 **同步规则**：
 
-- 上游若加入 Markdown source/preview 模式，优先采用其状态模型和控件位置；保留“行定位时强制原始内容”的行为，除非上游提供等价定位能力。
-- 不新增文件读取 RPC 或缓存层，继续复用 `FilePane` 的既有文件读取与代码高亮路径。
-- 必跑：`file-pane-render-mode.test.ts`、`resources.test.ts`、`npm run typecheck`。
+- 采用上游文件面板的状态模型和控件位置；带行号定位时默认 Source 的行为必须保留。
+- 不恢复 fork 的图标切换 UI、独立文案或旧文件读取路径。
+- 必跑：文件面板、`file-pane-render-mode.test.ts`、`resources.test.ts`、`npm run typecheck`。
 
 ## 同步上游操作清单
 

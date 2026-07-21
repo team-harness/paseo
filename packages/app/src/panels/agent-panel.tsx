@@ -327,6 +327,7 @@ function useAgentPanelDescriptor(
   return {
     label: label ?? "",
     subtitle: `${formatProviderLabel(provider)} agent`,
+    tooltip: label ?? `${formatProviderLabel(provider)} agent`,
     titleState: label ? "ready" : "loading",
     icon,
     statusBucket: descriptorState.status
