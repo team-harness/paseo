@@ -656,19 +656,34 @@ export const ja: TranslationResources = {
     scripts: {
       title: "スクリプト",
       actions: {
+        chooseUrl: "URLを選択",
+        copyUrl: "URLをコピー",
+        openService: "サービスを表示",
+        restart: "再起動",
         run: "実行",
-        view: "表示",
+        stop: "停止",
+        view: "ターミナルを表示",
       },
       accessibility: {
         trigger: "ワークスペーススクリプト",
-        openAt: "{{label}}で{{scriptName}}を開く",
+        openService: "{{scriptName}}サービスを表示",
         viewTerminal: "{{scriptName}}ターミナルを表示",
         runScript: "{{scriptName}}スクリプトを実行",
+        stopScript: "{{scriptName}}を停止",
+        restartScript: "{{scriptName}}を再起動",
+        copyUrl: "{{scriptName}}のURLをコピー",
+        chooseUrl: "{{scriptName}}のURLを選択",
         script: "{{scriptName}}スクリプト",
+      },
+      routes: {
+        public: "リバースプロキシ",
+        paseo: "Memorable",
+        direct: "直接接続",
       },
       states: {
         exitCode: "終了コード: {{code}}",
         startFailed: "{{scriptName}}の起動に失敗しました",
+        stopFailed: "{{scriptName}}の停止に失敗しました",
       },
     },
     git: {
@@ -850,14 +865,12 @@ export const ja: TranslationResources = {
         deletedFile: "削除済み",
         commits: {
           title: "コミット",
-          legendLocal: "ローカル",
-          legendRemote: "リモート",
-          countLabel: "ベースより先のコミット数: {{count}}",
+          countLabel: "最近のコミット数: {{count}}",
           fileDiffEmpty: "表示する変更はありません",
           fileDiffError: "ファイル差分の読み込みに失敗しました",
           loading: "コミットを読み込み中…",
           loadError: "コミットの読み込みに失敗しました",
-          empty: "ベースより先のコミットはありません",
+          empty: "コミットはまだありません",
         },
       },
       openInEditor: {
@@ -990,6 +1003,8 @@ export const ja: TranslationResources = {
       actions: {
         menu: "ワークスペースアクション",
         newWorkspace: "新しいワークスペース",
+        showMore: "さらに表示",
+        showLess: "表示を減らす",
         createWorkspaceFor: "{{projectName}}の新しいワークスペースを作成",
         copyPath: "パスをコピー",
         copyBranchName: "ブランチ名をコピー",
@@ -1047,9 +1062,6 @@ export const ja: TranslationResources = {
     refPicker: {
       startingRef: "開始Ref",
       chooseStart: "開始点を選択",
-      checkoutHint: "{{noun}} {{numberPrefix}}{{number}}をチェックアウトしますか？",
-      checkoutPr: "{{noun}} {{numberPrefix}}{{number}}をチェックアウト",
-      dismissCheckoutHint: "{{noun}} {{numberPrefix}}{{number}}のチェックアウトヒントを閉じる",
       intoBase: "{{baseRef}}に",
       searching: "検索中...",
       noMatchingRefs: "一致するRefがありません。",

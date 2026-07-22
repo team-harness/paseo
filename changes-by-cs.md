@@ -9,7 +9,7 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `aa6384bab`，同步于 2026-07-21。
+- 最近同步基线：`upstream/main` = `4a4556f49`，同步于 2026-07-22。
 - 本次同步前 fork 端点：`main` / `origin/main` = `69631deb276d10f91ee30b2c57d274088b55dfec`；同步后的端点以本次 merge commit 为准。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
@@ -23,6 +23,11 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-07-22: `upstream/main` `4a4556f49`
+
+- 合入上游 Markdown 行渲染与聊天文件链接行定位修复、侧边栏初始渲染优化、时间线 catch-up 稳定性、工作区服务控制、最近提交历史与桌面终端 hooks 恢复。
+- Composer 容器采用上游动画静态样式，同时保留 fork Status Bar 的底部 inset；计划任务已有 Agent、Status Bar 汇总、usage ledger 和 Codex usage 归一化继续保留。
 
 ### 2026-07-21: `upstream/main` `aa6384bab`
 

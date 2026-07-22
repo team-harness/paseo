@@ -57,6 +57,7 @@ interface FilePreviewBodyProps {
   isLoading: boolean;
   isMobile: boolean;
   location: WorkspaceFileLocation;
+  navigationRevision: number;
   imagePreviewUri: string | null;
 }
 
@@ -207,6 +208,7 @@ function FilePreviewBody({
   isLoading,
   isMobile,
   location,
+  navigationRevision,
   imagePreviewUri,
 }: FilePreviewBodyProps) {
   const theme = UnistylesRuntime.getTheme();
@@ -257,7 +259,7 @@ function FilePreviewBody({
       });
     }, 0);
     return () => clearTimeout(timeout);
-  }, [lineHeight, lineSelection]);
+  }, [lineHeight, lineSelection, navigationRevision]);
 
   if (isLoading && !preview) {
     return (
@@ -380,10 +382,12 @@ export function FilePane({
   serverId,
   workspaceRoot,
   location,
+  navigationRevision,
 }: {
   serverId: string;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
+  navigationRevision: number;
 }) {
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
@@ -479,6 +483,7 @@ export function FilePane({
       isLoading={query.isFetching}
       isMobile={isMobile}
       location={location}
+      navigationRevision={navigationRevision}
       imagePreviewUri={imagePreviewUri}
     />
   );
@@ -521,6 +526,7 @@ function FilePanePresentation({
   isLoading,
   isMobile,
   location,
+  navigationRevision,
   imagePreviewUri,
 }: {
   serverId: string;
@@ -538,6 +544,7 @@ function FilePanePresentation({
   isLoading: boolean;
   isMobile: boolean;
   location: WorkspaceFileLocation;
+  navigationRevision: number;
   imagePreviewUri: string | null;
 }) {
   if (!client && readTarget) {
@@ -565,6 +572,7 @@ function FilePanePresentation({
         isLoading={isLoading}
         isMobile={isMobile}
         location={location}
+        navigationRevision={navigationRevision}
       />
     );
   }
@@ -590,6 +598,7 @@ function FilePanePresentation({
         isLoading={isLoading}
         isMobile={isMobile}
         location={location}
+        navigationRevision={navigationRevision}
         imagePreviewUri={imagePreviewUri}
       />
     </View>
@@ -608,6 +617,7 @@ function EditableFilePane({
   isLoading,
   isMobile,
   location,
+  navigationRevision,
 }: {
   client: DaemonClient;
   cwd: string;
@@ -620,6 +630,7 @@ function EditableFilePane({
   isLoading: boolean;
   isMobile: boolean;
   location: WorkspaceFileLocation;
+  navigationRevision: number;
 }) {
   const { settings } = useAppSettings();
   const { t } = useTranslation();
@@ -745,6 +756,8 @@ function EditableFilePane({
         <FileEditorView
           model={model}
           filename={filename}
+          location={location}
+          navigationRevision={navigationRevision}
           vimEnabled={settings.vimKeybindings}
           theme={visualTheme}
           onCursorChange={setCursor}
@@ -756,6 +769,7 @@ function EditableFilePane({
           isLoading={isLoading}
           isMobile={isMobile}
           location={location}
+          navigationRevision={navigationRevision}
           imagePreviewUri={null}
         />
       )}
