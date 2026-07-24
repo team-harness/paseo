@@ -74,7 +74,7 @@ import { usePanelStore } from "@/stores/panel-store";
 import { type Agent, useSessionStore } from "@/stores/session-store";
 import { useHostBottomChromeInset } from "@/status-summary/bottom-chrome-inset";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import type { Theme } from "@/styles/theme";
 import {
   useHideFinishedProviderSubagents,
@@ -342,13 +342,14 @@ function useAgentPanelDescriptor(
 }
 
 function AgentPanel() {
-  const { serverId, target, openFileInWorkspace } = usePaneContext();
+  const { serverId, workspaceId, target, openFileInWorkspace } = usePaneContext();
   const { isInteractive } = usePaneFocus();
   invariant(target.kind === "agent", "AgentPanel requires agent target");
 
   return (
     <AgentPanelContent
       serverId={serverId}
+      workspaceId={workspaceId}
       agentId={target.agentId}
       isPaneFocused={isInteractive}
       onOpenWorkspaceFile={openFileInWorkspace}
@@ -482,11 +483,13 @@ type AgentLookupState =
 
 function AgentPanelContent({
   serverId,
+  workspaceId,
   agentId,
   isPaneFocused,
   onOpenWorkspaceFile,
 }: {
   serverId: string;
+  workspaceId: string;
   agentId: string;
   isPaneFocused: boolean;
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
@@ -536,6 +539,7 @@ function AgentPanelContent({
   return (
     <AgentPanelBody
       serverId={resolvedServerId}
+      workspaceId={workspaceId}
       agentId={resolvedAgentId}
       isPaneFocused={isPaneFocused}
       client={runtimeClient}
@@ -548,6 +552,7 @@ function AgentPanelContent({
 
 function AgentPanelBody({
   serverId,
+  workspaceId,
   agentId,
   isPaneFocused,
   client,
@@ -556,6 +561,7 @@ function AgentPanelBody({
   onOpenWorkspaceFile,
 }: {
   serverId: string;
+  workspaceId: string;
   agentId?: string;
   isPaneFocused: boolean;
   client: ReturnType<typeof useHostRuntimeClient>;
@@ -586,6 +592,8 @@ function AgentPanelBody({
   );
   const [lookupState, setLookupState] = useState<AgentLookupState>({ tag: "idle" });
   const lookupAttemptTokenRef = useRef(0);
+  const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+  const resolvePendingAgent = useWorkspaceLayoutStore((state) => state.resolvePendingAgent);
 
   useEffect(() => {
     lookupAttemptTokenRef.current += 1;
@@ -597,6 +605,9 @@ function AgentPanelBody({
       return;
     }
     if (agentState.id) {
+      if (workspaceKey) {
+        resolvePendingAgent(workspaceKey, agentId);
+      }
       if (lookupState.tag !== "idle") {
         setLookupState({ tag: "idle" });
       }
@@ -619,6 +630,9 @@ function AgentPanelBody({
           return;
         }
         if (!result) {
+          if (workspaceKey) {
+            resolvePendingAgent(workspaceKey, agentId);
+          }
           setLookupState({
             tag: "not_found",
             message: `Agent not found: ${agentId}`,
@@ -627,6 +641,9 @@ function AgentPanelBody({
         }
 
         storeFetchedAgentDetail({ serverId, result });
+        if (workspaceKey) {
+          resolvePendingAgent(workspaceKey, agentId);
+        }
         setLookupState({ tag: "idle" });
         return;
       })
@@ -636,12 +653,25 @@ function AgentPanelBody({
         }
         const message = toErrorMessage(error);
         if (isNotFoundErrorMessage(message)) {
+          if (workspaceKey) {
+            resolvePendingAgent(workspaceKey, agentId);
+          }
           setLookupState({ tag: "not_found", message });
           return;
         }
         setLookupState({ tag: "error", message });
       });
-  }, [agentId, agentState.id, client, hasSession, isConnected, lookupState.tag, serverId]);
+  }, [
+    agentId,
+    agentState.id,
+    client,
+    hasSession,
+    isConnected,
+    lookupState.tag,
+    resolvePendingAgent,
+    serverId,
+    workspaceKey,
+  ]);
 
   if (lookupState.tag === "not_found") {
     return (
@@ -895,6 +925,7 @@ function ChatAgentContent({
     routeKey: `${serverId}:${agentId ?? ""}`,
     input: {
       agent: agent ?? null,
+      isArchived: agentState.archivedAt !== null,
       missingAgentState,
       isConnected,
       isArchivingCurrentAgent,
@@ -946,6 +977,9 @@ function ChatAgentContent({
 
   useEffect(() => {
     if (!agentId) {
+      return;
+    }
+    if (agentState.archivedAt) {
       return;
     }
     if (agentState.id && hasAppliedAuthoritativeHistory) {
@@ -1013,6 +1047,7 @@ function ChatAgentContent({
       });
   }, [
     agentState.id,
+    agentState.archivedAt,
     hasAppliedAuthoritativeHistory,
     agentId,
     client,
@@ -1126,8 +1161,16 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   });
   // Stabilize the agentInputDraft object identity so that memo(AgentComposerSection) can bail out
   // when only toast state changes (which does not affect any draft field).
-  const { text, setText, attachments, setAttachments, clear, isHydrated, composerState } =
-    rawAgentInputDraft;
+  const {
+    text,
+    setText,
+    attachments,
+    setAttachments,
+    clear,
+    isHydrated,
+    attachmentFocusRequestId,
+    composerState,
+  } = rawAgentInputDraft;
   const agentInputDraft = useMemo(
     (): AgentInputDraft => ({
       text,
@@ -1136,9 +1179,19 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       setAttachments,
       clear,
       isHydrated,
+      attachmentFocusRequestId,
       composerState,
     }),
-    [text, setText, attachments, setAttachments, clear, isHydrated, composerState],
+    [
+      text,
+      setText,
+      attachments,
+      setAttachments,
+      clear,
+      isHydrated,
+      attachmentFocusRequestId,
+      composerState,
+    ],
   );
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
@@ -1504,6 +1557,7 @@ function ActiveAgentComposer({
       <Composer
         agentId={agentId}
         serverId={serverId}
+        workspaceId={workspaceId}
         externalKeyboardShift
         isPaneFocused={isPaneFocused}
         value={agentInputDraft.text}
@@ -1515,6 +1569,7 @@ function ActiveAgentComposer({
         cwd={cwd}
         clearDraft={agentInputDraft.clear}
         autoFocus={isPaneFocused}
+        autoFocusKey={String(agentInputDraft.attachmentFocusRequestId)}
         isSubmitLoading={isSubmitLoading}
         onAttentionInputFocus={onAttentionInputFocus}
         onAttentionPromptSend={onAttentionPromptSend}

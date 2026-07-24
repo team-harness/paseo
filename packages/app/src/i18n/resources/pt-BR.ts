@@ -436,6 +436,13 @@ export const ptBR: TranslationResources = {
       copyBranchName: "Copiar nome da branch",
       copied: "Copiado",
     },
+    fileActions: {
+      openFile: "Abrir arquivo",
+      copyPath: "Copiar caminho",
+      download: "Baixar",
+      addToChat: "Adicionar ao chat…",
+      moreActions: "Mais ações",
+    },
     fileExplorer: {
       sort: {
         name: "Nome",
@@ -445,8 +452,6 @@ export const ptBR: TranslationResources = {
       context: {
         size: "Tamanho",
         modified: "Modificado",
-        copyPath: "Copiar caminho",
-        download: "Baixar",
       },
       actions: {
         back: "Voltar",
@@ -841,6 +846,8 @@ export const ptBR: TranslationResources = {
         },
       },
       diff: {
+        openChangesTab: "Abrir a aba Alterações",
+        closeChangesTab: "Fechar a aba Alterações",
         binaryFile: "Arquivo binário",
         tooLarge: "Diff grande demais para exibir",
         unified: "Diff unificado",
@@ -1584,6 +1591,8 @@ export const ptBR: TranslationResources = {
       changesLabel: "Alterações",
       changesSubtitle: "Diff da árvore de trabalho",
       commitSubtitle: "Diff do commit",
+      uncommittedSubtitle: "Alterações não commitadas",
+      baseSubtitle: "Comparado com {{baseRef}}",
       directoryMissing: "Diretório do workspace não encontrado.",
       empty: "Nenhuma alteração",
       loadError: "Falha ao carregar diff",

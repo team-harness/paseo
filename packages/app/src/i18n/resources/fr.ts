@@ -436,6 +436,13 @@ export const fr: TranslationResources = {
       copyBranchName: "Copier le nom de la branche",
       copied: "Copié",
     },
+    fileActions: {
+      openFile: "Ouvrir le fichier",
+      copyPath: "Copier le chemin",
+      download: "Télécharger",
+      addToChat: "Ajouter au chat…",
+      moreActions: "Plus de propositions",
+    },
     fileExplorer: {
       sort: {
         name: "Nom",
@@ -445,8 +452,6 @@ export const fr: TranslationResources = {
       context: {
         size: "Taille",
         modified: "Modifié",
-        copyPath: "Copier le chemin",
-        download: "Télécharger",
       },
       actions: {
         back: "Dos",
@@ -849,6 +854,8 @@ export const fr: TranslationResources = {
         },
       },
       diff: {
+        openChangesTab: "Ouvrir l'onglet Modifications",
+        closeChangesTab: "Fermer l'onglet Modifications",
         binaryFile: "Fichier binaire",
         tooLarge: "Diff trop grand pour être affiché",
         unified: "Différentiel unifié",
@@ -1601,6 +1608,8 @@ export const fr: TranslationResources = {
       changesLabel: "Modifications",
       changesSubtitle: "Différences de l'arbre de travail",
       commitSubtitle: "Différences du commit",
+      uncommittedSubtitle: "Modifications non validées",
+      baseSubtitle: "Comparé à {{baseRef}}",
       directoryMissing: "Répertoire Workspace introuvable.",
       empty: "Aucune modification",
       loadError: "Échec du chargement des différences",

@@ -431,6 +431,13 @@ export const en = {
       copyBranchName: "Copy branch name",
       copied: "Copied",
     },
+    fileActions: {
+      openFile: "Open file",
+      copyPath: "Copy path",
+      download: "Download",
+      addToChat: "Add to chat…",
+      moreActions: "More actions",
+    },
     fileExplorer: {
       sort: {
         name: "Name",
@@ -440,8 +447,6 @@ export const en = {
       context: {
         size: "Size",
         modified: "Modified",
-        copyPath: "Copy path",
-        download: "Download",
       },
       actions: {
         back: "Back",
@@ -829,6 +834,8 @@ export const en = {
         },
       },
       diff: {
+        openChangesTab: "Open Changes tab",
+        closeChangesTab: "Close Changes tab",
         binaryFile: "Binary file",
         tooLarge: "Diff too large to display",
         unified: "Unified diff",
@@ -1566,6 +1573,8 @@ export const en = {
       changesLabel: "Changes",
       changesSubtitle: "Working tree diff",
       commitSubtitle: "Commit diff",
+      uncommittedSubtitle: "Uncommitted changes",
+      baseSubtitle: "Compared with {{baseRef}}",
       directoryMissing: "Workspace directory not found.",
       empty: "No changes",
       loadError: "Failed to load diff",

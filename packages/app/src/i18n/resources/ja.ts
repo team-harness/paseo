@@ -436,6 +436,13 @@ export const ja: TranslationResources = {
       copyBranchName: "ブランチ名をコピー",
       copied: "コピーしました",
     },
+    fileActions: {
+      openFile: "ファイルを開く",
+      copyPath: "パスをコピー",
+      download: "ダウンロード",
+      addToChat: "チャットに追加…",
+      moreActions: "その他のアクション",
+    },
     fileExplorer: {
       sort: {
         name: "名前",
@@ -445,8 +452,6 @@ export const ja: TranslationResources = {
       context: {
         size: "サイズ",
         modified: "更新日時",
-        copyPath: "パスをコピー",
-        download: "ダウンロード",
       },
       actions: {
         back: "戻る",
@@ -830,6 +835,8 @@ export const ja: TranslationResources = {
         },
       },
       diff: {
+        openChangesTab: "変更タブを開く",
+        closeChangesTab: "変更タブを閉じる",
         binaryFile: "バイナリファイル",
         tooLarge: "差分が大きすぎて表示できません",
         unified: "ユニファイド差分",
@@ -1571,6 +1578,8 @@ export const ja: TranslationResources = {
       changesLabel: "変更",
       changesSubtitle: "作業ツリーの差分",
       commitSubtitle: "コミット差分",
+      uncommittedSubtitle: "未コミットの変更",
+      baseSubtitle: "{{baseRef}} との比較",
       directoryMissing: "ワークスペースディレクトリが見つかりません。",
       empty: "変更はありません",
       loadError: "差分の読み込みに失敗しました",
