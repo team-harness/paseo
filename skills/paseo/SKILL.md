@@ -1,95 +1,9 @@
 ---
 name: paseo
-description: Paseo host adapter and reference for managing observable agents, workspaces, schedules, and heartbeats.
+description: Paseo reference for managing workspaces, workspace scripts, agents, schedules, and heartbeats.
 ---
 
 Paseo is a daemon that supervises AI coding agents on your machine. Control it through tools or a CLI.
-
-## Task Agent adapter
-
-Act as a host adapter when another workflow requests an independent Task Agent. The calling workflow
-owns review semantics, verdicts, reports, and checkpoints. This skill owns provider discovery, agent
-creation, observable lifecycle, read-only control, and returning findings. Do not write the calling
-workflow's artifacts or decide its final verdict.
-
-Treat the request as this logical contract:
-
-```yaml
-role: review|qa|audit|acceptance|implementation
-cwd: /absolute/workspace/path
-caller_family: known provider/model family or unknown
-preferred_isolation: heterogeneous|independent
-read_only_required: true|false
-materials: [paths or repository facts]
-prompt: raw task without the caller's conclusions
-explicit_provider: optional owner-pinned provider/model
-```
-
-Return a receipt to the calling workflow:
-
-```yaml
-adapter: paseo
-agent_id: observable id
-provider: resolved provider
-model: resolved model
-isolation: heterogeneous|independent
-read_only_control: enforced-read-only|verified-no-write|not-required
-state: active|finished|failed|blocked
-result: findings or failure reason
-baseline_verified: true|false|not-required
-```
-
-### Capability selection
-
-1. Read `~/.paseo/orchestration-preferences.json` before choosing a provider.
-2. Use `list_providers`; use `inspect_provider` for candidate modes/features and `list_models` only
-   when a model id is uncertain. Prefer MCP tools when exposed. Use the CLI only when MCP is absent
-   and the CLI passes a health/config check.
-   A Task Agent CLI fallback from a managed Agent carries `PASEO_AGENT_ID` to the daemon, which
-   applies the same workspace and parentage policy as agent-scoped creation. When an explicit
-   existing workspace id is available, pass `--workspace`.
-3. Honor `explicit_provider` as binding. If it is unavailable, return `blocked`; do not silently
-   replace an owner-pinned configuration.
-4. For `preferred_isolation: heterogeneous`, prefer an available provider or model family proven
-   different from `caller_family`. Treat `providers.audit` as the preferred review candidate when
-   it satisfies that requirement; otherwise follow the user's preferences and discover another
-   available family. If caller identity or model-family difference cannot be proved, label the
-   result `independent`, never `heterogeneous`.
-5. If no heterogeneous candidate is available, use a separate-context agent as `independent`.
-   Absence of heterogeneity does not by itself authorize local-only execution.
-6. A candidate is eligible only when its id, state, final result, and permission state are
-   observable.
-
-### Read-only control
-
-For read-only roles, inspect provider capabilities and select a mode that explicitly prevents
-writes. Label it `enforced-read-only` only when the provider capability proves that property; do not
-infer it from a mode name.
-
-When no enforced read-only capability exists, record the workspace baseline before launch using
-`git status --porcelain=v1 --untracked-files=all`, unstaged diff, and staged diff. Give the agent a
-strict no-write prompt, then compare the same facts after completion. Label the run
-`verified-no-write` only when the baseline is unchanged. If it changed, return `blocked` with the
-observed paths; do not revert or absorb the changes.
-
-### Dispatch and lifecycle
-
-- Create workflow-owned workers with `relationship: { kind: "subagent" }`, the caller's current
-  workspace/cwd, `notifyOnFinish: true`, and labels for the generic task role and `adapter: paseo`.
-- For CLI fallback, preserve `PASEO_AGENT_ID` so `paseo run` carries the caller context to the
-  daemon, and pass `--workspace <id>` when placement must be explicit. If the command reports an
-  unknown caller or workspace, return `blocked`; do not create a replacement workspace implicitly.
-- Pass raw materials, scope, expected output, and read-only constraints. Do not include the caller's
-  draft findings or desired verdict.
-- Return the `agent_id` as soon as creation succeeds so the caller can persist an awaiting state.
-- Do not poll a running agent. Resume from the completion/error/permission notification and use the
-  observable agent status when recovery needs confirmation.
-- Return findings to the caller for local verification. Never promote external findings directly
-  to blocking or passed status.
-- Archive only after the result was consumed and no permission is pending. A close failure is a
-  warning and does not rewrite a verified result.
-- On create/run/permission failure, return an explicit failed or blocked receipt. Never silently
-  downgrade to local execution.
 
 ## Workspaces
 
@@ -100,6 +14,24 @@ observed paths; do not revert or absorb the changes.
 **`archive_workspace`** — `{ workspaceId }`. Archives the workspace, its agents, and its terminals. Local directories remain; Paseo removes an owned worktree only after its final active workspace reference is archived.
 
 Worktree creation and reference accounting are implementation details of `isolation: "worktree"`.
+
+## Workspace scripts
+
+Configured `paseo.json` scripts use the same supervised lifecycle from tools and the CLI.
+
+**`list_workspace_scripts`** — `{ workspaceId }`. Lists configured scripts with lifecycle, service port, proxy URLs, health, exit code, and terminal ID.
+
+**`start_workspace_script`** — `{ workspaceId, scriptName }`. Starts one configured script through Paseo's managed workspace-script launcher and returns its status metadata.
+
+**`stop_workspace_script`** — `{ workspaceId, scriptName }`. Stops a running script through its supervised terminal and returns the stopped status metadata.
+
+The matching CLI surface accepts either an explicit workspace ID or resolves the current directory:
+
+```bash
+paseo script ls [--cwd <path> | --workspace <workspace-id>]
+paseo script start <name> [--cwd <path> | --workspace <workspace-id>]
+paseo script stop <name> [--cwd <path> | --workspace <workspace-id>]
+```
 
 ## Agents
 
@@ -151,9 +83,7 @@ User-specific configuration at `~/.paseo/orchestration-preferences.json`. **Befo
 
 Two parts:
 
-- `providers` — map of role categories to default provider strings. Pass the selected category to
-  `create_agent` unless an explicit provider is pinned or a requested heterogeneous isolation
-  requires another user-allowed, discovered provider family.
+- `providers` — map of role categories to provider strings. Pass straight to `create_agent`'s `provider` field.
 - `preferences` — freeform string array. Read on startup; weave into agent prompts contextually.
 
 Categories: `impl`, `ui`, `research`, `planning`, `audit`. Skills pick the category that matches the role they're launching.
@@ -198,14 +128,6 @@ paseo ls
 paseo schedule create --cron "*/15 * * * *" "ping main build"
 paseo heartbeat create --cron "*/15 * * * *" "check the build"
 ```
-
-A bare `paseo run` launched by a Paseo-managed Agent inherits that Agent's workspace through
-`PASEO_AGENT_ID` when it targets the launching Agent's default daemon. A bare run from an external
-shell, or one with an explicit `--host`, has no provable caller workspace and intentionally creates a
-new local-backed workspace. Inheritance requires
-`server_info.features.agentWorkspaceInheritance`; update an older host instead of falling back to
-legacy workspace queries. Use `--workspace <id>` when external or cross-host automation needs to
-attach to an existing workspace.
 
 Discover with `paseo --help` and `paseo <cmd> --help`.
 
