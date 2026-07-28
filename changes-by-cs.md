@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `4a4556f49`，同步于 2026-07-22。
-- 本次同步前 fork 端点：`main` / `origin/main` = `69631deb276d10f91ee30b2c57d274088b55dfec`；同步后的端点以本次 merge commit 为准。
+- 最近同步基线：`upstream/main` = `1a1ff8828f002fce08e239bae3d46aff75e22f52`（`v0.2.2`），同步于 2026-07-27。
+- 最近同步 merge commit：`13a1348e0a45497cf62dd59f6047fa63653ba7fe`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,13 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-07-27: `upstream/main` `1a1ff882` / `v0.2.2`
+
+- 合入上游 Markdown 长行换行、并排编辑文件的焦点修复、Android 流式对话位置稳定性、桌面退出时停止 daemon，以及 Claude 5 上下文窗口选择修正。
+- 上游没有新增 Status Bar/`status.summary`、usage ledger、多 Host 聚合或计划任务选择已有 Agent 的等价实现；fork 对应能力继续保留。
+- Status Bar Pin 仍只消费侧边栏 workspace 的 `pinnedAt`、列表投影和 `setWorkspacePinned` API；不恢复独立 Pin 协议或数据结构。
+- 2026-07-28 例行同步确认上游端点没有新提交，无需再次 merge 或重新构建。
 
 ### 2026-07-22: `upstream/main` `4a4556f49`
 
