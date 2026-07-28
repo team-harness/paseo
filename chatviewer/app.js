@@ -1,4 +1,53 @@
 const conversation = document.querySelector("#conversation");
+const CHAT_SHARE_API_ORIGIN = "https://paseo-chat-share.bazhuayu.xyz";
+const MESSAGE_ANCHOR_PREFIX = "message-";
+
+function messageAnchorId(entry) {
+  return `${MESSAGE_ANCHOR_PREFIX}${entry.id}`;
+}
+
+function currentMessageAnchorId() {
+  const hash = window.location.hash.slice(1);
+  if (!hash) return null;
+  try {
+    const anchorId = decodeURIComponent(hash);
+    return anchorId.startsWith(MESSAGE_ANCHOR_PREFIX) ? anchorId : null;
+  } catch {
+    return null;
+  }
+}
+
+function focusCurrentMessageAnchor() {
+  const anchorId = currentMessageAnchorId();
+  if (!anchorId) return;
+  const target = document.getElementById(anchorId);
+  if (!target) return;
+
+  document.querySelector(".entry.is-anchor-target")?.classList.remove("is-anchor-target");
+  target.classList.remove("is-anchor-target");
+  void target.offsetWidth;
+  target.classList.add("is-anchor-target");
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+async function copyMessageAnchor(anchorId, button) {
+  const url = new URL(window.location.href);
+  url.hash = encodeURIComponent(anchorId);
+  window.history.replaceState(null, "", url);
+  focusCurrentMessageAnchor();
+
+  try {
+    await navigator.clipboard.writeText(url.toString());
+    button.classList.add("copied");
+    button.setAttribute("aria-label", "Link copied");
+    window.setTimeout(() => {
+      button.classList.remove("copied");
+      button.setAttribute("aria-label", "Copy link to this message");
+    }, 1600);
+  } catch {
+    button.setAttribute("aria-label", "Link ready in the address bar");
+  }
+}
 
 function element(name, className, text) {
   const node = document.createElement(name);
@@ -21,6 +70,14 @@ function isHistory(value) {
     typeof value.conversation.title === "string" &&
     Array.isArray(value.entries)
   );
+}
+
+function resolveHistoryUrl(history) {
+  // Old shares contain the full read URL. New shares expose only the object key.
+  if (!history.startsWith("history/")) return history;
+  const url = new URL("/v1/history", CHAT_SHARE_API_ORIGIN);
+  url.searchParams.set("key", history);
+  return url.toString();
 }
 
 function appendInlineMarkdown(target, text) {
@@ -153,8 +210,8 @@ function renderRecord(entry) {
 function renderHistory(history) {
   document.title = `${history.conversation.title} - Paseo Chat`;
   conversation.replaceChildren();
-  const meta = element("header", "conversation-meta");
-  meta.append(element("h1", "", history.conversation.title));
+  const conversationMeta = element("header", "conversation-meta");
+  conversationMeta.append(element("h1", "", history.conversation.title));
   const details = [
     history.conversation.provider,
     history.conversation.model,
@@ -162,20 +219,29 @@ function renderHistory(history) {
   ]
     .filter(Boolean)
     .join(" · ");
-  if (details) meta.append(element("p", "", details));
-  conversation.append(meta);
+  if (details) conversationMeta.append(element("p", "", details));
+  conversation.append(conversationMeta);
 
   for (const entry of history.entries) {
     if (entry.kind === "message") {
       const article = element("article", `entry message ${entry.role}`);
+      if (entry.role === "user") article.id = messageAnchorId(entry);
       const bubble = element("div", "bubble");
-      bubble.append(
-        element(
-          "div",
-          "entry-meta",
-          `${entry.role === "user" ? "You" : "Assistant"} · ${formatTime(entry.createdAt)}`,
-        ),
+      const entryMeta = element(
+        "div",
+        "entry-meta",
+        `${entry.role === "user" ? "You" : "Assistant"} · ${formatTime(entry.createdAt)}`,
       );
+      if (entry.role === "user") {
+        const anchorButton = element("button", "anchor-button");
+        anchorButton.type = "button";
+        anchorButton.setAttribute("aria-label", "Copy link to this message");
+        anchorButton.addEventListener("click", () => {
+          void copyMessageAnchor(article.id, anchorButton);
+        });
+        entryMeta.append(anchorButton);
+      }
+      bubble.append(entryMeta);
       bubble.append(renderMarkdown(entry.markdown));
       article.append(bubble);
       conversation.append(article);
@@ -183,13 +249,15 @@ function renderHistory(history) {
       conversation.append(renderRecord(entry));
     }
   }
+
+  focusCurrentMessageAnchor();
 }
 
 async function loadHistory() {
-  const historyUrl = new URLSearchParams(window.location.search).get("history");
-  if (!historyUrl) return;
+  const historyReference = new URLSearchParams(window.location.search).get("history");
+  if (!historyReference) return;
   try {
-    const response = await fetch(historyUrl, { cache: "no-store" });
+    const response = await fetch(resolveHistoryUrl(historyReference), { cache: "no-store" });
     if (!response.ok)
       throw new Error(`The shared history could not be loaded (${response.status})`);
     const history = await response.json();
@@ -205,5 +273,7 @@ async function loadHistory() {
     );
   }
 }
+
+window.addEventListener("hashchange", focusCurrentMessageAnchor);
 
 void loadHistory();

@@ -48,10 +48,17 @@ read-only viewer link.
 - Independent deployment: `chatviewer/` owns the static viewer at
   `https://paseo-chat.bazhuayu.xyz`; `chatviewer/api/` owns the FC API at
   `https://paseo-chat-share.bazhuayu.xyz`.
+- Deep links: every user message in the Viewer exposes a `#` action that copies
+  a URL ending in `#message-<entry-id>`. Opening that URL loads the same
+  history, scrolls to the message, and briefly highlights it. This is a Viewer
+  behavior only; the export schema and FC upload/read APIs remain unchanged.
 - Upload path: the FC API signs a five-minute `PUT` for a generated
   `history/YYYY-MM-DD/<uuid>.json` key. Long-lived OSS credentials remain FC
   environment variables only. The viewer reads through the API's key-restricted
   history endpoint, so it does not depend on OSS read CORS.
+- Share URL: newly issued Viewer links carry only the generated `history/...`
+  key; the Viewer resolves it through its fixed API origin. Existing links that
+  carry the complete history-read URL remain supported.
 - OSS CORS permits browser `PUT` with `content-type` for those temporary upload
   URLs. Keep this configuration in the independent deployment rather than the
   Paseo daemon or protocol.

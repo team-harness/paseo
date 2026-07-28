@@ -34,14 +34,6 @@ function empty(status) {
   };
 }
 
-function header(event, name) {
-  const normalizedName = name.toLowerCase();
-  const entry = Object.entries(event.headers ?? {}).find(
-    ([key]) => key.toLowerCase() === normalizedName,
-  );
-  return entry?.[1] ?? "";
-}
-
 function readJson(event) {
   const raw = event.isBase64Encoded
     ? Buffer.from(event.body ?? "", "base64").toString("utf8")
@@ -93,13 +85,9 @@ async function handleHistory(key) {
   }
 }
 
-function createViewerUrl(request, key) {
-  const apiOrigin =
-    process.env.CHAT_SHARE_API_ORIGIN?.trim() || `https://${header(request, "host")}`;
+function createViewerUrl(key) {
   const viewer = new URL(env("CHAT_SHARE_VIEWER_ORIGIN"));
-  const historyProxy = new URL("/v1/history", apiOrigin);
-  historyProxy.searchParams.set("key", key);
-  viewer.searchParams.set("history", historyProxy.toString());
+  viewer.searchParams.set("history", key);
   return viewer.toString();
 }
 
@@ -128,7 +116,7 @@ function createUploadGrant(request) {
       expiresAt: new Date(expiresAt * 1000).toISOString(),
     },
     historyUrl,
-    viewerUrl: createViewerUrl(request, key),
+    viewerUrl: createViewerUrl(key),
   });
 }
 
@@ -149,4 +137,4 @@ async function handler(request) {
   }
 }
 
-module.exports = { handler, createPresignedPutUrl, isHistoryKey };
+module.exports = { handler, createPresignedPutUrl, createViewerUrl, isHistoryKey };

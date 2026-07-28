@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createPresignedPutUrl, handler, isHistoryKey } = require("./index.cjs");
+const { createPresignedPutUrl, createViewerUrl, handler, isHistoryKey } = require("./index.cjs");
 
 test("returns a Licell HTTP response from the health endpoint", async () => {
   const response = await handler({ rawPath: "/health", httpMethod: "GET" });
@@ -33,4 +33,17 @@ test("only accepts generated history object keys for the read proxy", () => {
   assert.equal(isHistoryKey("history/2026-07-28/7b853015-bf1a-4c4c-b969-14e1247aef85.json"), true);
   assert.equal(isHistoryKey("history/../../private.json"), false);
   assert.equal(isHistoryKey("other/2026-07-28/7b853015-bf1a-4c4c-b969-14e1247aef85.json"), false);
+});
+
+test("returns a Viewer URL containing only the history object key", () => {
+  const previousViewerOrigin = process.env.CHAT_SHARE_VIEWER_ORIGIN;
+  process.env.CHAT_SHARE_VIEWER_ORIGIN = "https://paseo-chat.bazhuayu.xyz/";
+  try {
+    const url = new URL(createViewerUrl("history/2026-07-28/example.json"));
+    assert.equal(url.origin, "https://paseo-chat.bazhuayu.xyz");
+    assert.equal(url.searchParams.get("history"), "history/2026-07-28/example.json");
+  } finally {
+    if (previousViewerOrigin === undefined) delete process.env.CHAT_SHARE_VIEWER_ORIGIN;
+    else process.env.CHAT_SHARE_VIEWER_ORIGIN = previousViewerOrigin;
+  }
 });

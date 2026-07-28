@@ -76,6 +76,7 @@ body {
 
 .entry {
   margin: 0 0 22px;
+  scroll-margin-top: 84px;
 }
 .message {
   display: flex;
@@ -98,12 +99,58 @@ body {
 }
 
 .entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: #7e8982;
   font-size: 11px;
   margin-bottom: 7px;
 }
 .user .entry-meta {
   text-align: right;
+  justify-content: flex-end;
+}
+.anchor-button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  color: #9aa69e;
+  background: transparent;
+  cursor: pointer;
+  font:
+    600 13px/18px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+.anchor-button::before {
+  content: "#";
+}
+.anchor-button:hover,
+.anchor-button:focus-visible,
+.anchor-button.copied {
+  color: #e9f2eb;
+  background: #39483f;
+  outline: none;
+}
+.anchor-button.copied::before {
+  content: "✓";
+}
+.entry.is-anchor-target .bubble {
+  animation: anchor-focus 2.4s ease-out;
+}
+@keyframes anchor-focus {
+  0% {
+    box-shadow: 0 0 0 0 #8aaf96;
+  }
+  20% {
+    box-shadow: 0 0 0 4px #8aaf9666;
+  }
+  100% {
+    box-shadow: 0 0 0 0 #8aaf9600;
+  }
 }
 .markdown {
   color: #edf2ee;
