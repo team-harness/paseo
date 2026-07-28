@@ -1,8 +1,8 @@
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   View,
   Text,
   Pressable,
-  ActivityIndicator,
   ScrollView,
   type GestureResponderEvent,
   type PressableStateCallbackType,
@@ -131,6 +131,7 @@ import {
   getIsElectron,
 } from "@/constants/platform";
 import { getDesktopHost } from "@/desktop/host";
+import { OpenInFileManagerMenuItem } from "@/workspace/open-in-file-manager/menu-item";
 
 const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
 
@@ -143,7 +144,7 @@ const DEFAULT_STATUS_DOT_OFFSET = 0;
 const EMPHASIZED_STATUS_DOT_OFFSET = -1;
 const ThemedExternalLink = withUnistyles(ExternalLink);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const ThemedPlus = withUnistyles(Plus);
@@ -609,6 +610,10 @@ function ProjectKebabMenu({
             {t("sidebar.project.actions.openNewWindow")}
           </DropdownMenuItem>
         ) : null}
+        <OpenInFileManagerMenuItem
+          path={projectPath}
+          testID={`sidebar-project-menu-open-folder-${projectKey}`}
+        />
         <DropdownMenuItem
           testID={`sidebar-project-menu-remove-${projectKey}`}
           leading={trash2LeadingIcon}
@@ -660,6 +665,7 @@ function WorkspaceRowRightGroup({
   isPinned?: boolean;
   onTogglePin?: () => void;
 }) {
+  const workspacePath = workspace.workspaceDirectory ?? workspace.projectRootPath;
   const { t } = useTranslation();
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
@@ -698,6 +704,7 @@ function WorkspaceRowRightGroup({
                 archiveShortcutKeys={archiveShortcutKeys}
                 isPinned={isPinned}
                 onTogglePin={onTogglePin}
+                openInFileManagerPath={workspacePath}
               />
             ) : null}
           </SidebarWorkspaceTrailingActionOverlay>
@@ -746,7 +753,7 @@ function ProjectLeadingVisualStatus({
   if (isArchiving) {
     return (
       <View style={styles.projectLeadingVisualSlot}>
-        <ThemedActivityIndicator size={8} uniProps={foregroundMutedColorMapping} />
+        <ThemedLoadingSpinner size={8} uniProps={foregroundMutedColorMapping} />
       </View>
     );
   }
@@ -855,7 +862,7 @@ function NewWorktreeButton({
           >
             {({ hovered, pressed }) =>
               loading ? (
-                <ThemedActivityIndicator size={14} uniProps={foregroundMutedColorMapping} />
+                <ThemedLoadingSpinner size={14} uniProps={foregroundMutedColorMapping} />
               ) : (
                 <ThemedPlus
                   size={15}

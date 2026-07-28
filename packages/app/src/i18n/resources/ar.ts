@@ -974,6 +974,8 @@ export const ar: TranslationResources = {
         openSettings: "افتح إعدادات المشروع",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
+        openFolder: "Open in file manager",
+        openFolderFailed: "Couldn't open folder",
         remove: "إزالة المشروع",
         removing: "جارٍ الإزالة...",
       },
@@ -1897,6 +1899,7 @@ export const ar: TranslationResources = {
         sendMessage: "أرسل رسالة",
         queueMessage: "رسالة قائمة الانتظار",
         muteUnmuteVoiceMode: "كتم وضع الصوت /unmute",
+        switchProject: "تبديل المشروع",
       },
       helpNotes: {
         showKeyboardShortcuts: "متاح عندما لا يكون التركيز في حقل نص أو محطة طرفية.",
