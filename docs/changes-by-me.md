@@ -56,6 +56,10 @@ read-only viewer link.
   `history/YYYY-MM-DD/<uuid>.json` key. Long-lived OSS credentials remain FC
   environment variables only. The viewer reads through the API's key-restricted
   history endpoint, so it does not depend on OSS read CORS.
+- Share scope: Share first snapshots the complete authoritative timeline, then
+  offers every user message as a start point. Selecting one exports that
+  message and every later entry, without changing the portable history schema
+  or the upload API.
 - Share URL: newly issued Viewer links carry only the generated `history/...`
   key; the Viewer resolves it through its fixed API origin. Existing links that
   carry the complete history-read URL remain supported.

@@ -577,6 +577,7 @@ interface AssistantTurnFooterProps {
   onFork?: (target: AssistantForkTarget) => Promise<void> | void;
   onShare?: () => Promise<void> | void;
   isSharing?: boolean;
+  shareDisabled?: boolean;
 }
 
 const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
@@ -624,6 +625,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   onFork,
   onShare,
   isSharing = false,
+  shareDisabled = false,
 }: AssistantTurnFooterProps) {
   const [hovered, setHovered] = useState(false);
   const [pressedReveal, setPressedReveal] = useState(false);
@@ -677,7 +679,9 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
         getContent={getContent}
         containerStyle={assistantTurnFooterStylesheet.copyButton}
       />
-      {onShare ? <TurnShareButton onShare={onShare} isSharing={isSharing} /> : null}
+      {onShare ? (
+        <TurnShareButton onShare={onShare} isSharing={isSharing} disabled={shareDisabled} />
+      ) : null}
       {canFork ? <AssistantForkMenu onFork={handleFork} /> : null}
       {durationLabel ? (
         <Pressable
@@ -721,9 +725,11 @@ const turnShareButtonStylesheet = StyleSheet.create((theme) => ({
 const TurnShareButton = memo(function TurnShareButton({
   onShare,
   isSharing,
+  disabled,
 }: {
   onShare: () => Promise<void> | void;
   isSharing: boolean;
+  disabled: boolean;
 }) {
   const { t } = useTranslation();
   const handleShare = useCallback(() => {
@@ -732,7 +738,7 @@ const TurnShareButton = memo(function TurnShareButton({
 
   return (
     <Pressable
-      disabled={isSharing}
+      disabled={isSharing || disabled}
       onPress={handleShare}
       style={turnShareButtonStylesheet.container}
       accessibilityRole="button"

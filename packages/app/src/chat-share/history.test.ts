@@ -3,7 +3,11 @@ import type {
   DaemonClient,
   FetchAgentTimelinePayload,
 } from "@getpaseo/client/internal/daemon-client";
-import { exportChatHistory, loadCompleteChatHistory } from "./history";
+import {
+  exportChatHistory,
+  loadCompleteChatHistory,
+  selectChatHistoryFromUserMessage,
+} from "./history";
 import type { StreamItem } from "@/types/stream";
 
 function makeTimelinePage(input: {
@@ -127,6 +131,56 @@ describe("exportChatHistory", () => {
         },
       ],
     });
+  });
+
+  it("starts a shared history at the selected user message", () => {
+    const items: StreamItem[] = [
+      {
+        kind: "user_message",
+        id: "user-1",
+        text: "First request",
+        timestamp: new Date("2026-07-28T00:00:00.000Z"),
+      },
+      {
+        kind: "assistant_message",
+        id: "assistant-1",
+        text: "First response",
+        timestamp: new Date("2026-07-28T00:00:01.000Z"),
+      },
+      {
+        kind: "tool_call",
+        id: "tool-1",
+        timestamp: new Date("2026-07-28T00:00:02.000Z"),
+        payload: {
+          source: "orchestrator",
+          data: {
+            toolCallId: "call-1",
+            toolName: "read_file",
+            arguments: {},
+            result: { ok: true },
+            status: "completed",
+          },
+        },
+      },
+      {
+        kind: "user_message",
+        id: "user-2",
+        text: "Second request",
+        timestamp: new Date("2026-07-28T00:00:03.000Z"),
+      },
+      {
+        kind: "assistant_message",
+        id: "assistant-2",
+        text: "Second response",
+        timestamp: new Date("2026-07-28T00:00:04.000Z"),
+      },
+    ];
+
+    expect(selectChatHistoryFromUserMessage(items, "user-2")?.map((item) => item.id)).toEqual([
+      "user-2",
+      "assistant-2",
+    ]);
+    expect(selectChatHistoryFromUserMessage(items, "missing")).toBeNull();
   });
 
   it("loads every older projected page before exporting", async () => {

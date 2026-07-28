@@ -325,6 +325,8 @@ export const es: TranslationResources = {
       sharing: "Compartiendo",
       shareCopied: "Enlace compartido copiado",
       shareFailed: "No se pudo compartir el chat",
+      shareStartTitle: "Compartir desde",
+      shareStartUntitled: "Mensaje",
       forkMenu: "Bifurcar mensaje",
       forkInNewTab: "Bifurcar en una pestaña nueva",
       forkInNewWorkspace: "Bifurcar en un espacio de trabajo nuevo",

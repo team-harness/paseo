@@ -326,6 +326,8 @@ export const fr: TranslationResources = {
       sharing: "Partage en cours",
       shareCopied: "Lien de partage copie",
       shareFailed: "Echec du partage du chat",
+      shareStartTitle: "Partager a partir de",
+      shareStartUntitled: "Message",
       forkMenu: "Dupliquer le message",
       forkInNewTab: "Dupliquer dans un nouvel onglet",
       forkInNewWorkspace: "Dupliquer dans un nouvel espace de travail",

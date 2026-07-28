@@ -325,6 +325,8 @@ export const ja: TranslationResources = {
       sharing: "共有中",
       shareCopied: "共有リンクをコピーしました",
       shareFailed: "チャットを共有できませんでした",
+      shareStartTitle: "このメッセージから共有",
+      shareStartUntitled: "メッセージ",
       forkMenu: "メッセージをフォーク",
       forkInNewTab: "新しいタブにフォーク",
       forkInNewWorkspace: "新しいワークスペースにフォーク",

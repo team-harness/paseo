@@ -322,6 +322,8 @@ export const zhCN: TranslationResources = {
       sharing: "正在分享",
       shareCopied: "分享链接已复制",
       shareFailed: "分享聊天失败",
+      shareStartTitle: "从此消息开始分享",
+      shareStartUntitled: "消息",
       forkMenu: "分叉消息",
       forkInNewTab: "分叉到新标签页",
       forkInNewWorkspace: "分叉到新工作区",

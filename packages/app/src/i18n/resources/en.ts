@@ -321,6 +321,8 @@ export const en = {
       sharing: "Sharing",
       shareCopied: "Share link copied",
       shareFailed: "Failed to share chat",
+      shareStartTitle: "Share from",
+      shareStartUntitled: "Message",
       forkMenu: "Fork chat",
       forkInNewTab: "Fork in a new tab",
       forkInNewWorkspace: "Fork in a new workspace",

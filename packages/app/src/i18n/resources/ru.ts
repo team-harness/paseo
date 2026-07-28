@@ -324,6 +324,8 @@ export const ru: TranslationResources = {
       sharing: "Публикация",
       shareCopied: "Ссылка скопирована",
       shareFailed: "Не удалось поделиться чатом",
+      shareStartTitle: "Поделиться с этого сообщения",
+      shareStartUntitled: "Сообщение",
       forkMenu: "Форкнуть сообщение",
       forkInNewTab: "Форкнуть в новой вкладке",
       forkInNewWorkspace: "Форкнуть в новом рабочем пространстве",

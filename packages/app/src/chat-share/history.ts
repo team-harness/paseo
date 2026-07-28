@@ -183,6 +183,16 @@ export async function loadCompleteChatHistory({
   return [...snapshot.tail, ...snapshot.head];
 }
 
+export function selectChatHistoryFromUserMessage(
+  items: readonly StreamItem[],
+  userMessageId: string,
+): StreamItem[] | null {
+  const startIndex = items.findIndex(
+    (item) => item.kind === "user_message" && item.id === userMessageId,
+  );
+  return startIndex === -1 ? null : items.slice(startIndex);
+}
+
 function normalizeToolStatus(
   status: "executing" | "running" | "completed" | "failed" | "canceled",
 ): "running" | "completed" | "failed" | "canceled" {

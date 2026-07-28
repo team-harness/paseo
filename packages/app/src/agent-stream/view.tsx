@@ -59,6 +59,7 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { ToolCallDetailsContent } from "@/components/tool-call-details";
 import { QuestionFormCard } from "@/components/question-form-card";
 import { ToolCallSheetProvider } from "@/components/tool-call-sheet";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import {
   prepareToolCallHistory,
   projectToolCallDetailLevel,
@@ -103,8 +104,13 @@ import {
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { toErrorMessage } from "@/utils/error-messages";
+import { formatMessageTimestamp } from "@/utils/time";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
-import { exportChatHistory, loadCompleteChatHistory } from "@/chat-share/history";
+import {
+  exportChatHistory,
+  loadCompleteChatHistory,
+  selectChatHistoryFromUserMessage,
+} from "@/chat-share/history";
 import { shareChatHistory } from "@/chat-share/upload";
 
 function renderLiveAuxiliaryNode(input: {
@@ -150,6 +156,7 @@ function renderStreamItemWithTurnFooter(input: {
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onShareAssistantTurn?: () => Promise<void> | void;
   isSharingAssistantTurn: boolean;
+  isShareStartSelectionOpen: boolean;
 }): ReactNode {
   if (!input.content) {
     return null;
@@ -166,6 +173,7 @@ function renderStreamItemWithTurnFooter(input: {
       onForkAssistantTurn={input.onForkAssistantTurn}
       onShareAssistantTurn={input.onShareAssistantTurn}
       isSharingAssistantTurn={input.isSharingAssistantTurn}
+      isShareStartSelectionOpen={input.isShareStartSelectionOpen}
     />
   ) : null;
   const content = (
@@ -186,6 +194,47 @@ function renderStreamItemWithTurnFooter(input: {
       {content}
       {footer}
     </>
+  );
+}
+
+interface ChatShareStartSelection {
+  items: StreamItem[];
+  startMessages: Array<Extract<StreamItem, { kind: "user_message" }>>;
+}
+
+function ChatShareStartMessageRow({
+  item,
+  onSelect,
+}: {
+  item: Extract<StreamItem, { kind: "user_message" }>;
+  onSelect: (itemId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const preview = item.text.trim() || t("message.actions.shareStartUntitled");
+  const timestamp = useMemo(() => formatMessageTimestamp(item.timestamp), [item.timestamp]);
+  const handlePress = useCallback(() => onSelect(item.id), [item.id, onSelect]);
+  const rowStyle = useCallback(
+    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
+      stylesheet.shareStartRow,
+      Boolean(hovered) && stylesheet.shareStartRowHovered,
+      pressed && stylesheet.shareStartRowPressed,
+    ],
+    [],
+  );
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${t("message.actions.shareStartTitle")}: ${preview}`}
+      onPress={handlePress}
+      style={rowStyle}
+      testID={`chat-share-start-${item.id}`}
+    >
+      <Text style={stylesheet.shareStartRowPreview} numberOfLines={2}>
+        {preview}
+      </Text>
+      <Text style={stylesheet.shareStartRowTimestamp}>{timestamp}</Text>
+    </Pressable>
   );
 }
 
@@ -373,7 +422,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       new Set(),
     );
     const [isSharingAssistantTurn, setIsSharingAssistantTurn] = useState(false);
+    const [shareStartSelection, setShareStartSelection] = useState<ChatShareStartSelection | null>(
+      null,
+    );
     const sharingAssistantTurnRef = useRef(false);
+    const shareStartSelectionRef = useRef<ChatShareStartSelection | null>(null);
     const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
     const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
 
@@ -428,6 +481,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
       setExpandedToolCallGroupIds(new Set());
+      shareStartSelectionRef.current = null;
+      setShareStartSelection(null);
     }, [agentId]);
 
     const handleInlinePathPress = useStableEvent(
@@ -571,8 +626,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     }
     const effectiveStreamItems = isActive ? streamItems : frozenStreamItemsRef.current;
     const effectiveStreamHead = isActive ? streamHead : frozenStreamHeadRef.current;
+    const shareStartHeader = useMemo<SheetHeader>(
+      () => ({ title: t("message.actions.shareStartTitle") }),
+      [t],
+    );
+    const closeShareStartSelection = useStableEvent(() => {
+      shareStartSelectionRef.current = null;
+      setShareStartSelection(null);
+    });
     const handleShareAssistantTurn = useStableEvent(async () => {
-      if (sharingAssistantTurnRef.current) {
+      if (sharingAssistantTurnRef.current || shareStartSelectionRef.current) {
         return;
       }
 
@@ -591,6 +654,39 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             (submission) => submission.clientMessageId,
           ),
         });
+        const startMessages = items.filter(
+          (item): item is Extract<StreamItem, { kind: "user_message" }> =>
+            item.kind === "user_message",
+        );
+        if (startMessages.length === 0) {
+          toast?.error(t("message.actions.shareFailed"));
+          return;
+        }
+        const selection = { items, startMessages };
+        shareStartSelectionRef.current = selection;
+        setShareStartSelection(selection);
+      } catch (error) {
+        toast?.error(toErrorMessage(error) || t("message.actions.shareFailed"));
+      } finally {
+        sharingAssistantTurnRef.current = false;
+        setIsSharingAssistantTurn(false);
+      }
+    });
+    const handleShareStartSelected = useStableEvent(async (userMessageId: string) => {
+      const selection = shareStartSelectionRef.current;
+      if (!selection || sharingAssistantTurnRef.current) {
+        return;
+      }
+      const items = selectChatHistoryFromUserMessage(selection.items, userMessageId);
+      if (!items) {
+        toast?.error(t("message.actions.shareFailed"));
+        return;
+      }
+
+      closeShareStartSelection();
+      sharingAssistantTurnRef.current = true;
+      setIsSharingAssistantTurn(true);
+      try {
         const history = exportChatHistory({
           agentId,
           title: context.projectPlacement?.projectName ?? "Paseo conversation",
@@ -922,12 +1018,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
           onShareAssistantTurn: readOnly ? undefined : handleShareAssistantTurn,
           isSharingAssistantTurn,
+          isShareStartSelectionOpen: shareStartSelection !== null,
         });
       },
       [
         handleForkAssistantTurn,
         handleShareAssistantTurn,
         isSharingAssistantTurn,
+        shareStartSelection,
         readOnly,
         renderStreamItemContent,
         streamRenderStrategy,
@@ -962,12 +1060,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onShareAssistantTurn={readOnly ? undefined : handleShareAssistantTurn}
             isSharingAssistantTurn={isSharingAssistantTurn}
+            isShareStartSelectionOpen={shareStartSelection !== null}
           />
         ) : null,
       [
         handleForkAssistantTurn,
         handleShareAssistantTurn,
         isSharingAssistantTurn,
+        shareStartSelection,
         readOnly,
         showRunningTurnFooter,
         baseRenderModel.turnTiming.runningStartedAt,
@@ -1121,6 +1221,26 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             </View>
           )}
         </View>
+        {shareStartSelection ? (
+          <AdaptiveModalSheet
+            header={shareStartHeader}
+            visible
+            onClose={closeShareStartSelection}
+            snapPoints={["55%", "85%"]}
+            desktopMaxWidth={560}
+            testID="chat-share-start-sheet"
+          >
+            <View style={stylesheet.shareStartList}>
+              {shareStartSelection.startMessages.map((item) => (
+                <ChatShareStartMessageRow
+                  key={item.id}
+                  item={item}
+                  onSelect={handleShareStartSelected}
+                />
+              ))}
+            </View>
+          </AdaptiveModalSheet>
+        ) : null}
       </ToolCallSheetProvider>
     );
   },
@@ -1585,6 +1705,29 @@ const stylesheet = StyleSheet.create((theme) => ({
   },
   listHeaderContent: {
     gap: theme.spacing[3],
+  },
+  shareStartList: {
+    marginHorizontal: -theme.spacing[6],
+  },
+  shareStartRow: {
+    gap: theme.spacing[1],
+    minWidth: 0,
+    paddingHorizontal: theme.spacing[6],
+    paddingVertical: theme.spacing[3],
+  },
+  shareStartRowHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  shareStartRowPressed: {
+    opacity: theme.opacity[50],
+  },
+  shareStartRowPreview: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
+  shareStartRowTimestamp: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   syncingIndicator: {
     flexDirection: "row",

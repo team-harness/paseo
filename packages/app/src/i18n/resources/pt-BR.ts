@@ -325,6 +325,8 @@ export const ptBR: TranslationResources = {
       sharing: "Compartilhando",
       shareCopied: "Link de compartilhamento copiado",
       shareFailed: "Falha ao compartilhar o chat",
+      shareStartTitle: "Compartilhar a partir de",
+      shareStartUntitled: "Mensagem",
       forkMenu: "Bifurcar mensagem",
       forkInNewTab: "Bifurcar em uma nova aba",
       forkInNewWorkspace: "Bifurcar em um novo workspace",

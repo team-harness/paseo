@@ -322,6 +322,8 @@ export const ar: TranslationResources = {
       sharing: "جارٍ المشاركة",
       shareCopied: "تم نسخ رابط المشاركة",
       shareFailed: "تعذرت مشاركة المحادثة",
+      shareStartTitle: "بدء المشاركة من",
+      shareStartUntitled: "رسالة",
       forkMenu: "تفريع الرسالة",
       forkInNewTab: "تفريع في تبويب جديد",
       forkInNewWorkspace: "تفريع في مساحة عمل جديدة",
