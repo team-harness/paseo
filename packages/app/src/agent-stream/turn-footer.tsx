@@ -33,6 +33,7 @@ export type AssistantTurnForkHandler = (input: {
   target: AssistantForkTarget;
   boundary: AssistantTurnForkBoundary;
 }) => Promise<void> | void;
+export type AssistantTurnShareHandler = () => Promise<void> | void;
 
 export const TurnFooter = memo(function TurnFooter({
   isRunning,
@@ -41,6 +42,7 @@ export const TurnFooter = memo(function TurnFooter({
   strategy,
   supportsTimelineCursor,
   onForkAssistantTurn,
+  onShareAssistantTurn,
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
@@ -48,6 +50,7 @@ export const TurnFooter = memo(function TurnFooter({
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  onShareAssistantTurn?: AssistantTurnShareHandler;
 }) {
   if (isRunning) {
     return (
@@ -67,6 +70,7 @@ export const TurnFooter = memo(function TurnFooter({
       startIndex={host.startIndex}
       supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
+      onShareAssistantTurn={onShareAssistantTurn}
     />
   );
 });
@@ -78,6 +82,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
+  onShareAssistantTurn,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -85,6 +90,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  onShareAssistantTurn?: AssistantTurnShareHandler;
 }) {
   return (
     <TurnFooterRow>
@@ -95,6 +101,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
         startIndex={startIndex}
         supportsTimelineCursor={supportsTimelineCursor}
         onForkAssistantTurn={onForkAssistantTurn}
+        onShareAssistantTurn={onShareAssistantTurn}
       />
     </TurnFooterRow>
   );
@@ -138,6 +145,7 @@ function CompletedTurnFooter({
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
+  onShareAssistantTurn,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -145,6 +153,7 @@ function CompletedTurnFooter({
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  onShareAssistantTurn?: AssistantTurnShareHandler;
 }) {
   const getContent = useCallback(
     () =>
@@ -176,6 +185,7 @@ function CompletedTurnFooter({
         completedAt={timing?.completedAt}
         durationMs={timing?.durationMs}
         onFork={boundary && onForkAssistantTurn ? handleFork : undefined}
+        onShare={onShareAssistantTurn}
       />
     </View>
   );

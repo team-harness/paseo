@@ -31,3 +31,27 @@ read or migrated; workspace `pinnedAt` is the only Pin persistence model.
 When syncing upstream sidebar pin changes, update the status bar only through
 these existing sidebar hooks and the workspace pin controller. Do not introduce
 a status-bar-specific persistence store or RPC.
+
+## Read-only Chat Sharing
+
+Completed assistant turns expose a share action next to copy and fork. It exports
+the complete current stream as the versioned `paseo-chat-history@v1` JSON
+contract, uploads it with a temporary single-object OSS URL, and copies the
+read-only viewer link.
+
+- Client boundary: `packages/app/src/chat-share/` owns the portable export and
+  upload client. `AgentStreamView` only invokes those helpers and does not add a
+  daemon RPC or persist share state.
+- Contract: `chatviewer/schema/paseo-chat-history.v1.schema.json` is the
+  standalone JSON schema. Exported data contains messages, tool calls, thoughts,
+  todos, activity, and compaction records without Paseo runtime state.
+- Independent deployment: `chatviewer/` owns the static viewer at
+  `https://paseo-chat.bazhuayu.xyz`; `chatviewer/api/` owns the FC API at
+  `https://paseo-chat-share.bazhuayu.xyz`.
+- Upload path: the FC API signs a five-minute `PUT` for a generated
+  `history/YYYY-MM-DD/<uuid>.json` key. Long-lived OSS credentials remain FC
+  environment variables only. The viewer reads through the API's key-restricted
+  history endpoint, so it does not depend on OSS read CORS.
+- OSS CORS permits browser `PUT` with `content-type` for those temporary upload
+  URLs. Keep this configuration in the independent deployment rather than the
+  Paseo daemon or protocol.

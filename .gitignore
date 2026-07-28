@@ -69,6 +69,7 @@ CLAUDE.local.md
 .wrangler/
 **/.wrangler/
 **/.tanstack/
+**/.licell/
 
 # Local agent/tooling artifacts (do not commit)
 PLAN.md

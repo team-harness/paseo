@@ -42,6 +42,7 @@ import {
   Check,
   CheckSquare,
   Copy,
+  Share2,
   TriangleAlertIcon,
   Scissors,
   MicVocal,
@@ -574,6 +575,7 @@ interface AssistantTurnFooterProps {
   completedAt?: Date;
   durationMs?: number;
   onFork?: (target: AssistantForkTarget) => Promise<void> | void;
+  onShare?: () => Promise<void> | void;
 }
 
 const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
@@ -619,6 +621,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   completedAt,
   durationMs,
   onFork,
+  onShare,
 }: AssistantTurnFooterProps) {
   const [hovered, setHovered] = useState(false);
   const [pressedReveal, setPressedReveal] = useState(false);
@@ -672,6 +675,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
         getContent={getContent}
         containerStyle={assistantTurnFooterStylesheet.copyButton}
       />
+      {onShare ? <TurnShareButton onShare={onShare} /> : null}
       {canFork ? <AssistantForkMenu onFork={handleFork} /> : null}
       {durationLabel ? (
         <Pressable
@@ -694,6 +698,60 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
         </Pressable>
       ) : null}
     </View>
+  );
+});
+
+const turnShareButtonStylesheet = StyleSheet.create((theme) => ({
+  container: {
+    alignSelf: "center",
+    padding: theme.spacing[1],
+    paddingTop: theme.spacing[1],
+    marginTop: 0,
+  },
+  iconColor: {
+    color: theme.colors.foregroundMuted,
+  },
+  iconHoveredColor: {
+    color: theme.colors.foreground,
+  },
+}));
+
+const TurnShareButton = memo(function TurnShareButton({
+  onShare,
+}: {
+  onShare: () => Promise<void> | void;
+}) {
+  const { t } = useTranslation();
+  const [sharing, setSharing] = useState(false);
+  const handleShare = useCallback(async () => {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      await onShare();
+    } finally {
+      setSharing(false);
+    }
+  }, [onShare, sharing]);
+
+  return (
+    <Pressable
+      disabled={sharing}
+      onPress={handleShare}
+      style={turnShareButtonStylesheet.container}
+      accessibilityRole="button"
+      accessibilityLabel={sharing ? t("message.actions.sharing") : t("message.actions.share")}
+    >
+      {({ hovered }) => (
+        <Share2
+          size={16}
+          color={
+            hovered
+              ? turnShareButtonStylesheet.iconHoveredColor.color
+              : turnShareButtonStylesheet.iconColor.color
+          }
+        />
+      )}
+    </Pressable>
   );
 });
 

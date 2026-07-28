@@ -1,0 +1,9 @@
+{
+  "name": "paseo-chat-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone read-only viewer for Paseo shared chat histories",
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  }
+}

@@ -1,0 +1,152 @@
+const { createHmac, randomUUID } = require("node:crypto");
+
+const MAX_REQUEST_BYTES = 16 * 1024;
+const UPLOAD_TTL_SECONDS = 5 * 60;
+
+function env(name) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`Missing ${name}`);
+  return value;
+}
+
+function json(status, value) {
+  return {
+    statusCode: status,
+    headers: {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "POST, OPTIONS",
+      "access-control-allow-headers": "authorization, content-type",
+      "cache-control": "no-store",
+      "content-type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify(value),
+  };
+}
+
+function empty(status) {
+  return {
+    statusCode: status,
+    headers: {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "POST, OPTIONS",
+      "access-control-allow-headers": "authorization, content-type",
+    },
+  };
+}
+
+function header(event, name) {
+  const normalizedName = name.toLowerCase();
+  const entry = Object.entries(event.headers ?? {}).find(
+    ([key]) => key.toLowerCase() === normalizedName,
+  );
+  return entry?.[1] ?? "";
+}
+
+function readJson(event) {
+  const raw = event.isBase64Encoded
+    ? Buffer.from(event.body ?? "", "base64").toString("utf8")
+    : (event.body ?? "");
+  if (Buffer.byteLength(raw) > MAX_REQUEST_BYTES) throw new Error("Request body is too large");
+  try {
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    throw new Error("Request body must be valid JSON");
+  }
+}
+
+function encodeObjectKey(key) {
+  return key.split("/").map(encodeURIComponent).join("/");
+}
+
+function createPresignedPutUrl({ bucket, region, key, accessKeyId, accessKeySecret, expiresAt }) {
+  const resource = `/${bucket}/${key}`;
+  const stringToSign = ["PUT", "", "application/json", String(expiresAt), resource].join("\n");
+  const signature = createHmac("sha1", accessKeySecret).update(stringToSign).digest("base64");
+  const query = new URLSearchParams({
+    OSSAccessKeyId: accessKeyId,
+    Expires: String(expiresAt),
+    Signature: signature,
+  });
+  return `https://${bucket}.oss-${region}.aliyuncs.com/${encodeObjectKey(key)}?${query.toString()}`;
+}
+
+function isHistoryKey(key) {
+  return /^history\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]+\.json$/i.test(key);
+}
+
+function errorMessage(error, fallback) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+async function handleHistory(key) {
+  if (!isHistoryKey(key)) return json(400, { error: "Invalid history key" });
+  try {
+    const bucket = env("CHAT_SHARE_OSS_BUCKET");
+    const region = env("CHAT_SHARE_OSS_REGION");
+    const historyUrl = `https://${bucket}.oss-${region}.aliyuncs.com/${encodeObjectKey(key)}`;
+    const response = await fetch(historyUrl);
+    if (!response.ok)
+      return json(response.status === 404 ? 404 : 502, { error: "History unavailable" });
+    return json(200, await response.json());
+  } catch (error) {
+    return json(500, { error: errorMessage(error, "Unable to load history") });
+  }
+}
+
+function createViewerUrl(request, key) {
+  const apiOrigin =
+    process.env.CHAT_SHARE_API_ORIGIN?.trim() || `https://${header(request, "host")}`;
+  const viewer = new URL(env("CHAT_SHARE_VIEWER_ORIGIN"));
+  const historyProxy = new URL("/v1/history", apiOrigin);
+  historyProxy.searchParams.set("key", key);
+  viewer.searchParams.set("history", historyProxy.toString());
+  return viewer.toString();
+}
+
+function createUploadGrant(request) {
+  const body = readJson(request);
+  if (body.schemaVersion !== 1) return json(400, { error: "Unsupported history schema" });
+
+  const bucket = env("CHAT_SHARE_OSS_BUCKET");
+  const region = env("CHAT_SHARE_OSS_REGION");
+  const key = `history/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.json`;
+  const expiresAt = Math.floor(Date.now() / 1000) + UPLOAD_TTL_SECONDS;
+  const historyUrl = `https://${bucket}.oss-${region}.aliyuncs.com/${encodeObjectKey(key)}`;
+  const uploadUrl = createPresignedPutUrl({
+    bucket,
+    region,
+    key,
+    accessKeyId: env("CHAT_SHARE_OSS_ACCESS_KEY_ID"),
+    accessKeySecret: env("CHAT_SHARE_OSS_ACCESS_KEY_SECRET"),
+    expiresAt,
+  });
+  return json(200, {
+    upload: {
+      method: "PUT",
+      url: uploadUrl,
+      headers: { "content-type": "application/json" },
+      expiresAt: new Date(expiresAt * 1000).toISOString(),
+    },
+    historyUrl,
+    viewerUrl: createViewerUrl(request, key),
+  });
+}
+
+async function handler(request) {
+  const path = request.rawPath ?? request.path ?? "/";
+  const method = request.httpMethod ?? request.requestContext?.http?.method ?? "GET";
+  if (method === "OPTIONS") return empty(204);
+  if (method === "GET" && (path === "/health" || path === "/healthz"))
+    return json(200, { ok: true });
+  if (method === "GET" && path === "/v1/history") {
+    return handleHistory(request.queryParameters?.key ?? "");
+  }
+  if (method !== "POST" || path !== "/v1/upload-grant") return json(404, { error: "Not found" });
+  try {
+    return createUploadGrant(request);
+  } catch (error) {
+    return json(500, { error: errorMessage(error, "Unable to create upload grant") });
+  }
+}
+
+module.exports = { handler, createPresignedPutUrl, isHistoryKey };

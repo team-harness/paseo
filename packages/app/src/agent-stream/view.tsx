@@ -27,6 +27,7 @@ import { MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useMutation } from "@tanstack/react-query";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, ChevronDown, X } from "lucide-react-native";
+import * as Clipboard from "expo-clipboard";
 import { usePanelStore } from "@/stores/panel-store";
 import {
   AssistantMessage,
@@ -103,6 +104,8 @@ import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { toErrorMessage } from "@/utils/error-messages";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
+import { exportChatHistory } from "@/chat-share/history";
+import { shareChatHistory } from "@/chat-share/upload";
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -145,6 +148,7 @@ function renderStreamItemWithTurnFooter(input: {
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  onShareAssistantTurn?: () => Promise<void> | void;
 }): ReactNode {
   if (!input.content) {
     return null;
@@ -159,6 +163,7 @@ function renderStreamItemWithTurnFooter(input: {
       startIndex={footerHost.startIndex}
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
+      onShareAssistantTurn={input.onShareAssistantTurn}
     />
   ) : null;
   const content = (
@@ -562,6 +567,22 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     }
     const effectiveStreamItems = isActive ? streamItems : frozenStreamItemsRef.current;
     const effectiveStreamHead = isActive ? streamHead : frozenStreamHeadRef.current;
+    const handleShareAssistantTurn = useStableEvent(async () => {
+      try {
+        const history = exportChatHistory({
+          agentId,
+          title: context.projectPlacement?.projectName ?? "Paseo conversation",
+          provider: context.provider,
+          model: context.model ?? context.runtimeInfo?.model,
+          items: [...effectiveStreamItems, ...(effectiveStreamHead ?? EMPTY_STREAM_HEAD)],
+        });
+        const viewerUrl = await shareChatHistory(history);
+        await Clipboard.setStringAsync(viewerUrl);
+        toast?.copied(t("message.actions.shareCopied"));
+      } catch (error) {
+        toast?.error(toErrorMessage(error) || t("message.actions.shareFailed"));
+      }
+    });
     // Keep retained history outside the 48ms live-head flush path.
     const preparedToolCallHistory = useMemo(
       () => prepareToolCallHistory(toolCallDetailLevel, effectiveStreamItems),
@@ -874,10 +895,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
+          onShareAssistantTurn: readOnly ? undefined : handleShareAssistantTurn,
         });
       },
       [
         handleForkAssistantTurn,
+        handleShareAssistantTurn,
         readOnly,
         renderStreamItemContent,
         streamRenderStrategy,
@@ -910,10 +933,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             strategy={streamRenderStrategy}
             supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
+            onShareAssistantTurn={readOnly ? undefined : handleShareAssistantTurn}
           />
         ) : null,
       [
         handleForkAssistantTurn,
+        handleShareAssistantTurn,
         readOnly,
         showRunningTurnFooter,
         baseRenderModel.turnTiming.runningStartedAt,

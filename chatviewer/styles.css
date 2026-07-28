@@ -1,0 +1,234 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  background: #111413;
+  color: #eef2ef;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #111413;
+}
+
+.shell {
+  min-height: 100vh;
+}
+
+.header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  border-bottom: 1px solid #29302c;
+  background: #151a18;
+}
+
+.brand {
+  color: #f2f6f3;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.read-only {
+  color: #9aa69e;
+  font-size: 12px;
+  border: 1px solid #3b4740;
+  border-radius: 4px;
+  padding: 3px 7px;
+}
+
+.conversation {
+  width: min(860px, 100%);
+  margin: 0 auto;
+  padding: 38px 24px 72px;
+}
+
+.conversation-meta {
+  border-bottom: 1px solid #29302c;
+  padding-bottom: 22px;
+  margin-bottom: 26px;
+}
+.conversation-meta h1 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.conversation-meta p {
+  margin: 7px 0 0;
+  color: #8f9b93;
+  font-size: 13px;
+}
+
+.entry {
+  margin: 0 0 22px;
+}
+.message {
+  display: flex;
+}
+.message.user {
+  justify-content: flex-end;
+}
+.bubble {
+  width: fit-content;
+  max-width: min(680px, 88%);
+}
+.user .bubble {
+  padding: 11px 14px;
+  border-radius: 7px;
+  background: #26302b;
+}
+.assistant .bubble {
+  max-width: 100%;
+  padding: 4px 0;
+}
+
+.entry-meta {
+  color: #7e8982;
+  font-size: 11px;
+  margin-bottom: 7px;
+}
+.user .entry-meta {
+  text-align: right;
+}
+.markdown {
+  color: #edf2ee;
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.markdown p {
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+}
+.markdown p:last-child {
+  margin-bottom: 0;
+}
+.markdown h2,
+.markdown h3 {
+  margin: 18px 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.markdown ul,
+.markdown ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+.markdown li {
+  margin: 4px 0;
+}
+.markdown code {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+.markdown pre {
+  margin: 12px 0;
+  padding: 13px;
+  overflow-x: auto;
+  background: #0c0f0e;
+  border: 1px solid #29302c;
+  border-radius: 5px;
+}
+.markdown pre code {
+  white-space: pre;
+}
+
+.record {
+  border-left: 2px solid #3c5145;
+  padding: 8px 0 8px 12px;
+  color: #abb6af;
+  font-size: 13px;
+}
+.record.error {
+  border-color: #9d5b59;
+}
+.record-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #c7d0ca;
+}
+.status {
+  font-size: 11px;
+  color: #8f9b93;
+  text-transform: capitalize;
+}
+.record details {
+  margin-top: 9px;
+}
+.record summary {
+  cursor: pointer;
+  color: #aebbb3;
+}
+.record pre {
+  margin: 8px 0 0;
+  padding: 10px;
+  overflow-x: auto;
+  background: #0c0f0e;
+  border: 1px solid #29302c;
+  border-radius: 4px;
+  color: #cbd5ce;
+  font:
+    12px/1.5 "SFMono-Regular",
+    Consolas,
+    monospace;
+}
+.todo-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.todo-list li {
+  margin: 6px 0;
+}
+.todo-list li::before {
+  content: "□";
+  margin-right: 8px;
+  color: #9aa69e;
+}
+.todo-list li.done {
+  color: #78847c;
+  text-decoration: line-through;
+}
+.todo-list li.done::before {
+  content: "✓";
+  color: #83b58f;
+}
+
+.empty-state,
+.error-state {
+  color: #8f9b93;
+  padding: 72px 0;
+  text-align: center;
+  font-size: 14px;
+}
+.error-state {
+  color: #db938f;
+}
+
+@media (max-width: 640px) {
+  .header {
+    padding: 0 16px;
+  }
+  .conversation {
+    padding: 26px 16px 48px;
+  }
+  .bubble {
+    max-width: 94%;
+  }
+}
