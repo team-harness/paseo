@@ -576,6 +576,7 @@ interface AssistantTurnFooterProps {
   durationMs?: number;
   onFork?: (target: AssistantForkTarget) => Promise<void> | void;
   onShare?: () => Promise<void> | void;
+  isSharing?: boolean;
 }
 
 const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
@@ -622,6 +623,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   durationMs,
   onFork,
   onShare,
+  isSharing = false,
 }: AssistantTurnFooterProps) {
   const [hovered, setHovered] = useState(false);
   const [pressedReveal, setPressedReveal] = useState(false);
@@ -675,7 +677,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
         getContent={getContent}
         containerStyle={assistantTurnFooterStylesheet.copyButton}
       />
-      {onShare ? <TurnShareButton onShare={onShare} /> : null}
+      {onShare ? <TurnShareButton onShare={onShare} isSharing={isSharing} /> : null}
       {canFork ? <AssistantForkMenu onFork={handleFork} /> : null}
       {durationLabel ? (
         <Pressable
@@ -718,39 +720,38 @@ const turnShareButtonStylesheet = StyleSheet.create((theme) => ({
 
 const TurnShareButton = memo(function TurnShareButton({
   onShare,
+  isSharing,
 }: {
   onShare: () => Promise<void> | void;
+  isSharing: boolean;
 }) {
   const { t } = useTranslation();
-  const [sharing, setSharing] = useState(false);
-  const handleShare = useCallback(async () => {
-    if (sharing) return;
-    setSharing(true);
-    try {
-      await onShare();
-    } finally {
-      setSharing(false);
-    }
-  }, [onShare, sharing]);
+  const handleShare = useCallback(() => {
+    void onShare();
+  }, [onShare]);
 
   return (
     <Pressable
-      disabled={sharing}
+      disabled={isSharing}
       onPress={handleShare}
       style={turnShareButtonStylesheet.container}
       accessibilityRole="button"
-      accessibilityLabel={sharing ? t("message.actions.sharing") : t("message.actions.share")}
+      accessibilityLabel={isSharing ? t("message.actions.sharing") : t("message.actions.share")}
     >
-      {({ hovered }) => (
-        <Share2
-          size={16}
-          color={
-            hovered
-              ? turnShareButtonStylesheet.iconHoveredColor.color
-              : turnShareButtonStylesheet.iconColor.color
-          }
-        />
-      )}
+      {({ hovered }) =>
+        isSharing ? (
+          <LoadingSpinner color={turnShareButtonStylesheet.iconColor.color} size="small" />
+        ) : (
+          <Share2
+            size={16}
+            color={
+              hovered
+                ? turnShareButtonStylesheet.iconHoveredColor.color
+                : turnShareButtonStylesheet.iconColor.color
+            }
+          />
+        )
+      }
     </Pressable>
   );
 });

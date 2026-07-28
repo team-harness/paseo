@@ -104,7 +104,7 @@ import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { toErrorMessage } from "@/utils/error-messages";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
-import { exportChatHistory } from "@/chat-share/history";
+import { exportChatHistory, loadCompleteChatHistory } from "@/chat-share/history";
 import { shareChatHistory } from "@/chat-share/upload";
 
 function renderLiveAuxiliaryNode(input: {
@@ -149,6 +149,7 @@ function renderStreamItemWithTurnFooter(input: {
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onShareAssistantTurn?: () => Promise<void> | void;
+  isSharingAssistantTurn: boolean;
 }): ReactNode {
   if (!input.content) {
     return null;
@@ -164,6 +165,7 @@ function renderStreamItemWithTurnFooter(input: {
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
       onShareAssistantTurn={input.onShareAssistantTurn}
+      isSharingAssistantTurn={input.isSharingAssistantTurn}
     />
   ) : null;
   const content = (
@@ -370,6 +372,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandedToolCallGroupIds, setExpandedToolCallGroupIds] = useState<Set<string>>(
       new Set(),
     );
+    const [isSharingAssistantTurn, setIsSharingAssistantTurn] = useState(false);
+    const sharingAssistantTurnRef = useRef(false);
     const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
     const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
 
@@ -568,19 +572,40 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const effectiveStreamItems = isActive ? streamItems : frozenStreamItemsRef.current;
     const effectiveStreamHead = isActive ? streamHead : frozenStreamHeadRef.current;
     const handleShareAssistantTurn = useStableEvent(async () => {
+      if (sharingAssistantTurnRef.current) {
+        return;
+      }
+
+      sharingAssistantTurnRef.current = true;
+      setIsSharingAssistantTurn(true);
       try {
+        if (!client) {
+          throw new Error(t("workspace.terminal.hostDisconnected"));
+        }
+        const items = await loadCompleteChatHistory({
+          client,
+          agentId,
+          localTail: effectiveStreamItems,
+          liveHead: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
+          sendingClientMessageIds: pendingMessageSubmissions.map(
+            (submission) => submission.clientMessageId,
+          ),
+        });
         const history = exportChatHistory({
           agentId,
           title: context.projectPlacement?.projectName ?? "Paseo conversation",
           provider: context.provider,
           model: context.model ?? context.runtimeInfo?.model,
-          items: [...effectiveStreamItems, ...(effectiveStreamHead ?? EMPTY_STREAM_HEAD)],
+          items,
         });
         const viewerUrl = await shareChatHistory(history);
         await Clipboard.setStringAsync(viewerUrl);
         toast?.copied(t("message.actions.shareCopied"));
       } catch (error) {
         toast?.error(toErrorMessage(error) || t("message.actions.shareFailed"));
+      } finally {
+        sharingAssistantTurnRef.current = false;
+        setIsSharingAssistantTurn(false);
       }
     });
     // Keep retained history outside the 48ms live-head flush path.
@@ -896,11 +921,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
           onShareAssistantTurn: readOnly ? undefined : handleShareAssistantTurn,
+          isSharingAssistantTurn,
         });
       },
       [
         handleForkAssistantTurn,
         handleShareAssistantTurn,
+        isSharingAssistantTurn,
         readOnly,
         renderStreamItemContent,
         streamRenderStrategy,
@@ -934,11 +961,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onShareAssistantTurn={readOnly ? undefined : handleShareAssistantTurn}
+            isSharingAssistantTurn={isSharingAssistantTurn}
           />
         ) : null,
       [
         handleForkAssistantTurn,
         handleShareAssistantTurn,
+        isSharingAssistantTurn,
         readOnly,
         showRunningTurnFooter,
         baseRenderModel.turnTiming.runningStartedAt,

@@ -1,6 +1,52 @@
 import { describe, expect, it } from "vitest";
-import { exportChatHistory } from "./history";
+import type {
+  DaemonClient,
+  FetchAgentTimelinePayload,
+} from "@getpaseo/client/internal/daemon-client";
+import { exportChatHistory, loadCompleteChatHistory } from "./history";
 import type { StreamItem } from "@/types/stream";
+
+function makeTimelinePage(input: {
+  direction: "tail" | "before";
+  hasOlder: boolean;
+  startSeq: number;
+  endSeq: number;
+  entries: FetchAgentTimelinePayload["entries"];
+}): FetchAgentTimelinePayload {
+  return {
+    requestId: `request-${input.direction}-${input.startSeq}`,
+    agentId: "agent-1",
+    agent: null,
+    direction: input.direction,
+    projection: "projected",
+    epoch: "epoch-1",
+    reset: false,
+    staleCursor: false,
+    gap: false,
+    window: { minSeq: 1, maxSeq: 3, nextSeq: 4 },
+    startCursor: { epoch: "epoch-1", seq: input.startSeq },
+    endCursor: { epoch: "epoch-1", seq: input.endSeq },
+    hasOlder: input.hasOlder,
+    hasNewer: false,
+    entries: input.entries,
+    error: null,
+  };
+}
+
+function makeAssistantEntry(
+  seq: number,
+  text: string,
+): FetchAgentTimelinePayload["entries"][number] {
+  return {
+    seqStart: seq,
+    seqEnd: seq,
+    sourceSeqRanges: [{ startSeq: seq, endSeq: seq }],
+    collapsed: [],
+    provider: "codex",
+    item: { type: "assistant_message", text, messageId: `assistant-${seq}` },
+    timestamp: `2026-07-28T00:00:0${seq}.000Z`,
+  };
+}
 
 describe("exportChatHistory", () => {
   it("exports a portable, versioned transcript without runtime-only fields", () => {
@@ -81,5 +127,65 @@ describe("exportChatHistory", () => {
         },
       ],
     });
+  });
+
+  it("loads every older projected page before exporting", async () => {
+    const pages = [
+      makeTimelinePage({
+        direction: "tail",
+        hasOlder: true,
+        startSeq: 3,
+        endSeq: 3,
+        entries: [makeAssistantEntry(3, "Newest")],
+      }),
+      makeTimelinePage({
+        direction: "before",
+        hasOlder: false,
+        startSeq: 1,
+        endSeq: 2,
+        entries: [makeAssistantEntry(1, "Oldest"), makeAssistantEntry(2, "Middle")],
+      }),
+    ];
+    const requests: Parameters<DaemonClient["fetchAgentTimeline"]>[1][] = [];
+    const client = {
+      async fetchAgentTimeline(
+        _agentId: string,
+        request: Parameters<DaemonClient["fetchAgentTimeline"]>[1],
+      ) {
+        requests.push(request);
+        const page = pages.shift();
+        if (!page) {
+          throw new Error("Unexpected timeline request");
+        }
+        return page;
+      },
+    };
+
+    const items = await loadCompleteChatHistory({
+      client,
+      agentId: "agent-1",
+      localTail: [],
+      liveHead: [],
+      sendingClientMessageIds: [],
+    });
+
+    expect(
+      items
+        .filter(
+          (item): item is Extract<StreamItem, { kind: "assistant_message" }> =>
+            item.kind === "assistant_message",
+        )
+        .map((item) => item.text)
+        .join(""),
+    ).toBe("OldestMiddleNewest");
+    expect(requests).toEqual([
+      { direction: "tail", limit: 40, projection: "projected" },
+      {
+        direction: "before",
+        cursor: { epoch: "epoch-1", seq: 3 },
+        limit: 40,
+        projection: "projected",
+      },
+    ]);
   });
 });
