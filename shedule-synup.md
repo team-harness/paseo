@@ -37,16 +37,28 @@
 
 前提：Step 1 确实合入了上游改动。若本轮无上游更新，跳过本步。
 
-1. 在仓库根目录执行桌面打包：
+1. 在仓库根目录重新构建当前提交的桌面产物：
 
    ```bash
-   npm run build:desktop
+   npm run build:desktop -- --mac --arm64 --publish never
    ```
 
-   该脚本会重建 server 栈、导出 Expo web（`PASEO_WEB_PLATFORM=electron`）并调用 `electron-builder`，产物在 `packages/desktop/dist/`（或 `electron-builder.yml` 中配置的输出目录）。
+   该脚本会重建 server 栈、导出 Expo web（`PASEO_WEB_PLATFORM=electron`）并调用 `electron-builder`。这是构建步骤，不运行桌面 smoke，除非用户明确要求。
 
-2. 确认产出的是 **macOS arm64** 安装包（`.dmg` / `.zip`，文件名含 `arm64`）。如宿主不是 Apple Silicon，需显式指定 `--mac --arm64` 目标。
-3. 记录产物的文件名、版本号和大小。
+2. **不要直接交付** `electron-builder` 刚生成的轻量 DMG。它在本机表现为约 130 MB 的 HFS 镜像，虽然 `hdiutil verify` 可通过，但用户的 Mac 不能可靠安装。必须生成与已验证历史安装包一致的标准布局：
+   - 挂载一个已验证可安装的 arm64 DMG，复制其中完整的 `Paseo.app`；
+   - 用当前构建的 `packages/app/dist` 覆盖 `Paseo.app/Contents/Resources/app-dist`，确保新功能随包发布；
+   - 对 staged app 执行与历史包一致的本地重签名：`codesign --force --deep --sign - <Paseo.app>`；
+   - 在 staging 目录放入 `Paseo.app` 及 `Applications -> /Applications` 快捷方式，再用 `hdiutil create -volname "Paseo <version>-arm64" -srcfolder <staging> -format UDZO -ov <output.dmg>` 封装。
+
+   这样得到的是约 160 MB 的 APFS DMG。旧 DMG 只作为桌面运行时和镜像布局基底；实际聊天 UI 必须来自当前提交导出的 `app-dist`，不能把旧 UI 原样重新上传。
+
+3. 交付前必须全部验证：
+   - `hdiutil verify <output.dmg>` 成功；
+   - 只读挂载后，`Paseo.app/Contents/MacOS/Paseo` 为 `arm64`；
+   - 确认挂载包内 `app-dist/index.html` 指向本轮导出的 bundle，并能检索到本轮新增 UI 文案/代码；
+   - DMG 使用 APFS 镜像布局、大小与标准包同量级（约 160 MB），不能把约 130 MB 的轻量 HFS 包当成交付物；
+   - 记录文件名、版本号、提交 SHA、大小和 SHA-256。
 
 ---
 
@@ -55,8 +67,9 @@
 1. 用 `licell` 把安装包上传到阿里云 OSS：
    - bucket：`opencoder`
    - region：`cn-shanghai`
+   - 目标目录：`releases/paseo/<version>/<commit>/standard/`；只上传经验证的单个 DMG，避免把旧版本、`.DS_Store`、blockmap 或 unpacked app 一并发布。
    - 遵循 licell 的操作契约：先 `licell catalog --output json` 发现命令、再 `licell <command> --help --output json` 读取用法，最后带 `--output json` 执行，不要凭记忆猜命令和参数。
-2. 拿到可下载的 URL（若命令返回的是内网/私有地址，需要生成可访问的下载链接）。
+2. 拿到可下载的 URL 后，以 `curl -I --fail` 验证公网返回 `200`、`Content-Type: application/x-apple-diskimage` 和预期的 `Content-Length`；确认对象路径与本轮 commit 一致后再发送。
 3. 通过 Lark CLI **点对点私聊**发送给 **房玉峰（大房）**，消息内容包含：
    - 下载链接与版本号；
    - 本轮主要改动点总结：上游合入了什么、fork 保留了什么、本轮下线了哪些重复实现（若有）。
