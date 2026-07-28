@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `1a1ff8828f002fce08e239bae3d46aff75e22f52`（`v0.2.2`），同步于 2026-07-27。
-- 最近同步 merge commit：`13a1348e0a45497cf62dd59f6047fa63653ba7fe`。
+- 最近同步基线：`upstream/main` = `cbbf6c1684fb0415b7949e684d152f5f7453e769`（`v0.2.3`），同步于 2026-07-28。
+- 最近同步 merge commit：`1973dd08a`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-07-28: `upstream/main` `cbbf6c168` / `v0.2.3`
+
+- 合入上游工作区创建时携带本地文件与共享状态、项目/工作区目录打开、完整聊天历史分页、父 Agent 生命周期、Codex 项目 skills 发现、Relay 性能与多项 UI/稳定性修复。
+- 上游计划表单的 `targetKind: "agent"` 仍只覆盖现有 Agent 目标的编辑/heartbeat 路径；创建计划时没有选择已有 Agent 的入口、跨 Host 选择 UI 或同等提交语义。因此保留 fork 的创建目标分段控件、Agent 选择和 `target: { type: "agent", agentId }` 创建路径。
+- 上游没有新增 Status Bar/`status.summary`、usage ledger、多 Host 聚合或共享侧边栏 Pin 的等价实现；这些 fork 能力继续保留。
 
 ### 2026-07-27: `upstream/main` `1a1ff882` / `v0.2.2`
 
