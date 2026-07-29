@@ -58,6 +58,8 @@ with a valid JSON upload, then verify the returned `id` can be read through the
 same local API. Verify invalid content type, malformed JSON, oversized payloads,
 and invalid IDs are rejected. Do not change the Paseo client to branch by cloud
 provider: `daemon.chatShare.baseUrl` is the only deployment-specific setting.
+When it is absent, Paseo uses the hosted `https://paseo-share.team-harness.com`
+default; an explicit setting always overrides it.
 
 For FC, run `npm run test:fc`; it builds the bundled function and verifies the
 same-origin viewer plus strict upload and OSS read/write behavior using an

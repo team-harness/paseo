@@ -75,9 +75,10 @@ after the first deployment; configure that public function domain as `baseUrl`.
 
 ## Configure Paseo
 
-Add any deployment's public URL to the host daemon configuration at
-`~/.paseo/config.json`, then restart the daemon through your normal host
-workflow:
+Paseo uses `https://paseo-share.team-harness.com` when no sharing service is
+configured. To use any self-hosted deployment instead, add its public URL to
+the host daemon configuration at `~/.paseo/config.json`, then restart the
+daemon through your normal host workflow:
 
 ```json
 {
@@ -92,8 +93,7 @@ workflow:
 
 The daemon publishes only this public base URL to connected clients. It never
 publishes a cloud credential, an object-storage URL, or a deployment secret.
-If `chatShare` is absent, Paseo keeps the Share action visible and explains
-which configuration is required.
+An explicit `chatShare` entry always overrides the hosted default.
 
 ## API Contract
 

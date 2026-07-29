@@ -26,7 +26,16 @@ describe("server config", () => {
     expect(standaloneConfig.desktopManaged).toBe(false);
   });
 
-  test("normalizes the configured chat share service URL", async () => {
+  test("uses the hosted chat share service by default", async () => {
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-config-chat-share-default-"));
+    roots.push(paseoHome);
+
+    expect(loadConfig(paseoHome, { env: {} }).chatShare).toEqual({
+      baseUrl: "https://paseo-share.team-harness.com",
+    });
+  });
+
+  test("normalizes an explicit chat share service URL override", async () => {
     const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-config-chat-share-"));
     roots.push(paseoHome);
     await mkdir(paseoHome, { recursive: true });

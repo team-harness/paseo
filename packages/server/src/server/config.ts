@@ -284,13 +284,12 @@ interface ResolvedWebUi {
   distDir: string | null;
 }
 
+const DEFAULT_CHAT_SHARE_BASE_URL = "https://paseo-share.team-harness.com";
+
 function resolveChatShareConfig(
   persisted: ReturnType<typeof loadPersistedConfig>,
 ): PaseoDaemonConfig["chatShare"] {
-  const rawBaseUrl = persisted.daemon?.chatShare?.baseUrl;
-  if (!rawBaseUrl) {
-    return undefined;
-  }
+  const rawBaseUrl = persisted.daemon?.chatShare?.baseUrl ?? DEFAULT_CHAT_SHARE_BASE_URL;
 
   let parsed: URL;
   try {

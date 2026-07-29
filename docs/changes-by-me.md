@@ -41,11 +41,13 @@ contract and uploads it to a user-owned sharing service.
 - Client boundary: `packages/app/src/chat-share/` owns the portable export and
   upload client. `AgentStreamView` only invokes those helpers and does not add a
   daemon RPC or persist share state.
-- Configuration: the host reads `daemon.chatShare.baseUrl` from
-  `~/.paseo/config.json` and exposes the public base URL through the optional
-  `server_info.chatShare` field. `server_info.features.chatShare` gates clients
-  on old daemons. The client sends one JSON `POST` to
-  `/api/v1/shares`; it has no cloud-vendor URL or credential.
+- Configuration: the host defaults to
+  `https://paseo-share.team-harness.com` when `daemon.chatShare.baseUrl` is
+  absent and exposes the resolved public base URL through the optional
+  `server_info.chatShare` field. An explicit config value overrides that hosted
+  default. `server_info.features.chatShare` gates clients on old daemons. The
+  client sends one JSON `POST` to `/api/v1/shares`; it has no cloud-vendor URL
+  or credential.
 - Contract: `chatviewer/schema/paseo-chat-history.v1.schema.json` is the
   standalone JSON schema. Exported data contains messages, tool calls, thoughts,
   todos, activity, and compaction records without Paseo runtime state.
