@@ -128,6 +128,7 @@ function applyTimelinePage(input: {
     hasActiveInitDeferred: input.isInitial,
     initRequestDirection: "tail",
     sendingClientMessageIds: input.sendingClientMessageIds,
+    hasAuthoritativeBaseline: !input.isInitial,
   });
 
   return {
