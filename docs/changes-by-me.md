@@ -60,9 +60,9 @@ read-only viewer link.
   offers every user message as a start point. Selecting one exports that
   message and every later entry, without changing the portable history schema
   or the upload API.
-- Share URL: newly issued Viewer links carry only the generated `history/...`
-  key; the Viewer resolves it through its fixed API origin. Existing links that
-  carry the complete history-read URL remain supported.
+- Share URL: newly issued Viewer links carry only the generated UUID as
+  `?id=<uuid>`; the API maps it to `history/<uuid>.json`. Existing `?history=`
+  links carrying an object key or complete history-read URL remain supported.
 - OSS CORS permits browser `PUT` with `content-type` for those temporary upload
   URLs. Keep this configuration in the independent deployment rather than the
   Paseo daemon or protocol.

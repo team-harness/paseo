@@ -5,7 +5,7 @@ The FC handler exposes two endpoints:
 - `GET /health`
 - `POST /v1/upload-grant`
 
-`POST /v1/upload-grant` accepts `{ "schemaVersion": 1 }` and returns a five-minute pre-signed OSS `PUT` URL for one generated JSON object. Paseo uploads the exported history directly to that URL, then opens the returned `viewerUrl`; its `history` query parameter contains only the generated `history/...` object key. `GET /v1/history?key=...` is a CORS-safe read proxy restricted to those generated keys. The API does not receive or persist chat contents.
+`POST /v1/upload-grant` accepts `{ "schemaVersion": 1 }` and returns a five-minute pre-signed OSS `PUT` URL for one generated `history/<uuid>.json` object. Paseo uploads the exported history directly to that URL, then opens the returned `viewerUrl`; its `id` query parameter contains only the generated UUID. `GET /v1/history?id=<uuid>` is a CORS-safe read proxy that maps the UUID to its object key. `GET /v1/history?key=...` remains available for existing links. The API does not receive or persist chat contents.
 
 ## Required FC environment
 

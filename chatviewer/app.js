@@ -72,10 +72,15 @@ function isHistory(value) {
   );
 }
 
-function resolveHistoryUrl(history) {
-  // Old shares contain the full read URL. New shares expose only the object key.
-  if (!history.startsWith("history/")) return history;
+function resolveHistoryUrl({ id, history }) {
   const url = new URL("/v1/history", CHAT_SHARE_API_ORIGIN);
+  if (id) {
+    url.searchParams.set("id", id);
+    return url.toString();
+  }
+
+  // Old shares contain the full read URL. Newer legacy shares expose only the object key.
+  if (!history.startsWith("history/")) return history;
   url.searchParams.set("key", history);
   return url.toString();
 }
@@ -324,12 +329,16 @@ function renderHistory(history) {
 }
 
 async function loadHistory() {
-  const historyReference = new URLSearchParams(window.location.search).get("history");
-  if (!historyReference) return;
+  const searchParams = new URLSearchParams(window.location.search);
+  const id = searchParams.get("id");
+  const historyReference = searchParams.get("history");
+  if (!id && !historyReference) return;
   renderLoadingState();
   await waitForNextPaint();
   try {
-    const response = await fetch(resolveHistoryUrl(historyReference), { cache: "no-store" });
+    const response = await fetch(resolveHistoryUrl({ id, history: historyReference ?? "" }), {
+      cache: "no-store",
+    });
     if (!response.ok)
       throw new Error(`The shared history could not be loaded (${response.status})`);
     const history = await response.json();

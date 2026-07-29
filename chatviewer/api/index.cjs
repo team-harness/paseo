@@ -63,7 +63,21 @@ function createPresignedPutUrl({ bucket, region, key, accessKeyId, accessKeySecr
 }
 
 function isHistoryKey(key) {
-  return /^history\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]+\.json$/i.test(key);
+  return /^history\/(?:\d{4}-\d{2}-\d{2}\/)?[0-9a-f-]+\.json$/i.test(key);
+}
+
+function isHistoryId(id) {
+  return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id);
+}
+
+function historyKeyForId(id) {
+  return `history/${id}.json`;
+}
+
+function historyKeyFromQuery(query) {
+  const id = query?.id;
+  if (id) return isHistoryId(id) ? historyKeyForId(id) : "";
+  return query?.key ?? "";
 }
 
 function errorMessage(error, fallback) {
@@ -86,8 +100,10 @@ async function handleHistory(key) {
 }
 
 function createViewerUrl(key) {
+  const id = key.match(/^history\/([0-9a-f-]+)\.json$/i)?.[1];
   const viewer = new URL(env("CHAT_SHARE_VIEWER_ORIGIN"));
-  viewer.searchParams.set("history", key);
+  if (id && isHistoryId(id)) viewer.searchParams.set("id", id);
+  else viewer.searchParams.set("history", key);
   return viewer.toString();
 }
 
@@ -97,7 +113,7 @@ function createUploadGrant(request) {
 
   const bucket = env("CHAT_SHARE_OSS_BUCKET");
   const region = env("CHAT_SHARE_OSS_REGION");
-  const key = `history/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.json`;
+  const key = historyKeyForId(randomUUID());
   const expiresAt = Math.floor(Date.now() / 1000) + UPLOAD_TTL_SECONDS;
   const historyUrl = `https://${bucket}.oss-${region}.aliyuncs.com/${encodeObjectKey(key)}`;
   const uploadUrl = createPresignedPutUrl({
@@ -127,7 +143,7 @@ async function handler(request) {
   if (method === "GET" && (path === "/health" || path === "/healthz"))
     return json(200, { ok: true });
   if (method === "GET" && path === "/v1/history") {
-    return handleHistory(request.queryParameters?.key ?? "");
+    return handleHistory(historyKeyFromQuery(request.queryParameters));
   }
   if (method !== "POST" || path !== "/v1/upload-grant") return json(404, { error: "Not found" });
   try {
@@ -137,4 +153,12 @@ async function handler(request) {
   }
 }
 
-module.exports = { handler, createPresignedPutUrl, createViewerUrl, isHistoryKey };
+module.exports = {
+  handler,
+  createPresignedPutUrl,
+  createViewerUrl,
+  historyKeyForId,
+  historyKeyFromQuery,
+  isHistoryId,
+  isHistoryKey,
+};
