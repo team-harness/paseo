@@ -49,6 +49,22 @@ async function copyMessageAnchor(anchorId, button) {
   }
 }
 
+async function copyAssistantMarkdown(markdown, button) {
+  try {
+    await navigator.clipboard.writeText(markdown);
+    button.classList.add("copied");
+    button.textContent = "Copied";
+    button.setAttribute("aria-label", "Markdown copied");
+    window.setTimeout(() => {
+      button.classList.remove("copied");
+      button.textContent = "Copy";
+      button.setAttribute("aria-label", "Copy assistant markdown");
+    }, 1600);
+  } catch {
+    button.setAttribute("aria-label", "Unable to copy markdown");
+  }
+}
+
 function element(name, className, text) {
   const node = document.createElement(name);
   if (className) node.className = className;
@@ -315,6 +331,14 @@ function renderHistory(history) {
           void copyMessageAnchor(article.id, anchorButton);
         });
         entryMeta.append(anchorButton);
+      } else if (entry.role === "assistant") {
+        const copyButton = element("button", "copy-button", "Copy");
+        copyButton.type = "button";
+        copyButton.setAttribute("aria-label", "Copy assistant markdown");
+        copyButton.addEventListener("click", () => {
+          void copyAssistantMarkdown(entry.markdown, copyButton);
+        });
+        entryMeta.append(copyButton);
       }
       bubble.append(entryMeta);
       bubble.append(renderMarkdown(entry.markdown));

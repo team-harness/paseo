@@ -52,6 +52,8 @@ read-only viewer link.
   a URL ending in `#message-<entry-id>`. Opening that URL loads the same
   history, scrolls to the message, and briefly highlights it. This is a Viewer
   behavior only; the export schema and FC upload/read APIs remain unchanged.
+- Assistant messages expose a `Copy` action that writes their original exported
+  Markdown to the clipboard without flattening rendered tables, code blocks, or links.
 - Upload path: the FC API signs a five-minute `PUT` for a generated
   `history/YYYY-MM-DD/<uuid>.json` key. Long-lived OSS credentials remain FC
   environment variables only. The viewer reads through the API's key-restricted

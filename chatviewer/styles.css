@@ -138,6 +138,24 @@ body {
 .anchor-button.copied::before {
   content: "✓";
 }
+.copy-button {
+  min-height: 20px;
+  padding: 1px 6px;
+  border: 1px solid #3b4740;
+  border-radius: 3px;
+  color: #aeb9b1;
+  background: transparent;
+  cursor: pointer;
+  font: 500 11px/16px inherit;
+}
+.copy-button:hover,
+.copy-button:focus-visible,
+.copy-button.copied {
+  border-color: #62776a;
+  color: #e9f2eb;
+  background: #27342c;
+  outline: none;
+}
 .entry.is-anchor-target .bubble {
   animation: anchor-focus 2.4s ease-out;
 }
