@@ -5,5 +5,8 @@
   "description": "Standalone read-only viewer for Paseo shared chat histories",
   "scripts": {
     "build": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "markdown-it": "14.3.0"
   }
 }

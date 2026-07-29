@@ -80,83 +80,69 @@ function resolveHistoryUrl(history) {
   return url.toString();
 }
 
-function appendInlineMarkdown(target, text) {
-  const fragments = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
-  for (const fragment of fragments) {
-    if (fragment.startsWith("`") && fragment.endsWith("`")) {
-      const code = element("code", "", fragment.slice(1, -1));
-      target.append(code);
-    } else if (fragment.startsWith("**") && fragment.endsWith("**")) {
-      const strong = element("strong", "", fragment.slice(2, -2));
-      target.append(strong);
-    } else {
-      target.append(document.createTextNode(fragment));
+function isShareableLink(href) {
+  try {
+    const url = new URL(href);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function renderUnshareableLinksAsLabels(state) {
+  for (const token of state.tokens) {
+    if (!token.children) continue;
+    for (let index = 0; index < token.children.length; index += 1) {
+      const open = token.children[index];
+      if (open.type !== "link_open" || isShareableLink(open.attrGet("href") ?? "")) continue;
+
+      open.type = "text";
+      open.tag = "";
+      open.nesting = 0;
+      open.attrs = null;
+      open.content = "";
+      let depth = 1;
+      for (let closeIndex = index + 1; closeIndex < token.children.length; closeIndex += 1) {
+        const candidate = token.children[closeIndex];
+        if (candidate.type === "link_open") depth += 1;
+        if (candidate.type !== "link_close") continue;
+        depth -= 1;
+        if (depth !== 0) continue;
+        candidate.type = "text";
+        candidate.tag = "";
+        candidate.nesting = 0;
+        candidate.content = "";
+        break;
+      }
     }
   }
 }
 
+function createMarkdownRenderer() {
+  if (typeof window.markdownit !== "function") return null;
+  const renderer = window.markdownit({ html: false, linkify: true });
+  renderer.core.ruler.after("inline", "paseo-link-labels", renderUnshareableLinksAsLabels);
+  const defaultLinkOpen =
+    renderer.renderer.rules.link_open ??
+    ((tokens, index, options, environment, self) =>
+      self.renderToken(tokens, index, options, environment));
+  renderer.renderer.rules.link_open = (tokens, index, options, environment, self) => {
+    tokens[index].attrSet("target", "_blank");
+    tokens[index].attrSet("rel", "noopener noreferrer");
+    return defaultLinkOpen(tokens, index, options, environment, self);
+  };
+  return renderer;
+}
+
+const markdownRenderer = createMarkdownRenderer();
+
 function renderMarkdown(text) {
   const root = element("div", "markdown");
-  const lines = text.replaceAll("\r\n", "\n").split("\n");
-  let codeLines = null;
-  let list = null;
-
-  const flushList = () => {
-    list = null;
-  };
-  const appendParagraph = (line) => {
-    const paragraph = element("p");
-    appendInlineMarkdown(paragraph, line);
-    root.append(paragraph);
-  };
-
-  for (const line of lines) {
-    if (line.startsWith("```")) {
-      flushList();
-      if (codeLines === null) {
-        codeLines = [];
-      } else {
-        const pre = element("pre");
-        pre.append(element("code", "", codeLines.join("\n")));
-        root.append(pre);
-        codeLines = null;
-      }
-      continue;
-    }
-    if (codeLines !== null) {
-      codeLines.push(line);
-      continue;
-    }
-    const heading = /^(#{2,3})\s+(.+)$/.exec(line);
-    if (heading) {
-      flushList();
-      const node = element(heading[1].length === 2 ? "h2" : "h3");
-      appendInlineMarkdown(node, heading[2]);
-      root.append(node);
-      continue;
-    }
-    const bullet = /^[-*]\s+(.+)$/.exec(line);
-    if (bullet) {
-      if (!list || list.tagName !== "UL") {
-        list = element("ul");
-        root.append(list);
-      }
-      const item = element("li");
-      appendInlineMarkdown(item, bullet[1]);
-      list.append(item);
-      continue;
-    }
-    if (!line.trim()) {
-      flushList();
-      continue;
-    }
-    flushList();
-    appendParagraph(line);
-  }
-  if (codeLines !== null) {
-    const pre = element("pre");
-    pre.append(element("code", "", codeLines.join("\n")));
-    root.append(pre);
+  if (markdownRenderer) {
+    // markdown-it escapes raw HTML and rejects unsafe URL protocols.
+    root.innerHTML = markdownRenderer.render(text);
+  } else {
+    root.textContent = text;
   }
   return root;
 }
@@ -179,13 +165,43 @@ function recordLabel(entry) {
 function renderRecord(entry) {
   const record = element(
     "section",
-    `entry record${entry.status === "failed" || entry.level === "error" ? " error" : ""}`,
+    `entry record ${entry.kind}-record${
+      entry.status === "failed" || entry.level === "error" ? " error" : ""
+    }`,
   );
   const heading = element("div", "record-heading");
   heading.append(element("strong", "", recordLabel(entry)));
   const status = entry.status || entry.level;
   if (status) heading.append(element("span", "status", status));
-  record.append(heading);
+  if (entry.kind === "tool") {
+    const toggle = element("button", "tool-toggle");
+    toggle.type = "button";
+    toggle.append(heading, element("span", "tool-caret"));
+
+    const data = {};
+    if (entry.input !== undefined) data.input = entry.input;
+    if (entry.output !== undefined) data.output = entry.output;
+    if (entry.error !== undefined) data.error = entry.error;
+    const detail = element("pre", "", JSON.stringify(data, null, 2));
+    detail.hidden = true;
+
+    const setExpanded = (expanded) => {
+      toggle.setAttribute("aria-expanded", String(expanded));
+      toggle.setAttribute(
+        "aria-label",
+        `${expanded ? "Hide" : "Show"} details for ${recordLabel(entry)}`,
+      );
+      detail.hidden = !expanded;
+      record.classList.toggle("is-expanded", expanded);
+    };
+    setExpanded(false);
+    toggle.addEventListener("click", () => {
+      setExpanded(toggle.getAttribute("aria-expanded") !== "true");
+    });
+    record.append(toggle, detail);
+  } else {
+    record.append(heading);
+  }
   if (entry.kind === "thought") record.append(element("p", "", entry.text));
   if (entry.kind === "activity") record.append(element("p", "", entry.message));
   if (entry.kind === "todo") {
@@ -193,16 +209,6 @@ function renderRecord(entry) {
     for (const item of entry.items)
       list.append(element("li", item.completed ? "done" : "", item.text));
     record.append(list);
-  }
-  if (entry.kind === "tool") {
-    const details = element("details");
-    details.append(element("summary", "", "Details"));
-    const data = {};
-    if (entry.input !== undefined) data.input = entry.input;
-    if (entry.output !== undefined) data.output = entry.output;
-    if (entry.error !== undefined) data.error = entry.error;
-    details.append(element("pre", "", JSON.stringify(data, null, 2)));
-    record.append(details);
   }
   return record;
 }

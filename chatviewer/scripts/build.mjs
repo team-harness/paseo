@@ -10,6 +10,10 @@ await mkdir(join(dist, "schema"), { recursive: true });
 await Promise.all([
   cp(join(root, "app.js"), join(dist, "app.js")),
   cp(join(root, "index.html"), join(dist, "index.html")),
+  cp(
+    join(root, "node_modules", "markdown-it", "dist", "markdown-it.min.js"),
+    join(dist, "markdown-it.min.js"),
+  ),
   cp(join(root, "styles.css"), join(dist, "styles.css")),
   cp(
     join(root, "schema", "paseo-chat-history.v1.schema.json"),

@@ -165,11 +165,23 @@ body {
 .markdown p:last-child {
   margin-bottom: 0;
 }
+.markdown h1,
 .markdown h2,
-.markdown h3 {
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
   margin: 18px 0 8px;
   font-size: 16px;
   font-weight: 600;
+}
+.markdown h1 {
+  font-size: 18px;
+}
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font-size: 14px;
 }
 .markdown ul,
 .markdown ol {
@@ -179,7 +191,24 @@ body {
 .markdown li {
   margin: 4px 0;
 }
+.markdown blockquote {
+  margin: 0 0 12px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid #52675a;
+  color: #b8c2bc;
+}
+.markdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+.markdown a {
+  color: #9ccbaa;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .markdown code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #1c2420;
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
 }
@@ -192,7 +221,43 @@ body {
   border-radius: 5px;
 }
 .markdown pre code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
   white-space: pre;
+}
+.markdown table {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+  overflow-x: auto;
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+.markdown th,
+.markdown td {
+  padding: 7px 10px;
+  border: 1px solid #334039;
+  text-align: left;
+}
+.markdown th {
+  color: #dce6df;
+  background: #1b221e;
+  font-weight: 500;
+}
+.markdown td {
+  color: #c5cec8;
+}
+.markdown hr {
+  height: 1px;
+  margin: 18px 0;
+  border: 0;
+  background: #29302c;
+}
+.markdown img {
+  display: block;
+  max-width: 100%;
+  margin: 12px 0;
 }
 
 .record {
@@ -210,17 +275,69 @@ body {
   gap: 8px;
   color: #c7d0ca;
 }
+.tool-record {
+  min-height: 28px;
+  margin: 0 0 4px;
+  padding: 3px 0 3px 10px;
+}
+.tool-toggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 22px;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.tool-toggle:hover .record-heading strong,
+.tool-toggle:focus-visible .record-heading strong {
+  color: #eef2ef;
+}
+.tool-toggle:focus-visible {
+  outline: 1px solid #62776a;
+  outline-offset: 3px;
+}
+.tool-record .record-heading {
+  min-width: 0;
+  flex: 1;
+  gap: 7px;
+}
+.tool-record .record-heading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+}
+.tool-record .status {
+  flex: none;
+  font-size: 10px;
+}
+.tool-caret {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: #8f9b93;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+.tool-caret::before {
+  content: "▸";
+}
+.tool-record.is-expanded .tool-caret::before {
+  content: "▾";
+}
 .status {
   font-size: 11px;
   color: #8f9b93;
   text-transform: capitalize;
-}
-.record details {
-  margin-top: 9px;
-}
-.record summary {
-  cursor: pointer;
-  color: #aebbb3;
 }
 .record pre {
   margin: 8px 0 0;
@@ -234,6 +351,9 @@ body {
     12px/1.5 "SFMono-Regular",
     Consolas,
     monospace;
+}
+.tool-record.is-expanded {
+  padding-bottom: 8px;
 }
 .todo-list {
   list-style: none;
