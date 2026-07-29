@@ -324,6 +324,7 @@ export interface DaemonServerInfo {
   version: string | null;
   desktopManaged?: boolean;
   capabilities?: ServerCapabilities;
+  chatShare?: ServerInfoStatusPayload["chatShare"];
   features?: ServerInfoStatusPayload["features"];
 }
 
@@ -718,6 +719,7 @@ function isSessionServerInfoUnchanged(input: {
   nextVersion: string | null;
   nextDesktopManaged: boolean | undefined;
   nextCapabilities: ServerCapabilities | undefined;
+  nextChatShare: ServerInfoStatusPayload["chatShare"] | undefined;
   nextFeatures: ServerInfoStatusPayload["features"] | undefined;
   nextServerId: string;
 }): boolean {
@@ -727,6 +729,7 @@ function isSessionServerInfoUnchanged(input: {
     nextVersion,
     nextDesktopManaged,
     nextCapabilities,
+    nextChatShare,
     nextFeatures,
   } = input;
   const prevHostname = currentServerInfo?.hostname?.trim() || null;
@@ -737,6 +740,7 @@ function isSessionServerInfoUnchanged(input: {
     prevVersion === nextVersion &&
     currentServerInfo?.desktopManaged === nextDesktopManaged &&
     areServerCapabilitiesEqual(currentServerInfo?.capabilities, nextCapabilities) &&
+    currentServerInfo?.chatShare?.baseUrl === nextChatShare?.baseUrl &&
     areServerInfoFeaturesEqual(currentServerInfo?.features, nextFeatures)
   );
 }
@@ -907,6 +911,7 @@ export const useSessionStore = create<SessionStore>()(
           const nextVersion = info.version?.trim() || null;
           const nextDesktopManaged = info.desktopManaged;
           const nextCapabilities = info.capabilities;
+          const nextChatShare = info.chatShare;
           const nextFeatures = info.features;
 
           if (
@@ -916,6 +921,7 @@ export const useSessionStore = create<SessionStore>()(
               nextVersion,
               nextDesktopManaged,
               nextCapabilities,
+              nextChatShare,
               nextFeatures,
               nextServerId: info.serverId,
             })
@@ -937,6 +943,7 @@ export const useSessionStore = create<SessionStore>()(
                     ? { desktopManaged: nextDesktopManaged }
                     : {}),
                   ...(nextCapabilities ? { capabilities: nextCapabilities } : {}),
+                  ...(nextChatShare ? { chatShare: nextChatShare } : {}),
                   ...(nextFeatures ? { features: nextFeatures } : {}),
                 },
               },

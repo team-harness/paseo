@@ -36,18 +36,25 @@ a status-bar-specific persistence store or RPC.
 
 Completed assistant turns expose a share action next to copy and fork. It exports
 the complete current stream as the versioned `paseo-chat-history@v1` JSON
-contract, uploads it with a temporary single-object OSS URL, and copies the
-read-only viewer link.
+contract and uploads it to a user-owned sharing service.
 
 - Client boundary: `packages/app/src/chat-share/` owns the portable export and
   upload client. `AgentStreamView` only invokes those helpers and does not add a
   daemon RPC or persist share state.
+- Configuration: the host reads `daemon.chatShare.baseUrl` from
+  `~/.paseo/config.json` and exposes the public base URL through the optional
+  `server_info.chatShare` field. `server_info.features.chatShare` gates clients
+  on old daemons. The client sends one JSON `POST` to
+  `/api/v1/shares`; it has no cloud-vendor URL or credential.
 - Contract: `chatviewer/schema/paseo-chat-history.v1.schema.json` is the
   standalone JSON schema. Exported data contains messages, tool calls, thoughts,
   todos, activity, and compaction records without Paseo runtime state.
-- Independent deployment: `chatviewer/` owns the static viewer at
-  `https://paseo-chat.bazhuayu.xyz`; `chatviewer/api/` owns the FC API at
-  `https://paseo-chat-share.bazhuayu.xyz`.
+- Independent deployment: `chatviewer/` is a Vite template with one portable
+  API contract and provider-specific storage adapters. It supports Void
+  file-based routes with Void Object Storage, Cloudflare Workers Assets with
+  R2, and Alibaba Cloud Function Compute with a private OSS bucket. All expose
+  the same-origin `POST /api/v1/shares` / `GET /api/v1/shares/:id` routes. Its
+  deployment URL is intentionally chosen by the user, not hard-coded in Paseo.
 - Deep links: every user message in the Viewer exposes a `#` action that copies
   a URL ending in `#message-<entry-id>`. Opening that URL loads the same
   history, scrolls to the message, and briefly highlights it. This is a Viewer
@@ -55,18 +62,14 @@ read-only viewer link.
 - Assistant messages expose an icon-only Copy action with a tooltip. It writes
   original exported Markdown to the clipboard without flattening rendered tables,
   code blocks, or links.
-- Upload path: the FC API signs a ten-minute `PUT` for one generated
-  `history/<uuid>.json` key and requires `Content-Type: application/json` in
-  the OSS signature. Long-lived OSS credentials remain FC environment variables
-  only. The Viewer derives this key from the UUID and reads the public OSS object
-  directly; the FC API neither proxies nor stores transcript content.
+- Upload path: both adapters accept a bounded JSON request, run the same strict
+  portable-schema validation, allocate a UUID, and store only
+  `shares/<uuid>.json`. The viewer reads through its same-origin API and never
+  sees an object-store endpoint or credential.
 - Share scope: Share first snapshots the complete authoritative timeline, then
   offers every user message as a start point. Selecting one exports that
   message and every later entry, without changing the portable history schema
   or the upload API.
 - Share URL: newly issued Viewer links carry only the generated UUID as
-  `?id=<uuid>`. Existing `?history=` links carrying an object key or former
-  history-read URL remain supported and resolve to the equivalent OSS object.
-- OSS CORS permits browser `PUT` with `content-type` for those temporary upload
-  URLs. Keep this configuration in the independent deployment rather than the
-  Paseo daemon or protocol.
+  `?id=<uuid>`. The Void template deliberately has no dependency on the former
+  fork-specific `?history=` URL, FC API, OSS bucket, Licell, or `bazhuayu.xyz`.

@@ -1,6 +1,6 @@
+import markdownit from "markdown-it";
+
 const conversation = document.querySelector("#conversation");
-const CHAT_SHARE_API_ORIGIN = "https://paseo-chat-share.bazhuayu.xyz";
-const CHAT_SHARE_OSS_ORIGIN = "https://opencoder.oss-cn-shanghai.aliyuncs.com";
 const MESSAGE_ANCHOR_PREFIX = "message-";
 
 function messageAnchorId(entry) {
@@ -115,29 +115,8 @@ function isHistoryId(value) {
   return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value);
 }
 
-function isHistoryKey(value) {
-  return /^history\/(?:\d{4}-\d{2}-\d{2}\/)?[0-9a-f-]+\.json$/i.test(value);
-}
-
-function historyObjectUrl(key) {
-  return new URL(`/${key}`, CHAT_SHARE_OSS_ORIGIN).toString();
-}
-
-function resolveHistoryUrl({ id, history }) {
-  if (id && isHistoryId(id)) return historyObjectUrl(`history/${id}.json`);
-
-  // Old shares contain a read-proxy URL or a direct object key. Both map to the public history path.
-  if (isHistoryKey(history)) return historyObjectUrl(history);
-  try {
-    const url = new URL(history);
-    if (url.origin === CHAT_SHARE_API_ORIGIN && url.pathname === "/v1/history") {
-      const key = url.searchParams.get("key") ?? "";
-      if (isHistoryKey(key)) return historyObjectUrl(key);
-    }
-  } catch {
-    // Preserve the legacy URL behavior below for malformed references.
-  }
-  return history;
+function shareApiUrl(id) {
+  return `/api/v1/shares/${encodeURIComponent(id)}`;
 }
 
 function renderLoadingState() {
@@ -196,8 +175,7 @@ function renderUnshareableLinksAsLabels(state) {
 }
 
 function createMarkdownRenderer() {
-  if (typeof window.markdownit !== "function") return null;
-  const renderer = window.markdownit({ html: false, linkify: true });
+  const renderer = markdownit({ html: false, linkify: true });
   renderer.core.ruler.after("inline", "paseo-link-labels", renderUnshareableLinksAsLabels);
   const defaultLinkOpen =
     renderer.renderer.rules.link_open ??
@@ -215,12 +193,8 @@ const markdownRenderer = createMarkdownRenderer();
 
 function renderMarkdown(text) {
   const root = element("div", "markdown");
-  if (markdownRenderer) {
-    // markdown-it escapes raw HTML and rejects unsafe URL protocols.
-    root.innerHTML = markdownRenderer.render(text);
-  } else {
-    root.textContent = text;
-  }
+  // markdown-it escapes raw HTML and rejects unsafe URL protocols.
+  root.innerHTML = markdownRenderer.render(text);
   return root;
 }
 
@@ -396,14 +370,15 @@ function renderHistory(history) {
 async function loadHistory() {
   const searchParams = new URLSearchParams(window.location.search);
   const id = searchParams.get("id");
-  const historyReference = searchParams.get("history");
-  if (!id && !historyReference) return;
+  if (!id) return;
+  if (!isHistoryId(id)) {
+    conversation.replaceChildren(element("div", "error-state", "This share link is invalid."));
+    return;
+  }
   renderLoadingState();
   await waitForNextPaint();
   try {
-    const response = await fetch(resolveHistoryUrl({ id, history: historyReference ?? "" }), {
-      cache: "no-store",
-    });
+    const response = await fetch(shareApiUrl(id), { cache: "no-store" });
     if (!response.ok)
       throw new Error(`The shared history could not be loaded (${response.status})`);
     const history = await response.json();

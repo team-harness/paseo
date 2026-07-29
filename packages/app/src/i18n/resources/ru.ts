@@ -324,6 +324,8 @@ export const ru: TranslationResources = {
       sharing: "Публикация",
       shareCopied: "Ссылка скопирована",
       shareFailed: "Не удалось поделиться чатом",
+      shareUnavailable: "Update the host to use chat sharing.",
+      shareNotConfigured: "Configure daemon.chatShare.baseUrl to enable chat sharing.",
       shareStartTitle: "Поделиться с этого сообщения",
       shareStartUntitled: "Сообщение",
       forkMenu: "Форкнуть сообщение",

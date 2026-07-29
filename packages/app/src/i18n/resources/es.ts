@@ -325,6 +325,8 @@ export const es: TranslationResources = {
       sharing: "Compartiendo",
       shareCopied: "Enlace compartido copiado",
       shareFailed: "No se pudo compartir el chat",
+      shareUnavailable: "Update the host to use chat sharing.",
+      shareNotConfigured: "Configure daemon.chatShare.baseUrl to enable chat sharing.",
       shareStartTitle: "Compartir desde",
       shareStartUntitled: "Mensaje",
       forkMenu: "Bifurcar mensaje",

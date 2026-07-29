@@ -322,6 +322,8 @@ export const zhCN: TranslationResources = {
       sharing: "正在分享",
       shareCopied: "分享链接已复制",
       shareFailed: "分享聊天失败",
+      shareUnavailable: "请更新主机以使用聊天分享功能。",
+      shareNotConfigured: "请配置 daemon.chatShare.baseUrl 后再分享聊天。",
       shareStartTitle: "从此消息开始分享",
       shareStartUntitled: "消息",
       forkMenu: "分叉消息",

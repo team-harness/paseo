@@ -284,6 +284,30 @@ interface ResolvedWebUi {
   distDir: string | null;
 }
 
+function resolveChatShareConfig(
+  persisted: ReturnType<typeof loadPersistedConfig>,
+): PaseoDaemonConfig["chatShare"] {
+  const rawBaseUrl = persisted.daemon?.chatShare?.baseUrl;
+  if (!rawBaseUrl) {
+    return undefined;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawBaseUrl);
+  } catch {
+    throw new Error(`Invalid daemon.chatShare.baseUrl: ${rawBaseUrl}`);
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("daemon.chatShare.baseUrl must use HTTP or HTTPS");
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error("daemon.chatShare.baseUrl must not contain credentials, a query, or a hash");
+  }
+
+  return { baseUrl: parsed.toString().replace(/\/$/, "") };
+}
+
 function resolveWebUiConfig(
   paseoHome: string,
   env: NodeJS.ProcessEnv,
@@ -472,6 +496,7 @@ export function loadConfig(
     cliRelayUseTls: options?.cli?.relayUseTls,
   });
   const serviceProxy = resolveServiceProxyConfig(env, persisted);
+  const chatShare = resolveChatShareConfig(persisted);
   const webUi = resolveWebUiConfig(paseoHome, env, options?.cli, persisted);
 
   const { openai, speech } = resolveSpeechConfig({
@@ -511,6 +536,7 @@ export function loadConfig(
     relayUseTls: relay.useTls,
     relayPublicUseTls: relay.publicUseTls,
     serviceProxy,
+    chatShare,
     webUi,
     appBaseUrl,
     auth: resolveAuthConfig(env, persisted),

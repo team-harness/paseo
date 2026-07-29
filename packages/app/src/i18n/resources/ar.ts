@@ -322,6 +322,8 @@ export const ar: TranslationResources = {
       sharing: "جارٍ المشاركة",
       shareCopied: "تم نسخ رابط المشاركة",
       shareFailed: "تعذرت مشاركة المحادثة",
+      shareUnavailable: "Update the host to use chat sharing.",
+      shareNotConfigured: "Configure daemon.chatShare.baseUrl to enable chat sharing.",
       shareStartTitle: "بدء المشاركة من",
       shareStartUntitled: "رسالة",
       forkMenu: "تفريع الرسالة",

@@ -2760,6 +2760,13 @@ export const ServerInfoStatusPayloadSchema = z
     // COMPAT(desktopManaged): added in v0.1.X, remove optional parsing after 2027-01-16.
     desktopManaged: z.boolean().optional(),
     capabilities: ServerCapabilitiesFromUnknownSchema.optional(),
+    // COMPAT(chatShare): added in v0.2.4, remove gate after 2027-01-29.
+    // This contains public deployment metadata only; credentials never cross the wire.
+    chatShare: z
+      .object({
+        baseUrl: z.string().url(),
+      })
+      .optional(),
     // COMPAT(providersSnapshot): added in v0.1.48, remove gating when all clients use snapshot
     features: z
       .object({
@@ -2844,6 +2851,8 @@ export const ServerInfoStatusPayloadSchema = z
         stableProjectIdentity: z.boolean().optional(),
         // COMPAT(workspaceScriptManagement): added in v0.1.105, remove gate after 2027-01-10.
         workspaceScriptManagement: z.boolean().optional(),
+        // COMPAT(chatShare): added in v0.2.4, remove gate after 2027-01-29.
+        chatShare: z.boolean().optional(),
       })
       .optional(),
   })

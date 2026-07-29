@@ -1,31 +1,35 @@
 import type { PaseoChatHistory } from "./history";
 
-const CHAT_SHARE_API_URL = "https://paseo-chat-share.bazhuayu.xyz/v1/upload-grant";
-
-interface UploadGrant {
-  upload: {
-    method: "PUT";
-    url: string;
-    headers: Record<string, string>;
-  };
-  viewerUrl: string;
+interface CreateChatShareResponse {
+  id: string;
 }
 
-export async function shareChatHistory(history: PaseoChatHistory): Promise<string> {
-  const grantResponse = await fetch(CHAT_SHARE_API_URL, {
+function createChatShareUrl(baseUrl: string): URL {
+  const shareUrl = new URL("/api/v1/shares", baseUrl);
+  if (shareUrl.protocol !== "https:" && shareUrl.protocol !== "http:") {
+    throw new Error("Chat sharing requires an HTTP or HTTPS service URL");
+  }
+  return shareUrl;
+}
+
+export async function shareChatHistory(input: {
+  baseUrl: string;
+  history: PaseoChatHistory;
+}): Promise<string> {
+  const shareUrl = createChatShareUrl(input.baseUrl);
+  const response = await fetch(shareUrl.toString(), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ schemaVersion: history.schemaVersion }),
+    body: JSON.stringify(input.history),
   });
-  if (!grantResponse.ok) throw new Error("Unable to prepare the shared conversation");
+  if (!response.ok) throw new Error("Unable to upload the shared conversation");
 
-  const grant = (await grantResponse.json()) as UploadGrant;
-  const uploadResponse = await fetch(grant.upload.url, {
-    method: grant.upload.method,
-    headers: grant.upload.headers,
-    body: JSON.stringify(history),
-  });
-  if (!uploadResponse.ok) throw new Error("Unable to upload the shared conversation");
+  const payload = (await response.json()) as CreateChatShareResponse;
+  if (!payload.id || typeof payload.id !== "string") {
+    throw new Error("The chat share service returned an invalid response");
+  }
 
-  return grant.viewerUrl;
+  const viewerUrl = new URL("/", shareUrl);
+  viewerUrl.searchParams.set("id", payload.id);
+  return viewerUrl.toString();
 }

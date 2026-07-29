@@ -92,6 +92,12 @@ const DaemonAuthSchema = z
   })
   .strict();
 
+const ChatShareConfigSchema = z
+  .object({
+    baseUrl: z.url(),
+  })
+  .strict();
+
 const SpeechProviderIdSchema = z
   .string()
   .trim()
@@ -279,6 +285,7 @@ export const PersistedConfigSchema = z
           })
           .strict()
           .optional(),
+        chatShare: ChatShareConfigSchema.optional(),
         auth: DaemonAuthSchema.optional(),
       })
       .strict()

@@ -1,35 +1,120 @@
 # Paseo Chat Viewer
 
-This is a standalone, static, read-only viewer for `paseo-chat-history@v1` files. It has no dependency on the Paseo daemon, Electron, or a local CLI.
+`chatviewer` is a self-hostable, read-only viewer and upload API for
+`paseo-chat-history@v1`. It is intentionally independent of the Paseo daemon,
+desktop app, Licell, credentials, and any specific cloud vendor.
 
-## Contract
+It has one portable API contract and three deployment targets: Void file-based
+routes with Void Object Storage, a Cloudflare Worker with R2, or Alibaba Cloud
+Function Compute with OSS. Paseo clients only need the deployed public URL and
+do not need to distinguish the provider.
 
-The public contract is [schema/paseo-chat-history.v1.schema.json](./schema/paseo-chat-history.v1.schema.json). New Viewer URLs accept the generated history UUID as a query parameter:
+## Deploy with Void
 
-```text
-https://paseo-chat.bazhuayu.xyz/?id=7b853015-bf1a-4c4c-b969-14e1247aef85
+```bash
+cd chatviewer
+npm install
+npx void init
+npm run deploy:void
 ```
 
-The Viewer derives `history/<id>.json` and reads it directly from the public history
-prefix in OSS. Previously issued URLs that contain a `history` object key or the former
-FC read-proxy URL remain supported and are converted to the corresponding OSS object.
+During Void setup, bind Object Storage as `STORAGE`. The API uses only this
+binding; storage credentials never reach Paseo clients. `void deploy` prints
+the application URL, for example `https://my-paseo-share.void.app`.
 
-User messages can be linked directly by appending their anchor id to the URL. The
-Viewer scrolls to the message after loading the history and briefly highlights it:
+## Deploy with Cloudflare
 
-```text
-https://paseo-chat.bazhuayu.xyz/?id=7b853015-bf1a-4c4c-b969-14e1247aef85#message-user-123
+Cloudflare uses Workers Assets for the Vite viewer and R2 for shared JSON. The
+first login opens a browser and authorizes Wrangler for the Cloudflare account
+that will own the Worker and bucket:
+
+```bash
+cd chatviewer
+npm install
+npx wrangler login
+npx wrangler whoami
+npx wrangler r2 bucket create paseo-chat-shares
+npm run deploy:cloudflare
 ```
 
-The `#` button beside a user message copies this URL.
+`wrangler.jsonc` binds `paseo-chat-shares` as `CHAT_SHARES`; use another bucket
+name only if you update that binding before deployment. The final command prints
+the public `*.workers.dev` URL. To use a custom domain, add it to the Worker in
+the Cloudflare dashboard after deployment. Do not put an API token, account ID,
+or bucket credential in this repository.
 
-When the Paseo upload API is used, the returned viewer URL contains only the generated
-UUID. The Viewer reads the matching OSS object directly. The viewer treats all transcript
-text as untrusted and never inserts exported values as HTML.
+## Deploy with Alibaba Cloud FC and OSS
 
-## Deployment
+The FC target packages the Viewer into the HTTP function and stores histories in
+a private OSS bucket. FC serves both the viewer and API from one origin, so the
+same `baseUrl` configuration works without exposing an OSS endpoint.
 
-Run `npm run build` before uploading `dist/` to the viewer bucket. The
-`paseo-chat` FC API issues a short-lived, single-object upload URL to the Paseo
-client; the client uploads the JSON directly to OSS and then opens the returned
-viewer URL.
+```bash
+cd chatviewer
+npm install
+npm run build:fc
+cd fc
+licell login
+licell workspace init --type api --app paseo-chat-fc --runtime nodejs22 \
+  --entry dist/index.cjs --target prod --disable-vpc --region cn-shanghai
+licell oss create paseo-chat-shares-your-name --acl private --public-access-block on
+licell env set CHAT_SHARE_OSS_BUCKET paseo-chat-shares-your-name
+licell env set CHAT_SHARE_OSS_REGION cn-shanghai
+licell env set CHAT_SHARE_OSS_ACCESS_KEY_ID <ram-access-key-id>
+licell env set CHAT_SHARE_OSS_ACCESS_KEY_SECRET <ram-access-key-secret>
+cd ..
+npm run deploy:fc
+```
+
+Use a dedicated RAM principal with only `GetObject` and `PutObject` permission
+for the `shares/` prefix of that bucket. The function validates each history
+before it writes to OSS and proxies reads, so the bucket must remain private.
+Licell saves local deployment state under `fc/.licell/`; it is ignored by Git.
+`npm run deploy:fc` prints the FC URL. A custom domain can be bound with Licell
+after the first deployment; configure that public function domain as `baseUrl`.
+
+## Configure Paseo
+
+Add any deployment's public URL to the host daemon configuration at
+`~/.paseo/config.json`, then restart the daemon through your normal host
+workflow:
+
+```json
+{
+  "version": 1,
+  "daemon": {
+    "chatShare": {
+      "baseUrl": "https://my-paseo-share.workers.dev"
+    }
+  }
+}
+```
+
+The daemon publishes only this public base URL to connected clients. It never
+publishes a cloud credential, an object-storage URL, or a deployment secret.
+If `chatShare` is absent, Paseo keeps the Share action visible and explains
+which configuration is required.
+
+## API Contract
+
+The app and the viewer use the same origin:
+
+```text
+POST /api/v1/shares       -> { "id": "<uuid>" }
+GET  /api/v1/shares/:id   -> paseo-chat-history@v1 JSON
+Viewer                    -> /?id=<uuid>
+```
+
+`POST` accepts only `application/json` requests up to 5 MiB that strictly
+match [the portable history schema](./schema/paseo-chat-history.v1.schema.json).
+The API stores each history as `shares/<uuid>.json`; it cannot be used to
+write an arbitrary object key or file type. Configure request-rate limits at
+your hosting edge when the service is exposed beyond a trusted audience.
+
+The viewer treats transcript text as untrusted: Markdown escapes raw HTML,
+unsafe links are labels, and assistant copy actions copy the original Markdown.
+User-message anchors use `#message-<entry-id>`.
+
+This template deliberately does not resolve the old fork-specific `?history=`
+URLs. Existing deployments can continue serving those historic links, while
+new self-hosted deployments use only stable `?id=<uuid>` links.

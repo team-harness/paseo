@@ -14,58 +14,37 @@ afterEach(() => {
 });
 
 describe("shareChatHistory", () => {
-  it("requests a grant, uploads the JSON, and returns the viewer URL", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            upload: {
-              method: "PUT",
-              url: "https://oss.example.com/history.json",
-              headers: { "content-type": "application/json" },
-            },
-            viewerUrl:
-              "https://paseo-chat.bazhuayu.xyz/?history=https%3A%2F%2Fexample.com%2Fhistory.json",
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-      )
-      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+  it("uploads the history to the configured service and returns its viewer URL", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: "7b853015-bf1a-4c4c-b969-14e1247aef85" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(shareChatHistory(history)).resolves.toBe(
-      "https://paseo-chat.bazhuayu.xyz/?history=https%3A%2F%2Fexample.com%2Fhistory.json",
+    await expect(shareChatHistory({ baseUrl: "https://share.example.com", history })).resolves.toBe(
+      "https://share.example.com/?id=7b853015-bf1a-4c4c-b969-14e1247aef85",
     );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      "https://paseo-chat-share.bazhuayu.xyz/v1/upload-grant",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ schemaVersion: 1 }) }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "https://oss.example.com/history.json",
-      expect.objectContaining({ method: "PUT", body: JSON.stringify(history) }),
-    );
+    expect(fetchMock).toHaveBeenCalledWith("https://share.example.com/api/v1/shares", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(history),
+    });
   });
 
   it("reports an upload failure", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            upload: { method: "PUT", url: "https://oss.example.com/history.json", headers: {} },
-            viewerUrl: "https://paseo-chat.bazhuayu.xyz/",
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-      )
-      .mockResolvedValueOnce(new Response(null, { status: 500 }));
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 500 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(shareChatHistory(history)).rejects.toThrow(
-      "Unable to upload the shared conversation",
+    await expect(
+      shareChatHistory({ baseUrl: "https://share.example.com", history }),
+    ).rejects.toThrow("Unable to upload the shared conversation");
+  });
+
+  it("rejects a malformed configured base URL", async () => {
+    await expect(shareChatHistory({ baseUrl: "file:///tmp/share", history })).rejects.toThrow(
+      "Chat sharing requires an HTTP or HTTPS service URL",
     );
   });
 });

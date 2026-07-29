@@ -75,6 +75,18 @@ describe("PersistedConfigSchema daemon relay config", () => {
   });
 });
 
+describe("PersistedConfigSchema chat share config", () => {
+  test("accepts a public share-service base URL", () => {
+    const parsed = PersistedConfigSchema.parse({
+      daemon: {
+        chatShare: { baseUrl: "https://share.example.com" },
+      },
+    });
+
+    expect(parsed.daemon?.chatShare).toEqual({ baseUrl: "https://share.example.com" });
+  });
+});
+
 describe("PersistedConfigSchema daemon trusted proxy config", () => {
   test("accepts optional trusted proxy ranges", () => {
     const parsed = PersistedConfigSchema.parse({

@@ -509,6 +509,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         ? { desktopManaged: serverInfo.desktopManaged }
         : {}),
       ...(serverInfo.capabilities ? { capabilities: serverInfo.capabilities } : {}),
+      ...(serverInfo.chatShare ? { chatShare: serverInfo.chatShare } : {}),
       ...(serverInfo.features ? { features: serverInfo.features } : {}),
     });
   }, [client, serverId, updateSessionServerInfo]);
@@ -831,6 +832,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
             ? { desktopManaged: serverInfo.desktopManaged }
             : {}),
           ...(serverInfo.capabilities ? { capabilities: serverInfo.capabilities } : {}),
+          ...(serverInfo.chatShare ? { chatShare: serverInfo.chatShare } : {}),
           ...(serverInfo.features ? { features: serverInfo.features } : {}),
         });
         return;

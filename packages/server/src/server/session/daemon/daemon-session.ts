@@ -16,6 +16,9 @@ export interface DaemonRuntimeConfig {
   listen: string | null;
   worktreesRoot?: string;
   appBaseUrl?: string;
+  chatShare?: {
+    baseUrl: string;
+  };
   desktopManaged?: boolean;
   relay: {
     enabled: boolean;

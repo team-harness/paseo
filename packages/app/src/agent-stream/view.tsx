@@ -448,6 +448,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       (state) =>
         state.sessions[resolvedServerId]?.serverInfo?.features?.agentForkContextCursor === true,
     );
+    const chatShare = useSessionStore(
+      (state) => state.sessions[resolvedServerId]?.serverInfo?.chatShare,
+    );
+    const supportsChatShare = useSessionStore(
+      (state) => state.sessions[resolvedServerId]?.serverInfo?.features?.chatShare === true,
+    );
 
     const workspaceRoot = context.cwd?.trim() || "";
     const { requestDirectoryListing } = useFileExplorerActions({
@@ -639,6 +645,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       if (sharingAssistantTurnRef.current || shareStartSelectionRef.current) {
         return;
       }
+      if (!supportsChatShare) {
+        toast?.error(t("message.actions.shareUnavailable"));
+        return;
+      }
+      if (!chatShare?.baseUrl) {
+        toast?.error(t("message.actions.shareNotConfigured"));
+        return;
+      }
 
       sharingAssistantTurnRef.current = true;
       setIsSharingAssistantTurn(true);
@@ -695,7 +709,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           model: context.model ?? context.runtimeInfo?.model,
           items,
         });
-        const viewerUrl = await shareChatHistory(history);
+        if (!chatShare?.baseUrl) {
+          throw new Error(t("message.actions.shareNotConfigured"));
+        }
+        const viewerUrl = await shareChatHistory({ baseUrl: chatShare.baseUrl, history });
         await Clipboard.setStringAsync(viewerUrl);
         toast?.copied(t("message.actions.shareCopied"));
       } catch (error) {

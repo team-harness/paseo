@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://paseo-chat.bazhuayu.xyz/schema/paseo-chat-history.v1.schema.json",
+  "$id": "urn:paseo:chat-history:v1",
   "title": "Paseo shared chat history",
   "description": "A portable, read-only representation of a Paseo conversation.",
   "type": "object",

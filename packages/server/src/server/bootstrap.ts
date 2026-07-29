@@ -407,6 +407,9 @@ export interface PaseoDaemonConfig {
     publicBaseUrl: string | null;
     standaloneListen: string | null;
   };
+  chatShare?: {
+    baseUrl: string;
+  };
   webUi?: {
     enabled: boolean;
     distDir: string | null;
@@ -1572,6 +1575,7 @@ export async function createPaseoDaemon(
                 listen: formatListenTarget(boundListenTarget ?? listenTarget),
                 worktreesRoot: config.worktreesRoot,
                 appBaseUrl: config.appBaseUrl,
+                chatShare: config.chatShare,
                 desktopManaged: config.desktopManaged === true,
                 relay: {
                   enabled: relayEnabled,
