@@ -242,6 +242,12 @@ describe("createWebStreamStrategy", () => {
       );
     });
 
+    const historyRow = container.querySelector('[data-history-row-id="message-1"]');
+    if (!(historyRow instanceof HTMLElement)) {
+      throw new Error("Expected a mounted history row");
+    }
+    expect(historyRow.style.width).toBe("100%");
+
     const scrollContainer = container.querySelector('[data-testid="agent-chat-scroll"]');
     if (!(scrollContainer instanceof HTMLElement)) {
       throw new Error("Expected agent chat scroll container");

@@ -72,6 +72,7 @@ const historyStartSlotStyle: CSSProperties = {
   paddingTop: 4,
   paddingBottom: 8,
 };
+const historyMountedRowStyle: CSSProperties = { width: "100%" };
 
 function isScrollContainerNearBottom(
   scrollContainer: Pick<HTMLElement, "scrollTop" | "clientHeight" | "scrollHeight">,
@@ -764,7 +765,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   );
   const mountedHistoryRows = useMemo(() => {
     return segments.historyMounted.map((item, index) => (
-      <div key={item.id} data-history-row-id={item.id}>
+      <div key={item.id} data-history-row-id={item.id} style={historyMountedRowStyle}>
         {renderHistoryMountedRow(item, index, segments.historyMounted)}
       </div>
     ));
