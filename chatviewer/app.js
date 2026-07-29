@@ -80,6 +80,23 @@ function resolveHistoryUrl(history) {
   return url.toString();
 }
 
+function renderLoadingState() {
+  const state = element("div", "loading-state");
+  state.setAttribute("role", "status");
+  state.append(
+    element("span", "loading-spinner"),
+    element("span", "", "Loading shared conversation..."),
+  );
+  conversation.setAttribute("aria-busy", "true");
+  conversation.replaceChildren(state);
+}
+
+function waitForNextPaint() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
 function isShareableLink(href) {
   try {
     const url = new URL(href);
@@ -213,8 +230,45 @@ function renderRecord(entry) {
   return record;
 }
 
+function toolGroupStatus(entries) {
+  const failedCount = entries.filter((entry) => entry.status === "failed").length;
+  if (failedCount) return `${failedCount} failed`;
+  if (entries.some((entry) => entry.status === "running")) return "Running";
+  if (entries.some((entry) => entry.status === "canceled")) return "Canceled";
+  return "Completed";
+}
+
+function renderToolGroup(entries) {
+  const hasFailedTool = entries.some((entry) => entry.status === "failed");
+  const group = element("section", `entry record tool-group${hasFailedTool ? " error" : ""}`);
+  const toggle = element("button", "tool-group-toggle");
+  toggle.type = "button";
+  const heading = element("div", "record-heading");
+  heading.append(element("strong", "tool-group-label", `${entries.length} tool calls`));
+  heading.append(element("span", "status", toolGroupStatus(entries)));
+  toggle.append(heading, element("span", "tool-caret"));
+
+  const list = element("div", "tool-group-list");
+  list.hidden = true;
+  for (const entry of entries) list.append(renderRecord(entry));
+
+  const setExpanded = (expanded) => {
+    toggle.setAttribute("aria-expanded", String(expanded));
+    toggle.setAttribute("aria-label", `${expanded ? "Hide" : "Show"} ${entries.length} tool calls`);
+    list.hidden = !expanded;
+    group.classList.toggle("is-expanded", expanded);
+  };
+  setExpanded(false);
+  toggle.addEventListener("click", () => {
+    setExpanded(toggle.getAttribute("aria-expanded") !== "true");
+  });
+  group.append(toggle, list);
+  return group;
+}
+
 function renderHistory(history) {
   document.title = `${history.conversation.title} - Paseo Chat`;
+  conversation.removeAttribute("aria-busy");
   conversation.replaceChildren();
   const conversationMeta = element("header", "conversation-meta");
   conversationMeta.append(element("h1", "", history.conversation.title));
@@ -228,7 +282,17 @@ function renderHistory(history) {
   if (details) conversationMeta.append(element("p", "", details));
   conversation.append(conversationMeta);
 
-  for (const entry of history.entries) {
+  for (let index = 0; index < history.entries.length; index += 1) {
+    const entry = history.entries[index];
+    if (entry.kind === "tool") {
+      const entries = [entry];
+      while (history.entries[index + 1]?.kind === "tool") {
+        index += 1;
+        entries.push(history.entries[index]);
+      }
+      conversation.append(entries.length === 1 ? renderRecord(entry) : renderToolGroup(entries));
+      continue;
+    }
     if (entry.kind === "message") {
       const article = element("article", `entry message ${entry.role}`);
       if (entry.role === "user") article.id = messageAnchorId(entry);
@@ -262,6 +326,8 @@ function renderHistory(history) {
 async function loadHistory() {
   const historyReference = new URLSearchParams(window.location.search).get("history");
   if (!historyReference) return;
+  renderLoadingState();
+  await waitForNextPaint();
   try {
     const response = await fetch(resolveHistoryUrl(historyReference), { cache: "no-store" });
     if (!response.ok)
@@ -270,6 +336,7 @@ async function loadHistory() {
     if (!isHistory(history)) throw new Error("This file is not a supported Paseo shared history");
     renderHistory(history);
   } catch (error) {
+    conversation.removeAttribute("aria-busy");
     conversation.replaceChildren(
       element(
         "div",

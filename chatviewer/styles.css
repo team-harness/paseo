@@ -280,7 +280,8 @@ body {
   margin: 0 0 4px;
   padding: 3px 0 3px 10px;
 }
-.tool-toggle {
+.tool-toggle,
+.tool-group-toggle {
   display: flex;
   align-items: center;
   width: 100%;
@@ -296,10 +297,13 @@ body {
   text-align: left;
 }
 .tool-toggle:hover .record-heading strong,
-.tool-toggle:focus-visible .record-heading strong {
+.tool-toggle:focus-visible .record-heading strong,
+.tool-group-toggle:hover .record-heading strong,
+.tool-group-toggle:focus-visible .record-heading strong {
   color: #eef2ef;
 }
-.tool-toggle:focus-visible {
+.tool-toggle:focus-visible,
+.tool-group-toggle:focus-visible {
   outline: 1px solid #62776a;
   outline-offset: 3px;
 }
@@ -334,6 +338,36 @@ body {
 .tool-record.is-expanded .tool-caret::before {
   content: "▾";
 }
+.tool-group {
+  min-height: 28px;
+  margin: 0 0 8px;
+  padding: 3px 0 3px 10px;
+}
+.tool-group .record-heading {
+  min-width: 0;
+  flex: 1;
+  gap: 7px;
+}
+.tool-group-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+.tool-group .status {
+  flex: none;
+  font-size: 10px;
+}
+.tool-group.is-expanded .tool-caret::before {
+  content: "▾";
+}
+.tool-group-list {
+  margin: 5px 0 0 9px;
+}
+.tool-group-list .tool-record {
+  border-left-color: #334039;
+}
+.tool-group-list .tool-record:last-child {
+  margin-bottom: 0;
+}
 .status {
   font-size: 11px;
   color: #8f9b93;
@@ -353,6 +387,9 @@ body {
     monospace;
 }
 .tool-record.is-expanded {
+  padding-bottom: 8px;
+}
+.tool-group.is-expanded {
   padding-bottom: 8px;
 }
 .todo-list {
@@ -378,14 +415,40 @@ body {
 }
 
 .empty-state,
+.loading-state,
 .error-state {
   color: #8f9b93;
   padding: 72px 0;
   text-align: center;
   font-size: 14px;
 }
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+.loading-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid #48554d;
+  border-top-color: #a8c7b0;
+  border-radius: 50%;
+  animation: loading-spin 0.75s linear infinite;
+}
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .error-state {
   color: #db938f;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner {
+    animation: none;
+  }
 }
 
 @media (max-width: 640px) {
