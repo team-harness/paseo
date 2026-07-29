@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `cbbf6c1684fb0415b7949e684d152f5f7453e769`（`v0.2.3`），同步于 2026-07-28。
-- 最近同步 merge commit：`1973dd08a`。
+- 最近同步基线：`upstream/main` = `504b687f8952a0a7ec5b5fdc772b946ddf903a18`，同步于 2026-07-29。
+- 最近同步 merge commit：`afb22e3eb`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,13 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-07-29: `upstream/main` `504b687f8`
+
+- 合入上游聊天历史起点分页与图片预览稳定性、Codex 最新计划审批、CLI Agent/schedule thinking 配置、上滑收起键盘、Grok quota 和 Claude 1M context 修复，以及 Linux AppImage/CI 改进。
+- 上游的计划 `--thinking` 已与 fork 的创建目标并存；它没有提供创建计划时选择已有 Agent 的表单、跨 Host 选择或 `target: { type: "agent", agentId }` 语义，故保留 fork 现有 Agent 目标能力。
+- 上游没有新增 Status Bar/`status.summary`、usage ledger、多 Host 聚合、共享侧边栏 Pin 或聊天分享的等价实现；这些 fork 能力继续保留。本轮没有需要下线的 fork 功能。
+- 聊天分享导出已接入上游时间线页的 `hasAuthoritativeBaseline` 协议字段：导出的首个 tail 页面不假定本地快照权威，后续同一历史 epoch 的 older 页面沿用已建立基线，保持完整历史导出的分页行为。
 
 ### 2026-07-28: `upstream/main` `cbbf6c168` / `v0.2.3`
 
@@ -198,6 +205,24 @@
 - 采用上游文件面板的状态模型和控件位置；带行号定位时默认 Source 的行为必须保留。
 - 不恢复 fork 的图标切换 UI、独立文案或旧文件读取路径。
 - 必跑：文件面板、`file-pane-render-mode.test.ts`、`resources.test.ts`、`npm run typecheck`。
+
+### 7. 只读聊天分享
+
+**状态**：fork 功能。主要提交：`7c9a99eb3`、`1ecfe1612`、`6f6d0f18d`、`425fda60e`。
+
+**行为**：聊天消息菜单支持异步分享，用户可选择从任一用户消息开始导出完整历史；客户端上传 JSON 后复制只读访问链接。独立的 Chat Viewer 通过受限 History API 加载数据，支持消息锚点、Markdown 渲染、折叠连续工具调用和初始加载状态，不提供继续聊天能力。
+
+**关键文件**：
+
+- `packages/app/src/chat-share/history.ts`
+- `packages/app/src/chat-share/upload.ts`
+- `packages/app/src/agent-stream/view.tsx`
+
+**同步规则**：
+
+- 上游若提供等价聊天分享，优先采用其导出协议、上传 API 和 Viewer URL 结构；迁移时保留全量历史分页、分享起点选择和异步 UI 状态。
+- 导出的时间线页必须跟随上游 `TimelinePage` 协议字段，尤其是 history epoch 与权威基线语义，不能把客户端当前已加载的局部消息当作完整历史。
+- 必跑：聊天分享导出/上传目标测试、时间线分页测试、`npm run typecheck`。
 
 ## 同步上游操作清单
 
