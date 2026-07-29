@@ -1,5 +1,6 @@
 const conversation = document.querySelector("#conversation");
 const CHAT_SHARE_API_ORIGIN = "https://paseo-chat-share.bazhuayu.xyz";
+const CHAT_SHARE_OSS_ORIGIN = "https://opencoder.oss-cn-shanghai.aliyuncs.com";
 const MESSAGE_ANCHOR_PREFIX = "message-";
 
 function messageAnchorId(entry) {
@@ -53,16 +54,38 @@ async function copyAssistantMarkdown(markdown, button) {
   try {
     await navigator.clipboard.writeText(markdown);
     button.classList.add("copied");
-    button.textContent = "Copied";
     button.setAttribute("aria-label", "Markdown copied");
+    button.title = "Markdown copied";
     window.setTimeout(() => {
       button.classList.remove("copied");
-      button.textContent = "Copy";
       button.setAttribute("aria-label", "Copy assistant markdown");
+      button.title = "Copy assistant markdown";
     }, 1600);
   } catch {
     button.setAttribute("aria-label", "Unable to copy markdown");
+    button.title = "Unable to copy markdown";
   }
+}
+
+function copyIcon() {
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", "currentColor");
+  icon.setAttribute("stroke-width", "2");
+  icon.setAttribute("stroke-linecap", "round");
+  icon.setAttribute("stroke-linejoin", "round");
+  icon.setAttribute("aria-hidden", "true");
+  icon.classList.add("copy-icon");
+  for (const d of [
+    "M8 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2",
+    "M9 4a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2z",
+  ]) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    icon.append(path);
+  }
+  return icon;
 }
 
 function element(name, className, text) {
@@ -88,17 +111,33 @@ function isHistory(value) {
   );
 }
 
-function resolveHistoryUrl({ id, history }) {
-  const url = new URL("/v1/history", CHAT_SHARE_API_ORIGIN);
-  if (id) {
-    url.searchParams.set("id", id);
-    return url.toString();
-  }
+function isHistoryId(value) {
+  return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value);
+}
 
-  // Old shares contain the full read URL. Newer legacy shares expose only the object key.
-  if (!history.startsWith("history/")) return history;
-  url.searchParams.set("key", history);
-  return url.toString();
+function isHistoryKey(value) {
+  return /^history\/(?:\d{4}-\d{2}-\d{2}\/)?[0-9a-f-]+\.json$/i.test(value);
+}
+
+function historyObjectUrl(key) {
+  return new URL(`/${key}`, CHAT_SHARE_OSS_ORIGIN).toString();
+}
+
+function resolveHistoryUrl({ id, history }) {
+  if (id && isHistoryId(id)) return historyObjectUrl(`history/${id}.json`);
+
+  // Old shares contain a read-proxy URL or a direct object key. Both map to the public history path.
+  if (isHistoryKey(history)) return historyObjectUrl(history);
+  try {
+    const url = new URL(history);
+    if (url.origin === CHAT_SHARE_API_ORIGIN && url.pathname === "/v1/history") {
+      const key = url.searchParams.get("key") ?? "";
+      if (isHistoryKey(key)) return historyObjectUrl(key);
+    }
+  } catch {
+    // Preserve the legacy URL behavior below for malformed references.
+  }
+  return history;
 }
 
 function renderLoadingState() {
@@ -332,9 +371,11 @@ function renderHistory(history) {
         });
         entryMeta.append(anchorButton);
       } else if (entry.role === "assistant") {
-        const copyButton = element("button", "copy-button", "Copy");
+        const copyButton = element("button", "copy-button");
         copyButton.type = "button";
         copyButton.setAttribute("aria-label", "Copy assistant markdown");
+        copyButton.title = "Copy assistant markdown";
+        copyButton.append(copyIcon());
         copyButton.addEventListener("click", () => {
           void copyAssistantMarkdown(entry.markdown, copyButton);
         });

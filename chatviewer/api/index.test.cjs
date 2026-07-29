@@ -6,7 +6,6 @@ const {
   handler,
   historyKeyForId,
   isHistoryId,
-  isHistoryKey,
 } = require("./index.cjs");
 
 test("returns a Licell HTTP response from the health endpoint", async () => {
@@ -36,13 +35,6 @@ test("creates a time-limited PUT URL for exactly one history object", () => {
   assert.ok(url.searchParams.get("Signature"));
 });
 
-test("only accepts generated history object keys for the read proxy", () => {
-  assert.equal(isHistoryKey("history/2026-07-28/7b853015-bf1a-4c4c-b969-14e1247aef85.json"), true);
-  assert.equal(isHistoryKey("history/7b853015-bf1a-4c4c-b969-14e1247aef85.json"), true);
-  assert.equal(isHistoryKey("history/../../private.json"), false);
-  assert.equal(isHistoryKey("other/2026-07-28/7b853015-bf1a-4c4c-b969-14e1247aef85.json"), false);
-});
-
 test("returns a Viewer URL containing only the generated history id", () => {
   const previousViewerOrigin = process.env.CHAT_SHARE_VIEWER_ORIGIN;
   process.env.CHAT_SHARE_VIEWER_ORIGIN = "https://paseo-chat.bazhuayu.xyz/";
@@ -65,30 +57,18 @@ test("only derives a history key from a UUID", () => {
   assert.equal(isHistoryId("history/2026-07-28/example.json"), false);
 });
 
-test("loads new ID links from the undated history object key", async () => {
-  const previousBucket = process.env.CHAT_SHARE_OSS_BUCKET;
-  const previousRegion = process.env.CHAT_SHARE_OSS_REGION;
-  const originalFetch = global.fetch;
-  const id = "7b853015-bf1a-4c4c-b969-14e1247aef85";
-  process.env.CHAT_SHARE_OSS_BUCKET = "paseo-chat-history";
-  process.env.CHAT_SHARE_OSS_REGION = "cn-shanghai";
-  global.fetch = async (url) => {
-    assert.equal(url, `https://paseo-chat-history.oss-cn-shanghai.aliyuncs.com/history/${id}.json`);
-    return { ok: true, json: async () => ({ schemaVersion: 1 }) };
-  };
-  try {
-    const response = await handler({
-      rawPath: "/v1/history",
-      httpMethod: "GET",
-      queryParameters: { id },
-    });
-    assert.equal(response.statusCode, 200);
-    assert.deepEqual(JSON.parse(response.body), { schemaVersion: 1 });
-  } finally {
-    global.fetch = originalFetch;
-    if (previousBucket === undefined) delete process.env.CHAT_SHARE_OSS_BUCKET;
-    else process.env.CHAT_SHARE_OSS_BUCKET = previousBucket;
-    if (previousRegion === undefined) delete process.env.CHAT_SHARE_OSS_REGION;
-    else process.env.CHAT_SHARE_OSS_REGION = previousRegion;
-  }
+test("only exposes the upload grant and health endpoints", async () => {
+  const response = await handler({ rawPath: "/v1/history", httpMethod: "GET" });
+  assert.equal(response.statusCode, 404);
+});
+
+test("requires a JSON content type for upload grants", async () => {
+  const response = await handler({
+    rawPath: "/v1/upload-grant",
+    httpMethod: "POST",
+    headers: { "content-type": "text/plain" },
+    body: JSON.stringify({ schemaVersion: 1 }),
+  });
+  assert.equal(response.statusCode, 415);
+  assert.deepEqual(JSON.parse(response.body), { error: "Content-Type must be application/json" });
 });

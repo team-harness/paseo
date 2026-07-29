@@ -51,20 +51,22 @@ read-only viewer link.
 - Deep links: every user message in the Viewer exposes a `#` action that copies
   a URL ending in `#message-<entry-id>`. Opening that URL loads the same
   history, scrolls to the message, and briefly highlights it. This is a Viewer
-  behavior only; the export schema and FC upload/read APIs remain unchanged.
-- Assistant messages expose a `Copy` action that writes their original exported
-  Markdown to the clipboard without flattening rendered tables, code blocks, or links.
-- Upload path: the FC API signs a five-minute `PUT` for a generated
-  `history/YYYY-MM-DD/<uuid>.json` key. Long-lived OSS credentials remain FC
-  environment variables only. The viewer reads through the API's key-restricted
-  history endpoint, so it does not depend on OSS read CORS.
+  behavior only; the export schema remains unchanged.
+- Assistant messages expose an icon-only Copy action with a tooltip. It writes
+  original exported Markdown to the clipboard without flattening rendered tables,
+  code blocks, or links.
+- Upload path: the FC API signs a ten-minute `PUT` for one generated
+  `history/<uuid>.json` key and requires `Content-Type: application/json` in
+  the OSS signature. Long-lived OSS credentials remain FC environment variables
+  only. The Viewer derives this key from the UUID and reads the public OSS object
+  directly; the FC API neither proxies nor stores transcript content.
 - Share scope: Share first snapshots the complete authoritative timeline, then
   offers every user message as a start point. Selecting one exports that
   message and every later entry, without changing the portable history schema
   or the upload API.
 - Share URL: newly issued Viewer links carry only the generated UUID as
-  `?id=<uuid>`; the API maps it to `history/<uuid>.json`. Existing `?history=`
-  links carrying an object key or complete history-read URL remain supported.
+  `?id=<uuid>`. Existing `?history=` links carrying an object key or former
+  history-read URL remain supported and resolve to the equivalent OSS object.
 - OSS CORS permits browser `PUT` with `content-type` for those temporary upload
   URLs. Keep this configuration in the independent deployment rather than the
   Paseo daemon or protocol.

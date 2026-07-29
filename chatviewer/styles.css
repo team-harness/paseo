@@ -139,22 +139,37 @@ body {
   content: "✓";
 }
 .copy-button {
-  min-height: 20px;
-  padding: 1px 6px;
-  border: 1px solid #3b4740;
+  position: relative;
+  width: 20px;
+  height: 20px;
+  padding: 2px;
+  border: 0;
   border-radius: 3px;
   color: #aeb9b1;
   background: transparent;
   cursor: pointer;
-  font: 500 11px/16px inherit;
+}
+.copy-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 .copy-button:hover,
 .copy-button:focus-visible,
 .copy-button.copied {
-  border-color: #62776a;
   color: #e9f2eb;
   background: #27342c;
   outline: none;
+}
+.copy-button.copied .copy-icon {
+  display: none;
+}
+.copy-button.copied::after {
+  content: "\2713";
+  display: block;
+  font-size: 13px;
+  line-height: 16px;
+  text-align: center;
 }
 .entry.is-anchor-target .bubble {
   animation: anchor-focus 2.4s ease-out;

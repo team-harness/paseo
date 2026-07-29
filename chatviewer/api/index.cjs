@@ -1,7 +1,14 @@
 const { createHmac, randomUUID } = require("node:crypto");
 
 const MAX_REQUEST_BYTES = 16 * 1024;
-const UPLOAD_TTL_SECONDS = 5 * 60;
+const UPLOAD_TTL_SECONDS = 10 * 60;
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
 
 function env(name) {
   const value = process.env[name]?.trim();
@@ -38,11 +45,20 @@ function readJson(event) {
   const raw = event.isBase64Encoded
     ? Buffer.from(event.body ?? "", "base64").toString("utf8")
     : (event.body ?? "");
-  if (Buffer.byteLength(raw) > MAX_REQUEST_BYTES) throw new Error("Request body is too large");
+  if (Buffer.byteLength(raw) > MAX_REQUEST_BYTES)
+    throw new HttpError(413, "Request body is too large");
   try {
     return raw ? JSON.parse(raw) : {};
   } catch {
-    throw new Error("Request body must be valid JSON");
+    throw new HttpError(400, "Request body must be valid JSON");
+  }
+}
+
+function requireJsonContentType(request) {
+  const headers = request.headers ?? {};
+  const contentType = headers["content-type"] ?? headers["Content-Type"] ?? "";
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    throw new HttpError(415, "Content-Type must be application/json");
   }
 }
 
@@ -62,10 +78,6 @@ function createPresignedPutUrl({ bucket, region, key, accessKeyId, accessKeySecr
   return `https://${bucket}.oss-${region}.aliyuncs.com/${encodeObjectKey(key)}?${query.toString()}`;
 }
 
-function isHistoryKey(key) {
-  return /^history\/(?:\d{4}-\d{2}-\d{2}\/)?[0-9a-f-]+\.json$/i.test(key);
-}
-
 function isHistoryId(id) {
   return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id);
 }
@@ -74,29 +86,8 @@ function historyKeyForId(id) {
   return `history/${id}.json`;
 }
 
-function historyKeyFromQuery(query) {
-  const id = query?.id;
-  if (id) return isHistoryId(id) ? historyKeyForId(id) : "";
-  return query?.key ?? "";
-}
-
 function errorMessage(error, fallback) {
   return error instanceof Error ? error.message : fallback;
-}
-
-async function handleHistory(key) {
-  if (!isHistoryKey(key)) return json(400, { error: "Invalid history key" });
-  try {
-    const bucket = env("CHAT_SHARE_OSS_BUCKET");
-    const region = env("CHAT_SHARE_OSS_REGION");
-    const historyUrl = `https://${bucket}.oss-${region}.aliyuncs.com/${encodeObjectKey(key)}`;
-    const response = await fetch(historyUrl);
-    if (!response.ok)
-      return json(response.status === 404 ? 404 : 502, { error: "History unavailable" });
-    return json(200, await response.json());
-  } catch (error) {
-    return json(500, { error: errorMessage(error, "Unable to load history") });
-  }
 }
 
 function createViewerUrl(key) {
@@ -108,6 +99,7 @@ function createViewerUrl(key) {
 }
 
 function createUploadGrant(request) {
+  requireJsonContentType(request);
   const body = readJson(request);
   if (body.schemaVersion !== 1) return json(400, { error: "Unsupported history schema" });
 
@@ -142,14 +134,13 @@ async function handler(request) {
   if (method === "OPTIONS") return empty(204);
   if (method === "GET" && (path === "/health" || path === "/healthz"))
     return json(200, { ok: true });
-  if (method === "GET" && path === "/v1/history") {
-    return handleHistory(historyKeyFromQuery(request.queryParameters));
-  }
   if (method !== "POST" || path !== "/v1/upload-grant") return json(404, { error: "Not found" });
   try {
     return createUploadGrant(request);
   } catch (error) {
-    return json(500, { error: errorMessage(error, "Unable to create upload grant") });
+    return json(error instanceof HttpError ? error.status : 500, {
+      error: errorMessage(error, "Unable to create upload grant"),
+    });
   }
 }
 
@@ -158,7 +149,5 @@ module.exports = {
   createPresignedPutUrl,
   createViewerUrl,
   historyKeyForId,
-  historyKeyFromQuery,
   isHistoryId,
-  isHistoryKey,
 };

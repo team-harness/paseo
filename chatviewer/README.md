@@ -10,8 +10,9 @@ The public contract is [schema/paseo-chat-history.v1.schema.json](./schema/paseo
 https://paseo-chat.bazhuayu.xyz/?id=7b853015-bf1a-4c4c-b969-14e1247aef85
 ```
 
-The Viewer resolves this ID through the restricted share API. Previously issued URLs
-that contain a `history` object key or a full read URL remain supported.
+The Viewer derives `history/<id>.json` and reads it directly from the public history
+prefix in OSS. Previously issued URLs that contain a `history` object key or the former
+FC read-proxy URL remain supported and are converted to the corresponding OSS object.
 
 User messages can be linked directly by appending their anchor id to the URL. The
 Viewer scrolls to the message after loading the history and briefly highlights it:
@@ -23,8 +24,7 @@ https://paseo-chat.bazhuayu.xyz/?id=7b853015-bf1a-4c4c-b969-14e1247aef85#message
 The `#` button beside a user message copies this URL.
 
 When the Paseo upload API is used, the returned viewer URL contains only the generated
-UUID and the Viewer reads through its restricted history proxy, so it does not need
-direct cross-origin access to the history object. The viewer treats all transcript
+UUID. The Viewer reads the matching OSS object directly. The viewer treats all transcript
 text as untrusted and never inserts exported values as HTML.
 
 ## Deployment
