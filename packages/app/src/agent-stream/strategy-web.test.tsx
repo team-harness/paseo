@@ -145,6 +145,12 @@ describe("createWebStreamStrategy", () => {
 
     expect(rowRenderCount.mock.calls.length).toBeGreaterThan(0);
     expect(rowRenderCount.mock.calls.length).toBeLessThanOrEqual(historyVirtualized.length);
+
+    const virtualHistoryRow = container.querySelector('[data-history-row-id="message-0"]');
+    if (!(virtualHistoryRow instanceof HTMLElement)) {
+      throw new Error("Expected a virtualized history row");
+    }
+    expect(virtualHistoryRow.style.alignItems).toBe("center");
   });
 
   it("rerenders a stable live-head row when its revision changes", () => {
@@ -247,6 +253,9 @@ describe("createWebStreamStrategy", () => {
       throw new Error("Expected a mounted history row");
     }
     expect(historyRow.style.width).toBe("100%");
+    expect(historyRow.style.display).toBe("flex");
+    expect(historyRow.style.flexDirection).toBe("column");
+    expect(historyRow.style.alignItems).toBe("center");
 
     const scrollContainer = container.querySelector('[data-testid="agent-chat-scroll"]');
     if (!(scrollContainer instanceof HTMLElement)) {

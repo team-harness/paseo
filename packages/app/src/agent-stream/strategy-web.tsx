@@ -72,7 +72,12 @@ const historyStartSlotStyle: CSSProperties = {
   paddingTop: 4,
   paddingBottom: 8,
 };
-const historyMountedRowStyle: CSSProperties = { width: "100%" };
+const historyMountedRowStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  width: "100%",
+};
 
 function isScrollContainerNearBottom(
   scrollContainer: Pick<HTMLElement, "scrollTop" | "clientHeight" | "scrollHeight">,
@@ -758,6 +763,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       left: 0,
       display: "flex",
       flexDirection: "column",
+      alignItems: "center",
       width: "100%",
       transform: `translateY(${start}px)`,
     }),
