@@ -67,6 +67,20 @@ async function copyAssistantMarkdown(markdown, button) {
   }
 }
 
+async function copyHistorySourceLink(sourceUrl, link) {
+  try {
+    await navigator.clipboard.writeText(sourceUrl);
+    link.classList.add("copied");
+    link.textContent = "Source JSON link copied";
+    window.setTimeout(() => {
+      link.classList.remove("copied");
+      link.textContent = "Copy source JSON link";
+    }, 1600);
+  } catch {
+    link.textContent = "Unable to copy source JSON link";
+  }
+}
+
 function copyIcon() {
   const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   icon.setAttribute("viewBox", "0 0 24 24");
@@ -306,9 +320,14 @@ function renderAgentReviewHint(id) {
   hint.setAttribute("aria-label", "Conversation source JSON");
   hint.append(element("strong", "", "Reviewing this conversation with an AI agent?"));
   hint.append(element("p", "", "Ask it to load and read the complete source JSON directly."));
-  const sourceLink = element("a", "agent-review-link", "Open source JSON");
+  const sourceLink = element("a", "agent-review-link", "Copy source JSON link");
   sourceLink.href = sourceUrl;
+  sourceLink.title = "Copy source JSON link";
   sourceLink.setAttribute("data-history-json-url", sourceUrl);
+  sourceLink.addEventListener("click", (event) => {
+    event.preventDefault();
+    void copyHistorySourceLink(sourceUrl, sourceLink);
+  });
   hint.append(sourceLink);
   return hint;
 }

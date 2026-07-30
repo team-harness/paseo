@@ -94,6 +94,7 @@ body {
   display: inline-block;
   margin-top: 5px;
   color: #9ccbaa;
+  cursor: pointer;
   font-size: 12px;
   text-decoration: underline;
   text-underline-offset: 2px;
