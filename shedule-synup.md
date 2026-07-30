@@ -56,6 +56,7 @@
 3. 交付前必须全部验证：
    - `hdiutil verify <output.dmg>` 成功；
    - 只读挂载后，`Paseo.app/Contents/MacOS/Paseo` 为 `arm64`；
+   - 只读挂载后，`Paseo.app/Contents/Info.plist` 的 `CFBundleShortVersionString` 必须等于当前提交的版本号；同时从 `app.asar` 提取 `node_modules/@getpaseo/server/package.json`，确认其 `version` 也相同。仅替换 `app-dist` 不足以升级桌面主进程和 daemon，禁止用旧版 `Paseo.app` 作为发布包底座；
    - 确认挂载包内 `app-dist/index.html` 指向本轮导出的 bundle，并能检索到本轮新增 UI 文案/代码；
    - DMG 使用 APFS 镜像布局、大小与标准包同量级（约 160 MB），不能把约 130 MB 的轻量 HFS 包当成交付物；
    - 记录文件名、版本号、提交 SHA、大小和 SHA-256。
