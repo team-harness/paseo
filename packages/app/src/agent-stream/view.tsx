@@ -714,9 +714,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         }
         const viewerUrl = await shareChatHistory({ baseUrl: chatShare.baseUrl, history });
         await Clipboard.setStringAsync(viewerUrl);
-        toast?.copied(t("message.actions.shareCopied"));
-      } catch (error) {
-        toast?.error(toErrorMessage(error) || t("message.actions.shareFailed"));
+        toast?.show(t("message.actions.shareCopied"), { variant: "success", durationMs: 5000 });
+      } catch {
+        toast?.show(t("message.actions.shareFailed"), { variant: "error", durationMs: 8000 });
       } finally {
         sharingAssistantTurnRef.current = false;
         setIsSharingAssistantTurn(false);
