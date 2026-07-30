@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `504b687f8952a0a7ec5b5fdc772b946ddf903a18`，同步于 2026-07-29。
-- 最近同步 merge commit：`afb22e3eb`。
+- 最近同步基线：`upstream/main` = `d1ce2b77f7adb13a7f9f3d1b778c9a2efdadf460`，同步于 2026-07-30。
+- 最近同步 merge commit：`285733080`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,13 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-07-30: `upstream/main` `d1ce2b77f` / `v0.2.4`
+
+- 合入上游跨 Host 项目分组恢复、`project.list` 协议与项目级设置路由、旧 GitHub CLI 仓库搜索兼容、Agent cwd 注入、idle Agent 后台任务保活、completion 缺失 usage 时保留 context window，以及文件树恢复/checkout diff 稳定性修复。
+- 上游时间线 optimistic/pagination rework 已回滚；采用其当前的虚拟化 DOM 结构和 `processTimelineResponse` 本地用户消息 reconciliation，不保留 fork 的 `data-history-row-id` 包装层或已移除的 `sendingClientMessageIds` / `hasAuthoritativeBaseline` 参数。聊天分享继续以 captured tail/head 加载全部 older 页面，并复用该 reducer 产出完整导出历史。
+- 上游的 schedule 改动只修复项目 target 名称 hydration，没有创建计划时选择既有 Agent 的表单、跨 Host Agent 选择或 `target: { type: "agent", agentId }` 创建语义；fork 现有 Agent 目标能力继续保留。
+- 上游未实现 Status Bar/`status.summary`、usage ledger、多 Host 汇总、共享侧边栏 Pin 或只读聊天分享的等价功能。本轮没有下线 fork 能力；Agent turn completion 同时采用上游 usage 合并以保留 context window，并保留 fork 的非历史 usage ledger 入队。
 
 ### 2026-07-29: `upstream/main` `504b687f8`
 
