@@ -284,7 +284,7 @@ interface ResolvedWebUi {
   distDir: string | null;
 }
 
-const DEFAULT_CHAT_SHARE_BASE_URL = "https://paseo-share.team-harness.com";
+const DEFAULT_CHAT_SHARE_BASE_URL = "https://cloud-thread.team-harness.com";
 
 function resolveChatShareConfig(
   persisted: ReturnType<typeof loadPersistedConfig>,

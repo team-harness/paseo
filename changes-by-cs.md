@@ -219,8 +219,9 @@
 
 **状态**：fork 功能。主要提交：`7c9a99eb3`、`1ecfe1612`、`6f6d0f18d`、`425fda60e`。
 
-**行为**：聊天消息菜单支持异步分享，用户可选择从任一用户消息开始导出完整历史；客户端上传 JSON 后复制只读访问链接。独立的 Chat Viewer 通过受限 History API 加载数据，支持消息锚点、Markdown 渲染、折叠连续工具调用和初始加载状态，不提供继续聊天能力。查看页同时向人和审阅 Agent 明确提供当前同源 History JSON 链接，Agent 可直接加载完整原始记录。
+**行为**：聊天消息菜单支持异步分享，用户可选择从任一用户消息开始导出完整历史；客户端上传 JSON 后复制只读访问链接。Threadshare 是独立仓库 `team-harness/threadshare`，拥有 `threadshare-history@v1` 协议、受限 History API、只读 Viewer、Codex/Claude CLI 适配和云部署模板。Paseo 只是该协议的生产者，不再承载服务端、Web 或云凭证。
 
+- 2026-07-30：新版 Paseo 与 Threadshare CLI 输出通用的 `threadshare-history@v1`；Threadshare 新服务部署在 `https://cloud-thread.team-harness.com`，服务端单向兼容旧 Paseo v1 JSON。原 `https://paseo-share.team-harness.com` 服务保持原版本，不作为新协议端点。
 - 2026-07-30：Codex App Server 创建的子 Agent 使用其自身 child-thread timeline，并非独立的 Paseo Agent 持久化记录。只读子 Agent 面板复用聊天分享 UI，但通过 `fetchProviderSubagentTimeline` 分页加载完整 child-thread 历史后再导出；分叉和继续聊天仍保持不可用。
 
 **关键文件**：
@@ -228,14 +229,11 @@
 - `packages/app/src/chat-share/history.ts`
 - `packages/app/src/chat-share/upload.ts`
 - `packages/app/src/agent-stream/view.tsx`
-- `chatviewer/app.js`
-- `chatviewer/styles.css`
-- `chatviewer/worker.ts`
-- `chatviewer/fc/handler.ts`
+- `https://github.com/team-harness/threadshare`
 
 **同步规则**：
 
-- 上游若提供等价聊天分享，优先采用其导出协议、上传 API 和 Viewer URL 结构；迁移时保留全量历史分页、分享起点选择和异步 UI 状态。
+- 上游若提供等价聊天分享，优先采用其导出协议、上传 API 和 Viewer URL 结构；迁移时保留全量历史分页、分享起点选择和异步 UI 状态。独立 Threadshare 服务仍应作为其他 Agent 客户端的通用实现。
 - 导出的时间线页必须跟随上游 `TimelinePage` 协议字段，尤其是 history epoch 与权威基线语义，不能把客户端当前已加载的局部消息当作完整历史。
 - Codex 子 Agent 分享不得按普通 Agent ID 读取本地持久化文件；必须使用上游 provider-subagent timeline API，并在 epoch 重置、游标过期或 timeline gap 时中止分享。
 - 必跑：聊天分享导出/上传目标测试、时间线分页测试、`npm run typecheck`。

@@ -321,7 +321,7 @@ export const en = {
       sharing: "Sharing",
       shareCopied: "Share link copied to clipboard",
       shareFailed:
-        "Unable to share this conversation. The default service is a shared chatviewer deployment; for greater reliability, deploy your own chatviewer and set daemon.chatShare.baseUrl.",
+        "Unable to share this conversation. The default service is a shared Threadshare deployment; for greater reliability, deploy your own Threadshare and set daemon.chatShare.baseUrl.",
       shareUnavailable: "Update the host to use chat sharing.",
       shareNotConfigured: "Configure daemon.chatShare.baseUrl to enable chat sharing.",
       shareStartTitle: "Share from",

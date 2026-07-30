@@ -3,9 +3,10 @@ import type { PaseoChatHistory } from "./history";
 import { shareChatHistory } from "./upload";
 
 const history: PaseoChatHistory = {
+  format: "threadshare-history@v1",
   schemaVersion: 1,
   exportedAt: "2026-07-28T00:00:00.000Z",
-  conversation: { id: "agent-1", title: "Shared conversation" },
+  conversation: { id: "agent-1", title: "Shared conversation", source: "paseo" },
   entries: [],
 };
 

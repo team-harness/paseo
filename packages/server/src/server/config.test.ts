@@ -31,7 +31,7 @@ describe("server config", () => {
     roots.push(paseoHome);
 
     expect(loadConfig(paseoHome, { env: {} }).chatShare).toEqual({
-      baseUrl: "https://paseo-share.team-harness.com",
+      baseUrl: "https://cloud-thread.team-harness.com",
     });
   });
 

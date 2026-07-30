@@ -35,24 +35,26 @@ a status-bar-specific persistence store or RPC.
 ## Read-only Chat Sharing
 
 Completed assistant turns expose a share action next to copy and fork. It exports
-the complete current stream as the versioned `paseo-chat-history@v1` JSON
+the complete current stream as the versioned `threadshare-history@v1` JSON
 contract and uploads it to a user-owned sharing service.
 
 - Client boundary: `packages/app/src/chat-share/` owns the portable export and
   upload client. `AgentStreamView` only invokes those helpers and does not add a
   daemon RPC or persist share state.
-- Configuration: the host defaults to
-  `https://paseo-share.team-harness.com` when `daemon.chatShare.baseUrl` is
+- Configuration: the host defaults to the shared Threadshare deployment at
+  `https://cloud-thread.team-harness.com` when `daemon.chatShare.baseUrl` is
   absent and exposes the resolved public base URL through the optional
   `server_info.chatShare` field. An explicit config value overrides that hosted
   default. `server_info.features.chatShare` gates clients on old daemons. The
   client sends one JSON `POST` to `/api/v1/shares`; it has no cloud-vendor URL
   or credential.
-- Contract: `chatviewer/schema/paseo-chat-history.v1.schema.json` is the
-  standalone JSON schema. Exported data contains messages, tool calls, thoughts,
-  todos, activity, and compaction records without Paseo runtime state.
-- Independent deployment: `chatviewer/` is a Vite template with one portable
-  API contract and provider-specific storage adapters. It supports Void
+- Contract: `https://github.com/team-harness/threadshare` owns the standalone
+  JSON schema. Exported data contains messages, tool calls, thoughts, todos,
+  activity, and compaction records without Paseo runtime state. New producers
+  emit `threadshare-history@v1`; the Threadshare API accepts the former Paseo v1
+  shape only as an input migration path.
+- Independent deployment: Threadshare is a separate Vite template with one
+  portable API contract and provider-specific storage adapters. It supports Void
   file-based routes with Void Object Storage, Cloudflare Workers Assets with
   R2, and Alibaba Cloud Function Compute with a private OSS bucket. All expose
   the same-origin `POST /api/v1/shares` / `GET /api/v1/shares/:id` routes. Its

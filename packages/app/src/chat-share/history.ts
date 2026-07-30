@@ -9,7 +9,9 @@ import { processTimelineResponse, type TimelineCursor } from "@/timeline/session
 import { planTimelineOlderFetch, planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
 import { applyStreamEvent, type StreamItem, type TodoEntry } from "@/types/stream";
 
-export const PASEO_CHAT_HISTORY_SCHEMA_VERSION = 1 as const;
+// Canonical schema is owned by https://github.com/team-harness/threadshare.
+export const THREADSHARE_HISTORY_FORMAT = "threadshare-history@v1" as const;
+export const THREADSHARE_HISTORY_SCHEMA_VERSION = 1 as const;
 
 export type SharedChatEntry =
   | {
@@ -48,11 +50,13 @@ export type SharedChatEntry =
     };
 
 export interface PaseoChatHistory {
-  schemaVersion: typeof PASEO_CHAT_HISTORY_SCHEMA_VERSION;
+  format: typeof THREADSHARE_HISTORY_FORMAT;
+  schemaVersion: typeof THREADSHARE_HISTORY_SCHEMA_VERSION;
   exportedAt: string;
   conversation: {
     id: string;
     title: string;
+    source: "paseo";
     provider?: string;
     model?: string;
   };
@@ -299,11 +303,13 @@ function exportItem(item: StreamItem): SharedChatEntry {
 
 export function exportChatHistory(input: ExportChatHistoryInput): PaseoChatHistory {
   return {
-    schemaVersion: PASEO_CHAT_HISTORY_SCHEMA_VERSION,
+    format: THREADSHARE_HISTORY_FORMAT,
+    schemaVersion: THREADSHARE_HISTORY_SCHEMA_VERSION,
     exportedAt: iso(input.exportedAt ?? new Date()),
     conversation: {
       id: input.agentId,
       title: input.title.trim() || "Paseo conversation",
+      source: "paseo",
       ...(input.provider ? { provider: input.provider } : {}),
       ...(input.model ? { model: input.model } : {}),
     },

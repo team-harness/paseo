@@ -121,11 +121,13 @@ describe("exportChatHistory", () => {
         exportedAt: new Date("2026-07-28T00:01:00.000Z"),
       }),
     ).toEqual({
+      format: "threadshare-history@v1",
       schemaVersion: 1,
       exportedAt: "2026-07-28T00:01:00.000Z",
       conversation: {
         id: "agent-1",
         title: "Release review",
+        source: "paseo",
         provider: "codex",
         model: "gpt-5",
       },

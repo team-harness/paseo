@@ -322,7 +322,7 @@ export const zhCN: TranslationResources = {
       sharing: "正在分享",
       shareCopied: "分享链接已复制到剪贴板",
       shareFailed:
-        "分享失败。默认使用的是共享的 chatviewer 服务；如需更高稳定性，请自行部署 chatviewer，并配置 daemon.chatShare.baseUrl。",
+        "分享失败。默认使用的是共享的 Threadshare 服务；如需更高稳定性，请自行部署 Threadshare，并配置 daemon.chatShare.baseUrl。",
       shareUnavailable: "请更新主机以使用聊天分享功能。",
       shareNotConfigured: "请配置 daemon.chatShare.baseUrl 后再分享聊天。",
       shareStartTitle: "从此消息开始分享",
