@@ -58,7 +58,6 @@ describe("exportChatHistory", () => {
       {
         kind: "user_message",
         id: "user-1",
-        messageId: "provider-user-id",
         text: "Summarize this",
         timestamp: new Date("2026-07-28T00:00:00.000Z"),
       },
@@ -220,7 +219,6 @@ describe("exportChatHistory", () => {
       agentId: "agent-1",
       localTail: [],
       liveHead: [],
-      sendingClientMessageIds: [],
     });
 
     expect(

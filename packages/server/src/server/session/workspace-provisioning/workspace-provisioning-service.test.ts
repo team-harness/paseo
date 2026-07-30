@@ -219,6 +219,10 @@ test("reopening archived exact-root records restores the fresh Git project", asy
     displayName: "repo",
     timestamp: ARCHIVED_AT,
   });
+  await projectRegistry.upsert({
+    ...project,
+    projectKey: "remote:github.com/acme/old-repo",
+  });
   const workspace = createPersistedWorkspaceRecord({
     workspaceId: "ws-archived-root",
     projectId: project.projectId,
@@ -240,7 +244,7 @@ test("reopening archived exact-root records restores the fresh Git project", asy
         cwd,
         isGit: true,
         currentBranch: "main",
-        remoteUrl: null,
+        remoteUrl: "https://github.com/acme/new-repo.git",
         worktreeRoot: cwd,
         isPaseoOwnedWorktree: false,
         mainRepoRoot: null,
@@ -257,6 +261,7 @@ test("reopening archived exact-root records restores the fresh Git project", asy
   });
   expect(await projectRegistry.get(project.projectId)).toMatchObject({
     kind: "git",
+    projectKey: "remote:github.com/acme/new-repo",
     archivedAt: null,
   });
 });

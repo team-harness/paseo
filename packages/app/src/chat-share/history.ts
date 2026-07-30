@@ -72,7 +72,6 @@ export interface LoadCompleteChatHistoryInput {
   agentId: string;
   localTail: readonly StreamItem[];
   liveHead: readonly StreamItem[];
-  sendingClientMessageIds: readonly string[];
 }
 
 interface TimelineSnapshot {
@@ -117,7 +116,6 @@ function applyTimelinePage(input: {
   page: FetchAgentTimelinePayload;
   snapshot: TimelineSnapshot;
   isInitial: boolean;
-  sendingClientMessageIds: readonly string[];
 }): TimelineSnapshot {
   const result = processTimelineResponse({
     payload: input.page,
@@ -127,8 +125,6 @@ function applyTimelinePage(input: {
     isInitializing: input.isInitial,
     hasActiveInitDeferred: input.isInitial,
     initRequestDirection: "tail",
-    sendingClientMessageIds: input.sendingClientMessageIds,
-    hasAuthoritativeBaseline: !input.isInitial,
   });
 
   return {
@@ -143,7 +139,6 @@ export async function loadCompleteChatHistory({
   agentId,
   localTail,
   liveHead,
-  sendingClientMessageIds,
 }: LoadCompleteChatHistoryInput): Promise<StreamItem[]> {
   let page = await fetchAgentTimelineOnce(client, agentId, planTimelineTailFetch());
   let snapshot = applyTimelinePage({
@@ -155,7 +150,6 @@ export async function loadCompleteChatHistory({
       cursor: cursorForTimelinePage(page),
     },
     isInitial: true,
-    sendingClientMessageIds,
   });
 
   while (page.hasOlder) {
@@ -176,7 +170,6 @@ export async function loadCompleteChatHistory({
       page: nextPage,
       snapshot,
       isInitial: false,
-      sendingClientMessageIds,
     });
     page = nextPage;
   }
