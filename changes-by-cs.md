@@ -222,6 +222,7 @@
 **行为**：聊天消息菜单支持异步分享，用户可选择从任一用户消息开始导出完整历史；客户端上传 JSON 后复制只读访问链接。Threadshare 是独立仓库 `team-harness/threadshare`，拥有 `threadshare-history@v1` 协议、受限 History API、只读 Viewer、Codex/Claude CLI 适配和云部署模板。Paseo 只是该协议的生产者，不再承载服务端、Web 或云凭证。
 
 - 2026-07-30：新版 Paseo 与 Threadshare CLI 输出通用的 `threadshare-history@v1`；Threadshare 新服务部署在 `https://cloud-thread.team-harness.com`，服务端单向兼容旧 Paseo v1 JSON。原 `https://paseo-share.team-harness.com` 服务保持原版本，不作为新协议端点。
+- 2026-07-30：Threadshare CLI 以公开 npm 包 `@team-harness/threadshare` 发布；默认服务为 `https://cloud-thread.team-harness.com`，也可通过 `--url` 或 `THREADSHARE_URL` 覆盖。独立仓库随包提供 Codex、Codex Cloud（`CODEX_HOME`）和 Claude 使用 Skill。
 - 2026-07-30：Codex App Server 创建的子 Agent 使用其自身 child-thread timeline，并非独立的 Paseo Agent 持久化记录。只读子 Agent 面板复用聊天分享 UI，但通过 `fetchProviderSubagentTimeline` 分页加载完整 child-thread 历史后再导出；分叉和继续聊天仍保持不可用。
 
 **关键文件**：

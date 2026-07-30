@@ -53,6 +53,11 @@ contract and uploads it to a user-owned sharing service.
   activity, and compaction records without Paseo runtime state. New producers
   emit `threadshare-history@v1`; the Threadshare API accepts the former Paseo v1
   shape only as an input migration path.
+- Agent tooling: the standalone CLI is distributed as the public npm package
+  `@team-harness/threadshare`. Its bundled `skills/threadshare` Skill documents
+  safe sharing from local Codex, Codex Cloud (`CODEX_HOME`), and Claude sessions;
+  the CLI uses `https://cloud-thread.team-harness.com` unless `--url` or
+  `THREADSHARE_URL` overrides it.
 - Independent deployment: Threadshare is a separate Vite template with one
   portable API contract and provider-specific storage adapters. It supports Void
   file-based routes with Void Object Storage, Cloudflare Workers Assets with
