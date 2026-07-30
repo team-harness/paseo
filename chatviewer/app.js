@@ -300,7 +300,20 @@ function renderToolGroup(entries) {
   return group;
 }
 
-function renderHistory(history) {
+function renderAgentReviewHint(id) {
+  const sourceUrl = new URL(shareApiUrl(id), window.location.origin).toString();
+  const hint = element("aside", "agent-review-hint");
+  hint.setAttribute("aria-label", "Conversation source JSON");
+  hint.append(element("strong", "", "Reviewing this conversation with an AI agent?"));
+  hint.append(element("p", "", "Ask it to load and read the complete source JSON directly."));
+  const sourceLink = element("a", "agent-review-link", "Open source JSON");
+  sourceLink.href = sourceUrl;
+  sourceLink.setAttribute("data-history-json-url", sourceUrl);
+  hint.append(sourceLink);
+  return hint;
+}
+
+function renderHistory(history, id) {
   document.title = `${history.conversation.title} - Paseo Chat`;
   conversation.removeAttribute("aria-busy");
   conversation.replaceChildren();
@@ -315,6 +328,7 @@ function renderHistory(history) {
     .join(" · ");
   if (details) conversationMeta.append(element("p", "", details));
   conversation.append(conversationMeta);
+  conversation.append(renderAgentReviewHint(id));
 
   for (let index = 0; index < history.entries.length; index += 1) {
     const entry = history.entries[index];
@@ -383,7 +397,7 @@ async function loadHistory() {
       throw new Error(`The shared history could not be loaded (${response.status})`);
     const history = await response.json();
     if (!isHistory(history)) throw new Error("This file is not a supported Paseo shared history");
-    renderHistory(history);
+    renderHistory(history, id);
   } catch (error) {
     conversation.removeAttribute("aria-busy");
     conversation.replaceChildren(

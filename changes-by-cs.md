@@ -217,13 +217,17 @@
 
 **状态**：fork 功能。主要提交：`7c9a99eb3`、`1ecfe1612`、`6f6d0f18d`、`425fda60e`。
 
-**行为**：聊天消息菜单支持异步分享，用户可选择从任一用户消息开始导出完整历史；客户端上传 JSON 后复制只读访问链接。独立的 Chat Viewer 通过受限 History API 加载数据，支持消息锚点、Markdown 渲染、折叠连续工具调用和初始加载状态，不提供继续聊天能力。
+**行为**：聊天消息菜单支持异步分享，用户可选择从任一用户消息开始导出完整历史；客户端上传 JSON 后复制只读访问链接。独立的 Chat Viewer 通过受限 History API 加载数据，支持消息锚点、Markdown 渲染、折叠连续工具调用和初始加载状态，不提供继续聊天能力。查看页同时向人和审阅 Agent 明确提供当前同源 History JSON 链接，Agent 可直接加载完整原始记录。
 
 **关键文件**：
 
 - `packages/app/src/chat-share/history.ts`
 - `packages/app/src/chat-share/upload.ts`
 - `packages/app/src/agent-stream/view.tsx`
+- `chatviewer/app.js`
+- `chatviewer/styles.css`
+- `chatviewer/worker.ts`
+- `chatviewer/fc/handler.ts`
 
 **同步规则**：
 

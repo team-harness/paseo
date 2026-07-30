@@ -74,6 +74,31 @@ body {
   font-size: 13px;
 }
 
+.agent-review-hint {
+  margin: 0 0 28px;
+  padding: 10px 12px;
+  border-left: 2px solid #52675a;
+  color: #b8c2bc;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.agent-review-hint strong {
+  display: block;
+  color: #dce6df;
+  font-weight: 500;
+}
+.agent-review-hint p {
+  margin: 3px 0 0;
+}
+.agent-review-link {
+  display: inline-block;
+  margin-top: 5px;
+  color: #9ccbaa;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .entry {
   margin: 0 0 22px;
   scroll-margin-top: 84px;
