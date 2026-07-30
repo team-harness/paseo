@@ -1021,6 +1021,32 @@ interface OpenAiModelPricing {
 }
 
 const OPENAI_MODEL_PRICING: Array<{ pattern: RegExp; pricing: OpenAiModelPricing }> = [
+  // Refreshed from sub2api's public model pricing catalogue on 2026-07-30.
+  // Keep exact variants before the family fallback below.
+  {
+    pattern: /^gpt-5\.6-sol(?:$|-)/,
+    pricing: {
+      inputPerMillionUsd: 5,
+      cachedInputPerMillionUsd: 0.5,
+      outputPerMillionUsd: 30,
+    },
+  },
+  {
+    pattern: /^gpt-5\.6-terra(?:$|-)/,
+    pricing: {
+      inputPerMillionUsd: 2.5,
+      cachedInputPerMillionUsd: 0.25,
+      outputPerMillionUsd: 15,
+    },
+  },
+  {
+    pattern: /^gpt-5\.6-luna(?:$|-)/,
+    pricing: {
+      inputPerMillionUsd: 1,
+      cachedInputPerMillionUsd: 0.1,
+      outputPerMillionUsd: 6,
+    },
+  },
   {
     pattern: /^gpt-5\.6(?:$|-)/,
     pricing: {
@@ -1030,11 +1056,27 @@ const OPENAI_MODEL_PRICING: Array<{ pattern: RegExp; pricing: OpenAiModelPricing
     },
   },
   {
+    pattern: /^gpt-5\.5-pro(?:$|-)/,
+    pricing: {
+      inputPerMillionUsd: 30,
+      cachedInputPerMillionUsd: 3,
+      outputPerMillionUsd: 180,
+    },
+  },
+  {
     pattern: /^gpt-5\.5(?:$|-)/,
     pricing: {
       inputPerMillionUsd: 5,
       cachedInputPerMillionUsd: 0.5,
       outputPerMillionUsd: 30,
+    },
+  },
+  {
+    pattern: /^gpt-5\.4-pro(?:$|-)/,
+    pricing: {
+      inputPerMillionUsd: 30,
+      cachedInputPerMillionUsd: 3,
+      outputPerMillionUsd: 180,
     },
   },
   {
