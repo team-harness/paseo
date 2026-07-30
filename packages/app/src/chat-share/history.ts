@@ -2,11 +2,12 @@ import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import type {
   DaemonClient,
   FetchAgentTimelinePayload,
+  ProviderSubagentTimelinePayload,
 } from "@getpaseo/client/internal/daemon-client";
 import { fetchAgentTimelineOnce } from "@/timeline/fetch-agent-timeline-once";
 import { processTimelineResponse, type TimelineCursor } from "@/timeline/session-stream-reducers";
 import { planTimelineOlderFetch, planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
-import type { StreamItem, TodoEntry } from "@/types/stream";
+import { applyStreamEvent, type StreamItem, type TodoEntry } from "@/types/stream";
 
 export const PASEO_CHAT_HISTORY_SCHEMA_VERSION = 1 as const;
 
@@ -72,6 +73,12 @@ export interface LoadCompleteChatHistoryInput {
   agentId: string;
   localTail: readonly StreamItem[];
   liveHead: readonly StreamItem[];
+}
+
+export interface LoadCompleteProviderSubagentChatHistoryInput {
+  client: Pick<DaemonClient, "fetchProviderSubagentTimeline">;
+  parentAgentId: string;
+  subagentId: string;
 }
 
 interface TimelineSnapshot {
@@ -175,6 +182,55 @@ export async function loadCompleteChatHistory({
   }
 
   return [...snapshot.tail, ...snapshot.head];
+}
+
+export async function loadCompleteProviderSubagentChatHistory({
+  client,
+  parentAgentId,
+  subagentId,
+}: LoadCompleteProviderSubagentChatHistoryInput): Promise<StreamItem[]> {
+  let page = await client.fetchProviderSubagentTimeline(parentAgentId, subagentId, {
+    direction: "tail",
+    limit: 40,
+  });
+  const epoch = page.epoch;
+  const rows = new Map<number, ProviderSubagentTimelinePayload["rows"][number]>();
+
+  while (true) {
+    if (page.epoch !== epoch || page.reset || page.staleCursor || page.gap) {
+      throw new Error("Conversation history changed while it was being shared");
+    }
+    for (const row of page.rows) {
+      rows.set(row.seq, row);
+    }
+    if (!page.hasOlder) {
+      break;
+    }
+
+    const firstSeq = Math.min(...rows.keys());
+    if (!Number.isFinite(firstSeq)) {
+      throw new Error("Unable to load the complete conversation history");
+    }
+    page = await client.fetchProviderSubagentTimeline(parentAgentId, subagentId, {
+      direction: "before",
+      cursor: { epoch, seq: firstSeq },
+      limit: 40,
+    });
+  }
+
+  let timeline = { tail: [] as StreamItem[], head: [] as StreamItem[] };
+  for (const row of [...rows.values()].sort((left, right) => left.seq - right.seq)) {
+    if (!page.provider) {
+      throw new Error("Unable to load the complete conversation history");
+    }
+    timeline = applyStreamEvent({
+      tail: timeline.tail,
+      head: timeline.head,
+      event: { type: "timeline", provider: page.provider, item: row.item },
+      timestamp: new Date(row.timestamp),
+    });
+  }
+  return [...timeline.tail, ...timeline.head];
 }
 
 export function selectChatHistoryFromUserMessage(

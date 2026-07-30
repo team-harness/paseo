@@ -300,6 +300,8 @@ export interface AgentStreamViewProps {
   toast?: ToastApi | null;
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
   readOnly?: boolean;
+  /** Supplies authoritative history for read-only provider subagent timelines. */
+  loadCompleteHistory?: () => Promise<StreamItem[]>;
   historyPagination?: {
     hasOlder: boolean;
     isLoadingOlder: boolean;
@@ -388,6 +390,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       toast,
       onOpenWorkspaceFile,
       readOnly = false,
+      loadCompleteHistory,
       historyPagination,
     },
     ref,
@@ -651,12 +654,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         if (!client) {
           throw new Error(t("workspace.terminal.hostDisconnected"));
         }
-        const items = await loadCompleteChatHistory({
-          client,
-          agentId,
-          localTail: effectiveStreamItems,
-          liveHead: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
-        });
+        const items = loadCompleteHistory
+          ? await loadCompleteHistory()
+          : await loadCompleteChatHistory({
+              client,
+              agentId,
+              localTail: effectiveStreamItems,
+              liveHead: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
+            });
         const startMessages = items.filter(
           (item): item is Extract<StreamItem, { kind: "user_message" }> =>
             item.kind === "user_message",
@@ -1018,7 +1023,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
-          onShareAssistantTurn: readOnly ? undefined : handleShareAssistantTurn,
+          onShareAssistantTurn:
+            readOnly && !loadCompleteHistory ? undefined : handleShareAssistantTurn,
           isSharingAssistantTurn,
           isShareStartSelectionOpen: shareStartSelection !== null,
         });
@@ -1028,6 +1034,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         handleShareAssistantTurn,
         isSharingAssistantTurn,
         shareStartSelection,
+        loadCompleteHistory,
         readOnly,
         renderStreamItemContent,
         streamRenderStrategy,
@@ -1059,7 +1066,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             strategy={streamRenderStrategy}
             supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
-            onShareAssistantTurn={readOnly ? undefined : handleShareAssistantTurn}
+            onShareAssistantTurn={
+              readOnly && !loadCompleteHistory ? undefined : handleShareAssistantTurn
+            }
             isSharingAssistantTurn={isSharingAssistantTurn}
             isShareStartSelectionOpen={shareStartSelection !== null}
           />
@@ -1069,6 +1078,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         handleShareAssistantTurn,
         isSharingAssistantTurn,
         shareStartSelection,
+        loadCompleteHistory,
         readOnly,
         showRunningTurnFooter,
         baseRenderModel.turnTiming.runningStartedAt,
@@ -1356,6 +1366,9 @@ function agentStreamViewPropsEqual(
   if (left.toast !== right.toast) reasons.push("toast");
   if (left.onOpenWorkspaceFile !== right.onOpenWorkspaceFile) reasons.push("onOpenWorkspaceFile");
   if (left.readOnly !== right.readOnly) reasons.push("readOnly");
+  if (left.loadCompleteHistory !== right.loadCompleteHistory) {
+    reasons.push("loadCompleteHistory");
+  }
   if (!historyPaginationPropsEqual(left.historyPagination, right.historyPagination)) {
     reasons.push("historyPagination");
   }

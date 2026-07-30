@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { useShallow } from "zustand/react/shallow";
 import { AgentStreamView } from "@/agent-stream/view";
+import { loadCompleteProviderSubagentChatHistory } from "@/chat-share/history";
 import { getProviderIcon } from "@/components/provider-icons";
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
 import { usePaneContext } from "@/panels/pane-context";
@@ -155,6 +156,16 @@ function ProviderSubagentPanel() {
     }),
     [isLoadingOlder, loadOlder, progressKey, timeline?.hasOlder],
   );
+  const loadCompleteHistory = useCallback(async () => {
+    if (!client) {
+      throw new Error("Host disconnected");
+    }
+    return loadCompleteProviderSubagentChatHistory({
+      client,
+      parentAgentId: target.parentAgentId,
+      subagentId: target.subagentId,
+    });
+  }, [client, target.parentAgentId, target.subagentId]);
 
   if (serverInfo && !supported) {
     return (
@@ -176,6 +187,7 @@ function ProviderSubagentPanel() {
         isAuthoritativeHistoryReady
         onOpenWorkspaceFile={openFileInWorkspace}
         readOnly
+        loadCompleteHistory={loadCompleteHistory}
         historyPagination={historyPagination}
       />
     </View>

@@ -221,6 +221,8 @@
 
 **行为**：聊天消息菜单支持异步分享，用户可选择从任一用户消息开始导出完整历史；客户端上传 JSON 后复制只读访问链接。独立的 Chat Viewer 通过受限 History API 加载数据，支持消息锚点、Markdown 渲染、折叠连续工具调用和初始加载状态，不提供继续聊天能力。查看页同时向人和审阅 Agent 明确提供当前同源 History JSON 链接，Agent 可直接加载完整原始记录。
 
+- 2026-07-30：Codex App Server 创建的子 Agent 使用其自身 child-thread timeline，并非独立的 Paseo Agent 持久化记录。只读子 Agent 面板复用聊天分享 UI，但通过 `fetchProviderSubagentTimeline` 分页加载完整 child-thread 历史后再导出；分叉和继续聊天仍保持不可用。
+
 **关键文件**：
 
 - `packages/app/src/chat-share/history.ts`
@@ -235,6 +237,7 @@
 
 - 上游若提供等价聊天分享，优先采用其导出协议、上传 API 和 Viewer URL 结构；迁移时保留全量历史分页、分享起点选择和异步 UI 状态。
 - 导出的时间线页必须跟随上游 `TimelinePage` 协议字段，尤其是 history epoch 与权威基线语义，不能把客户端当前已加载的局部消息当作完整历史。
+- Codex 子 Agent 分享不得按普通 Agent ID 读取本地持久化文件；必须使用上游 provider-subagent timeline API，并在 epoch 重置、游标过期或 timeline gap 时中止分享。
 - 必跑：聊天分享导出/上传目标测试、时间线分页测试、`npm run typecheck`。
 
 ## 同步上游操作清单

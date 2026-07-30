@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import type {
   DaemonClient,
   FetchAgentTimelinePayload,
+  ProviderSubagentTimelinePayload,
 } from "@getpaseo/client/internal/daemon-client";
 import {
   exportChatHistory,
   loadCompleteChatHistory,
+  loadCompleteProviderSubagentChatHistory,
   selectChatHistoryFromUserMessage,
 } from "./history";
 import type { StreamItem } from "@/types/stream";
@@ -49,6 +51,29 @@ function makeAssistantEntry(
     provider: "codex",
     item: { type: "assistant_message", text, messageId: `assistant-${seq}` },
     timestamp: `2026-07-28T00:00:0${seq}.000Z`,
+  };
+}
+
+function makeProviderSubagentTimelinePage(input: {
+  direction: "tail" | "before";
+  hasOlder: boolean;
+  rows: ProviderSubagentTimelinePayload["rows"];
+}): ProviderSubagentTimelinePayload {
+  return {
+    requestId: `request-${input.direction}`,
+    parentAgentId: "parent-1",
+    subagentId: "subagent-1",
+    provider: "codex",
+    direction: input.direction,
+    epoch: "epoch-1",
+    reset: false,
+    staleCursor: false,
+    gap: false,
+    window: { minSeq: 1, maxSeq: 3, nextSeq: 4 },
+    hasOlder: input.hasOlder,
+    hasNewer: false,
+    rows: input.rows,
+    error: null,
   };
 }
 
@@ -238,6 +263,71 @@ describe("exportChatHistory", () => {
         limit: 40,
         projection: "projected",
       },
+    ]);
+  });
+
+  it("loads every page of a Codex provider subagent before exporting", async () => {
+    const pages = [
+      makeProviderSubagentTimelinePage({
+        direction: "tail",
+        hasOlder: true,
+        rows: [
+          {
+            seq: 3,
+            timestamp: "2026-07-28T00:00:03.000Z",
+            item: makeAssistantEntry(3, "Newest").item,
+          },
+        ],
+      }),
+      makeProviderSubagentTimelinePage({
+        direction: "before",
+        hasOlder: false,
+        rows: [
+          {
+            seq: 1,
+            timestamp: "2026-07-28T00:00:01.000Z",
+            item: makeAssistantEntry(1, "Oldest").item,
+          },
+          {
+            seq: 2,
+            timestamp: "2026-07-28T00:00:02.000Z",
+            item: makeAssistantEntry(2, "Middle").item,
+          },
+        ],
+      }),
+    ];
+    const requests: Parameters<DaemonClient["fetchProviderSubagentTimeline"]>[2][] = [];
+    const client = {
+      async fetchProviderSubagentTimeline(
+        _parentAgentId: string,
+        _subagentId: string,
+        request: Parameters<DaemonClient["fetchProviderSubagentTimeline"]>[2],
+      ) {
+        requests.push(request);
+        const page = pages.shift();
+        if (!page) throw new Error("Unexpected timeline request");
+        return page;
+      },
+    };
+
+    const items = await loadCompleteProviderSubagentChatHistory({
+      client,
+      parentAgentId: "parent-1",
+      subagentId: "subagent-1",
+    });
+
+    expect(
+      items
+        .filter(
+          (item): item is Extract<StreamItem, { kind: "assistant_message" }> =>
+            item.kind === "assistant_message",
+        )
+        .map((item) => item.text)
+        .join(""),
+    ).toBe("OldestMiddleNewest");
+    expect(requests).toEqual([
+      { direction: "tail", limit: 40 },
+      { direction: "before", cursor: { epoch: "epoch-1", seq: 3 }, limit: 40 },
     ]);
   });
 });
