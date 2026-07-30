@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `d1ce2b77f7adb13a7f9f3d1b778c9a2efdadf460`，同步于 2026-07-30。
-- 最近同步 merge commit：`285733080`。
+- 最近同步基线：`upstream/main` = `4e6f759da9d0e4277623087758fedb0c49a06560`，同步于 2026-07-30。
+- 最近同步 merge commit：`783677b78`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-07-30: `upstream/main` `4e6f759da` / `v0.2.5`
+
+- 合入上游 Linux 桌面包启动修复：AppImage 运行时直接启用 `--no-sandbox`，删除会误判 `.deb` / `.rpm` sandbox helper 的通用检测层；同时同步全 workspace `0.2.5` 版本、lockfile 签名与 Nix hash。
+- 上游没有触及 macOS entitlements、本地 DMG 标准布局或 React DevTools 下载容错；fork 桌面打包兼容继续保留，并以当前 `0.2.5` 主进程、daemon 和 app bundle 构建 arm64 DMG。
+- 上游没有新增 Status Bar/`status.summary`、usage ledger、多 Host 汇总、共享侧边栏 Pin、计划任务选择既有 Agent 或只读聊天分享的等价能力。本轮没有下线 fork 功能。
 
 ### 2026-07-30: `upstream/main` `d1ce2b77f` / `v0.2.4`
 
