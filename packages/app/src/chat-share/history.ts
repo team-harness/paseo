@@ -1,4 +1,5 @@
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
+import { parseTree, type Node as JsonNode, type ParseError } from "jsonc-parser";
 import type {
   DaemonClient,
   FetchAgentTimelinePayload,
@@ -98,11 +99,18 @@ const BEARER_PROSE_TERMS = new Set([
   "credential",
   "credentials",
   "mechanism",
+  "middleware",
   "protocol",
   "specification",
   "standard",
 ]);
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+interface JsonRedaction {
+  offset: number;
+  length: number;
+  text: string;
+}
 
 function isSensitiveKey(key: string): boolean {
   const normalized = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
@@ -197,7 +205,7 @@ function isBasicCredential(value: string): boolean {
   return false;
 }
 
-function redactSecrets(value: string): string {
+function redactPlainText(value: string): string {
   return value
     .replace(
       /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
@@ -205,13 +213,13 @@ function redactSecrets(value: string): string {
     )
     .replace(/\b([a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:)[^@\s/]+@/gi, `$1${REDACTED_VALUE}@`)
     .replace(
-      /((?:"|')?(?:api[_-]?keys?|access[_-]?key(?:s|[_-]?(?:ids?|secrets?))?|secret[_-]?access[_-]?keys?|access[_-]?tokens?|refresh[_-]?tokens?|session[_-]?tokens?|auths?|authentications?|authorizations?|cookies?|credentials?|client[_-]?secrets?|passwords?|private[_-]?keys?|secrets?|tokens?)(?:"|')?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:Basic|Bearer)\s+[A-Za-z0-9._~+/=-]+|[^\s,;]+)/gi,
+      /((?:"|')?(?:api[_-]?keys?|access[_-]?key(?:s|[_-]?(?:ids?|secrets?))?|secret[_-]?access[_-]?keys?|access[_-]?tokens?|refresh[_-]?tokens?|session[_-]?tokens?|auths?|authentications?|authorizations?|cookies?|credentials?|client[_-]?secrets?|passwords?|private[_-]?keys?|secrets?|tokens?)(?:"|')?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:Basic|Bearer|Token)\s+[A-Za-z0-9._~+/=-]+|[^\s,;]+)/gi,
       `$1${REDACTED_VALUE}`,
     )
     .replace(/\b(Basic)\s+([A-Za-z0-9+/]+={0,2})/gi, (match, scheme, token) =>
       isBasicCredential(token) ? `${scheme} ${REDACTED_VALUE}` : match,
     )
-    .replace(/\b(Bearer)\s+([A-Za-z0-9._~+/=-]{8,})/gi, (match, scheme, token) =>
+    .replace(/\b(Bearer)\s+([A-Za-z0-9._~+/=-]+)/gi, (match, scheme, token) =>
       /^[A-Za-z]+$/.test(token) && BEARER_PROSE_TERMS.has(token.toLowerCase())
         ? match
         : `${scheme} ${REDACTED_VALUE}`,
@@ -223,6 +231,60 @@ function redactSecrets(value: string): string {
       /\b(?:AKIA[0-9A-Z]{16}|LTAI[A-Za-z0-9]{8,}|AIza[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{8,})\b/g,
       REDACTED_VALUE,
     );
+}
+
+function collectJsonRedactions(node: JsonNode, redactions: JsonRedaction[]): void {
+  if (node.type === "property") {
+    const keyNode = node.children?.[0];
+    const valueNode = node.children?.[1];
+    if (!valueNode) return;
+
+    if (typeof keyNode?.value === "string" && isSensitiveKey(keyNode.value)) {
+      redactions.push({
+        offset: valueNode.offset,
+        length: valueNode.length,
+        text: JSON.stringify(REDACTED_VALUE),
+      });
+      return;
+    }
+
+    collectJsonRedactions(valueNode, redactions);
+    return;
+  }
+
+  if (node.type === "string" && typeof node.value === "string") {
+    const redacted = redactPlainText(node.value);
+    if (redacted !== node.value) {
+      redactions.push({ offset: node.offset, length: node.length, text: JSON.stringify(redacted) });
+    }
+    return;
+  }
+
+  for (const child of node.children ?? []) {
+    collectJsonRedactions(child, redactions);
+  }
+}
+
+function redactJsonText(value: string): string | undefined {
+  const errors: ParseError[] = [];
+  const root = parseTree(value, errors);
+  if (!root || errors.length > 0) return undefined;
+
+  const redactions: JsonRedaction[] = [];
+  collectJsonRedactions(root, redactions);
+
+  let redacted = value;
+  for (const replacement of redactions.sort((left, right) => right.offset - left.offset)) {
+    redacted =
+      redacted.slice(0, replacement.offset) +
+      replacement.text +
+      redacted.slice(replacement.offset + replacement.length);
+  }
+  return redacted;
+}
+
+function redactSecrets(value: string): string {
+  return redactJsonText(value) ?? redactPlainText(value);
 }
 
 function toJsonValue(value: unknown): unknown {
@@ -392,15 +454,24 @@ function exportItem(item: StreamItem): SharedChatEntry {
 
   switch (item.kind) {
     case "user_message":
-      return { ...base, kind: "message", role: "user", markdown: item.text };
+      return { ...base, kind: "message", role: "user", markdown: redactSecrets(item.text) };
     case "assistant_message":
-      return { ...base, kind: "message", role: "assistant", markdown: item.text };
+      return { ...base, kind: "message", role: "assistant", markdown: redactSecrets(item.text) };
     case "thought":
-      return { ...base, kind: "thought", text: item.text, status: item.status };
+      return { ...base, kind: "thought", text: redactSecrets(item.text), status: item.status };
     case "todo_list":
-      return { ...base, kind: "todo", items: item.items.map((todo) => ({ ...todo })) };
+      return {
+        ...base,
+        kind: "todo",
+        items: item.items.map((todo) => ({ ...todo, text: redactSecrets(todo.text) })),
+      };
     case "activity_log":
-      return { ...base, kind: "activity", message: item.message, level: item.activityType };
+      return {
+        ...base,
+        kind: "activity",
+        message: redactSecrets(item.message),
+        level: item.activityType,
+      };
     case "compaction":
       return {
         ...base,
@@ -442,7 +513,7 @@ export function exportChatHistory(input: ExportChatHistoryInput): PaseoChatHisto
     exportedAt: iso(input.exportedAt ?? new Date()),
     conversation: {
       id: input.agentId,
-      title: input.title.trim() || "Paseo conversation",
+      title: redactSecrets(input.title.trim() || "Paseo conversation"),
       source: "paseo",
       ...(input.provider ? { provider: input.provider } : {}),
       ...(input.model ? { model: input.model } : {}),

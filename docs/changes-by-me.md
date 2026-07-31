@@ -53,6 +53,11 @@ contract and uploads it to a user-owned sharing service.
   activity, and compaction records without Paseo runtime state. New producers
   emit `threadshare-history@v1`; the Threadshare API accepts the former Paseo v1
   shape only as an input migration path.
+- Export safety: before upload, Paseo redacts credentials from the conversation
+  title, every visible text entry, and recursive tool data. Stringified JSON is
+  parsed and edited structurally so nested secrets are removed without corrupting
+  JSON or changing numeric literals. Token usage, authentication metadata, and
+  explanatory authentication prose remain visible.
 - Agent tooling: the standalone CLI is distributed as the public npm package
   `@team-harness/threadshare`. Its bundled `skills/threadshare` Skill documents
   safe sharing from local Codex, Codex Cloud (`CODEX_HOME`), and Claude sessions;

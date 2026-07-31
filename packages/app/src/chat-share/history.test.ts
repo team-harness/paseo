@@ -159,6 +159,83 @@ describe("exportChatHistory", () => {
     });
   });
 
+  it("redacts credentials from every exported visible text field", () => {
+    const timestamp = new Date("2026-07-28T00:00:00.000Z");
+    const history = exportChatHistory({
+      agentId: "agent-1",
+      title: "password=title-secret",
+      exportedAt: timestamp,
+      items: [
+        { kind: "user_message", id: "user-1", text: "apiKey=user-secret", timestamp },
+        {
+          kind: "assistant_message",
+          id: "assistant-1",
+          text: "ghp_1234567890",
+          timestamp,
+        },
+        {
+          kind: "thought",
+          id: "thought-1",
+          text: "password=thought-secret",
+          status: "ready",
+          timestamp,
+        },
+        {
+          kind: "todo_list",
+          id: "todo-1",
+          provider: "codex",
+          items: [{ text: "password=todo-secret", completed: false }],
+          timestamp,
+        },
+        {
+          kind: "activity_log",
+          id: "activity-1",
+          activityType: "info",
+          message: "postgres://alice:database-password@db.invalid/app",
+          timestamp,
+        },
+      ],
+    });
+
+    expect(history.conversation.title).toBe("password=[REDACTED]");
+    expect(history.entries).toEqual([
+      {
+        id: "user-1",
+        createdAt: "2026-07-28T00:00:00.000Z",
+        kind: "message",
+        role: "user",
+        markdown: "apiKey=[REDACTED]",
+      },
+      {
+        id: "assistant-1",
+        createdAt: "2026-07-28T00:00:00.000Z",
+        kind: "message",
+        role: "assistant",
+        markdown: "[REDACTED]",
+      },
+      {
+        id: "thought-1",
+        createdAt: "2026-07-28T00:00:00.000Z",
+        kind: "thought",
+        text: "password=[REDACTED]",
+        status: "ready",
+      },
+      {
+        id: "todo-1",
+        createdAt: "2026-07-28T00:00:00.000Z",
+        kind: "todo",
+        items: [{ text: "password=[REDACTED]", completed: false }],
+      },
+      {
+        id: "activity-1",
+        createdAt: "2026-07-28T00:00:00.000Z",
+        kind: "activity",
+        message: "postgres://alice:[REDACTED]@db.invalid/app",
+        level: "info",
+      },
+    ]);
+  });
+
   it("redacts credentials from exported tool data without hiding token metrics", () => {
     const items: StreamItem[] = [
       {
@@ -222,6 +299,40 @@ describe("exportChatHistory", () => {
     ]);
   });
 
+  it("redacts nested credentials in stringified JSON without changing its structure", () => {
+    const json =
+      '{"outer":{"config":{"password":"hunter2","safe":1},"list":[{"apiKey":"secret","nested":{"token":"short"}}]},"snowflake":9007199254740993,"precise":0.12345678901234567890}';
+    const items: StreamItem[] = [
+      {
+        kind: "tool_call",
+        id: "tool-with-json",
+        timestamp: new Date("2026-07-28T00:00:02.000Z"),
+        payload: {
+          source: "orchestrator",
+          data: {
+            toolCallId: "call-with-json",
+            toolName: "read_config",
+            arguments: {},
+            result: json,
+            status: "completed",
+          },
+        },
+      },
+    ];
+
+    const entry = exportChatHistory({ agentId: "agent-1", title: "JSON", items }).entries[0];
+    expect(entry).toEqual({
+      id: "tool-with-json",
+      createdAt: "2026-07-28T00:00:02.000Z",
+      kind: "tool",
+      name: "read_config",
+      status: "completed",
+      input: {},
+      output:
+        '{"outer":{"config":{"password":"[REDACTED]","safe":1},"list":[{"apiKey":"[REDACTED]","nested":{"token":"[REDACTED]"}}]},"snowflake":9007199254740993,"precise":0.12345678901234567890}',
+    });
+  });
+
   it("preserves prose about bearer authentication in exported tool output", () => {
     const items: StreamItem[] = [
       {
@@ -245,6 +356,38 @@ describe("exportChatHistory", () => {
       exportChatHistory({ agentId: "agent-1", title: "Docs", items }).entries[0],
     ).toMatchObject({
       output: "Bearer authentication is standardized. Explain bearer authorization headers.",
+    });
+  });
+
+  it("redacts authorization credentials and short bearer tokens without hiding prose", () => {
+    const text = [
+      "Authorization: Token abc12345",
+      "Authorization: Bearer abc",
+      "Bearer abc",
+      "Bearer middleware validates requests",
+      "Bearer authentication is standardized.",
+    ].join("\n");
+    const items: StreamItem[] = [
+      {
+        kind: "assistant_message",
+        id: "assistant-with-auth",
+        text,
+        timestamp: new Date("2026-07-28T00:00:02.000Z"),
+      },
+    ];
+
+    expect(exportChatHistory({ agentId: "agent-1", title: "Auth", items }).entries[0]).toEqual({
+      id: "assistant-with-auth",
+      createdAt: "2026-07-28T00:00:02.000Z",
+      kind: "message",
+      role: "assistant",
+      markdown: [
+        "Authorization: [REDACTED]",
+        "Authorization: [REDACTED]",
+        "Bearer [REDACTED]",
+        "Bearer middleware validates requests",
+        "Bearer authentication is standardized.",
+      ].join("\n"),
     });
   });
 
