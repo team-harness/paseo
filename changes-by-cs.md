@@ -230,6 +230,7 @@
 - 2026-07-30：新版 Paseo 与 Threadshare CLI 输出通用的 `threadshare-history@v1`；Threadshare 新服务部署在 `https://cloud-thread.team-harness.com`，服务端单向兼容旧 Paseo v1 JSON。原 `https://paseo-share.team-harness.com` 服务保持原版本，不作为新协议端点。
 - 2026-07-30：Threadshare CLI 以公开 npm 包 `@team-harness/threadshare` 发布；默认服务为 `https://cloud-thread.team-harness.com`，也可通过 `--url` 或 `THREADSHARE_URL` 覆盖。独立仓库随包提供 Codex、Codex Cloud（`CODEX_HOME`）和 Claude 使用 Skill。
 - 2026-07-30：Codex App Server 创建的子 Agent 使用其自身 child-thread timeline，并非独立的 Paseo Agent 持久化记录。只读子 Agent 面板复用聊天分享 UI，但通过 `fetchProviderSubagentTimeline` 分页加载完整 child-thread 历史后再导出；分叉和继续聊天仍保持不可用。
+- 2026-07-31：Paseo 在生成 `threadshare-history@v1` 时先递归脱敏工具输入、输出和错误中的凭据，包括敏感字段、Basic/Bearer Auth、URL 密码及常见 token；token 计数、鉴权状态和说明性认证文本保持原样。脱敏发生在客户端上传前，不依赖 Threadshare 服务端清洗。
 
 **关键文件**：
 
@@ -243,6 +244,7 @@
 - 上游若提供等价聊天分享，优先采用其导出协议、上传 API 和 Viewer URL 结构；迁移时保留全量历史分页、分享起点选择和异步 UI 状态。独立 Threadshare 服务仍应作为其他 Agent 客户端的通用实现。
 - 导出的时间线页必须跟随上游 `TimelinePage` 协议字段，尤其是 history epoch 与权威基线语义，不能把客户端当前已加载的局部消息当作完整历史。
 - Codex 子 Agent 分享不得按普通 Agent ID 读取本地持久化文件；必须使用上游 provider-subagent timeline API，并在 epoch 重置、游标过期或 timeline gap 时中止分享。
+- 分享导出的工具数据必须在 producer 侧完成凭据脱敏；不能假设 Threadshare API 会清洗正文，也不能误删 token usage、鉴权状态等非凭据元数据。
 - 必跑：聊天分享导出/上传目标测试、时间线分页测试、`npm run typecheck`。
 
 ## 同步上游操作清单

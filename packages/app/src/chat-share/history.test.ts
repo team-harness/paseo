@@ -159,6 +159,95 @@ describe("exportChatHistory", () => {
     });
   });
 
+  it("redacts credentials from exported tool data without hiding token metrics", () => {
+    const items: StreamItem[] = [
+      {
+        kind: "tool_call",
+        id: "tool-with-secrets",
+        timestamp: new Date("2026-07-28T00:00:02.000Z"),
+        payload: {
+          source: "orchestrator",
+          data: {
+            toolCallId: "call-with-secrets",
+            toolName: "request",
+            arguments: {
+              apiKey: "sk-private-api-key",
+              nested: {
+                authorization: "Bearer abc12345",
+                tokenCount: 42,
+                input_tokens: 100,
+                authorizationStatus: "enabled",
+              },
+              databaseUrl: "postgres://alice:database-password@db.invalid/app",
+            },
+            result: {
+              response:
+                "password=hunter2 ghp_1234567890 Basic dTpw Bearer abc12345 Basic authentication is standardized. Bearer authentication is standardized. Explain bearer authorization headers. Authorization: Bearer authentication",
+            },
+            status: "completed",
+          },
+        },
+      },
+    ];
+
+    expect(
+      exportChatHistory({
+        agentId: "agent-1",
+        title: "Credential test",
+        items,
+        exportedAt: new Date("2026-07-28T00:01:00.000Z"),
+      }).entries,
+    ).toEqual([
+      {
+        id: "tool-with-secrets",
+        createdAt: "2026-07-28T00:00:02.000Z",
+        kind: "tool",
+        name: "request",
+        status: "completed",
+        input: {
+          apiKey: "[REDACTED]",
+          nested: {
+            authorization: "[REDACTED]",
+            tokenCount: 42,
+            input_tokens: 100,
+            authorizationStatus: "enabled",
+          },
+          databaseUrl: "postgres://alice:[REDACTED]@db.invalid/app",
+        },
+        output: {
+          response:
+            "password=[REDACTED] [REDACTED] Basic [REDACTED] Bearer [REDACTED] Basic authentication is standardized. Bearer authentication is standardized. Explain bearer authorization headers. Authorization: [REDACTED]",
+        },
+      },
+    ]);
+  });
+
+  it("preserves prose about bearer authentication in exported tool output", () => {
+    const items: StreamItem[] = [
+      {
+        kind: "tool_call",
+        id: "tool-with-docs",
+        timestamp: new Date("2026-07-28T00:00:02.000Z"),
+        payload: {
+          source: "orchestrator",
+          data: {
+            toolCallId: "call-with-docs",
+            toolName: "read_docs",
+            arguments: {},
+            result: "Bearer authentication is standardized. Explain bearer authorization headers.",
+            status: "completed",
+          },
+        },
+      },
+    ];
+
+    expect(
+      exportChatHistory({ agentId: "agent-1", title: "Docs", items }).entries[0],
+    ).toMatchObject({
+      output: "Bearer authentication is standardized. Explain bearer authorization headers.",
+    });
+  });
+
   it("starts a shared history at the selected user message", () => {
     const items: StreamItem[] = [
       {
