@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `4e6f759da9d0e4277623087758fedb0c49a06560`，同步于 2026-07-30。
-- 最近同步 merge commit：`783677b78`。
+- 最近同步基线：`upstream/main` = `b6f1274f47ba15eb81010e3ae01291ef5532eeec`，同步于 2026-07-31。
+- 最近同步 merge commit：`56369b03e`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-07-31: `upstream/main` `b6f1274f4` / `v0.2.5`
+
+- 合入上游文件查看器冲突状态修复：区分磁盘内容变化与文件删除，统一文件订阅和读取顺序，避免陈旧读取覆盖删除状态；清理已恢复的冲突，并允许重试初始读取或只读预览错误。同步采用上游新增的 live-file/editor 状态模型、文件冲突 E2E 和多语言文案。
+- 同步上游重写后的贡献指南、QA 与协议兼容文档，以及 issue/discussion 引导调整。
+- 上游未触及 Status Bar/`status.summary`、usage ledger、多 Host 汇总、共享侧边栏 Pin、计划任务选择既有 Agent、Codex 定价或 Threadshare 分享。本轮全部 fork 能力继续保留，没有下线重复实现；Paseo producer 侧的工具凭据脱敏保持在上传边界。
 
 ### 2026-07-30: `upstream/main` `4e6f759da` / `v0.2.5`
 
