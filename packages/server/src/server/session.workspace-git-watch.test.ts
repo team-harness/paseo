@@ -5,7 +5,10 @@ import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./service-proxy.js";
 import { Session, type SessionOptions } from "./session.js";
 import { asInternals, createStub } from "./test-utils/class-mocks.js";
-import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
+import {
+  asStatusSummaryService,
+  createProviderSnapshotManagerStub,
+} from "./test-utils/session-stubs.js";
 import { createTestLogger } from "../test-utils/test-logger.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type {
@@ -254,6 +257,7 @@ function createSessionForWorkspaceGitWatchTests(options?: {
     stt: null,
     tts: null,
     providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+    statusSummaryService: asStatusSummaryService(),
     terminalManager: null,
     serviceProxy: options?.serviceProxy,
     scriptRuntimeStore: options?.scriptRuntimeStore,

@@ -14,7 +14,10 @@ import {
   WSHelloMessageSchema,
 } from "@getpaseo/protocol/messages";
 import { Session, type SessionOptions } from "./session.js";
-import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
+import {
+  asStatusSummaryService,
+  createProviderSnapshotManagerStub,
+} from "./test-utils/session-stubs.js";
 import type { AgentTimelineRow } from "./agent/agent-manager.js";
 import { handleCreatePaseoWorktreeRequest } from "./worktree-session.js";
 import { createPersistedProjectRecord } from "./workspace-registry.js";
@@ -302,6 +305,7 @@ function createSessionForWireCompatTest(options?: {
     stt: null,
     tts: null,
     providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+    statusSummaryService: asStatusSummaryService(),
     terminalManager: null,
   });
 
@@ -364,6 +368,7 @@ describe("wire compatibility", () => {
             projectId: "project-1",
             projectDisplayName: "Favorite project",
             projectCustomName: "Favorite project",
+            projectCustomIconRevision: null,
             projectRootPath: "/tmp/project",
             projectKind: "git",
           },

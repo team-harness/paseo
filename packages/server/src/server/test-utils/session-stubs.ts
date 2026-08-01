@@ -74,6 +74,17 @@ export function asDaemonConfigStore(stub: {
   return createStub<SessionOptions["daemonConfigStore"]>(stub);
 }
 
+export function asStatusSummaryService(
+  stub: {
+    [K in keyof SessionOptions["statusSummaryService"]]?: unknown;
+  } = {},
+): SessionOptions["statusSummaryService"] {
+  return createStub<SessionOptions["statusSummaryService"]>({
+    subscribe: () => () => {},
+    ...stub,
+  });
+}
+
 export function asTerminalManager(stub: {
   [K in keyof NonNullable<SessionOptions["terminalManager"]>]?: unknown;
 }): NonNullable<SessionOptions["terminalManager"]> {

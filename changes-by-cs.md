@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `b6f1274f47ba15eb81010e3ae01291ef5532eeec`，同步于 2026-07-31。
-- 最近同步 merge commit：`56369b03e`。
+- 最近同步基线：`upstream/main` = `70ed70d36dca69ce37cc675725364f73662c1637`，同步于 2026-08-01。
+- 最近同步 merge commit：本轮 merge 完成后回填。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,13 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-01: `upstream/main` `70ed70d36` / `v0.2.5`
+
+- 合入上游 Command Center Agent 控制、项目自定义图标、按需 Relay、Claude SDK 子 Agent、技能选择安装、OpenCode 稳定性、移动侧栏手势和 Darwin Nix 桌面包支持。
+- `chatShare` 与上游新增的 `projectCustomIcon` 是相互独立的协议 capability；本轮在协议 schema 和服务端 feature advertisement 中同时保留，客户端继续按各自 capability gate 使用。
+- 跟随上游删除已淘汰的 `workspaceGithubClone` 和 `agentWorkspaceInheritance` feature gate；workspace clone 使用项目创建链路，Agent 内 CLI workspace 继承继续使用上游 caller context，不恢复 fork 的旧客户端解析路径。
+- 上游没有实现 Status Bar/`status.summary`、usage ledger、多 Host 汇总、共享侧边栏 Pin、计划任务选择既有 Agent、Codex 定价与 usage accounting 或 Threadshare 分享。上述 fork 能力全部保留，没有下线重复实现；provider subagent 仍通过只读 Agent stream 加载完整历史后分享。
 
 ### 2026-07-31: `upstream/main` `b6f1274f4` / `v0.2.5`
 

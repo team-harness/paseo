@@ -58,6 +58,7 @@ import {
   asLoopService,
   asCheckoutDiffManager,
   asDaemonConfigStore,
+  asStatusSummaryService,
   asTerminalManager,
   asSessionInternals,
   createProviderSnapshotManagerStub,
@@ -717,6 +718,7 @@ function createSessionForWorkspaceTests(
       stt: null,
       tts: null,
       providerSnapshotManager,
+      statusSummaryService: asStatusSummaryService(),
       terminalManager: options.terminalManager ?? null,
     }),
   );
@@ -860,6 +862,7 @@ test("create_agent_request keeps requested child cwd when grouped under an exist
         stt: null,
         tts: null,
         providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+        statusSummaryService: asStatusSummaryService(),
         terminalManager: null,
       }),
     );
@@ -1024,6 +1027,7 @@ test("create_agent_request launches from an exact subdirectory in a created work
       stt: null,
       tts: null,
       providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+      statusSummaryService: asStatusSummaryService(),
       terminalManager: null,
     });
 
@@ -1157,6 +1161,7 @@ test("create_agent_request does not title an existing workspace from the agent p
           return { title: "Generated title that must not be written", branch: null };
         },
         providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+        statusSummaryService: asStatusSummaryService(),
         terminalManager: null,
       }),
     );
@@ -1484,6 +1489,7 @@ test("archive emits an authoritative agent_update upsert for subscribed clients"
       stt: null,
       tts: null,
       providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+      statusSummaryService: asStatusSummaryService(),
       terminalManager: null,
     }),
   );
@@ -1846,6 +1852,7 @@ test("close_items_request archives agents and kills terminals in one batch", asy
       stt: null,
       tts: null,
       providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+      statusSummaryService: asStatusSummaryService(),
       terminalManager: asTerminalManager({
         killTerminal,
         subscribeTerminalsChanged: () => () => {},
@@ -2033,6 +2040,7 @@ test("close_items_request archives stored agents that are not currently loaded",
       stt: null,
       tts: null,
       providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+      statusSummaryService: asStatusSummaryService(),
       terminalManager: null,
     }),
   );
@@ -2182,6 +2190,7 @@ test("close_items_request continues after an archive failure", async () => {
       stt: null,
       tts: null,
       providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+      statusSummaryService: asStatusSummaryService(),
       terminalManager: asTerminalManager({
         killTerminal: killTerminalBestEffort,
         subscribeTerminalsChanged: () => () => {},
@@ -3265,6 +3274,7 @@ test("workspace update stream keeps persisted workspace visible after agents sto
       stt: null,
       tts: null,
       providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+      statusSummaryService: asStatusSummaryService(),
       terminalManager: null,
     }),
   );
@@ -3405,6 +3415,7 @@ test("archiving the last workspace emits a remove carrying the now-empty project
       projectId: project.projectId,
       projectDisplayName: "repo",
       projectCustomName: null,
+      projectCustomIconRevision: null,
       projectRootPath: REPO_CWD,
       projectKind: "git",
     },
@@ -7400,6 +7411,98 @@ test("a workspace leaving a filtered subscription after bootstrap emits a remova
       payload: { kind: "remove", id: descriptor.id },
     },
   ]);
+});
+
+const ICON_PNG_1X1 = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00,
+]);
+
+test("project.icon.set.request publishes a custom icon that project.icon.get serves back", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = asTestSession(
+    createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) }),
+  );
+  session.updateClientCapabilities({ [CLIENT_CAPS.projectUpdates]: true });
+
+  const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "session-project-icon-test-")));
+  const projectRoot = path.join(tempDir, "project-without-icons");
+  mkdirSync(projectRoot, { recursive: true });
+  session.paseoHome = path.join(tempDir, "paseo-home");
+
+  const project = createPersistedProjectRecord({
+    projectId: "prj_icon",
+    rootPath: projectRoot,
+    kind: "git",
+    displayName: "repo",
+    createdAt: "2026-07-22T12:00:00.000Z",
+    updatedAt: "2026-07-22T12:00:00.000Z",
+  });
+  const projects = new Map([[project.projectId, project]]);
+  session.projectRegistry.get = async (id: string) => projects.get(id) ?? null;
+  session.projectRegistry.update = async (id, updater) => {
+    const current = projects.get(id);
+    if (!current) return null;
+    const updated = updater(current);
+    projects.set(id, updated);
+    return updated;
+  };
+  session.workspaceRegistry.list = async () => [];
+
+  await session.handleMessage({
+    type: "project.icon.set.request",
+    projectId: project.projectId,
+    source: { type: "upload", data: ICON_PNG_1X1.toString("base64") },
+    requestId: "req-icon-set",
+  });
+
+  expect(findByType(emitted, "project.icon.set.response")?.payload).toEqual({
+    requestId: "req-icon-set",
+    projectId: project.projectId,
+    accepted: true,
+    error: null,
+  });
+  const revision = projects.get(project.projectId)?.customIconRevision;
+  expect(revision).toEqual(expect.any(String));
+  expect(findByType(emitted, "project.update")?.payload).toMatchObject({
+    kind: "upsert",
+    project: { projectCustomIconRevision: revision },
+  });
+
+  emitted.length = 0;
+  await session.handleMessage({
+    type: "project.icon.get.request",
+    projectId: project.projectId,
+    requestId: "req-icon-custom",
+  });
+  expect(findByType(emitted, "project.icon.get.response")?.payload).toEqual({
+    projectId: project.projectId,
+    icon: { data: ICON_PNG_1X1.toString("base64"), mimeType: "image/png" },
+    error: null,
+    requestId: "req-icon-custom",
+  });
+
+  emitted.length = 0;
+  await session.handleMessage({
+    type: "project.icon.set.request",
+    projectId: project.projectId,
+    source: { type: "automatic" },
+    requestId: "req-icon-automatic",
+  });
+  expect(projects.get(project.projectId)?.customIconRevision).toBeNull();
+  expect(findByType(emitted, "project.icon.get.response")).toBeUndefined();
+
+  await session.handleMessage({
+    type: "project.icon.get.request",
+    projectId: project.projectId,
+    requestId: "req-icon-scan",
+  });
+  expect(findByType(emitted, "project.icon.get.response")?.payload).toMatchObject({
+    icon: null,
+    error: null,
+  });
+
+  rmSync(tempDir, { recursive: true, force: true });
 });
 
 test("project.rename.request stores customName and emits an updated workspace descriptor", async () => {
