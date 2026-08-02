@@ -10,7 +10,7 @@
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
 - 最近同步基线：`upstream/main` = `048b82f2a7b3ecc9b62bc5b817729f4ca2741863`，同步于 2026-08-02。
-- 最近同步 merge commit：待本轮 merge 提交后回填。
+- 最近同步 merge commit：`bf1f20d75`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
