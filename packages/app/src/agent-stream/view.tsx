@@ -11,7 +11,6 @@ import React, {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import {
   View,
@@ -42,6 +41,8 @@ import {
 } from "@/components/message";
 import { PlanCard } from "@/components/plan-card";
 import type { StreamItem } from "@/types/stream";
+import type { PendingMessageSubmission } from "@/composer/submission/model";
+import type { TurnPresentation } from "@/timeline/turn-liveness";
 import type { PendingPermission } from "@/types/shared";
 import type {
   AgentCapabilityFlags,
@@ -71,6 +72,7 @@ import {
   CompletedTurnFooterRow,
   TurnFooter,
   type AssistantTurnForkHandler,
+  type InFlightTurnForkHandler,
   type TurnContentStrategy,
 } from "./turn-footer";
 import { layoutStream, type StreamLayoutItem } from "./layout";
@@ -78,6 +80,7 @@ import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
 } from "./bottom-anchor-controller";
+import { createAssistantImageOccurrenceKey } from "@/assistant-image/acquisition-cache";
 import {
   AssistantFileLinkResolverProvider,
   normalizeInlinePathTarget,
@@ -89,22 +92,14 @@ import {
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
-import { buildNewWorkspaceRoute } from "@/utils/host-routes";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { useForkAgent } from "@/hooks/use-fork-agent";
 import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
-import { generateDraftId } from "@/stores/draft-keys";
-import {
-  buildDraftWorkspaceAttachmentScopeKey,
-  useWorkspaceAttachmentsStore,
-} from "@/attachments/workspace-attachments-store";
-import type { WorkspaceComposerAttachment } from "@/attachments/types";
-import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { toErrorMessage } from "@/utils/error-messages";
 import { formatMessageTimestamp } from "@/utils/time";
-import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import {
   exportChatHistory,
   loadCompleteChatHistory,
@@ -295,6 +290,8 @@ export interface AgentStreamViewProps {
   streamItems: StreamItem[];
   streamHead?: StreamItem[];
   pendingPermissions: Map<string, PendingPermission>;
+  pendingMessageSubmissions?: readonly PendingMessageSubmission[];
+  turnPresentation: TurnPresentation;
   routeBottomAnchorRequest?: BottomAnchorRouteRequest | null;
   isAuthoritativeHistoryReady?: boolean;
   toast?: ToastApi | null;
@@ -306,7 +303,7 @@ export interface AgentStreamViewProps {
     hasOlder: boolean;
     isLoadingOlder: boolean;
     progressKey: string | null;
-    onLoadOlder: () => void;
+    onLoadOlder: () => boolean | Promise<boolean>;
   };
 }
 
@@ -323,58 +320,8 @@ const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
 ];
 
 const EMPTY_STREAM_HEAD: StreamItem[] = [];
+const EMPTY_PENDING_MESSAGE_SUBMISSIONS: readonly PendingMessageSubmission[] = [];
 const GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT = 200;
-
-function buildChatHistoryAttachment(input: {
-  draftId: string;
-  serverId: string;
-  agentId: string;
-  payload: Awaited<ReturnType<DaemonClient["buildAgentForkContext"]>>;
-  missingAttachmentMessage: string;
-}): WorkspaceComposerAttachment {
-  if (!input.payload.attachment) {
-    throw new Error(input.missingAttachmentMessage);
-  }
-  return {
-    kind: "chat_history",
-    id: `chat_history:${input.draftId}`,
-    attachment: input.payload.attachment,
-    source: {
-      serverId: input.serverId,
-      agentId: input.agentId,
-      boundaryMessageId: input.payload.boundaryMessageId,
-      boundaryCursor: input.payload.boundaryCursor,
-      itemCount: input.payload.itemCount,
-    },
-  };
-}
-
-function buildForkDraftSetup(agent: AgentScreenAgent): WorkspaceDraftTabSetup | undefined {
-  if (!agent.provider) {
-    return undefined;
-  }
-
-  const featureValues: Record<string, unknown> = {};
-  for (const feature of agent.features ?? []) {
-    featureValues[feature.id] = feature.value;
-  }
-
-  return {
-    provider: agent.provider,
-    cwd: agent.cwd,
-    modeId: agent.currentModeId ?? agent.runtimeInfo?.modeId ?? null,
-    model: agent.model ?? agent.runtimeInfo?.model ?? null,
-    thinkingOptionId: agent.thinkingOptionId ?? agent.runtimeInfo?.thinkingOptionId ?? null,
-    featureValues,
-  };
-}
-
-function buildForkDraftTabTarget(
-  setup: WorkspaceDraftTabSetup | undefined,
-  draftId: string,
-): WorkspaceTabTarget {
-  return setup ? { kind: "draft", draftId, setup } : { kind: "draft", draftId };
-}
 
 const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamViewProps>(
   function AgentStreamView(
@@ -385,6 +332,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       streamItems,
       streamHead: providedStreamHead,
       pendingPermissions,
+      pendingMessageSubmissions = EMPTY_PENDING_MESSAGE_SUBMISSIONS,
+      turnPresentation,
       routeBottomAnchorRequest = null,
       isAuthoritativeHistoryReady = true,
       toast,
@@ -396,10 +345,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     ref,
   ) {
     const { t } = useTranslation();
-    const router = useRouter();
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const viewportRef = useRef<StreamViewportHandle | null>(null);
+    const pendingClientMessageIds = useMemo(
+      () => new Set(pendingMessageSubmissions.map((submission) => submission.clientMessageId)),
+      [pendingMessageSubmissions],
+    );
     const isMobile = useIsCompactFormFactor();
     const streamRenderStrategy = useMemo(
       () =>
@@ -433,11 +385,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       state.sessions[resolvedServerId]?.agentStreamHead?.get(agentId),
     );
     const streamHead = providedStreamHead ?? sessionStreamHead;
-    const supportsAgentForkContext = useSessionStore(
-      (state) =>
-        !readOnly &&
-        state.sessions[resolvedServerId]?.serverInfo?.features?.agentForkContext === true,
-    );
+    const forkAgent = useForkAgent({ serverId: resolvedServerId, toast, readOnly });
     const supportsAgentForkContextCursor = useSessionStore(
       (state) =>
         state.sessions[resolvedServerId]?.serverInfo?.features?.agentForkContextCursor === true,
@@ -549,70 +497,28 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const handleForkAssistantTurn: AssistantTurnForkHandler = useStableEvent(
       async ({ target, boundary }) => {
-        try {
-          if (!supportsAgentForkContext) {
-            toast?.error(t("message.actions.forkUnavailable"));
-            return;
-          }
-          if (!client) {
-            throw new Error(t("workspace.terminal.hostDisconnected"));
-          }
-          const draftSetup = buildForkDraftSetup(context);
-          const prepareForkDraft = async () => {
-            const draftId = generateDraftId();
-            const payload = await client.buildAgentForkContext(agentId, boundary);
-            const attachment = buildChatHistoryAttachment({
-              draftId,
-              serverId: resolvedServerId,
-              agentId,
-              payload,
-              missingAttachmentMessage: t("message.actions.forkFailed"),
-            });
-            useWorkspaceAttachmentsStore.getState().setWorkspaceAttachments({
-              scopeKey: buildDraftWorkspaceAttachmentScopeKey(draftId),
-              attachments: [attachment],
-            });
-            return draftId;
-          };
-
-          if (target === "tab") {
-            const workspaceId = context.workspaceId;
-            if (!workspaceId) {
-              throw new Error(t("message.actions.forkMissingWorkspace"));
-            }
-            const draftId = await prepareForkDraft();
-            navigateToWorkspace({
-              serverId: resolvedServerId,
-              workspaceId,
-              target: buildForkDraftTabTarget(draftSetup, draftId),
-            });
-            return;
-          }
-
-          const draftId = await prepareForkDraft();
-          const sourceDirectory =
-            context.projectPlacement?.checkout?.cwd?.trim() || context.cwd.trim() || undefined;
-          if (draftSetup) {
-            useWorkspaceDraftSubmissionStore.getState().setDraftSetup({
-              draftId,
-              setup: draftSetup,
-              sourceDirectory,
-            });
-          }
-          router.push(
-            buildNewWorkspaceRoute({
-              serverId: resolvedServerId,
-              sourceDirectory,
-              displayName: context.projectPlacement?.projectName,
-              projectId: context.projectPlacement?.projectKey,
-              draftId,
-            }),
-          );
-        } catch (error) {
-          toast?.error(toErrorMessage(error) || t("message.actions.forkFailed"));
-        }
+        await forkAgent({
+          agentId,
+          agent: context,
+          workspaceId: context.workspaceId,
+          target,
+          boundary,
+        });
       },
     );
+
+    // The in-flight turn forks with no boundary at all: `selectForkContextRows`
+    // projects the whole timeline when neither boundary field is given, so the
+    // fork carries everything up to now, including the response still streaming
+    // in front of the user.
+    const handleForkInFlightTurn: InFlightTurnForkHandler = useStableEvent(async (target) => {
+      await forkAgent({
+        agentId,
+        agent: context,
+        workspaceId: context.workspaceId,
+        target,
+      });
+    });
 
     // Freeze stream data while this tab slot is hidden to prevent offscreen FlatList
     // cell-window renders on every 48ms flush from background agents.
@@ -715,6 +621,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         setIsSharingAssistantTurn(false);
       }
     });
+    const isTurnActive = turnPresentation.isActive;
     // Keep retained history outside the 48ms live-head flush path.
     const preparedToolCallHistory = useMemo(
       () => prepareToolCallHistory(toolCallDetailLevel, effectiveStreamItems),
@@ -727,12 +634,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           tail: effectiveStreamItems,
           head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
           preparedHistory: preparedToolCallHistory,
-          isTurnActive: context.status === "running",
+          isTurnActive,
         }),
       [
-        context.status,
         effectiveStreamHead,
         effectiveStreamItems,
+        isTurnActive,
         preparedToolCallHistory,
         toolCallDetailLevel,
       ],
@@ -740,27 +647,34 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
-        agentStatus: context.status,
+        isTurnActive,
+        activeTurnStartedAt: turnPresentation.startedAt,
         tail: projectedToolCalls.tail,
         head: projectedToolCalls.head,
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
       });
-    }, [context.status, isMobile, projectedToolCalls.head, projectedToolCalls.tail]);
+    }, [
+      isMobile,
+      isTurnActive,
+      projectedToolCalls.head,
+      projectedToolCalls.tail,
+      turnPresentation.startedAt,
+    ]);
     const streamLayout = useMemo(
       () =>
         layoutStream({
           strategy: streamRenderStrategy,
-          agentStatus: context.status,
+          isTurnActive,
           history: baseRenderModel.history,
           liveHead: baseRenderModel.segments.liveHead,
           timingByAssistantId: baseRenderModel.turnTiming.byAssistantId,
         }),
       [
-        context.status,
         baseRenderModel.history,
         baseRenderModel.segments.liveHead,
         baseRenderModel.turnTiming.byAssistantId,
+        isTurnActive,
         streamRenderStrategy,
       ],
     );
@@ -817,7 +731,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           <UserMessage
             serverId={resolvedServerId}
             agentId={agentId}
-            messageId={item.id}
+            messageId={item.messageId}
             message={item.text}
             images={item.images}
             attachments={item.attachments}
@@ -826,10 +740,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             client={client}
             isFirstInGroup={layoutItem.isFirstInUserGroup}
             isLastInGroup={layoutItem.isLastInUserGroup}
+            isPending={
+              item.clientMessageId !== undefined &&
+              pendingClientMessageIds.has(item.clientMessageId)
+            }
           />
         );
       },
-      [context.capabilities, agentId, client, resolvedServerId],
+      [context.capabilities, agentId, client, pendingClientMessageIds, resolvedServerId],
     );
 
     const renderAssistantMessageItem = useCallback(
@@ -843,6 +761,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             toast={toast}
           >
             <AssistantMessage
+              occurrenceKey={createAssistantImageOccurrenceKey({ agentId, itemId: item.id })}
               message={item.text}
               timestamp={item.timestamp.getTime()}
               workspaceRoot={workspaceRoot}
@@ -853,7 +772,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           </AssistantFileLinkResolverProvider>
         );
       },
-      [client, handleInlinePathPress, resolvedServerId, toast, workspaceRoot],
+      [agentId, client, handleInlinePathPress, resolvedServerId, toast, workspaceRoot],
     );
 
     const renderThoughtItem = useCallback(
@@ -1047,7 +966,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [pendingPermissions, agentId],
     );
 
-    const showRunningTurnFooter = baseRenderModel.turnTiming.isActive;
     const pendingPermissionsNode = useMemo(
       () =>
         renderPendingPermissionsNode({
@@ -1058,9 +976,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
     const turnFooterNode = useMemo(
       () =>
-        showRunningTurnFooter || bottomTurnFooterHost ? (
+        isTurnActive || bottomTurnFooterHost ? (
           <TurnFooter
-            isRunning={showRunningTurnFooter}
+            isRunning={isTurnActive}
             inFlightTurnStartedAt={baseRenderModel.turnTiming.runningStartedAt}
             host={bottomTurnFooterHost}
             strategy={streamRenderStrategy}
@@ -1071,6 +989,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             }
             isSharingAssistantTurn={isSharingAssistantTurn}
             isShareStartSelectionOpen={shareStartSelection !== null}
+            onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
           />
         ) : null,
       [
@@ -1079,8 +998,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         isSharingAssistantTurn,
         shareStartSelection,
         loadCompleteHistory,
+        handleForkInFlightTurn,
         readOnly,
-        showRunningTurnFooter,
+        isTurnActive,
         baseRenderModel.turnTiming.runningStartedAt,
         bottomTurnFooterHost,
         streamRenderStrategy,
@@ -1355,6 +1275,10 @@ function agentStreamViewPropsEqual(
   if (left.streamItems !== right.streamItems) reasons.push("streamItems");
   if (left.streamHead !== right.streamHead) reasons.push("streamHead");
   if (left.pendingPermissions !== right.pendingPermissions) reasons.push("pendingPermissions");
+  if (left.pendingMessageSubmissions !== right.pendingMessageSubmissions) {
+    reasons.push("pendingMessageSubmissions");
+  }
+  if (left.turnPresentation !== right.turnPresentation) reasons.push("turnPresentation");
   if (
     !bottomAnchorRouteRequestsEqual(left.routeBottomAnchorRequest, right.routeBottomAnchorRequest)
   ) {
@@ -1444,7 +1368,13 @@ function PermissionActionButton({
     : permissionStyles.optionText;
   const colorMapping = isPrimary ? primaryColorMapping : mutedColorMapping;
   return (
-    <Pressable testID={testID} style={pressableStyle} onPress={handlePress} disabled={isResponding}>
+    <Pressable
+      accessibilityRole="button"
+      testID={testID}
+      style={pressableStyle}
+      onPress={handlePress}
+      disabled={isResponding}
+    >
       {isRespondingAction ? (
         <ThemedLoadingSpinner size="small" uniProps={colorMapping} />
       ) : (
@@ -1818,6 +1748,7 @@ const permissionStyles = StyleSheet.create((theme) => ({
   },
   optionsContainerDesktop: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "flex-start",
     alignItems: "center",
     width: "100%",

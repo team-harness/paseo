@@ -1,14 +1,17 @@
+export type FilePreviewRenderKind = "markdown" | "html";
+
 export function isRenderedMarkdownFile(filePath: string): boolean {
   const normalizedPath = filePath.trim().toLowerCase();
   return normalizedPath.endsWith(".md") || normalizedPath.endsWith(".markdown");
 }
 
-export type MarkdownRenderMode = "preview" | "source";
+function isRenderedHtmlFile(filePath: string): boolean {
+  const normalizedPath = filePath.trim().toLowerCase();
+  return normalizedPath.endsWith(".html") || normalizedPath.endsWith(".htm");
+}
 
-export function shouldRenderMarkdownPreview(input: {
-  filePath: string;
-  lineStart?: number;
-  mode: MarkdownRenderMode;
-}): boolean {
-  return input.mode === "preview" && !input.lineStart && isRenderedMarkdownFile(input.filePath);
+export function filePreviewRenderKind(filePath: string): FilePreviewRenderKind | null {
+  if (isRenderedMarkdownFile(filePath)) return "markdown";
+  if (isRenderedHtmlFile(filePath)) return "html";
+  return null;
 }

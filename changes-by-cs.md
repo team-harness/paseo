@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `70ed70d36dca69ce37cc675725364f73662c1637`，同步于 2026-08-01。
-- 最近同步 merge commit：`e9d9d37c5`。
+- 最近同步基线：`upstream/main` = `048b82f2a7b3ecc9b62bc5b817729f4ca2741863`，同步于 2026-08-02。
+- 最近同步 merge commit：待本轮 merge 提交后回填。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,13 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-02: `upstream/main` `048b82f2a` / `v0.2.5`
+
+- 合入上游时间线提交、分页、resume 和图片稳定性重构，完整原生子 Agent 对话、运行中 Agent 分叉、ACP 权限选择与共享 auto-accept、Provider 进程退出恢复、Command Center 稳定性、折叠项目状态徽标及 HTML 文件预览；浏览器与桌面 E2E 目录同时采用上游的新分层。
+- 文件面板完全采用上游统一的 Markdown/HTML Preview/Source 状态模型；删除 fork 已无调用的 Markdown 专用 render-mode helper。上游实现本身在带行号定位时进入 Source，因此不再保留重复状态路径。
+- 聊天分享接入上游新的 `TurnPresentation`、运行中分叉和时间线 reducer 输入；已完成 turn 继续显示分享入口，Provider 子 Agent 继续通过专用 timeline API 加载完整历史。分享分页明确传入空的 sending client-message 集合，避免把本地 composer 状态混入只读导出。
+- 上游仍未实现 Status Bar/`status.summary`、usage ledger、多 Host 汇总、共享侧边栏 Pin、计划任务选择既有 Agent、Codex 定价与 usage accounting 或 Threadshare 分享。上述 fork 能力全部保留；没有其他重复能力下线。
 
 ### 2026-08-01: `upstream/main` `70ed70d36` / `v0.2.5`
 
@@ -134,7 +141,7 @@
 - 保留 `server_info.features.statusSummary` 的单一 capability gate；不要回退为 client 对旧接口的 fan-out。
 - 不新增 Status Bar 专用的 Pin 数据、RPC 或 capability gate。所有 Pin 都以侧边栏 workspace 为权威，状态栏仅消费共享列表投影，并通过同一 workspace Pin controller 写入。
 - 上游若只实现 UI 而无相同的 daemon summary/usage ledger，不能直接替换服务端链路。
-- 必跑：status-summary 相关 Vitest、`packages/app/e2e/status-bar-running-sessions.spec.ts`、`npm run typecheck`。
+- 必跑：status-summary 相关 Vitest、`packages/app/e2e/browser/status-bar-running-sessions.spec.ts`、`npm run typecheck`。
 
 **设计与审计依据**：`.codestable/roadmap/global-status-bar/` 和 `.codestable/features/` 下的 status-bar / status-summary 产物。
 
@@ -220,7 +227,7 @@
 
 **状态**：已由上游实现替代。
 
-**行为**：上游文件面板提供 Markdown Preview/Source 分段切换，并集成网页编辑、实时文件刷新、保存冲突处理和 Vim 键位。切换状态仅作用于当前文件；fork 保留带行号定位的 Markdown 链接默认打开 Source 视图，以保留定位高亮。
+**行为**：上游文件面板提供统一的 Markdown/HTML Preview/Source 分段切换，并集成网页编辑、实时文件刷新、保存冲突处理和 Vim 键位。切换状态仅作用于当前文件；带行号定位的链接直接打开 Source 视图，以保留定位高亮。
 
 **关键文件**：
 
@@ -230,8 +237,8 @@
 
 **同步规则**：
 
-- 采用上游文件面板的状态模型和控件位置；带行号定位时默认 Source 的行为必须保留。
-- 不恢复 fork 的图标切换 UI、独立文案或旧文件读取路径。
+- 采用上游文件面板的状态模型、render kind 和控件位置；带行号定位时默认 Source 的行为由上游统一模型负责。
+- 不恢复 fork 的 Markdown 专用 helper、图标切换 UI、独立文案或旧文件读取路径。
 - 必跑：文件面板、`file-pane-render-mode.test.ts`、`resources.test.ts`、`npm run typecheck`。
 
 ### 7. 只读聊天分享
