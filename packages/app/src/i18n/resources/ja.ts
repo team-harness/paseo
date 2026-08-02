@@ -335,6 +335,10 @@ export const ja: TranslationResources = {
       sharing: "共有中",
       shareCopied: "共有リンクをコピーしました",
       shareFailed: "チャットを共有できませんでした",
+      shareRecoveryHint:
+        "既定では共有 Threadshare サービスを使用します。安定性を高めるには Threadshare を独自にデプロイし、daemon.chatShare.baseUrl を設定してください。",
+      shareTooLarge:
+        "ツールの結果を削除しても会話が 5 MiB を超えています。より新しいユーザーメッセージを選んで再試行してください。",
       shareUnavailable: "Update the host to use chat sharing.",
       shareNotConfigured: "Configure daemon.chatShare.baseUrl to enable chat sharing.",
       shareStartTitle: "このメッセージから共有",

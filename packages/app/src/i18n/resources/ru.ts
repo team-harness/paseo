@@ -334,6 +334,10 @@ export const ru: TranslationResources = {
       sharing: "Публикация",
       shareCopied: "Ссылка скопирована",
       shareFailed: "Не удалось поделиться чатом",
+      shareRecoveryHint:
+        "По умолчанию используется общий сервис Threadshare. Для большей надежности разверните собственный Threadshare и настройте daemon.chatShare.baseUrl.",
+      shareTooLarge:
+        "Размер разговора по-прежнему превышает 5 MiB после удаления результатов инструментов. Выберите более позднее сообщение пользователя и повторите попытку.",
       shareUnavailable: "Update the host to use chat sharing.",
       shareNotConfigured: "Configure daemon.chatShare.baseUrl to enable chat sharing.",
       shareStartTitle: "Поделиться с этого сообщения",

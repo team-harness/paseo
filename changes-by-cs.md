@@ -251,6 +251,7 @@
 - 2026-07-30：Threadshare CLI 以公开 npm 包 `@team-harness/threadshare` 发布；默认服务为 `https://cloud-thread.team-harness.com`，也可通过 `--url` 或 `THREADSHARE_URL` 覆盖。独立仓库随包提供 Codex、Codex Cloud（`CODEX_HOME`）和 Claude 使用 Skill。
 - 2026-07-30：Codex App Server 创建的子 Agent 使用其自身 child-thread timeline，并非独立的 Paseo Agent 持久化记录。只读子 Agent 面板复用聊天分享 UI，但通过 `fetchProviderSubagentTimeline` 分页加载完整 child-thread 历史后再导出；分叉和继续聊天仍保持不可用。
 - 2026-07-31：Paseo 在生成 `threadshare-history@v1` 时脱敏会话标题、普通消息、thought、todo、activity 以及递归工具输入、输出和错误中的凭据，包括敏感字段、Basic/Bearer/Token Auth、URL 密码及常见 token。字符串化 JSON 通过语法树定位敏感值，不直接用正则改写 JSON 结构，因此不会破坏嵌套 JSON 或改变大整数、高精度数值字面量；token 计数、鉴权状态和说明性认证文本保持原样。脱敏发生在客户端上传前，不依赖 Threadshare 服务端清洗。
+- 2026-08-02：上传体不超过 Threadshare 的 5 MiB 限制时保持原样；超过限制时，完整保留用户、assistant 及其他非工具记录，将同一工具调用的状态更新合并为最终状态，只保留工具名称、首次调用时间、请求参数和最终状态，删除已识别工具类型的返回值与错误详情。未来未知 detail 类型无法可靠区分请求和返回，保持原样并交给最终大小检查。压缩后仍超限时在发起网络请求前中止，并提示选择更靠后的用户消息；其他上传失败会显示服务端原因，不再被通用错误吞掉。
 
 **关键文件**：
 
@@ -265,6 +266,7 @@
 - 导出的时间线页必须跟随上游 `TimelinePage` 协议字段，尤其是 history epoch 与权威基线语义，不能把客户端当前已加载的局部消息当作完整历史。
 - Codex 子 Agent 分享不得按普通 Agent ID 读取本地持久化文件；必须使用上游 provider-subagent timeline API，并在 epoch 重置、游标过期或 timeline gap 时中止分享。
 - 分享导出的所有可见文本和工具数据必须在 producer 侧完成凭据脱敏；不能假设 Threadshare API 会清洗正文。字符串化 JSON 必须结构化处理，不能用正则直接改写；同时不能误删 token usage、鉴权状态等非凭据元数据或说明性认证文本。
+- 5 MiB 压缩只能损失工具返回与错误详情；用户和 assistant 消息不得截断或改写。若上游或 Threadshare 调整请求大小限制，应以服务端协议常量为准同步 producer 测试，不得通过静默丢弃消息规避限制。
 - 必跑：聊天分享导出/上传目标测试、时间线分页测试、`npm run typecheck`。
 
 ## 同步上游操作清单

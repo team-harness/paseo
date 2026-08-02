@@ -332,6 +332,10 @@ export const ar: TranslationResources = {
       sharing: "جارٍ المشاركة",
       shareCopied: "تم نسخ رابط المشاركة",
       shareFailed: "تعذرت مشاركة المحادثة",
+      shareRecoveryHint:
+        "الخدمة الافتراضية هي خدمة Threadshare مشتركة. لمزيد من الموثوقية، انشر Threadshare الخاص بك واضبط daemon.chatShare.baseUrl.",
+      shareTooLarge:
+        "لا تزال المحادثة أكبر من 5 MiB بعد حذف نتائج الأدوات. اختر رسالة مستخدم أحدث وحاول مرة أخرى.",
       shareUnavailable: "Update the host to use chat sharing.",
       shareNotConfigured: "Configure daemon.chatShare.baseUrl to enable chat sharing.",
       shareStartTitle: "بدء المشاركة من",

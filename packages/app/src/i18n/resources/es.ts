@@ -335,6 +335,10 @@ export const es: TranslationResources = {
       sharing: "Compartiendo",
       shareCopied: "Enlace compartido copiado",
       shareFailed: "No se pudo compartir el chat",
+      shareRecoveryHint:
+        "El servicio predeterminado es una implementación compartida de Threadshare. Para mayor fiabilidad, implementa tu propio Threadshare y configura daemon.chatShare.baseUrl.",
+      shareTooLarge:
+        "La conversación sigue superando los 5 MiB después de eliminar los resultados de las herramientas. Elige un mensaje de usuario posterior e inténtalo de nuevo.",
       shareUnavailable: "Update the host to use chat sharing.",
       shareNotConfigured: "Configure daemon.chatShare.baseUrl to enable chat sharing.",
       shareStartTitle: "Compartir desde",

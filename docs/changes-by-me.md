@@ -84,6 +84,13 @@ contract and uploads it to a user-owned sharing service.
   offers every user message as a start point. Selecting one exports that
   message and every later entry, without changing the portable history schema
   or the upload API.
+- Upload size: histories at or below Threadshare's 5 MiB request limit are sent
+  unchanged. Larger histories keep every non-tool entry intact, merge repeated
+  updates for each tool call into its final status, retain request parameters,
+  and discard recognized tool results and error details. Unknown future tool
+  detail types remain intact because their request and result fields cannot be
+  classified safely. If that projection still exceeds 5 MiB, the client stops
+  before `fetch` and asks the user to choose a later start message.
 - Share URL: newly issued Viewer links carry only the generated UUID as
   `?id=<uuid>`. The Void template deliberately has no dependency on the former
   fork-specific `?history=` URL, FC API, OSS bucket, Licell, or `bazhuayu.xyz`.

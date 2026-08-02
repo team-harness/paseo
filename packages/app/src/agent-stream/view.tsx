@@ -106,6 +106,7 @@ import {
   selectChatHistoryFromUserMessage,
 } from "@/chat-share/history";
 import { shareChatHistory } from "@/chat-share/upload";
+import { formatChatShareErrorMessage } from "@/chat-share/error-message";
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -614,8 +615,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         const viewerUrl = await shareChatHistory({ baseUrl: chatShare.baseUrl, history });
         await Clipboard.setStringAsync(viewerUrl);
         toast?.show(t("message.actions.shareCopied"), { variant: "success", durationMs: 5000 });
-      } catch {
-        toast?.show(t("message.actions.shareFailed"), { variant: "error", durationMs: 8000 });
+      } catch (error) {
+        const message = formatChatShareErrorMessage(error, {
+          failed: t("message.actions.shareFailed"),
+          recoveryHint: t("message.actions.shareRecoveryHint"),
+          tooLarge: t("message.actions.shareTooLarge"),
+        });
+        toast?.show(message, { variant: "error", durationMs: 10000 });
       } finally {
         sharingAssistantTurnRef.current = false;
         setIsSharingAssistantTurn(false);
