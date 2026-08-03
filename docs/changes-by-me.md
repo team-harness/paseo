@@ -4,6 +4,27 @@ This file records fork-specific changes that intentionally build on upstream
 Paseo behavior. Keep entries narrow and point to upstream-owned abstractions so
 future upstream syncs have a clear integration boundary.
 
+## Saved Prompt Library
+
+The composer exposes a client-local library for reusable prompts without adding
+a daemon protocol or host-owned persistence.
+
+- UI boundary: `packages/app/src/prompt-library/` owns search, CRUD, recovery,
+  and the adaptive sheet. Composer integration only inserts the selected prompt
+  at the current text selection and restores focus; it never sends
+  automatically.
+- Persistence: AsyncStorage key `@paseo:prompt-library` is global to one app
+  installation, so prompts are shared across hosts, projects, workspaces, and
+  agents on that client. Browser profiles, desktop, and mobile keep independent
+  collections.
+- Data safety: malformed individual records are skipped, while malformed JSON
+  or root envelopes block normal writes. Recovery requires an explicit
+  destructive reset. All reads and mutations use one serialized service queue.
+- Upstream sync: if upstream adds an equivalent prompt library, adopt its UI,
+  data model, and persistence boundary and migrate this local collection once.
+  Do not keep two toolbar entries or parallel stores. Preserve exact selection
+  insertion and no-auto-send behavior.
+
 ## Status Bar Workspace Pins
 
 The status bar uses the upstream sidebar workspace pin model as its only

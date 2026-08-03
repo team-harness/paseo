@@ -297,6 +297,30 @@
 
 **最近同步判断**：2026-08-03 合入上游 `ccb668b3b` 后，其单行侧边栏重构移除了脱离项目分组行的项目名文字；保留上游项目图标与 Host badge，同时恢复项目名次级文字。
 
+### 9. 常用 Prompt 集合
+
+**状态**：fork 功能。提交：`947f4cbae`。
+
+**行为**：Composer 工具栏提供客户端本地的常用 Prompt 集合，支持搜索、新建、编辑、删除，并把 Prompt 精确插入当前选区后恢复输入焦点；插入不会自动发送。集合在同一客户端安装内跨 Host、项目、工作区和 Agent 共享，不通过 daemon 或 relay 同步。
+
+**关键文件**：
+
+- `packages/app/src/prompt-library/`
+- `packages/app/src/composer/index.tsx`
+- `packages/app/src/composer/input/input.tsx`
+- `docs/data-model.md`
+
+**同步规则**：
+
+- 上游若提供等价 Prompt 集合，采用上游 UI、数据模型和持久化边界，迁移本地 `@paseo:prompt-library` 一次后删除 fork 重复入口，不保留双路径。
+- 插入必须替换当前选区、恢复焦点且不自动发送。
+- 单条损坏记录可以跳过；JSON 或根 envelope 损坏必须阻止普通 CRUD 覆盖，只有显式确认重置可以清空。
+- 客户端存储操作保持串行，避免多个 Composer 或并发查询/写入互相覆盖。
+
+**验证**：`model.test.ts`、`service.test.ts`、`resources.test.ts`、`prompt-library.spec.ts`、`npm run typecheck`、`npm run lint`。
+
+**最近同步判断**：2026-08-03 的上游 `v0.2.5` 没有等价常用 Prompt 集合，保留 fork 实现。
+
 ## 同步上游操作清单
 
 1. 先确认工作区干净或把本地未提交改动隔离；当前待提交的变更必须单独处理，不能混入上游 merge。
