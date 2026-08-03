@@ -48,6 +48,8 @@ import { useFilePicker } from "@/hooks/use-file-picker";
 import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import type { DroppedItem } from "@/components/file-drop/types";
 import { MessageInput, type MessageInputRef, type AttachmentMenuItem } from "./input/input";
+import { PromptLibraryTrigger } from "@/prompt-library/prompt-library-trigger";
+import { insertSavedPrompt, type TextSelection } from "@/prompt-library/model";
 import type { ImageAttachment, MessagePayload } from "./types";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
@@ -1112,7 +1114,11 @@ export function Composer({
     onPullRequestDetected: onGithubPrDetected,
     onPullRequestAdded: onGithubPrAutoAttach,
   });
-  const [cursorIndex, setCursorIndex] = useState(0);
+  const [textSelection, setTextSelection] = useState<TextSelection>(() => ({
+    start: userInput.length,
+    end: userInput.length,
+  }));
+  const [cursorIndex, setCursorIndex] = useState(userInput.length);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -1187,6 +1193,10 @@ export function Composer({
 
   useEffect(() => {
     setCursorIndex((current) => Math.min(current, userInput.length));
+    setTextSelection((current) => ({
+      start: Math.min(current.start, userInput.length),
+      end: Math.min(current.end, userInput.length),
+    }));
   }, [userInput.length]);
 
   const { pickImages } = useImageAttachmentPicker();
@@ -1916,26 +1926,62 @@ export function Composer({
     ],
   );
 
-  const leftContent = useMemo(
-    () =>
-      renderLeftContent({
-        agentControls,
-        agentId,
-        serverId,
-        focusInput,
-        isCompactLayout,
-        isPaneFocused,
-      }),
-    [agentControls, agentId, focusInput, isCompactLayout, isPaneFocused, serverId],
-  );
-
   const handleAttachButtonRef = useCallback((node: View | null) => {
     attachButtonRef.current = node;
   }, []);
 
   const handleSelectionChange = useCallback((selection: { start: number; end: number }) => {
     setCursorIndex(selection.start);
+    setTextSelection(selection);
   }, []);
+
+  const handleInsertSavedPrompt = useCallback(
+    (content: string) => {
+      const result = insertSavedPrompt({
+        value: userInput,
+        prompt: content,
+        selection: textSelection,
+      });
+      setUserInput(result.value);
+      setCursorIndex(result.selection.start);
+      setTextSelection(result.selection);
+      requestAnimationFrame(() => {
+        focusMessageInputWithPlatformStrategy(messageInputRef);
+        messageInputRef.current?.setSelection(result.selection);
+      });
+    },
+    [setUserInput, textSelection, userInput],
+  );
+
+  const leftContent = useMemo(
+    () => (
+      <>
+        <PromptLibraryTrigger
+          disabled={isComposerLocked}
+          isPaneFocused={isPaneFocused}
+          onInsert={handleInsertSavedPrompt}
+        />
+        {renderLeftContent({
+          agentControls,
+          agentId,
+          serverId,
+          focusInput,
+          isCompactLayout,
+          isPaneFocused,
+        })}
+      </>
+    ),
+    [
+      agentControls,
+      agentId,
+      focusInput,
+      handleInsertSavedPrompt,
+      isCompactLayout,
+      isComposerLocked,
+      isPaneFocused,
+      serverId,
+    ],
+  );
 
   const handleFocusChange = useCallback(
     (focused: boolean) => {

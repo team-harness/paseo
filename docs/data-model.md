@@ -621,6 +621,28 @@ Right-sidebar client state splits on whether it is determined by the directory o
 - **Directory-backed** (shared by same-`cwd` workspaces): keyed by `(serverId, cwd)`. Git status/diff, GitHub PR status, PR timeline, file preview content. These are TanStack Query caches, not persisted stores.
 - **Workspace-owned** (independent per workspace): keyed by `workspaceId`, with `cwd` used only as a fallback when no `workspaceId` is present. Review draft comments (`@paseo:review-draft-store`), diff-mode overrides (in-memory), workspace composer attachments, and file-explorer nav/expand state. The `workspaceId` part of these keys is **opaque** — never parse it back into a path.
 
+### Saved Prompt Library
+
+**AsyncStorage key:** `@paseo:prompt-library`
+
+The library is shared across hosts, projects, workspaces, and agents in one app installation. It is
+not stored on the daemon or synchronized through the relay, so each browser profile, desktop app,
+and mobile installation has its own collection.
+
+```typescript
+{
+  items: Array<{
+    id: string;
+    title: string;
+    content: string;
+  }>;
+}
+```
+
+Skip malformed individual entries so one bad prompt does not hide the rest. Treat malformed JSON or
+a malformed root envelope as a load error. Do not overwrite it through normal CRUD; recovery requires
+an explicit destructive reset.
+
 ### Draft Store
 
 **AsyncStorage key:** `paseo-drafts` (version 2)

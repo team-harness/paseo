@@ -151,6 +151,7 @@ export interface MessageInputProps {
 export interface MessageInputRef {
   focus: () => void;
   blur: () => void;
+  setSelection: (selection: { start: number; end: number }) => void;
   runKeyboardAction: (action: MessageInputKeyboardActionKind) => boolean;
   /**
    * Web-only: return the underlying DOM element for focus assertions/retries.
@@ -1192,6 +1193,18 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       },
       blur: () => {
         textInputRef.current?.blur?.();
+      },
+      setSelection: (selection) => {
+        if (isWeb) {
+          const element = getTextInputNativeElement(textInputRef.current) as
+            | (HTMLElement & {
+                setSelectionRange?: (start: number, end: number) => void;
+              })
+            | null;
+          element?.setSelectionRange?.(selection.start, selection.end);
+          return;
+        }
+        textInputRef.current?.setNativeProps({ selection });
       },
       runKeyboardAction: (action) =>
         runMessageInputKeyboardAction(action, {

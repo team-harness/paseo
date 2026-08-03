@@ -237,6 +237,12 @@ describe("translation resources", () => {
     expect(en.panels.draft.newAgent).toBe("New Agent");
   });
 
+  it("includes saved prompt library copy", () => {
+    expect(en.composer.promptLibrary.trigger).toBe("Saved prompts");
+    expect(en.composer.promptLibrary.errors.content_required).toBe("Enter a prompt");
+    expect(zhCN.composer.promptLibrary.trigger).toBe("常用 Prompt");
+  });
+
   it("includes Settings expansion keys for the Batch 3A migration", () => {
     expect(en.settings.diagnostics.title).toBe("Diagnostics");
     expect(en.settings.about.title).toBe("About");
