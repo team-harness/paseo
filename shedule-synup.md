@@ -37,27 +37,43 @@
 
 前提：Step 1 确实合入了上游改动。若本轮无上游更新，跳过本步。
 
-1. 在仓库根目录重新构建当前提交的桌面产物：
+1. 本机发布固定使用 `Paseo Local Code Signing` 身份。签名材料放在
+   `~/.paseo/signing/`，权限必须是目录 `0700`、文件 `0600`：
+   - `Paseo-Local-Code-Signing.p12`
+   - `Paseo-Local-Code-Signing.password`
+   - `Paseo-Local-Code-Signing.cert.pem`
+
+   P12 和密码不进 Git。构建前用
+   `security verify-cert -c ~/.paseo/signing/Paseo-Local-Code-Signing.cert.pem -p codeSign`
+   确认证书仍受本机信任。
+
+   固定本地证书会稳定应用的 designated requirement，但不等同于 Apple Developer ID 公证。网络下载带 quarantine 的安装包仍可能被 Gatekeeper 拒绝；要让任意 Mac 无提示安装，使用 Developer ID 签名并公证。
+
+2. 在仓库根目录重新构建当前提交的桌面产物：
 
    ```bash
-   npm run build:desktop -- --mac --arm64 --publish never
+   PASEO_SIGNING_DIR="$HOME/.paseo/signing"
+   CSC_LINK="$PASEO_SIGNING_DIR/Paseo-Local-Code-Signing.p12" \
+   CSC_KEY_PASSWORD="$(< "$PASEO_SIGNING_DIR/Paseo-Local-Code-Signing.password")" \
+   CSC_NAME="Paseo Local Code Signing" \
+   PASEO_DESKTOP_SMOKE=1 \
+   npm run build:desktop -- --mac --arm64 --publish never -c.mac.timestamp=none
    ```
 
-   该脚本会重建 server 栈、导出 Expo web（`PASEO_WEB_PLATFORM=electron`）并调用 `electron-builder`。这是构建步骤，不运行桌面 smoke，除非用户明确要求。
+   该脚本会重建 server 栈、导出 Expo web（`PASEO_WEB_PLATFORM=electron`）并调用 `electron-builder`，随后用隔离 home 和随机端口运行 packaged desktop smoke，不触碰主 daemon。
 
-2. **不要直接交付** `electron-builder` 刚生成的轻量 DMG。它在本机表现为约 130 MB 的 HFS 镜像，虽然 `hdiutil verify` 可通过，但用户的 Mac 不能可靠安装。必须生成与已验证历史安装包一致的标准布局：
-   - 挂载一个已验证可安装的 arm64 DMG，复制其中完整的 `Paseo.app`；
-   - 用当前构建的 `packages/app/dist` 覆盖 `Paseo.app/Contents/Resources/app-dist`，确保新功能随包发布；
-   - 对 staged app 执行与历史包一致的本地重签名：`codesign --force --deep --sign - <Paseo.app>`；
-   - 在 staging 目录放入 `Paseo.app` 及 `Applications -> /Applications` 快捷方式，再用 `hdiutil create -volname "Paseo <version>-arm64" -srcfolder <staging> -format UDZO -ov <output.dmg>` 封装。
+3. **不要直接交付** `electron-builder` 刚生成的轻量 DMG。它在本机表现为约 130 MB 的 HFS 镜像，虽然 `hdiutil verify` 可通过，但用户的 Mac 不能可靠安装。必须生成与已验证历史安装包一致的标准布局：
+   - 从 `packages/desktop/release/mac-arm64/Paseo.app` 复制本轮完整构建且已签名的应用；
+   - 在 staging 目录放入 `Paseo.app` 及 `Applications -> /Applications` 快捷方式，再用 `hdiutil create -volname "Paseo <version>-arm64" -srcfolder <staging> -fs APFS -format UDZO -ov <output.dmg>` 封装。
 
-   这样得到的是约 160 MB 的 APFS DMG。旧 DMG 只作为桌面运行时和镜像布局基底；实际聊天 UI 必须来自当前提交导出的 `app-dist`，不能把旧 UI 原样重新上传。
+   这样得到的是约 160 MB 的 APFS DMG。不要用旧版 `Paseo.app` 做底座，也不要在封装阶段改动已签名应用，否则会破坏固定签名身份。
 
-3. 交付前必须全部验证：
+4. 交付前必须全部验证：
    - `hdiutil verify <output.dmg>` 成功；
    - 只读挂载后，`Paseo.app/Contents/MacOS/Paseo` 为 `arm64`；
    - 只读挂载后，`Paseo.app/Contents/Info.plist` 的 `CFBundleShortVersionString` 必须等于当前提交的版本号；同时从 `app.asar` 提取 `node_modules/@getpaseo/server/package.json`，确认其 `version` 也相同。仅替换 `app-dist` 不足以升级桌面主进程和 daemon，禁止用旧版 `Paseo.app` 作为发布包底座；
    - 确认挂载包内 `app-dist/index.html` 指向本轮导出的 bundle，并能检索到本轮新增 UI 文案/代码；
+   - `codesign --verify --deep --strict <Paseo.app>` 成功，`Authority` 为 `Paseo Local Code Signing`，designated requirement 绑定证书而不是 `cdhash`；
    - DMG 使用 APFS 镜像布局、大小与标准包同量级（约 160 MB），不能把约 130 MB 的轻量 HFS 包当成交付物；
    - 记录文件名、版本号、提交 SHA、大小和 SHA-256。
 
