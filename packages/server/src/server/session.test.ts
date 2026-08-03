@@ -248,8 +248,11 @@ const agentResponseMocks = vi.hoisted(() => ({
 }));
 
 const spawnMocks = vi.hoisted(() => ({
-  execCommand: vi.fn(),
   spawnWorkspaceScript: vi.fn(),
+}));
+
+const gitCommandMocks = vi.hoisted(() => ({
+  runGitCommand: vi.fn(),
 }));
 
 const paseoWorktreeServiceMocks = vi.hoisted(() => ({
@@ -300,11 +303,11 @@ vi.mock("./paseo-worktree-service.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../utils/spawn.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../utils/spawn.js")>();
+vi.mock("../utils/run-git-command.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/run-git-command.js")>();
   return {
     ...actual,
-    execCommand: spawnMocks.execCommand,
+    runGitCommand: gitCommandMocks.runGitCommand,
   };
 });
 
@@ -415,6 +418,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     paseoHome: options.paseoHome ?? "/tmp/paseo-home",
     agentManager: asAgentManager({
       listAgents: vi.fn(() => []),
+      listProviderSubagentActivity: vi.fn(() => []),
       subscribe: vi.fn(() => () => {}),
       ...options.agentManager,
     }),
@@ -4094,7 +4098,7 @@ describe("session stash mutation handling", () => {
     const messages: unknown[] = [];
     const workspaceGitService = { getSnapshot: vi.fn().mockResolvedValue({}) };
     const session = createSessionForTest({ workspaceGitService, messages });
-    spawnMocks.execCommand.mockResolvedValue({
+    gitCommandMocks.runGitCommand.mockResolvedValue({
       stdout: "",
       stderr: "",
       exitCode: 0,
@@ -4109,6 +4113,10 @@ describe("session stash mutation handling", () => {
       requestId: "request-stash-push",
     });
 
+    expect(gitCommandMocks.runGitCommand).toHaveBeenCalledWith(
+      ["stash", "push", "--include-untracked", "-m", "paseo-auto-stash: feature"],
+      { cwd: "/tmp/repo", timeout: 120_000 },
+    );
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/repo", {
       force: true,
       reason: "stash-push",
@@ -4128,7 +4136,7 @@ describe("session stash mutation handling", () => {
     const messages: unknown[] = [];
     const workspaceGitService = { getSnapshot: vi.fn().mockResolvedValue({}) };
     const session = createSessionForTest({ workspaceGitService, messages });
-    spawnMocks.execCommand.mockResolvedValue({
+    gitCommandMocks.runGitCommand.mockResolvedValue({
       stdout: "",
       stderr: "",
       exitCode: 0,
@@ -4143,6 +4151,10 @@ describe("session stash mutation handling", () => {
       requestId: "request-stash-pop",
     });
 
+    expect(gitCommandMocks.runGitCommand).toHaveBeenCalledWith(["stash", "pop", "stash@{0}"], {
+      cwd: "/tmp/repo",
+      timeout: 120_000,
+    });
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/repo", {
       force: true,
       reason: "stash-pop",

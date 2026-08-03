@@ -224,9 +224,18 @@ function StatusBarSessionPinRow({
   onNavigate: (workspace: SidebarWorkspacePlacement) => void;
 }) {
   const { t } = useTranslation();
-  const subtitle = showHostLabel
-    ? `${workspace.projectName} · ${hostLabel}`
-    : workspace.projectName;
+  const hostBadge = useMemo(
+    () =>
+      showHostLabel
+        ? {
+            serverId: workspace.serverId,
+            label: hostLabel,
+            color: "none" as const,
+            showLabel: true,
+          }
+        : null,
+    [hostLabel, showHostLabel, workspace.serverId],
+  );
   const handlePress = useCallback(() => {
     onNavigate(workspace);
   }, [onNavigate, workspace]);
@@ -241,7 +250,8 @@ function StatusBarSessionPinRow({
       >
         <SidebarWorkspaceRowContent
           workspace={entry}
-          subtitle={subtitle}
+          hostBadge={hostBadge}
+          leadingProjectName={workspace.projectName}
           isHovered={false}
           isLoading={false}
           reserveIdleStatusIndicatorSpace={false}

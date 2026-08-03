@@ -354,6 +354,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const clearAgentTurnLiveness = useSessionStore((state) => state.clearAgentTurnLiveness);
   const clearAgentStreamHead = useSessionStore((state) => state.clearAgentStreamHead);
   const setAgentTimelineCursor = useSessionStore((state) => state.setAgentTimelineCursor);
+  const setAgentTimelineHasNewer = useSessionStore((state) => state.setAgentTimelineHasNewer);
   const setInitializingAgents = useSessionStore((state) => state.setInitializingAgents);
   const bumpHistorySyncGeneration = useSessionStore((state) => state.bumpHistorySyncGeneration);
   const markAgentHistorySynchronized = useSessionStore(
@@ -653,6 +654,13 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
             acknowledgedClientMessageIds: result.acknowledgedClientMessageIds,
           });
         }
+        if (payload.direction !== "before") {
+          setAgentTimelineHasNewer(serverId, (current) => {
+            const next = new Map(current);
+            next.set(agentId, payload.hasNewer);
+            return next;
+          });
+        }
         markAgentHistorySynchronized(serverId, agentId);
       } else {
         applyAgentTimelineResponseState(serverId, agentId, {
@@ -660,6 +668,10 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           head: result.head,
           range: result.cursorChanged ? (result.cursor ?? null) : (currentCursor ?? null),
           older: result.older,
+          newer:
+            payload.direction === "before"
+              ? timeline.status === "synced" && timeline.newer === "available"
+              : payload.hasNewer,
           synchronized: shouldMarkAuthoritativeHistoryApplied,
           acknowledgedClientMessageIds: result.acknowledgedClientMessageIds,
         });
@@ -686,6 +698,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       recoverTimelineGap,
       serverId,
       setAgentStreamState,
+      setAgentTimelineHasNewer,
       setInitializingAgents,
     ],
   );
@@ -756,6 +769,11 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   useEffect(
     () =>
       getHostRuntimeStore().subscribeAgentStoppedRunning(serverId, (agentId) => {
+        const session = useSessionStore.getState().sessions[serverId];
+        const timeline = selectAgentTimelineState(session, agentId);
+        if (timeline.status === "synced" && timeline.newer === "available") {
+          return;
+        }
         viewedTimelineSyncRef.current?.reconcileAgent(agentId);
       }),
     [serverId],

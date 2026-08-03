@@ -3176,6 +3176,12 @@ test("hydrateTimelineFromProvider restores and broadcasts provider children from
       status: "completed",
     }),
   ]);
+  expect(manager.listProviderSubagentActivity()).toEqual([
+    expect.objectContaining({
+      id: "restored-child",
+      parentAgentId: snapshot.id,
+    }),
+  ]);
   expect(events).toContainEqual({
     type: "provider_subagent",
     event: {
@@ -6075,6 +6081,7 @@ test("subscribe hides provider subagents of internal parents from global subscri
   expect(() => manager.fetchProviderSubagentTimeline(internalAgentId, "hidden-child")).toThrow(
     `Unknown agent '${internalAgentId}'`,
   );
+  expect(manager.listProviderSubagentActivity()).toEqual([]);
 });
 
 test("subscribe emits state events for internal agents when subscribed by agentId", async () => {

@@ -59,6 +59,15 @@ type WorkspaceUpdatePayload = Extract<
   { type: "workspace_update" }
 >["payload"];
 
+function getWorkspaceUpdates(
+  emitted: Array<{ type: string; payload: unknown }>,
+): Array<{ type: "workspace_update"; payload: WorkspaceUpdatePayload }> {
+  return emitted.filter((message) => message.type === "workspace_update") as Array<{
+    type: "workspace_update";
+    payload: WorkspaceUpdatePayload;
+  }>;
+}
+
 const REPO_CWD = path.resolve("/tmp/repo");
 const REPO_SUBSCRIPTION_REQUEST_ID = `subscription:${REPO_CWD}`;
 
@@ -367,12 +376,9 @@ describe("workspace git watch targets", () => {
       }),
     );
 
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.waitFor(() => expect(getWorkspaceUpdates(emitted)).toHaveLength(1));
 
-    const workspaceUpdates = emitted.filter(
-      (message) => message.type === "workspace_update",
-    ) as Array<{ type: "workspace_update"; payload: WorkspaceUpdatePayload }>;
+    const workspaceUpdates = getWorkspaceUpdates(emitted);
     expect(workspaceUpdates).toHaveLength(1);
     expect(workspaceUpdates[0]?.payload).toMatchObject({
       kind: "upsert",

@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `048b82f2a7b3ecc9b62bc5b817729f4ca2741863`，同步于 2026-08-02。
-- 最近同步 merge commit：`bf1f20d75`。
+- 最近同步基线：`upstream/main` = `5d15e40a2b057ec7775f9884861fb462e637a59d`，同步于 2026-08-03。
+- 最近同步 merge commit：待本轮 merge 提交后回填。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-03: `upstream/main` `5d15e40a2` / `v0.2.5`
+
+- 合入上游原生子 Agent 工作区活跃状态、跨平台 Git 观察与 daemon 级 Git 进程限流、旧 daemon 时间线去重、聊天大纲、全局路由工作区保活、移动端粘贴图片、侧边栏 Host 标识和 Nix 桌面图标修复。
+- 聊天分享与上游聊天大纲、时间线 detached/tail 导航组合；分享继续加载权威完整历史并在客户端上传前执行脱敏和体积约束。桌面端采用上游图标资源路径，同时保留 fork 的 macOS entitlements、本地签名和标准 APFS DMG 约束。
+- 上游仍未实现 Status Bar/`status.summary`、usage ledger、多 Host 汇总、共享侧边栏 Pin、计划任务创建时选择既有 Agent、Codex 定价与 usage accounting 或 Threadshare 分享。上述 fork 能力全部保留，本轮没有重复能力下线。
 
 ### 2026-08-02: `upstream/main` `048b82f2a` / `v0.2.5`
 
