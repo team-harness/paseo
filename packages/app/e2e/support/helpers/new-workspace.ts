@@ -502,6 +502,153 @@ function getStringField(input: Record<string, unknown>, key: string): string | n
   return typeof value === "string" ? value : null;
 }
 
+function getObjectField(
+  input: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> | null {
+  const value = input[key];
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+interface SessionMessageParts {
+  message: Record<string, unknown> | null;
+  payload: Record<string, unknown> | null;
+  workspace: Record<string, unknown> | null;
+}
+
+function getSessionMessageParts(message: WebSocketMessage): SessionMessageParts {
+  const sessionMessage = getSessionMessage(message);
+  const payload = sessionMessage ? getObjectField(sessionMessage, "payload") : null;
+  return {
+    message: sessionMessage,
+    payload,
+    workspace: payload ? getObjectField(payload, "workspace") : null,
+  };
+}
+
+function isArchiveResponse(parts: SessionMessageParts, requestId: string): boolean {
+  return (
+    parts.message?.type === "archive_workspace_response" &&
+    getStringField(parts.payload ?? {}, "requestId") === requestId
+  );
+}
+
+function isArchivingWorkspaceUpsert(parts: SessionMessageParts, workspaceId: string): boolean {
+  return (
+    parts.message?.type === "workspace_update" &&
+    parts.payload?.kind === "upsert" &&
+    getStringField(parts.workspace ?? {}, "id") === workspaceId &&
+    getStringField(parts.workspace ?? {}, "archivingAt") !== null
+  );
+}
+
+function isWorkspaceRemoval(parts: SessionMessageParts, workspaceId: string): boolean {
+  return (
+    parts.message?.type === "workspace_update" &&
+    parts.payload?.kind === "remove" &&
+    getStringField(parts.payload, "id") === workspaceId
+  );
+}
+
+export interface WorkspaceArchivingDelayControl {
+  archive(): Promise<void>;
+  release(): void;
+  waitForArchiveResponse(): Promise<string | null>;
+  waitForArchivingUpsert(): Promise<void>;
+  waitForDelayedRemoval(): Promise<void>;
+}
+
+/**
+ * Sends an archive request through the browser's own daemon session, then holds the final remove
+ * update after the daemon announces `archivingAt`. The request must use the browser session because
+ * the daemon's archiving marker is intentionally session-scoped.
+ */
+export async function delayBrowserWorkspaceRemovalAfterArchiving(
+  page: Page,
+  workspaceId: string,
+): Promise<WorkspaceArchivingDelayControl> {
+  const requestId = `e2e-archive-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const delayedForwards: Array<() => void> = [];
+  let archivingUpsertSeen = false;
+  let releaseRequested = false;
+  let sendToServer: ((message: WebSocketMessage) => void) | null = null;
+  let resolveConnection: (() => void) | null = null;
+  let resolveArchiveResponse: ((error: string | null) => void) | null = null;
+  let resolveArchivingUpsert: (() => void) | null = null;
+  let resolveDelayedRemoval: (() => void) | null = null;
+  const connectionReady = new Promise<void>((resolve) => {
+    resolveConnection = resolve;
+  });
+  const archiveResponseSeenPromise = new Promise<string | null>((resolve) => {
+    resolveArchiveResponse = resolve;
+  });
+  const archivingUpsertSeenPromise = new Promise<void>((resolve) => {
+    resolveArchivingUpsert = resolve;
+  });
+  const delayedRemovalSeenPromise = new Promise<void>((resolve) => {
+    resolveDelayedRemoval = resolve;
+  });
+
+  await page.routeWebSocket(daemonWsRoutePattern(), (ws) => {
+    const server = ws.connectToServer();
+    sendToServer = (message) => server.send(message);
+    resolveConnection?.();
+
+    ws.onMessage((message) => server.send(message));
+    server.onMessage((message) => {
+      const parts = getSessionMessageParts(message);
+
+      if (isArchiveResponse(parts, requestId)) {
+        resolveArchiveResponse?.(getStringField(parts.payload ?? {}, "error"));
+      }
+
+      if (isArchivingWorkspaceUpsert(parts, workspaceId)) {
+        archivingUpsertSeen = true;
+        resolveArchivingUpsert?.();
+        ws.send(message);
+        return;
+      }
+
+      if (archivingUpsertSeen && isWorkspaceRemoval(parts, workspaceId)) {
+        resolveDelayedRemoval?.();
+        if (releaseRequested) {
+          ws.send(message);
+        } else {
+          delayedForwards.push(() => ws.send(message));
+        }
+        return;
+      }
+
+      ws.send(message);
+    });
+  });
+
+  return {
+    async archive() {
+      await connectionReady;
+      sendToServer?.(
+        JSON.stringify({
+          type: "session",
+          message: {
+            type: "archive_workspace_request",
+            workspaceId,
+            requestId,
+          },
+        }),
+      );
+    },
+    release() {
+      releaseRequested = true;
+      for (const forward of delayedForwards.splice(0)) {
+        forward();
+      }
+    },
+    waitForArchiveResponse: () => archiveResponseSeenPromise,
+    waitForArchivingUpsert: () => archivingUpsertSeenPromise,
+    waitForDelayedRemoval: () => delayedRemovalSeenPromise,
+  };
+}
+
 export interface AgentCreatedDelayControl {
   release(): void;
   waitForCreateRequest(): Promise<void>;

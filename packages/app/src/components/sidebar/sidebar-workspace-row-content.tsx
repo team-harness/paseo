@@ -1,5 +1,6 @@
 import { memo, useCallback, useId, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   Pressable,
   Text,
@@ -21,9 +22,10 @@ import {
 } from "lucide-react-native";
 import { HostBadge } from "@/components/sidebar/host-badge";
 import { ProjectStatusIndicator } from "@/components/sidebar/project-leading-visual";
-import { PulsingStatusDot } from "@/components/sidebar/pulsing-status-dot";
+import { SyncedLoader } from "@/components/synced-loader";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
 import type { HostBadgeModel } from "@/hosts/appearance";
+import { STATUS_BUCKET_LABELS } from "@/hooks/sidebar-status-view-model";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { useAppSettings } from "@/hooks/use-settings";
 import type { Theme } from "@/styles/theme";
@@ -47,13 +49,21 @@ const EMPHASIZED_STATUS_DOT_OFFSET = -1;
 
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const amberColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber[500] });
+const syncedLoaderColorMapping = (theme: Theme) => ({
+  color:
+    theme.colorScheme === "light"
+      ? theme.colors.palette.amber[700]
+      : theme.colors.palette.amber[500],
+});
 const blueColorMapping = (theme: Theme) => ({ color: theme.colors.palette.blue[500] });
 const greenColorMapping = (theme: Theme) => ({ color: theme.colors.palette.green[500] });
 const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
 const purpleColorMapping = (theme: Theme) => ({ color: theme.colors.palette.purple[500] });
 
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
+const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
+const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const ThemedMonitor = withUnistyles(Monitor);
 const ThemedFolder = withUnistyles(Folder);
 const ThemedFolderGit2 = withUnistyles(FolderGit2);
@@ -177,9 +187,13 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   reserveIdleStatusIndicatorSpace?: boolean;
   children?: ReactNode;
 }) {
+  const { t } = useTranslation();
   const {
     settings: { workspaceTitleSource },
   } = useAppSettings();
+  const loadingAccessibilityLabel = isCreating
+    ? t("sidebar.workspace.status.creating")
+    : t("sidebar.workspace.actions.archiving");
   const workspaceLabel = resolveSidebarWorkspacePrimaryLabel({ workspace, workspaceTitleSource });
   const hasTitleAccessory = Boolean(scriptIconKind || workspace.prHint || hostBadge);
   const workspaceBranchTextStyle = useMemo(
@@ -204,6 +218,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
             projectViewKey={workspace.projectViewKey}
             statusBucket={workspace.statusBucket}
             loading={isLoading}
+            loadingAccessibilityLabel={loadingAccessibilityLabel}
             testID={`sidebar-row-project-icon-${workspace.workspaceKey}`}
           />
         ) : (
@@ -211,6 +226,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
             bucket={workspace.statusBucket}
             workspaceKind={workspace.workspaceKind}
             loading={isLoading}
+            loadingAccessibilityLabel={loadingAccessibilityLabel}
             reserveIdleSpace={reserveIdleStatusIndicatorSpace}
           />
         )}
@@ -273,36 +289,53 @@ function WorkspaceStatusIndicator({
   bucket,
   workspaceKind,
   loading = false,
+  loadingAccessibilityLabel,
   reserveIdleSpace = true,
 }: {
   bucket: SidebarWorkspaceEntry["statusBucket"];
   workspaceKind: SidebarWorkspaceEntry["workspaceKind"];
   loading?: boolean;
+  loadingAccessibilityLabel: string;
   reserveIdleSpace?: boolean;
 }) {
-  // Busy is a pulsing dot here for the same reason it is on a project icon: every status in
-  // the sidebar is a dot, and a row with a project icon simply moves that dot onto the icon.
-  // A row starting up and a row working are both busy, so they share the dot and differ only
-  // in testID.
   if (loading) {
     return (
-      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-loading">
-        <PulsingStatusDot style={styles.standaloneRunningDot} />
+      <View
+        role="status"
+        accessibilityLabel={loadingAccessibilityLabel}
+        style={styles.workspaceStatusDot}
+        testID="workspace-status-indicator-loading"
+      >
+        <View testID="sidebar-status-visual-loading-spinner">
+          <ThemedLoadingSpinner size={8} uniProps={foregroundMutedColorMapping} />
+        </View>
       </View>
     );
   }
 
   if (shouldRenderSyncedStatusLoader({ bucket })) {
     return (
-      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-running">
-        <PulsingStatusDot style={styles.standaloneRunningDot} />
+      <View
+        role="status"
+        accessibilityLabel={STATUS_BUCKET_LABELS.running}
+        style={styles.workspaceStatusDot}
+        testID="workspace-status-indicator-running"
+      >
+        <View testID="sidebar-status-visual-synced-loader">
+          <ThemedSyncedLoader size={11} uniProps={syncedLoaderColorMapping} />
+        </View>
       </View>
     );
   }
 
   if (bucket === "needs_input") {
     return (
-      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-needs_input">
+      <View
+        role="status"
+        accessibilityLabel={STATUS_BUCKET_LABELS.needs_input}
+        style={styles.workspaceStatusDot}
+        testID="workspace-status-indicator-needs_input"
+      >
         <ThemedCircleAlert size={14} uniProps={amberColorMapping} />
       </View>
     );
@@ -310,7 +343,12 @@ function WorkspaceStatusIndicator({
 
   if (bucket === "attention") {
     return (
-      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-attention">
+      <View
+        role="status"
+        accessibilityLabel={STATUS_BUCKET_LABELS.attention}
+        style={styles.workspaceStatusDot}
+        testID="workspace-status-indicator-attention"
+      >
         <View style={styles.standaloneStatusDot} />
       </View>
     );
@@ -322,8 +360,13 @@ function WorkspaceStatusIndicator({
     // edge to read against — a workspace carrying its own glyph starts looking like a project
     // header. The dot is muted to half opacity so it holds the rail without reporting status.
     return reserveIdleSpace ? (
-      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-done">
-        <View style={styles.idleStatusDot} />
+      <View
+        role="status"
+        accessibilityLabel={STATUS_BUCKET_LABELS.done}
+        style={styles.workspaceStatusDot}
+        testID="workspace-status-indicator-done"
+      >
+        <View style={styles.idleStatusDot} testID="sidebar-status-visual-done-dot" />
       </View>
     ) : null;
   }
@@ -342,7 +385,12 @@ function WorkspaceStatusIndicator({
       ? EMPHASIZED_STATUS_DOT_OFFSET
       : DEFAULT_STATUS_DOT_OFFSET;
   return (
-    <View style={styles.workspaceStatusDot} testID={`workspace-status-indicator-${bucket}`}>
+    <View
+      role="status"
+      accessibilityLabel={STATUS_BUCKET_LABELS[bucket]}
+      style={styles.workspaceStatusDot}
+      testID={`workspace-status-indicator-${bucket}`}
+    >
       <KindIcon size={14} uniProps={foregroundMutedColorMapping} />
       {dotColorStyle ? (
         <StatusDotOverlay
@@ -638,12 +686,6 @@ const styles = StyleSheet.create((theme) => ({
     height: 8,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.palette.green[500],
-  },
-  standaloneRunningDot: {
-    width: 8,
-    height: 8,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: getStatusDotColor({ theme, bucket: "running" }) ?? undefined,
   },
   idleStatusDot: {
     width: 8,

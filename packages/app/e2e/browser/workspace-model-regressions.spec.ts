@@ -9,6 +9,7 @@ import { clickNewChat, gotoWorkspace } from "../support/helpers/launcher";
 import {
   assertNewWorkspaceSidebarAndHeader,
   connectNewWorkspaceDaemonClient,
+  delayBrowserWorkspaceRemovalAfterArchiving,
   expectNewWorkspaceProjectSelected,
   openGlobalNewWorkspaceComposer,
   selectWorkspaceIsolation,
@@ -27,6 +28,7 @@ import { getVisibleWorkspaceAgentTabIds } from "../support/helpers/workspace-tab
 
 type NewWorkspaceDaemonClient = Awaited<ReturnType<typeof connectNewWorkspaceDaemonClient>>;
 type WorkspaceIndicator = "attention" | "done" | "failed" | "loading" | "needs_input" | "running";
+type SidebarStatusVisual = "done-dot" | "loading-spinner" | "synced-loader";
 
 interface CreatedAgentAssertion {
   workspaceId: string;
@@ -145,6 +147,33 @@ async function expectWorkspaceRowDoesNotShowIndicator(
   await expect(
     row.locator(`[data-testid="workspace-status-indicator-${input.indicator}"]`),
   ).toHaveCount(0, { timeout: 5_000 });
+}
+
+async function expectWorkspaceRowStatusVisual(
+  page: import("@playwright/test").Page,
+  input: {
+    rowTestId: string;
+    accessibilityLabel: string;
+    visual: SidebarStatusVisual | null;
+  },
+) {
+  const row = page.getByTestId(input.rowTestId);
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await expect(row.getByRole("status", { name: input.accessibilityLabel })).toBeVisible({
+    timeout: 30_000,
+  });
+  for (const visual of [
+    "done-dot",
+    "loading-spinner",
+    "synced-loader",
+  ] satisfies SidebarStatusVisual[]) {
+    const locator = row.getByTestId(`sidebar-status-visual-${visual}`);
+    if (visual === input.visual) {
+      await expect(locator).toBeVisible({ timeout: 30_000 });
+    } else {
+      await expect(locator).toHaveCount(0);
+    }
+  }
 }
 
 test.describe("Workspace model regressions", () => {
@@ -349,9 +378,19 @@ test.describe("Workspace model regressions", () => {
         rowTestId: firstRowTestId,
         indicator: "running",
       });
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
+      await expectWorkspaceRowStatusVisual(page, {
+        rowTestId: firstRowTestId,
+        accessibilityLabel: "Working",
+        visual: "synced-loader",
+      });
+      await expectWorkspaceRowHasOnlyIndicator(page, {
         rowTestId: secondRowTestId,
-        indicator: "running",
+        indicator: "done",
+      });
+      await expectWorkspaceRowStatusVisual(page, {
+        rowTestId: secondRowTestId,
+        accessibilityLabel: "Done",
+        visual: "done-dot",
       });
 
       await openGlobalNewWorkspaceComposer(page);
@@ -391,13 +430,28 @@ test.describe("Workspace model regressions", () => {
         rowTestId: firstRowTestId,
         indicator: "running",
       });
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
-        rowTestId: secondRowTestId,
-        indicator: "running",
+      await expectWorkspaceRowStatusVisual(page, {
+        rowTestId: firstRowTestId,
+        accessibilityLabel: "Working",
+        visual: "synced-loader",
       });
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
+      await expectWorkspaceRowHasOnlyIndicator(page, {
+        rowTestId: secondRowTestId,
+        indicator: "done",
+      });
+      await expectWorkspaceRowStatusVisual(page, {
+        rowTestId: secondRowTestId,
+        accessibilityLabel: "Done",
+        visual: "done-dot",
+      });
+      await expectWorkspaceRowHasOnlyIndicator(page, {
         rowTestId: createdRowTestId,
-        indicator: "running",
+        indicator: "done",
+      });
+      await expectWorkspaceRowStatusVisual(page, {
+        rowTestId: createdRowTestId,
+        accessibilityLabel: "Done",
+        visual: "done-dot",
       });
 
       await switchSidebarToStatusGrouping(page);
@@ -421,7 +475,65 @@ test.describe("Workspace model regressions", () => {
         rowTestId: createdRowTestId,
         buckets: ["running", "needs_input", "attention"],
       });
+      await expectWorkspaceRowStatusVisual(page, {
+        rowTestId: firstRowTestId,
+        accessibilityLabel: "Working",
+        visual: "synced-loader",
+      });
+      await expectWorkspaceRowStatusVisual(page, {
+        rowTestId: secondRowTestId,
+        accessibilityLabel: "Done",
+        visual: null,
+      });
+      await expectWorkspaceRowStatusVisual(page, {
+        rowTestId: createdRowTestId,
+        accessibilityLabel: "Done",
+        visual: null,
+      });
     } finally {
+      await seeded.cleanup();
+    }
+  });
+
+  test("archiving uses a spinner instead of the running loader in both sidebar groupings", async ({
+    page,
+  }) => {
+    const serverId = getServerId();
+    const seeded = await seedWorkspace({ repoPrefix: "workspace-archiving-indicator-" });
+    const archiveDelay = await delayBrowserWorkspaceRemovalAfterArchiving(page, seeded.workspaceId);
+
+    try {
+      await gotoWorkspace(page, seeded.workspaceId);
+      await waitForSidebarHydration(page);
+
+      const rowTestId = `sidebar-workspace-row-${serverId}:${seeded.workspaceId}`;
+      await archiveDelay.archive();
+      await archiveDelay.waitForArchivingUpsert();
+
+      await expectWorkspaceRowHasOnlyIndicator(page, {
+        rowTestId,
+        indicator: "loading",
+      });
+      await expectWorkspaceRowStatusVisual(page, {
+        rowTestId,
+        accessibilityLabel: "Archiving...",
+        visual: "loading-spinner",
+      });
+
+      await switchSidebarToStatusGrouping(page);
+      await expectWorkspaceRowInStatusBucket(page, { rowTestId, bucket: "done" });
+      await expectWorkspaceRowStatusVisual(page, {
+        rowTestId,
+        accessibilityLabel: "Archiving...",
+        visual: "loading-spinner",
+      });
+
+      await archiveDelay.waitForDelayedRemoval();
+      archiveDelay.release();
+      await expect(archiveDelay.waitForArchiveResponse()).resolves.toBeNull();
+      await expect(page.getByTestId(rowTestId)).toHaveCount(0, { timeout: 30_000 });
+    } finally {
+      archiveDelay.release();
       await seeded.cleanup();
     }
   });

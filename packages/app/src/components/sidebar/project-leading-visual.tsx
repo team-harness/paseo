@@ -1,8 +1,9 @@
+import type { ReactNode } from "react";
 import { ActivityIndicator, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown, ChevronRight, CircleAlert } from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
-import { PulsingStatusDot } from "@/components/sidebar/pulsing-status-dot";
+import { SyncedLoader } from "@/components/synced-loader";
 import { STATUS_BUCKET_LABELS } from "@/hooks/sidebar-status-view-model";
 import type { Theme } from "@/styles/theme";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
@@ -32,18 +33,29 @@ const STATUS_BADGE_OFFSET = -5;
 // against the 8pt dot — the two states read as the same-diameter disc.
 const STATUS_BADGE_DOT_SIZE = 8;
 const STATUS_BADGE_ALERT_SIZE = 10;
+// SyncedLoader clamps its dot size at 2px, so sizes 5-10 all render the same 5x8 dot grid.
+const STATUS_BADGE_LOADER_SIZE = 7;
+// The dot-comet reads a hair right inside the round badge; this optical nudge centers it.
+const STATUS_BADGE_LOADER_NUDGE_X = -0.67;
 // Matches the workspace title's lineHeight (sidebar-workspace-row-content's
 // workspaceBranchText) so the icon centers on the title rather than floating above it.
 const LEADING_SLOT_HEIGHT = 20;
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
+const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
 const amberColorMapping = (theme: Theme) => ({
   color: theme.colors.palette.amber[500],
+});
+const syncedLoaderColorMapping = (theme: Theme) => ({
+  color:
+    theme.colorScheme === "light"
+      ? theme.colors.palette.amber[700]
+      : theme.colors.palette.amber[500],
 });
 
 /**
@@ -96,15 +108,16 @@ export function ProjectLeadingVisual({
 
 // The project icon (the lettered box) is what marks a row as a *project* rather than a
 // workspace, so it always stays and status annotates it instead of replacing it. Every
-// surfaced bucket lands in the identical corner badge — an amber alert glyph for needs_input,
-// a colored disc for the rest, nothing for done — so the badge reads as one fixed shell and
-// only its contents change.
+// surfaced bucket lands in the identical corner badge — a synchronized loader for running,
+// an amber alert glyph for needs_input, colored dots for failed/attention, and nothing for
+// done — so the badge reads as one fixed shell and only its contents change.
 export function ProjectStatusIndicator({
   iconDataUri,
   displayName,
   projectViewKey,
   statusBucket,
   loading = false,
+  loadingAccessibilityLabel = "Loading",
   testID,
 }: {
   iconDataUri: string | null;
@@ -112,26 +125,27 @@ export function ProjectStatusIndicator({
   projectViewKey: string;
   statusBucket: SidebarStateBucket | null;
   loading?: boolean;
+  loadingAccessibilityLabel?: string;
   testID?: string;
 }) {
   const placeholderInitial = projectIconPlaceholderLabelFromDisplayName(displayName)
     .charAt(0)
     .toUpperCase();
-  // A row that's still starting up and a row that's working are both "busy", and at 8pt
-  // there's no room to draw the difference — so `loading` just resolves to the running bucket
-  // and they share one badge.
-  const badgeBucket = loading ? "running" : statusBucket;
-  const badgeContent = getProjectStatusBadgeContent(badgeBucket);
+  const badgeContent = getProjectStatusBadgeContent(statusBucket);
+  const accessibilityLabel = getProjectStatusAccessibilityLabel({
+    loading,
+    loadingAccessibilityLabel,
+    statusBucket,
+  });
+  const indicatorTestID = getProjectStatusIndicatorTestID({ loading, statusBucket, testID });
+  const statusBadge = renderProjectStatusBadge({ loading, badgeContent });
 
   return (
     <View
+      role={accessibilityLabel ? "status" : undefined}
+      accessibilityLabel={accessibilityLabel}
       style={styles.projectLeadingVisualSlot}
-      testID={
-        testID ??
-        (statusBucket && statusBucket !== "done"
-          ? `project-status-indicator-${statusBucket}`
-          : "project-icon-only")
-      }
+      testID={indicatorTestID}
     >
       <View style={styles.projectIconBox}>
         <ProjectIcon
@@ -139,42 +153,84 @@ export function ProjectStatusIndicator({
           placeholderInitial={placeholderInitial}
           projectViewKey={projectViewKey}
         />
-        {badgeContent === null || badgeBucket === null ? null : (
-          <ProjectStatusBadge content={badgeContent} statusBucket={badgeBucket} />
-        )}
+        {statusBadge}
       </View>
     </View>
   );
 }
 
-function ProjectStatusBadge({
-  content,
+function getProjectStatusAccessibilityLabel({
+  loading,
+  loadingAccessibilityLabel,
   statusBucket,
 }: {
-  content: ProjectStatusBadgeContent;
-  statusBucket: SidebarStateBucket;
-}) {
+  loading: boolean;
+  loadingAccessibilityLabel: string;
+  statusBucket: SidebarStateBucket | null;
+}): string | undefined {
+  if (loading) return loadingAccessibilityLabel;
+  if (statusBucket) return STATUS_BUCKET_LABELS[statusBucket];
+  return undefined;
+}
+
+function getProjectStatusIndicatorTestID({
+  loading,
+  statusBucket,
+  testID,
+}: {
+  loading: boolean;
+  statusBucket: SidebarStateBucket | null;
+  testID?: string;
+}): string {
+  if (testID) return testID;
+  if (loading) return "project-status-indicator-loading";
+  if (statusBucket && statusBucket !== "done") {
+    return `project-status-indicator-${statusBucket}`;
+  }
+  return "project-icon-only";
+}
+
+function renderProjectStatusBadge({
+  loading,
+  badgeContent,
+}: {
+  loading: boolean;
+  badgeContent: ProjectStatusBadgeContent | null;
+}): ReactNode {
+  if (loading) {
+    return (
+      <ProjectStatusBadge>
+        <View testID="sidebar-status-visual-loading-spinner">
+          <ThemedActivityIndicator size={8} uniProps={foregroundMutedColorMapping} />
+        </View>
+      </ProjectStatusBadge>
+    );
+  }
+  if (badgeContent === null) return null;
+  return <ProjectStatusBadge>{renderProjectStatusBadgeContent(badgeContent)}</ProjectStatusBadge>;
+}
+
+function ProjectStatusBadge({ children }: { children: ReactNode }) {
   return (
-    <View
-      role="status"
-      accessibilityLabel={STATUS_BUCKET_LABELS[statusBucket]}
-      style={styles.statusBadge}
-      testID="project-status-badge"
-    >
-      {content.kind === "alert" ? (
-        <ThemedCircleAlert size={STATUS_BADGE_ALERT_SIZE} uniProps={amberColorMapping} />
-      ) : (
-        <ProjectStatusDot bucket={content.bucket} />
-      )}
+    <View style={styles.statusBadge} testID="project-status-badge">
+      {children}
     </View>
   );
 }
 
-function ProjectStatusDot({ bucket }: { bucket: ProjectStatusBadgeDotBucket }) {
-  if (bucket !== "running") {
-    return <View testID="project-status-dot" style={getStatusDotColorStyle(bucket)} />;
+function renderProjectStatusBadgeContent(content: ProjectStatusBadgeContent): ReactNode {
+  switch (content.kind) {
+    case "loader":
+      return (
+        <View style={styles.runningLoaderNudge} testID="sidebar-status-visual-synced-loader">
+          <ThemedSyncedLoader size={STATUS_BADGE_LOADER_SIZE} uniProps={syncedLoaderColorMapping} />
+        </View>
+      );
+    case "alert":
+      return <ThemedCircleAlert size={STATUS_BADGE_ALERT_SIZE} uniProps={amberColorMapping} />;
+    case "dot":
+      return <View testID="project-status-dot" style={getStatusDotColorStyle(content.bucket)} />;
   }
-  return <PulsingStatusDot testID="project-status-dot" style={styles.statusDotRunning} />;
 }
 
 function ProjectIcon({
@@ -208,9 +264,7 @@ function ProjectInlineChevron({ chevron }: { chevron: "expand" | "collapse" | nu
   return <ChevronRight size={14} color="#9ca3af" />;
 }
 
-function getStatusDotColorStyle(
-  bucket: Exclude<ProjectStatusBadgeDotBucket, "running">,
-): ViewStyle {
+function getStatusDotColorStyle(bucket: ProjectStatusBadgeDotBucket): ViewStyle {
   return bucket === "failed" ? styles.statusDotFailed : styles.statusDotAttention;
 }
 
@@ -277,7 +331,9 @@ const styles = StyleSheet.create((theme) => {
       justifyContent: "center",
       overflow: "hidden",
     },
-    statusDotRunning: statusDot("running"),
+    runningLoaderNudge: {
+      transform: [{ translateX: STATUS_BADGE_LOADER_NUDGE_X }],
+    },
     statusDotFailed: statusDot("failed"),
     statusDotAttention: statusDot("attention"),
   };

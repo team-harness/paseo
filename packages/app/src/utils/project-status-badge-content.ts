@@ -1,8 +1,10 @@
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
+import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 
-export type ProjectStatusBadgeDotBucket = "failed" | "attention" | "running";
+export type ProjectStatusBadgeDotBucket = "failed" | "attention";
 
 export type ProjectStatusBadgeContent =
+  | { kind: "loader" }
   | { kind: "alert" }
   | { kind: "dot"; bucket: ProjectStatusBadgeDotBucket };
 
@@ -11,18 +13,20 @@ export type ProjectStatusBadgeContent =
  * no badge should show at all. Kept as plain data (no React) so it's testable without JSDOM
  * or component mounting — see docs/testing.md's two test categories.
  *
- * Running is a dot like failed and attention rather than its own glyph. The badge is 14pt;
- * anything with internal detail at that size loses to a solid disc, so the buckets separate
- * by color and — for running alone — by pulsing. Only needs_input earns a glyph, because
- * "someone must act" has to survive being the one amber state next to running.
+ * Running uses the synchronized loader, needs_input uses the alert glyph, and the quieter
+ * failed/attention buckets use colored dots. The moving loader keeps active work visibly
+ * distinct from the static completed state even at sidebar density.
  */
 export function getProjectStatusBadgeContent(
   statusBucket: SidebarStateBucket | null,
 ): ProjectStatusBadgeContent | null {
+  if (shouldRenderSyncedStatusLoader({ bucket: statusBucket })) {
+    return { kind: "loader" };
+  }
   if (statusBucket === "needs_input") {
     return { kind: "alert" };
   }
-  if (statusBucket === "failed" || statusBucket === "attention" || statusBucket === "running") {
+  if (statusBucket === "failed" || statusBucket === "attention") {
     return { kind: "dot", bucket: statusBucket };
   }
   return null;
