@@ -275,6 +275,28 @@
 - 5 MiB 压缩只能损失工具返回与错误详情；用户和 assistant 消息不得截断或改写。若上游或 Threadshare 调整请求大小限制，应以服务端协议常量为准同步 producer 测试，不得通过静默丢弃消息规避限制。
 - 必跑：聊天分享导出/上传目标测试、时间线分页测试、`npm run typecheck`。
 
+### 8. 脱离项目分组的侧边栏行保留项目名
+
+**状态**：fork 修复。提交：`f548d71e0`。
+
+**行为**：工作区标题继续遵循用户选择的 Title/Branch name 偏好。状态分组、侧边栏 Pinned 区和顶部状态栏 Pinned 面板中的工作区脱离了项目父行，因此在主标题下显示项目名；普通项目分组内的子行仍保持单行。
+
+**关键文件**：
+
+- `packages/app/src/components/sidebar/sidebar-workspace-row-content.tsx`
+- `packages/app/src/components/sidebar-workspace-list.tsx`
+- `packages/app/src/components/sidebar/sidebar-status-list.tsx`
+- `packages/app/src/status-summary/status-bar-session-pins.tsx`
+
+**同步规则**：
+
+- 不要通过重置 `workspaceTitleSource` 修复项目上下文；用户选择 Branch name 时，分支仍是主标题。
+- 脱离项目分组的行必须把项目名渲染为可见次级文字。项目图标和 accessibility label 不能代替可见文字。
+- 次级文字保持单行截断，不能撑宽窄侧边栏或移动端布局。
+- 必跑：`status-bar-running-sessions.test.tsx`，以及 `sidebar-model-b.spec.ts` 的状态分组场景和 `sidebar-workspace-pin-shortcut.spec.ts` 的 Pinned 场景。
+
+**最近同步判断**：2026-08-03 合入上游 `ccb668b3b` 后，其单行侧边栏重构移除了脱离项目分组行的项目名文字；保留上游项目图标与 Host badge，同时恢复项目名次级文字。
+
 ## 同步上游操作清单
 
 1. 先确认工作区干净或把本地未提交改动隔离；当前待提交的变更必须单独处理，不能混入上游 merge。
