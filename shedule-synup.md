@@ -87,7 +87,7 @@
    - 目标目录：`releases/paseo/<version>/<commit>/standard/`；只上传经验证的单个 DMG，避免把旧版本、`.DS_Store`、blockmap 或 unpacked app 一并发布。
    - 遵循 licell 的操作契约：先 `licell catalog --output json` 发现命令、再 `licell <command> --help --output json` 读取用法，最后带 `--output json` 执行，不要凭记忆猜命令和参数。
 2. 拿到可下载的 URL 后，以 `curl -I --fail` 验证公网返回 `200`、`Content-Type: application/x-apple-diskimage` 和预期的 `Content-Length`；确认对象路径与本轮 commit 一致后再发送。
-3. 通过 Lark CLI **点对点私聊**发送给 **房玉峰（大房）**，消息内容包含：
+3. 通过 Lark CLI 固定使用 **bot 身份**（`--as bot`）点对点私聊发送给 **房玉峰（大房）**。用户身份只可用于联系人解析，不得用于实际发送。消息内容包含：
    - 下载链接与版本号；
    - 本轮主要改动点总结：上游合入了什么、fork 保留了什么、本轮下线了哪些重复实现（若有）。
 
