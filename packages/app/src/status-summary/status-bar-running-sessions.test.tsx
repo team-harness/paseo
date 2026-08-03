@@ -263,12 +263,12 @@ vi.mock("@/components/sidebar/sidebar-workspace-row-content", () => ({
   SidebarWorkspaceRowContent: ({
     workspace,
     hostBadge,
-    leadingProjectName,
+    secondaryLabel,
     children,
   }: {
     workspace: { name: string; currentBranch: string | null };
     hostBadge?: { label: string } | null;
-    leadingProjectName?: string | null;
+    secondaryLabel?: string | null;
     children?: React.ReactNode;
   }) =>
     React.createElement(
@@ -276,7 +276,7 @@ vi.mock("@/components/sidebar/sidebar-workspace-row-content", () => ({
       { "data-testid": "sidebar-workspace-row-content" },
       workspace.name,
       workspace.currentBranch,
-      leadingProjectName,
+      secondaryLabel,
       hostBadge?.label,
       children,
     ),

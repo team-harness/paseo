@@ -135,6 +135,11 @@ test.describe("Model B sidebar shape", () => {
       await page.getByTestId("sidebar-display-preferences-menu").click();
       await page.getByTestId("sidebar-grouping-status").click();
 
+      // Keep the user's branch-first preference while proving hoisted rows still expose
+      // their project as visible context.
+      await page.getByTestId("sidebar-display-preferences-menu").click();
+      await page.getByTestId("sidebar-workspace-title-source-branch").click();
+
       const sidebar = page.getByTestId("sidebar-sessions").filter({ visible: true }).first();
 
       // The idle workspace lands in the Done bucket; the busy mock-agent workspace
@@ -146,6 +151,11 @@ test.describe("Model B sidebar shape", () => {
       await expect(workspaceRow(page, idleProject.workspaceId).first()).toBeVisible({
         timeout: 30_000,
       });
+      await expect(
+        workspaceRow(page, idleProject.workspaceId)
+          .first()
+          .getByText(idleProject.projectDisplayName, { exact: true }),
+      ).toBeVisible();
       await expect(workspaceRow(page, activeMock.workspaceId).first()).toBeVisible({
         timeout: 60_000,
       });
@@ -160,8 +170,7 @@ test.describe("Model B sidebar shape", () => {
       // the status view.
       await expect(sidebar.locator('[data-testid^="workspace-tab-"]')).toHaveCount(0);
 
-      // Status mode drops the project grouping, so each row leads its subtitle
-      // with the project's icon to keep projects distinguishable.
+      // Status mode drops the project grouping, so each row keeps the project icon and name.
       for (const workspaceId of [idleProject.workspaceId, activeMock.workspaceId]) {
         await expect(
           page.getByTestId(`sidebar-row-project-icon-${getServerId()}:${workspaceId}`).first(),

@@ -252,6 +252,7 @@ function StatusBarSessionPinRow({
           workspace={entry}
           hostBadge={hostBadge}
           leadingProjectName={workspace.projectName}
+          secondaryLabel={workspace.projectName}
           isHovered={false}
           isLoading={false}
           reserveIdleStatusIndicatorSpace={false}

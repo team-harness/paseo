@@ -150,6 +150,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   hostBadge,
   leadingProjectName = null,
   leadingProjectIconDataUri = null,
+  secondaryLabel = null,
   scriptIconKind = null,
   isHovered,
   isLoading,
@@ -164,6 +165,8 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   /** Hoisted rows use their project icon as the leading visual because no project row contains them. */
   leadingProjectName?: string | null;
   leadingProjectIconDataUri?: string | null;
+  /** Visible context for rows rendered outside their normal project group. */
+  secondaryLabel?: string | null;
   scriptIconKind?: SidebarWorkspaceScriptIconKind | null;
   isHovered: boolean;
   isLoading: boolean;
@@ -230,6 +233,15 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
             </View>
             <View style={sidebarWorkspaceRowStyles.rowRight}>{children}</View>
           </View>
+          {secondaryLabel ? (
+            <Text
+              style={styles.workspaceSecondaryLabel}
+              numberOfLines={1}
+              testID={`sidebar-workspace-secondary-label-${workspace.workspaceKey}`}
+            >
+              {secondaryLabel}
+            </Text>
+          ) : null}
         </View>
       </View>
       {showShortcutBadge && shortcutNumber !== null ? (
@@ -665,6 +677,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspaceBranchTextHovered: {
     opacity: 1,
+  },
+  workspaceSecondaryLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    lineHeight: 14,
+    flexShrink: 1,
+    minWidth: 0,
   },
   statusDotNeedsInput: {
     backgroundColor: theme.colors.palette.amber[500],

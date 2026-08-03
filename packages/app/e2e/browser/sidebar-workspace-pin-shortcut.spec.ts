@@ -153,10 +153,12 @@ test.describe("Pin workspace shortcut", () => {
       await page.keyboard.press(PIN_SHORTCUT);
 
       await expect(pinnedSection(page)).toBeVisible({ timeout: 10_000 });
+      const pinnedWorkspaceRow = pinnedSection(page).getByTestId(
+        `sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`,
+      );
+      await expect(pinnedWorkspaceRow).toBeVisible();
       await expect(
-        pinnedSection(page).getByTestId(
-          `sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`,
-        ),
+        pinnedWorkspaceRow.getByText(workspace.projectDisplayName, { exact: true }),
       ).toBeVisible();
     } finally {
       await workspace.cleanup();

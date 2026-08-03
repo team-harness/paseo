@@ -1133,6 +1133,7 @@ function WorkspaceRowInner({
                 hostBadge={hostBadge}
                 leadingProjectName={leadingProjectName}
                 leadingProjectIconDataUri={leadingProjectIconDataUri}
+                secondaryLabel={leadingProjectName}
                 scriptIconKind={scriptIconKind}
                 isHovered={isHovered}
                 isLoading={isArchiving || isCreating}

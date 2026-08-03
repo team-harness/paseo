@@ -709,6 +709,7 @@ function StatusWorkspaceRowInner({
                 hostBadge={hostBadge}
                 leadingProjectName={projectName}
                 leadingProjectIconDataUri={projectIconDataUri}
+                secondaryLabel={projectName}
                 scriptIconKind={scriptIconKind}
                 isHovered={isHovered}
                 isLoading={isArchiving}
