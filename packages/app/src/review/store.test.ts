@@ -4,6 +4,7 @@ import {
   buildReviewAttachmentSnapshot,
   buildReviewDraftKey,
   buildReviewDraftScopeKey,
+  buildReviewDraftWorkspacePrefix,
 } from "./store";
 import {
   addCommentToState,
@@ -118,6 +119,19 @@ describe("buildReviewDraftKey", () => {
       "review:server=local:workspace=workspace-1:base=main:ignoreWhitespace=false",
     );
     expect(scope).not.toContain("mode=");
+  });
+
+  it("builds a workspace prefix that finds review drafts across diff modes", () => {
+    expect(
+      buildReviewDraftWorkspacePrefix({
+        serverId: "local",
+        workspaceId: "workspace-1",
+        cwd: "/repo",
+      }),
+    ).toBe("review:server=local:workspace=workspace-1:");
+    expect(
+      buildReviewDraftWorkspacePrefix({ serverId: "local", workspaceId: null, cwd: "/repo/" }),
+    ).toBe("review:server=local:cwd=%2Frepo:");
   });
 });
 

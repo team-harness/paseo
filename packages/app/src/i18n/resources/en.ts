@@ -1751,6 +1751,8 @@ export const en = {
     accessibility: "Context window {{percentage}}% used",
   },
   review: {
+    quote: "Quote",
+    quoteSelection: "Quote selection in composer",
     comment: {
       add: "Add review comment",
       edit: "Edit review comment",
@@ -1761,6 +1763,19 @@ export const en = {
       cancelAccessibility: "Cancel review comment",
       save: "Comment",
       saveAccessibility: "Save review comment",
+    },
+    selection: {
+      selectedText: "Selected text",
+      line: "Line {{line}}",
+      lines: "Lines {{start}}-{{end}}",
+      diffLine: "Line {{line}} ({{side}})",
+    },
+    summary: {
+      title: "Review comments",
+      count: "{{count}} comments",
+      open: "Open review comments ({{count}})",
+      copyAll: "Copy all",
+      copyFailed: "Couldn't copy review comments",
     },
   },
   settings: {

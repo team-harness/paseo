@@ -1719,6 +1719,8 @@ export const zhCN: TranslationResources = {
     accessibility: "上下文窗口已使用 {{percentage}}%",
   },
   review: {
+    quote: "引用",
+    quoteSelection: "引用选中内容到对话框",
     comment: {
       add: "添加 review 评论",
       edit: "编辑 review 评论",
@@ -1729,6 +1731,19 @@ export const zhCN: TranslationResources = {
       cancelAccessibility: "取消 review 评论",
       save: "评论",
       saveAccessibility: "保存 review 评论",
+    },
+    selection: {
+      selectedText: "选中文本",
+      line: "第 {{line}} 行",
+      lines: "第 {{start}}-{{end}} 行",
+      diffLine: "第 {{line}} 行（{{side}}）",
+    },
+    summary: {
+      title: "Review comments",
+      count: "{{count}} 条评论",
+      open: "打开 Review comments（{{count}}）",
+      copyAll: "复制全部",
+      copyFailed: "无法复制 Review comments",
     },
   },
   settings: {

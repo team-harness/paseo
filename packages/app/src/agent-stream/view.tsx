@@ -322,6 +322,7 @@ export interface AgentStreamViewProps {
   isAuthoritativeHistoryReady?: boolean;
   toast?: ToastApi | null;
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
+  onQuoteSelection?: (markdown: string) => void;
   readOnly?: boolean;
   /** Supplies authoritative history for read-only provider subagent timelines. */
   loadCompleteHistory?: () => Promise<StreamItem[]>;
@@ -372,6 +373,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       isAuthoritativeHistoryReady = true,
       toast,
       onOpenWorkspaceFile,
+      onQuoteSelection,
       readOnly = false,
       loadCompleteHistory,
       historyPagination,
@@ -1180,7 +1182,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     return (
       <ToolCallSheetProvider>
-        <AssistantSelectionCopySurface style={stylesheet.container}>
+        <AssistantSelectionCopySurface
+          style={stylesheet.container}
+          onQuoteSelection={onQuoteSelection}
+        >
           <MessageOuterSpacingProvider disableOuterSpacing>
             {streamRenderStrategy.render({
               agentId,

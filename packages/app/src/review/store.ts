@@ -50,6 +50,10 @@ export interface BuildReviewDraftKeyInput {
 }
 
 export type BuildReviewDraftScopeKeyInput = Omit<BuildReviewDraftKeyInput, "mode">;
+export type BuildReviewDraftWorkspacePrefixInput = Pick<
+  BuildReviewDraftKeyInput,
+  "serverId" | "workspaceId" | "cwd"
+>;
 
 export interface BuildReviewAttachmentSnapshotInput {
   reviewDraftKey: string;
@@ -120,6 +124,16 @@ export function buildReviewDraftKey(input: BuildReviewDraftKeyInput): string {
   return [prefix, serverPart, workspacePart, `mode=${input.mode}`, basePart, whitespacePart].join(
     ":",
   );
+}
+
+export function buildReviewDraftWorkspacePrefix(
+  input: BuildReviewDraftWorkspacePrefixInput,
+): string {
+  const workspaceId = input.workspaceId?.trim();
+  const workspacePart = workspaceId
+    ? `workspace=${encodeKeyPart(workspaceId)}`
+    : `cwd=${encodeKeyPart(normalizeCwd(input.cwd))}`;
+  return ["review", `server=${encodeKeyPart(input.serverId)}`, workspacePart, ""].join(":");
 }
 
 function createDraftComment(input: ReviewDraftCommentInput): ReviewDraftComment {

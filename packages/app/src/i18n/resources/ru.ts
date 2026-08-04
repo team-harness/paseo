@@ -1775,6 +1775,8 @@ export const ru: TranslationResources = {
     accessibility: "Контекстное окно{{percentage}}% использовано",
   },
   review: {
+    quote: "Цитировать",
+    quoteSelection: "Цитировать выделение в поле сообщения",
     comment: {
       add: "Добавить комментарий к обзору",
       edit: "Изменить комментарий к отзыву",
@@ -1785,6 +1787,19 @@ export const ru: TranslationResources = {
       cancelAccessibility: "Отменить комментарий к отзыву",
       save: "Комментарий",
       saveAccessibility: "Сохранить комментарий к отзыву",
+    },
+    selection: {
+      selectedText: "Выделенный текст",
+      line: "Строка {{line}}",
+      lines: "Строки {{start}}-{{end}}",
+      diffLine: "Строка {{line}} ({{side}})",
+    },
+    summary: {
+      title: "Комментарии к ревью",
+      count: "Комментариев: {{count}}",
+      open: "Открыть комментарии к ревью ({{count}})",
+      copyAll: "Копировать все",
+      copyFailed: "Не удалось скопировать комментарии к ревью",
     },
   },
   settings: {

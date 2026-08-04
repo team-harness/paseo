@@ -50,6 +50,7 @@ import type { DroppedItem } from "@/components/file-drop/types";
 import { MessageInput, type MessageInputRef, type AttachmentMenuItem } from "./input/input";
 import { PromptLibraryTrigger } from "@/prompt-library/prompt-library-trigger";
 import { insertSavedPrompt, type TextSelection } from "@/prompt-library/model";
+import { insertComposerQuote } from "@/assistant-selection-copy/quote";
 import type { ImageAttachment, MessagePayload } from "./types";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
@@ -806,6 +807,12 @@ function GithubPickerOption({
   );
 }
 
+export interface ComposerTextInsertion {
+  id: string;
+  text: string;
+  kind?: "text" | "quote";
+}
+
 interface ComposerProps {
   agentId: string;
   serverId: string;
@@ -860,6 +867,7 @@ interface ComposerProps {
   externalKeyboardShift?: boolean;
   /** Optional panel/container layout breakpoint. Defaults to the screen breakpoint. */
   isCompactLayout?: boolean;
+  textInsertion?: ComposerTextInsertion | null;
 }
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
@@ -1045,6 +1053,7 @@ export function Composer({
   inputWrapperStyle,
   externalKeyboardShift,
   isCompactLayout: isCompactLayoutOverride,
+  textInsertion,
 }: ComposerProps) {
   const { t } = useTranslation();
   const buttonIconSize = resolveComposerButtonIconSize();
@@ -1128,6 +1137,7 @@ export function Composer({
   const [lightboxMetadata, setLightboxMetadata] = useState<AttachmentMetadata | null>(null);
   const attachButtonRef = useRef<View | null>(null);
   const messageInputRef = useRef<MessageInputRef>(null);
+  const handledTextInsertionIdRef = useRef<string | null>(null);
   const isComposerLocked = resolveIsComposerLocked(submitBehavior, isSubmitLoading);
   const keyboardHandlerIdRef = useRef(
     `message-input:${serverId}:${agentId}:${Math.random().toString(36).slice(2)}`,
@@ -1931,17 +1941,27 @@ export function Composer({
   }, []);
 
   const handleSelectionChange = useCallback((selection: { start: number; end: number }) => {
+    if (
+      isWeb &&
+      (messageInputRef.current?.getNativeElement?.() !== document.activeElement ||
+        window.getSelection()?.isCollapsed === false)
+    ) {
+      return;
+    }
     setCursorIndex(selection.start);
     setTextSelection(selection);
   }, []);
 
-  const handleInsertSavedPrompt = useCallback(
-    (content: string) => {
-      const result = insertSavedPrompt({
-        value: userInput,
-        prompt: content,
-        selection: textSelection,
-      });
+  const handleInsertText = useCallback(
+    (content: string, kind: "text" | "quote" = "text") => {
+      const result =
+        kind === "quote"
+          ? insertComposerQuote({ value: userInput, markdown: content, selection: textSelection })
+          : insertSavedPrompt({
+              value: userInput,
+              prompt: content,
+              selection: textSelection,
+            });
       setUserInput(result.value);
       setCursorIndex(result.selection.start);
       setTextSelection(result.selection);
@@ -1953,13 +1973,21 @@ export function Composer({
     [setUserInput, textSelection, userInput],
   );
 
+  useEffect(() => {
+    if (!textInsertion || handledTextInsertionIdRef.current === textInsertion.id) {
+      return;
+    }
+    handledTextInsertionIdRef.current = textInsertion.id;
+    handleInsertText(textInsertion.text, textInsertion.kind);
+  }, [handleInsertText, textInsertion]);
+
   const leftContent = useMemo(
     () => (
       <>
         <PromptLibraryTrigger
           disabled={isComposerLocked}
           isPaneFocused={isPaneFocused}
-          onInsert={handleInsertSavedPrompt}
+          onInsert={handleInsertText}
         />
         {renderLeftContent({
           agentControls,
@@ -1975,7 +2003,7 @@ export function Composer({
       agentControls,
       agentId,
       focusInput,
-      handleInsertSavedPrompt,
+      handleInsertText,
       isCompactLayout,
       isComposerLocked,
       isPaneFocused,

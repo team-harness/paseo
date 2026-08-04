@@ -13,7 +13,8 @@ import {
   MARKDOWN_COPY_UNWRAP_ATTRIBUTE,
 } from "./markup";
 
-const ASSISTANT_MESSAGE_SELECTOR = '[data-testid="assistant-message"]';
+const CONVERSATION_MESSAGE_SELECTOR =
+  '[data-testid="assistant-message"], [data-testid="user-message"]';
 
 const turndown = new TurndownService({
   bulletListMarker: "-",
@@ -59,8 +60,8 @@ export function createAssistantSelectionClipboardContent(
   }
 
   const range = selection.getRangeAt(0);
-  const startMessage = closestAssistantMessage(range.startContainer);
-  const endMessage = closestAssistantMessage(range.endContainer);
+  const startMessage = closestConversationMessage(range.startContainer);
+  const endMessage = closestConversationMessage(range.endContainer);
   if (!startMessage || startMessage !== endMessage) {
     return null;
   }
@@ -127,9 +128,9 @@ function markedElements(root: Node, selector: string): Element[] {
   return elements;
 }
 
-function closestAssistantMessage(node: Node): Element | null {
+function closestConversationMessage(node: Node): Element | null {
   const element = node instanceof Element ? node : node.parentElement;
-  return element?.closest(ASSISTANT_MESSAGE_SELECTOR) ?? null;
+  return element?.closest(CONVERSATION_MESSAGE_SELECTOR) ?? null;
 }
 
 function restoreMarkdownElements(container: HTMLElement): void {

@@ -1757,6 +1757,8 @@ export const ja: TranslationResources = {
     accessibility: "コンテキストウィンドウ{{percentage}}%使用",
   },
   review: {
+    quote: "引用",
+    quoteSelection: "選択範囲を入力欄に引用",
     comment: {
       add: "レビューコメントを追加",
       edit: "レビューコメントを編集",
@@ -1767,6 +1769,19 @@ export const ja: TranslationResources = {
       cancelAccessibility: "レビューコメントをキャンセル",
       save: "コメント",
       saveAccessibility: "レビューコメントを保存",
+    },
+    selection: {
+      selectedText: "選択したテキスト",
+      line: "{{line}} 行目",
+      lines: "{{start}}-{{end}} 行目",
+      diffLine: "{{line}} 行目 ({{side}})",
+    },
+    summary: {
+      title: "レビューコメント",
+      count: "{{count}} 件のコメント",
+      open: "レビューコメントを開く ({{count}})",
+      copyAll: "すべてコピー",
+      copyFailed: "レビューコメントをコピーできませんでした",
     },
   },
   settings: {

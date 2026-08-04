@@ -1,5 +1,6 @@
 import type { BrowserContext } from "@playwright/test";
 import { expect, test, type Page } from "../support/fixtures";
+import { composerLocator } from "../support/helpers/composer";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 
 const ASSISTANT_MARKDOWN = [
@@ -309,6 +310,52 @@ test("copying an assistant selection preserves Markdown structure and links", as
     expect(columnSliceClipboard.html).not.toContain("<table>");
     expect(columnSliceClipboard.html).toContain("ready");
     expect(columnSliceClipboard.html).toContain("<s>obsolete</s>");
+
+    const composer = composerLocator(page);
+    await composer.fill("Before AFTER");
+    await composer.focus();
+    await composer.press("End");
+    for (let index = 0; index < "AFTER".length; index += 1) {
+      await composer.press("Shift+ArrowLeft");
+    }
+
+    await assistantMessage.getByText("Seventh item", { exact: true }).scrollIntoViewIfNeeded();
+    await selectAssistantTextRange(page, "Seventh item", "Eighth item");
+    const quoteButton = page.getByTestId("assistant-selection-quote");
+    await expect(quoteButton).toBeVisible();
+    await quoteButton.click();
+
+    const quotedDraft = "Before \n> 7. Seventh item\n> 8. Eighth item\n\n";
+    await expect(composer).toHaveValue(quotedDraft);
+    await expect
+      .poll(() =>
+        composer.evaluate((element) => {
+          const textarea = element as HTMLTextAreaElement;
+          return {
+            focused: document.activeElement === textarea,
+            start: textarea.selectionStart,
+            end: textarea.selectionEnd,
+          };
+        }),
+      )
+      .toEqual({ focused: true, start: quotedDraft.length, end: quotedDraft.length });
+
+    await composer.fill("");
+    const userMessage = page.getByTestId("user-message").filter({
+      hasText: "Render the clipboard fixture.",
+    });
+    await userMessage.scrollIntoViewIfNeeded();
+    await userMessage
+      .getByText("Render the clipboard fixture.", { exact: true })
+      .evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      });
+    await page.getByTestId("assistant-selection-quote").click();
+    await expect(composer).toHaveValue("> Render the clipboard fixture.\n\n");
   } finally {
     await agent.cleanup();
   }

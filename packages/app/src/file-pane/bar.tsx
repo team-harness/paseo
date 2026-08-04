@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -19,6 +20,8 @@ export function FilePanelBar({
   cursor,
   vimMode,
   conflict,
+  reviewSummary,
+  reviewSelectionAction,
 }: {
   size: number;
   lineCount?: number;
@@ -28,6 +31,8 @@ export function FilePanelBar({
   cursor?: { line: number; column: number };
   vimMode?: string | null;
   conflict?: FileConflictAlertState;
+  reviewSummary?: ReactNode;
+  reviewSelectionAction?: ReactNode;
 }) {
   const { t } = useTranslation();
   const previewModes = [
@@ -97,15 +102,19 @@ export function FilePanelBar({
             </Text>
           ) : null}
         </View>
-        {mode && onModeChange ? (
-          <SegmentedControl
-            size="xs"
-            value={mode}
-            onValueChange={onModeChange}
-            testID="file-preview-mode"
-            options={previewModes}
-          />
-        ) : null}
+        <View style={styles.actions}>
+          {reviewSelectionAction}
+          {reviewSummary}
+          {mode && onModeChange ? (
+            <SegmentedControl
+              size="xs"
+              value={mode}
+              onValueChange={onModeChange}
+              testID="file-preview-mode"
+              options={previewModes}
+            />
+          ) : null}
+        </View>
       </View>
       {conflict ? <FileConflictAlert state={conflict} /> : null}
     </View>
@@ -149,6 +158,12 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.foregroundExtraMuted,
   },
   status: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  actions: {
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",

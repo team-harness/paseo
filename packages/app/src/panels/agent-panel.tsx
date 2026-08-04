@@ -24,7 +24,7 @@ import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { SidebarCallout } from "@/components/sidebar-callout";
-import { Composer } from "@/composer";
+import { Composer, type ComposerTextInsertion } from "@/composer";
 import { getActiveMessageSubmissions } from "@/composer/submission/model";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
 import { getProviderIcon } from "@/components/provider-icons";
@@ -1163,6 +1163,10 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
+  const [composerTextInsertion, setComposerTextInsertion] = useState<ComposerTextInsertion | null>(
+    null,
+  );
+  const composerTextInsertionIdRef = useRef(0);
   const rawAgentInputDraft = useAgentInputDraft({
     draftKey: buildDraftStoreKey({
       serverId,
@@ -1203,6 +1207,20 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       composerState,
     ],
   );
+  const handleQuoteSelection = useCallback(
+    (markdown: string) => {
+      if (!markdown.trim()) {
+        return;
+      }
+      composerTextInsertionIdRef.current += 1;
+      setComposerTextInsertion({
+        id: `${agentId}:quote:${composerTextInsertionIdRef.current}`,
+        text: markdown,
+        kind: "quote",
+      });
+    },
+    [agentId],
+  );
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
       <AgentStreamSection
@@ -1214,6 +1232,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
         toast={toastApi}
         onOpenWorkspaceFile={onOpenWorkspaceFile}
+        onQuoteSelection={handleQuoteSelection}
       />
     </RenderProfile>
   );
@@ -1232,6 +1251,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         onAttentionPromptSend={onAttentionPromptSend}
         onComposerHeightChange={handleComposerHeightChange}
         onMessageSent={handleMessageSent}
+        textInsertion={composerTextInsertion}
       />
     </RenderProfile>
   );
@@ -1286,6 +1306,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   hasAppliedAuthoritativeHistory,
   toast,
   onOpenWorkspaceFile,
+  onQuoteSelection,
 }: {
   streamViewRef: React.RefObject<AgentStreamViewHandle | null>;
   serverId: string;
@@ -1295,6 +1316,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   hasAppliedAuthoritativeHistory: boolean;
   toast: ReturnType<typeof useToastHost>["api"];
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
+  onQuoteSelection: (markdown: string) => void;
 }) {
   const streamItemsRaw = useSessionStore((state) =>
     agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined,
@@ -1355,6 +1377,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
       pendingMessageSubmissions={pendingMessageSubmissions}
       turnPresentation={turnPresentation}
       onOpenWorkspaceFile={onOpenWorkspaceFile}
+      onQuoteSelection={onQuoteSelection}
     />
   );
 });
@@ -1372,6 +1395,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
   onAttentionPromptSend,
   onComposerHeightChange,
   onMessageSent,
+  textInsertion,
 }: {
   agentId?: string;
   serverId: string;
@@ -1385,6 +1409,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
   onAttentionPromptSend: () => void;
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
+  textInsertion: ComposerTextInsertion | null;
 }) {
   if (!agentId) {
     return null;
@@ -1408,6 +1433,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
       onAttentionPromptSend={onAttentionPromptSend}
       onComposerHeightChange={onComposerHeightChange}
       onMessageSent={onMessageSent}
+      textInsertion={textInsertion}
     />
   );
 });
@@ -1423,6 +1449,7 @@ function ActiveAgentComposer({
   onAttentionPromptSend,
   onComposerHeightChange,
   onMessageSent,
+  textInsertion,
 }: {
   agentId: string;
   serverId: string;
@@ -1434,6 +1461,7 @@ function ActiveAgentComposer({
   onAttentionPromptSend: () => void;
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
+  textInsertion: ComposerTextInsertion | null;
 }) {
   const insets = useSafeAreaInsets();
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -1590,6 +1618,7 @@ function ActiveAgentComposer({
         onMessageSent={onMessageSent}
         onClientSlashCommand={handleClientSlashCommand}
         isCompactLayout={isCompactComposerLayout}
+        textInsertion={textInsertion}
       />
     </ReanimatedAnimated.View>
   );

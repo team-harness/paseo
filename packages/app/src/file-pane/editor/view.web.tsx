@@ -7,6 +7,7 @@ import { isRenderedMarkdownFile } from "@/components/file-pane-render-mode";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import type { FileEditorModel } from "./model";
 import { editorBaseExtensions, editorTheme, type EditorVisualTheme } from "./extensions.web";
+import { trimReviewTextSelection, type ReviewTextSelection } from "@/review/workspace-comments";
 
 interface FileEditorViewProps {
   model: FileEditorModel;
@@ -17,6 +18,7 @@ interface FileEditorViewProps {
   theme: EditorVisualTheme;
   onCursorChange(position: { line: number; column: number }): void;
   onVimModeChange(mode: string | null): void;
+  onReviewSelectionChange(selection: ReviewTextSelection | null): void;
 }
 
 const languageCompartment = new Compartment();
@@ -37,6 +39,7 @@ export function FileEditorView({
   theme,
   onCursorChange,
   onVimModeChange,
+  onReviewSelectionChange,
 }: FileEditorViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -44,6 +47,8 @@ export function FileEditorView({
   const initial = useRef({ filename, model, theme, vimEnabled, content: snapshot.content });
   const onCursorChangeRef = useRef(onCursorChange);
   onCursorChangeRef.current = onCursorChange;
+  const onReviewSelectionChangeRef = useRef(onReviewSelectionChange);
+  onReviewSelectionChangeRef.current = onReviewSelectionChange;
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -67,9 +72,11 @@ export function FileEditorView({
               values.model.edit(update.state.doc.sliceString(0, undefined, lineSeparator));
             }
             if (update.selectionSet || update.docChanged) {
-              const head = update.state.selection.main.head;
+              const selection = update.state.selection.main;
+              const head = selection.head;
               const line = update.state.doc.lineAt(head);
               onCursorChangeRef.current({ line: line.number, column: head - line.from + 1 });
+              onReviewSelectionChangeRef.current(toReviewSelection(update.state, selection));
             }
           }),
         ],
@@ -77,6 +84,7 @@ export function FileEditorView({
     });
     viewRef.current = view;
     onCursorChangeRef.current({ line: 1, column: 1 });
+    onReviewSelectionChangeRef.current(null);
     return () => {
       view.destroy();
       viewRef.current = null;
@@ -149,6 +157,27 @@ export function FileEditorView({
       style={HOST_STYLE}
     />
   );
+}
+
+function toReviewSelection(
+  state: EditorState,
+  selection: { from: number; to: number; empty: boolean },
+): ReviewTextSelection | null {
+  if (selection.empty) {
+    return null;
+  }
+  const trimmed = trimReviewTextSelection({
+    selectedText: state.doc.sliceString(selection.from, selection.to),
+    from: selection.from,
+  });
+  if (!trimmed) {
+    return null;
+  }
+  return {
+    quote: trimmed.quote,
+    lineStart: state.doc.lineAt(trimmed.from).number,
+    lineEnd: state.doc.lineAt(Math.max(trimmed.from, trimmed.to - 1)).number,
+  };
 }
 
 const remoteUpdate = Annotation.define<boolean>();

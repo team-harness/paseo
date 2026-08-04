@@ -1740,6 +1740,8 @@ export const ar: TranslationResources = {
     accessibility: "تم استخدام نافذة السياق{{percentage}}%",
   },
   review: {
+    quote: "اقتباس",
+    quoteSelection: "اقتباس التحديد في مربع الرسالة",
     comment: {
       add: "إضافة تعليق المراجعة",
       edit: "تحرير تعليق المراجعة",
@@ -1750,6 +1752,19 @@ export const ar: TranslationResources = {
       cancelAccessibility: "إلغاء تعليق المراجعة",
       save: "تعليق",
       saveAccessibility: "حفظ تعليق المراجعة",
+    },
+    selection: {
+      selectedText: "النص المحدد",
+      line: "السطر {{line}}",
+      lines: "الأسطر {{start}}-{{end}}",
+      diffLine: "السطر {{line}} ({{side}})",
+    },
+    summary: {
+      title: "تعليقات المراجعة",
+      count: "{{count}} تعليقات",
+      open: "فتح تعليقات المراجعة ({{count}})",
+      copyAll: "نسخ الكل",
+      copyFailed: "تعذر نسخ تعليقات المراجعة",
     },
   },
   settings: {

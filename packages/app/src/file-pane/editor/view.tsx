@@ -3,6 +3,7 @@ import { StyleSheet } from "react-native-unistyles";
 import type { HighlightStyle } from "@getpaseo/highlight";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import type { FileEditorModel } from "./model";
+import type { ReviewTextSelection } from "@/review/workspace-comments";
 
 export function FileEditorView(_props: {
   model: FileEditorModel;
@@ -22,6 +23,7 @@ export function FileEditorView(_props: {
   };
   onCursorChange(position: { line: number; column: number }): void;
   onVimModeChange(mode: string | null): void;
+  onReviewSelectionChange(selection: ReviewTextSelection | null): void;
 }) {
   return (
     <View style={styles.container}>

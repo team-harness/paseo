@@ -1785,6 +1785,8 @@ export const es: TranslationResources = {
     accessibility: "Ventana de contexto{{percentage}}% utilizada",
   },
   review: {
+    quote: "Citar",
+    quoteSelection: "Citar la selección en el cuadro de mensaje",
     comment: {
       add: "Agregar comentario de revisión",
       edit: "Editar comentario de revisión",
@@ -1795,6 +1797,19 @@ export const es: TranslationResources = {
       cancelAccessibility: "Cancelar comentario de revisión",
       save: "Comentario",
       saveAccessibility: "Guardar comentario de revisión",
+    },
+    selection: {
+      selectedText: "Texto seleccionado",
+      line: "Línea {{line}}",
+      lines: "Líneas {{start}}-{{end}}",
+      diffLine: "Línea {{line}} ({{side}})",
+    },
+    summary: {
+      title: "Comentarios de revisión",
+      count: "{{count}} comentarios",
+      open: "Abrir comentarios de revisión ({{count}})",
+      copyAll: "Copiar todo",
+      copyFailed: "No se pudieron copiar los comentarios de revisión",
     },
   },
   settings: {

@@ -1789,6 +1789,8 @@ export const fr: TranslationResources = {
     accessibility: "Fenêtre contextuelle{{percentage}}% utilisé",
   },
   review: {
+    quote: "Citer",
+    quoteSelection: "Citer la sélection dans la zone de saisie",
     comment: {
       add: "Ajouter un commentaire",
       edit: "Modifier le commentaire de l'avis",
@@ -1799,6 +1801,19 @@ export const fr: TranslationResources = {
       cancelAccessibility: "Annuler le commentaire de révision",
       save: "Commentaire",
       saveAccessibility: "Enregistrer le commentaire de l'avis",
+    },
+    selection: {
+      selectedText: "Texte sélectionné",
+      line: "Ligne {{line}}",
+      lines: "Lignes {{start}}-{{end}}",
+      diffLine: "Ligne {{line}} ({{side}})",
+    },
+    summary: {
+      title: "Commentaires de revue",
+      count: "{{count}} commentaires",
+      open: "Ouvrir les commentaires de revue ({{count}})",
+      copyAll: "Tout copier",
+      copyFailed: "Impossible de copier les commentaires de revue",
     },
   },
   settings: {

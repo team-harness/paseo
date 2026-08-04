@@ -4,32 +4,24 @@ import {
   useMemo,
   useRef,
   useState,
-  type ClipboardEvent,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { View, type StyleProp, type ViewStyle } from "react-native";
-import { Quote } from "lucide-react-native";
+import { MessageSquarePlus } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { getOverlayRoot, useGlobalWebOverlayLayer } from "@/lib/overlay-root";
-import { createAssistantSelectionClipboardContent } from "./content.web";
-
-interface AssistantSelectionCopySurfaceProps {
-  children: ReactNode;
-  style?: StyleProp<ViewStyle>;
-  onQuoteSelection?: (markdown: string) => void;
-}
+import { ReviewCommentComposerSheet } from "./comment-composer-sheet";
+import type { ReviewTextSelection } from "./workspace-comments";
+import type { ReviewSelectionSurfaceProps } from "./selection-surface";
 
 const DISPLAY_CONTENTS: CSSProperties = { display: "contents" };
 const VIEWPORT_MARGIN = 8;
 const ACTION_GAP = 8;
 const MIN_SPACE_ABOVE_ACTION = 44;
 
-interface SelectionAction {
-  markdown: string;
+interface SelectionAction extends ReviewTextSelection {
   left: number;
   top: number;
   placement: "above" | "below";
@@ -39,32 +31,19 @@ function preventSelectionActionMouseDown(event: ReactMouseEvent<HTMLDivElement>)
   event.preventDefault();
 }
 
-export function AssistantSelectionCopySurface({
+export function ReviewSelectionSurface({
   children,
-  style,
-  onQuoteSelection,
-}: AssistantSelectionCopySurfaceProps) {
+  filePath,
+  onComment,
+}: ReviewSelectionSurfaceProps) {
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const selectionFrameRef = useRef<number | null>(null);
   const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
+  const [editingSelection, setEditingSelection] = useState<ReviewTextSelection | null>(null);
   const overlayLayer = useGlobalWebOverlayLayer("floating", selectionAction !== null);
-  const handleCopy = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
-    const content = createAssistantSelectionClipboardContent(window.getSelection());
-    if (!content) {
-      return;
-    }
-
-    event.preventDefault();
-    event.clipboardData.setData("text/plain", content.plainText);
-    event.clipboardData.setData("text/html", content.html);
-  }, []);
 
   const updateSelectionAction = useCallback(() => {
-    if (!onQuoteSelection) {
-      setSelectionAction(null);
-      return;
-    }
     const selection = window.getSelection();
     if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) {
       setSelectionAction(null);
@@ -78,21 +57,19 @@ export function AssistantSelectionCopySurface({
       setSelectionAction(null);
       return;
     }
-
-    const content = createAssistantSelectionClipboardContent(selection);
-    if (!content) {
-      setSelectionAction(null);
-      return;
-    }
-
+    const quote = selection.toString().trim();
     const rect = range.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) {
+    if (!quote || (rect.width === 0 && rect.height === 0)) {
       setSelectionAction(null);
       return;
     }
+
+    const locatedRange = selectionLineRange(range);
     const placement = rect.top >= MIN_SPACE_ABOVE_ACTION ? "above" : "below";
     setSelectionAction({
-      markdown: content.plainText,
+      quote,
+      lineStart: locatedRange?.lineStart ?? null,
+      lineEnd: locatedRange?.lineEnd ?? null,
       left: Math.min(
         window.innerWidth - VIEWPORT_MARGIN,
         Math.max(VIEWPORT_MARGIN, rect.left + rect.width / 2),
@@ -100,7 +77,7 @@ export function AssistantSelectionCopySurface({
       top: placement === "above" ? rect.top - ACTION_GAP : rect.bottom + ACTION_GAP,
       placement,
     });
-  }, [onQuoteSelection]);
+  }, []);
 
   const scheduleSelectionActionUpdate = useCallback(() => {
     if (selectionFrameRef.current !== null) {
@@ -113,9 +90,6 @@ export function AssistantSelectionCopySurface({
   }, [updateSelectionAction]);
 
   useEffect(() => {
-    if (!onQuoteSelection) {
-      return;
-    }
     document.addEventListener("selectionchange", scheduleSelectionActionUpdate);
     document.addEventListener("scroll", scheduleSelectionActionUpdate, true);
     window.addEventListener("resize", scheduleSelectionActionUpdate);
@@ -128,16 +102,31 @@ export function AssistantSelectionCopySurface({
         selectionFrameRef.current = null;
       }
     };
-  }, [onQuoteSelection, scheduleSelectionActionUpdate]);
+  }, [scheduleSelectionActionUpdate]);
 
-  const handleQuote = useCallback(() => {
+  const handleOpenComment = useCallback(() => {
     if (!selectionAction) {
       return;
     }
-    onQuoteSelection?.(selectionAction.markdown);
-    window.getSelection()?.removeAllRanges();
+    setEditingSelection({
+      quote: selectionAction.quote,
+      lineStart: selectionAction.lineStart,
+      lineEnd: selectionAction.lineEnd,
+    });
     setSelectionAction(null);
-  }, [onQuoteSelection, selectionAction]);
+  }, [selectionAction]);
+  const handleCloseComment = useCallback(() => setEditingSelection(null), []);
+  const handleSaveComment = useCallback(
+    (body: string) => {
+      if (!editingSelection) {
+        return;
+      }
+      onComment(editingSelection, body);
+      window.getSelection()?.removeAllRanges();
+      setEditingSelection(null);
+    },
+    [editingSelection, onComment],
+  );
   const selectionActionStyle = useMemo<CSSProperties | undefined>(() => {
     if (!selectionAction) {
       return undefined;
@@ -153,22 +142,22 @@ export function AssistantSelectionCopySurface({
     };
   }, [overlayLayer, selectionAction]);
 
-  const selectionActionNode = selectionAction
+  const action = selectionAction
     ? createPortal(
         <div
           onMouseDown={preventSelectionActionMouseDown}
           style={selectionActionStyle}
-          data-testid="assistant-selection-actions"
+          data-testid="review-selection-actions"
         >
           <Button
             size="xs"
             variant="secondary"
-            leftIcon={Quote}
-            onPress={handleQuote}
-            accessibilityLabel={t("review.quoteSelection")}
-            testID="assistant-selection-quote"
+            leftIcon={MessageSquarePlus}
+            onPress={handleOpenComment}
+            accessibilityLabel={t("review.comment.add")}
+            testID="review-selection-comment"
           >
-            {t("review.quote")}
+            {t("review.comment.save")}
           </Button>
         </div>,
         getOverlayRoot(),
@@ -176,9 +165,31 @@ export function AssistantSelectionCopySurface({
     : null;
 
   return (
-    <div ref={rootRef} onCopy={handleCopy} style={DISPLAY_CONTENTS}>
-      <View style={style}>{children}</View>
-      {selectionActionNode}
+    <div ref={rootRef} style={DISPLAY_CONTENTS}>
+      {children}
+      {action}
+      <ReviewCommentComposerSheet
+        visible={editingSelection !== null}
+        filePath={filePath}
+        selection={editingSelection}
+        onClose={handleCloseComment}
+        onSave={handleSaveComment}
+      />
     </div>
   );
+}
+
+function selectionLineRange(range: Range): { lineStart: number; lineEnd: number } | null {
+  const start = closestReviewLine(range.startContainer);
+  const end = closestReviewLine(range.endContainer);
+  if (start === null || end === null) {
+    return null;
+  }
+  return { lineStart: Math.min(start, end), lineEnd: Math.max(start, end) };
+}
+
+function closestReviewLine(node: Node): number | null {
+  const element = node instanceof Element ? node : node.parentElement;
+  const line = Number(element?.closest("[data-review-line]")?.getAttribute("data-review-line"));
+  return Number.isInteger(line) && line > 0 ? line : null;
 }

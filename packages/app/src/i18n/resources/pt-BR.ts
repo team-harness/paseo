@@ -1770,6 +1770,8 @@ export const ptBR: TranslationResources = {
     accessibility: "Janela de contexto {{percentage}}% usada",
   },
   review: {
+    quote: "Citar",
+    quoteSelection: "Citar seleção no campo de mensagem",
     comment: {
       add: "Adicionar comentário de revisão",
       edit: "Editar comentário de revisão",
@@ -1780,6 +1782,19 @@ export const ptBR: TranslationResources = {
       cancelAccessibility: "Cancelar comentário de revisão",
       save: "Comentar",
       saveAccessibility: "Salvar comentário de revisão",
+    },
+    selection: {
+      selectedText: "Texto selecionado",
+      line: "Linha {{line}}",
+      lines: "Linhas {{start}}-{{end}}",
+      diffLine: "Linha {{line}} ({{side}})",
+    },
+    summary: {
+      title: "Comentários de revisão",
+      count: "{{count}} comentários",
+      open: "Abrir comentários de revisão ({{count}})",
+      copyAll: "Copiar tudo",
+      copyFailed: "Não foi possível copiar os comentários de revisão",
     },
   },
   settings: {

@@ -119,6 +119,7 @@ import {
 } from "@/review";
 import { usePublishWorkingDiffAttachment, useWorkingDiff } from "@/git/use-working-diff";
 import { DiffTooLargeState } from "@/git/diff-too-large-state";
+import { ReviewSummaryTrigger } from "@/review/summary-trigger";
 
 export type { GitActionId, GitAction, GitActions } from "@/git/policy";
 
@@ -2891,6 +2892,7 @@ export function GitDiffPane({
                 selected={changesTabOpen}
                 onPress={handleToggleChangesTab}
               />
+              <ReviewSummaryTrigger serverId={serverId} workspaceId={workspaceId} cwd={cwd} />
               {canUseSplitLayout && !changesTabOpen ? (
                 <DiffLayoutToggle
                   layout={changesPreferences.layout}
