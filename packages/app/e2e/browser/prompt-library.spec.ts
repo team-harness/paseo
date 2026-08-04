@@ -63,6 +63,23 @@ async function failNextPromptLibraryWrite(page: Page, message: string): Promise<
   });
 }
 
+async function typeWithIme(page: Page, input: Locator, text: string): Promise<void> {
+  await input.focus();
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send("Input.imeSetComposition", {
+      text,
+      selectionStart: text.length,
+      selectionEnd: text.length,
+      replacementStart: 0,
+      replacementEnd: 0,
+    });
+    await session.send("Input.insertText", { text });
+  } finally {
+    await session.detach();
+  }
+}
+
 async function openPromptLibrary(page: Page): Promise<void> {
   const trigger = page.getByTestId("prompt-library-trigger").filter({ visible: true }).first();
   await expect(trigger).toBeVisible({ timeout: 15_000 });
@@ -86,6 +103,29 @@ async function fillNewSavedPrompt(
 }
 
 test.describe("Saved prompts", () => {
+  test("accepts Chinese IME composition in the prompt editor", async ({ page, withWorkspace }) => {
+    const workspace = await withWorkspace({ prefix: "prompt-library-ime-" });
+    await workspace.navigateTo();
+    await clickNewChat(page);
+    await expectComposerVisible(page);
+
+    await openPromptLibrary(page);
+    await page.getByTestId("prompt-library-new-button").click();
+
+    const titleInput = page.getByTestId("prompt-library-title-input");
+    const contentInput = page.getByTestId("prompt-library-content-input");
+    const title = "中文标题";
+    const content = "请审查当前变更，并只返回可执行的问题。";
+
+    await typeWithIme(page, titleInput, title);
+    await expect(titleInput).toHaveValue(title);
+    await typeWithIme(page, contentInput, content);
+    await expect(contentInput).toHaveValue(content);
+
+    await page.getByTestId("prompt-library-save-button").click();
+    await expect(page.getByText(title, { exact: true })).toBeVisible();
+  });
+
   test("supports CRUD, persistence, search, and exact selection insertion", async ({
     page,
     withWorkspace,

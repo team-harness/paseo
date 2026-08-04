@@ -195,7 +195,6 @@ export function PromptLibrarySheet({
   const library = usePromptLibrary();
   const [mode, setMode] = useState<SheetMode>({ kind: "library" });
   const [query, setQuery] = useState("");
-  const [draft, setDraft] = useState<SavedPromptDraft>({ title: "", content: "" });
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -203,13 +202,14 @@ export function PromptLibrarySheet({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const draftRef = useRef<SavedPromptDraft>({ title: "", content: "" });
   const titleInputRef = useRef<TextInput>(null);
   const deleteFlowRef = useRef(false);
   const resetFlowRef = useRef(false);
 
   const resetEditor = useCallback(() => {
     setMode({ kind: "library" });
-    setDraft({ title: "", content: "" });
+    draftRef.current = { title: "", content: "" };
     setFieldErrors({});
     setSubmitError(null);
     setIsSaving(false);
@@ -228,9 +228,9 @@ export function PromptLibrarySheet({
 
   const openEditor = useCallback((prompt: SavedPrompt | null) => {
     setMode({ kind: "editor", prompt });
-    setDraft(
-      prompt ? { title: prompt.title, content: prompt.content } : { title: "", content: "" },
-    );
+    draftRef.current = prompt
+      ? { title: prompt.title, content: prompt.content }
+      : { title: "", content: "" };
     setFieldErrors({});
     setSubmitError(null);
     setTimeout(() => titleInputRef.current?.focus(), 50);
@@ -247,17 +247,22 @@ export function PromptLibrarySheet({
   }, [deletingId, isResetting, isSaving, onClose]);
 
   const handleTitleChange = useCallback((title: string) => {
-    setDraft((current) => ({ ...current, title }));
-    setFieldErrors((current) => ({ ...current, title: undefined }));
-    setSubmitError(null);
+    draftRef.current = { ...draftRef.current, title };
   }, []);
   const handleContentChange = useCallback((content: string) => {
-    setDraft((current) => ({ ...current, content }));
-    setFieldErrors((current) => ({ ...current, content: undefined }));
+    draftRef.current = { ...draftRef.current, content };
+  }, []);
+  const handleTitleFocus = useCallback(() => {
+    setFieldErrors((current) => (current.title ? { ...current, title: undefined } : current));
+    setSubmitError(null);
+  }, []);
+  const handleContentFocus = useCallback(() => {
+    setFieldErrors((current) => (current.content ? { ...current, content: undefined } : current));
     setSubmitError(null);
   }, []);
 
   const validateDraft = useCallback((): boolean => {
+    const draft = draftRef.current;
     const errors: FieldErrors = {};
     if (!draft.title.trim()) {
       errors.title = t("composer.promptLibrary.errors.title_required");
@@ -271,10 +276,11 @@ export function PromptLibrarySheet({
     }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [draft.content, draft.title, t]);
+  }, [t]);
 
   const handleSave = useCallback(async () => {
     if (isSaving || mode.kind !== "editor" || !validateDraft()) return;
+    const draft = draftRef.current;
     setIsSaving(true);
     setSubmitError(null);
     try {
@@ -300,7 +306,7 @@ export function PromptLibrarySheet({
     } finally {
       setIsSaving(false);
     }
-  }, [draft, isSaving, library, mode, resetEditor, t, validateDraft]);
+  }, [isSaving, library, mode, resetEditor, t, validateDraft]);
 
   const handleUse = useCallback(
     (prompt: SavedPrompt) => {
@@ -504,9 +510,10 @@ export function PromptLibrarySheet({
         >
           <FormTextInput
             ref={titleInputRef}
-            initialValue={draft.title}
+            initialValue={mode.prompt?.title ?? ""}
             resetKey={mode.prompt?.id ?? "new"}
             onChangeText={handleTitleChange}
+            onFocus={handleTitleFocus}
             placeholder={t("composer.promptLibrary.namePlaceholder")}
             maxLength={SAVED_PROMPT_TITLE_MAX_LENGTH}
             editable={!isSaving}
@@ -520,9 +527,10 @@ export function PromptLibrarySheet({
           testID="prompt-library-content-field"
         >
           <FormTextInput
-            initialValue={draft.content}
+            initialValue={mode.prompt?.content ?? ""}
             resetKey={mode.prompt?.id ?? "new"}
             onChangeText={handleContentChange}
+            onFocus={handleContentFocus}
             placeholder={t("composer.promptLibrary.contentPlaceholder")}
             maxLength={SAVED_PROMPT_CONTENT_MAX_LENGTH}
             editable={!isSaving}
