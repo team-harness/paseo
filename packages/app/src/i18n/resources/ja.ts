@@ -116,9 +116,27 @@ export const ja: TranslationResources = {
       contentPlaceholder: "再利用するプロンプトを入力",
       save: "保存",
       loading: "プロンプトを読み込み中...",
+      disconnected: "保存済みプロンプトを使用するにはHostに接続してください",
+      unsupported: "保存済みプロンプトを使用するにはこのHostを更新してください",
       loadError: "保存済みプロンプトを読み込めませんでした",
       corruptData:
         "保存済みプロンプトのデータが破損しています。再試行するか、ライブラリをリセットしてください。",
+      migrationConfirmTitle: "以前の保存済みプロンプトを統合しますか？",
+      migrationConfirmMessage:
+        "このデバイスに保存された{{count}}件のプロンプトが見つかりました。現在のHostに統合しますか？既存のプロンプトは置き換えません。",
+      migrationConfirm: "Hostに統合",
+      migrationLoading: "以前のプロンプトを処理中...",
+      migrationSuccess: "{{addedCount}}件を統合し、{{skippedCount}}件の重複をスキップしました",
+      migrationFailed:
+        "以前のプロンプトを統合できませんでした。データはこのデバイスに残っています。",
+      migrationCorrupt:
+        "以前のローカルプロンプトを読み込めませんでした。現在のHostのプロンプトには影響しません。",
+      migrationCorruptTitle: "以前の保存済みプロンプトを読み込めません",
+      migrationCorruptMessage:
+        "このデバイスに保存された以前のプロンプトが破損しています。この古いローカルデータのみを削除しますか？現在のHostのプロンプトは変更されません。",
+      migrationCorruptConfirm: "古いローカルデータを削除",
+      migrationCleanupFailed:
+        "破損したローカルプロンプトデータを削除できませんでした。このデバイスに残っています。",
       noResults: "一致するプロンプトはありません",
       empty: "保存済みプロンプトはまだありません",
       errors: {
@@ -1782,6 +1800,10 @@ export const ja: TranslationResources = {
       open: "レビューコメントを開く ({{count}})",
       copyAll: "すべてコピー",
       copyFailed: "レビューコメントをコピーできませんでした",
+      deleteAll: "すべて削除",
+      deleteAllConfirmTitle: "すべてのコメントを削除しますか？",
+      deleteAllConfirmMessage:
+        "{{count}} 件のレビューコメントを完全に削除します。この操作は取り消せません。",
     },
   },
   settings: {

@@ -117,9 +117,28 @@ export const es: TranslationResources = {
       contentPlaceholder: "Escribe el prompt que quieres reutilizar",
       save: "Guardar",
       loading: "Cargando prompts...",
+      disconnected: "Conéctate al Host para usar los prompts guardados",
+      unsupported: "Actualiza este Host para usar los prompts guardados",
       loadError: "No se pudieron cargar los prompts guardados",
       corruptData:
         "Los datos de los prompts guardados están dañados. Reintenta o restablece la biblioteca.",
+      migrationConfirmTitle: "¿Combinar los prompts guardados antiguos?",
+      migrationConfirmMessage:
+        "Se encontraron {{count}} prompts guardados en este dispositivo. ¿Combinarlos con el Host actual? No se reemplazará ningún prompt existente.",
+      migrationConfirm: "Combinar con el Host",
+      migrationLoading: "Procesando prompts antiguos...",
+      migrationSuccess:
+        "Se combinaron {{addedCount}} prompts y se omitieron {{skippedCount}} duplicados",
+      migrationFailed:
+        "No se pudieron combinar los prompts antiguos. Siguen guardados en este dispositivo.",
+      migrationCorrupt:
+        "No se pudieron leer los prompts locales antiguos. Los prompts del Host actual no se ven afectados.",
+      migrationCorruptTitle: "No se pueden leer los prompts guardados antiguos",
+      migrationCorruptMessage:
+        "Los prompts antiguos guardados en este dispositivo están dañados. ¿Eliminar solo estos datos locales antiguos? Los prompts del Host actual no se modificarán.",
+      migrationCorruptConfirm: "Eliminar datos locales antiguos",
+      migrationCleanupFailed:
+        "No se pudieron eliminar los datos locales dañados. Siguen guardados en este dispositivo.",
       noResults: "No hay prompts coincidentes",
       empty: "Aún no hay prompts guardados",
       errors: {
@@ -1810,6 +1829,10 @@ export const es: TranslationResources = {
       open: "Abrir comentarios de revisión ({{count}})",
       copyAll: "Copiar todo",
       copyFailed: "No se pudieron copiar los comentarios de revisión",
+      deleteAll: "Eliminar todo",
+      deleteAllConfirmTitle: "¿Eliminar todos los comentarios?",
+      deleteAllConfirmMessage:
+        "Se eliminarán permanentemente los {{count}} comentarios de revisión. Esta acción no se puede deshacer.",
     },
   },
   settings: {

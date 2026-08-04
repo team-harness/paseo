@@ -79,6 +79,21 @@ export function addWorkspaceReviewComment(input: {
   return useWorkspaceReviewCommentsStore.getState().addComment(input);
 }
 
+export function deleteWorkspaceReviewComments(
+  inputs: readonly { key: string; id: string }[],
+): void {
+  if (inputs.length === 0) {
+    return;
+  }
+  useWorkspaceReviewCommentsStore.setState((state) => {
+    const nextState = inputs.reduce<WorkspaceReviewCommentsState>(
+      (currentState, input) => deleteWorkspaceReviewCommentFromState(currentState, input),
+      state,
+    );
+    return { commentsByWorkspace: nextState.commentsByWorkspace };
+  });
+}
+
 export function useWorkspaceReviewComments(key: string): WorkspaceReviewComment[] {
   return useWorkspaceReviewCommentsStore(
     (state) => state.commentsByWorkspace[key] ?? EMPTY_WORKSPACE_REVIEW_COMMENTS,

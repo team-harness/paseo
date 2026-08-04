@@ -9,6 +9,7 @@ import { type Theme } from "@/styles/theme";
 import { PromptLibrarySheet } from "./prompt-library-sheet";
 
 interface PromptLibraryTriggerProps {
+  serverId: string;
   disabled?: boolean;
   isPaneFocused: boolean;
   onInsert: (content: string) => void;
@@ -20,6 +21,7 @@ interface OpenSheetState {
 }
 
 export function PromptLibraryTrigger({
+  serverId,
   disabled = false,
   isPaneFocused,
   onInsert,
@@ -72,6 +74,7 @@ export function PromptLibraryTrigger({
       {sheet ? (
         <PromptLibrarySheet
           key={sheet.key}
+          serverId={serverId}
           visible={sheet.visible && isPaneFocused}
           onClose={handleClose}
           onDismiss={handleDismiss}

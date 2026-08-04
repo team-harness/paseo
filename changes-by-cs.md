@@ -308,21 +308,26 @@
 
 **状态**：fork 功能。提交：`947f4cbae`、`3b1dc3e0a`。
 
-**行为**：Composer 工具栏提供客户端本地的常用 Prompt 集合，支持搜索、新建、编辑、删除，并把 Prompt 精确插入当前选区后恢复输入焦点；插入不会自动发送。集合在同一客户端安装内跨 Host、项目、工作区和 Agent 共享，不通过 daemon 或 relay 同步。Web/Electron 编辑器保留中文等 IME 的完整 composition，标题和正文不会在候选提交时重复或丢失。
+**行为**：Composer 工具栏提供 Host 级常用 Prompt 集合，支持搜索、新建、编辑、删除，并把 Prompt 精确插入当前选区后恢复输入焦点；插入不会自动发送。集合由 daemon 持久化到 `$PASEO_HOME/prompt-library.json`，连接同一 Host 的浏览器、桌面端、移动端和终端共享，项目、工作区和 Agent 不再各自保存。首次打开时若发现旧的客户端本地集合，会询问后幂等合并到当前 Host；合并成功才删除旧 key，取消或失败时保留并可重试。Web/Electron 编辑器保留中文等 IME 的完整 composition，标题和正文不会在候选提交时重复或丢失。
 
 **关键文件**：
 
 - `packages/app/src/prompt-library/`
 - `packages/app/src/composer/index.tsx`
 - `packages/app/src/composer/input/input.tsx`
+- `packages/protocol/src/messages.ts`
+- `packages/client/src/daemon-client.ts`
+- `packages/server/src/server/prompt-library/`
+- `packages/server/src/server/session/prompt-library-session.ts`
 - `docs/data-model.md`
 
 **同步规则**：
 
-- 上游若提供等价 Prompt 集合，采用上游 UI、数据模型和持久化边界，迁移本地 `@paseo:prompt-library` 一次后删除 fork 重复入口，不保留双路径。
+- 上游若提供等价 Prompt 集合，采用上游 UI、数据模型和持久化边界，迁移 `$PASEO_HOME/prompt-library.json` 后删除 fork 重复入口，不保留双路径。
 - 插入必须替换当前选区、恢复焦点且不自动发送。
-- 单条损坏记录可以跳过；JSON 或根 envelope 损坏必须阻止普通 CRUD 覆盖，只有显式确认重置可以清空。
-- 客户端存储操作保持串行，避免多个 Composer 或并发查询/写入互相覆盖。
+- Host 存储写入保持原子和串行；单条损坏记录可以跳过，JSON 或根 envelope 损坏必须阻止普通 CRUD 覆盖，只有显式确认重置可以清空。
+- `server_info.features.promptLibrary` 是唯一 capability gate；旧 Host 明确提示更新，不能回退到客户端本地存储。
+- 旧 `@paseo:prompt-library` 只用于一次迁移。合并按规范化标题与正文精确去重，保留 Host 顺序；旧 ID 冲突时生成新 ID。损坏的旧本地数据只能在明确确认后单独删除，不能清空 Host 集合。
 - `AdaptiveTextInput` 的文字由原生控件持有；Prompt 未提交 draft 不得在每次 `onChangeText` 时触发父组件重渲染，否则 Web/Electron 会提前结束 IME composition。
 
 **验证**：`model.test.ts`、`service.test.ts`、`resources.test.ts`、`prompt-library.spec.ts`（包含 Chromium CDP 中文 IME composition）、`npm run typecheck`、`npm run lint`。
@@ -333,7 +338,7 @@
 
 **状态**：fork 功能。提交：`044802203`。
 
-**行为**：对话中的用户或 Assistant 文本可以按原 Markdown 引用到 Composer，替换当前选区、恢复焦点且不自动发送。文件 Markdown 预览、代码预览和 Source 视图支持对选区留评论；代码与 Source 使用精确行号，Markdown 预览在没有可靠源码映射时只记录选中文字。评论按 workspace 隔离并持久化，File 与 Changes 共用 Review summary，汇总选区评论和 diff 行评论，支持一键复制与逐条删除。
+**行为**：对话中的用户或 Assistant 文本可以按原 Markdown 引用到 Composer，替换当前选区、恢复焦点且不自动发送。文件 Markdown 预览、代码预览和 Source 视图支持对选区留评论；代码与 Source 使用精确行号，Markdown 预览在没有可靠源码映射时只记录选中文字。评论按 workspace 隔离并持久化，File 与 Changes 共用 Review summary，汇总选区评论和 diff 行评论，支持一键复制、逐条删除，以及确认后删除当前汇总中的全部评论。
 
 **关键文件**：
 
@@ -350,6 +355,7 @@
 - 上游若提供等价能力，采用其交互表面和数据模型，迁移已有 workspace 评论后删除 fork 重复入口，不保留双路径。
 - 引用必须生成合法 Markdown blockquote，精确替换 Composer 当前选区、恢复焦点且不自动发送。
 - 评论必须按 `workspaceId` 隔离；同一 workspace 的 File、Changes、preview/source/diff 需要汇总到同一 Review summary。
+- 删除全部必须同时清理 selection 和 diff 两类 store，取消确认时不能改变数据；清空后关闭 summary，并确保刷新后评论不会恢复。
 - 没有 AST 级源码映射时，Markdown 预览不得猜测行号；代码预览和 Source 选区继续保留精确范围。
 - 自定义选区操作只在 Web/Electron 提供；Native 保留系统复制菜单，不显示不可用入口。
 

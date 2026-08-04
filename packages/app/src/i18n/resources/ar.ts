@@ -116,8 +116,24 @@ export const ar: TranslationResources = {
       contentPlaceholder: "أدخل المطالبة التي تريد إعادة استخدامها",
       save: "حفظ",
       loading: "جارٍ تحميل المطالبات...",
+      disconnected: "اتصل بالمضيف لاستخدام المطالبات المحفوظة",
+      unsupported: "حدّث هذا المضيف لاستخدام المطالبات المحفوظة",
       loadError: "تعذر تحميل المطالبات المحفوظة",
       corruptData: "بيانات المطالبات المحفوظة تالفة. أعد المحاولة أو أعد تعيين المكتبة.",
+      migrationConfirmTitle: "دمج المطالبات المحفوظة القديمة؟",
+      migrationConfirmMessage:
+        "تم العثور على {{count}} مطالبة محفوظة على هذا الجهاز. هل تريد دمجها في المضيف الحالي؟ لن يتم استبدال المطالبات الحالية.",
+      migrationConfirm: "دمج في المضيف",
+      migrationLoading: "جارٍ معالجة المطالبات القديمة...",
+      migrationSuccess: "تم دمج {{addedCount}} مطالبة وتخطي {{skippedCount}} مطالبة مكررة",
+      migrationFailed: "تعذر دمج المطالبات القديمة. ما زالت محفوظة على هذا الجهاز.",
+      migrationCorrupt: "تعذرت قراءة المطالبات المحلية القديمة. لم تتأثر مطالبات المضيف الحالي.",
+      migrationCorruptTitle: "تعذرت قراءة المطالبات القديمة المحفوظة",
+      migrationCorruptMessage:
+        "بيانات المطالبات القديمة المحفوظة على هذا الجهاز تالفة. هل تريد حذف هذه البيانات المحلية القديمة فقط؟ لن تتغير مطالبات المضيف الحالي.",
+      migrationCorruptConfirm: "حذف البيانات المحلية القديمة",
+      migrationCleanupFailed:
+        "تعذر حذف بيانات المطالبات المحلية التالفة. ما زالت محفوظة على هذا الجهاز.",
       noResults: "لا توجد مطالبات مطابقة",
       empty: "لا توجد مطالبات محفوظة بعد",
       errors: {
@@ -1765,6 +1781,10 @@ export const ar: TranslationResources = {
       open: "فتح تعليقات المراجعة ({{count}})",
       copyAll: "نسخ الكل",
       copyFailed: "تعذر نسخ تعليقات المراجعة",
+      deleteAll: "حذف الكل",
+      deleteAllConfirmTitle: "حذف كل التعليقات؟",
+      deleteAllConfirmMessage:
+        "سيؤدي هذا إلى حذف تعليقات المراجعة البالغ عددها {{count}} نهائيًا. لا يمكن التراجع عن هذا الإجراء.",
     },
   },
   settings: {

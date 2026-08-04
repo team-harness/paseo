@@ -114,8 +114,25 @@ export const en = {
       contentPlaceholder: "Enter the prompt you want to reuse",
       save: "Save",
       loading: "Loading prompts...",
+      disconnected: "Connect to the Host to use saved prompts",
+      unsupported: "Update this Host to use saved prompts",
       loadError: "Couldn't load saved prompts",
       corruptData: "Saved prompt data is damaged. Retry, or reset the library to start over.",
+      migrationConfirmTitle: "Merge old saved prompts?",
+      migrationConfirmMessage:
+        "Found {{count}} prompts saved on this device. Merge them into the current Host? Existing prompts won't be replaced.",
+      migrationConfirm: "Merge into Host",
+      migrationLoading: "Processing old prompts...",
+      migrationSuccess: "Merged {{addedCount}} prompts and skipped {{skippedCount}} duplicates",
+      migrationFailed: "Couldn't merge old prompts. They remain on this device.",
+      migrationCorrupt:
+        "The old local prompts couldn't be read. Prompts on the current Host are unaffected.",
+      migrationCorruptTitle: "Old saved prompts cannot be read",
+      migrationCorruptMessage:
+        "The old prompts saved on this device are damaged. Delete only this old local data? Prompts on the current Host won't be changed.",
+      migrationCorruptConfirm: "Delete old local data",
+      migrationCleanupFailed:
+        "Couldn't delete the damaged local prompt data. It remains on this device.",
       noResults: "No matching prompts",
       empty: "No saved prompts yet",
       errors: {
@@ -1776,6 +1793,10 @@ export const en = {
       open: "Open review comments ({{count}})",
       copyAll: "Copy all",
       copyFailed: "Couldn't copy review comments",
+      deleteAll: "Delete all",
+      deleteAllConfirmTitle: "Delete all comments?",
+      deleteAllConfirmMessage:
+        "This will permanently delete all {{count}} review comments. This action cannot be undone.",
     },
   },
   settings: {

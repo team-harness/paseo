@@ -85,6 +85,14 @@ export function asStatusSummaryService(
   });
 }
 
+export function asPromptLibraryStore(
+  stub: {
+    [K in keyof SessionOptions["promptLibraryStore"]]?: unknown;
+  } = {},
+): SessionOptions["promptLibraryStore"] {
+  return createStub<SessionOptions["promptLibraryStore"]>(stub);
+}
+
 export function asTerminalManager(stub: {
   [K in keyof NonNullable<SessionOptions["terminalManager"]>]?: unknown;
 }): NonNullable<SessionOptions["terminalManager"]> {

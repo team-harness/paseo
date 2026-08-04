@@ -130,6 +130,7 @@ import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { FileBackedUsageLedger } from "./usage-ledger/index.js";
 import { StatusSummaryService } from "./status-summary/status-summary-service.js";
+import { PromptLibraryStore } from "./prompt-library/store.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import {
@@ -859,6 +860,9 @@ export async function createPaseoDaemon(
     agentSource: agentManager,
     logger: logger.child({ module: "status-summary" }),
   });
+  const promptLibraryStore = new PromptLibraryStore(
+    path.join(config.paseoHome, "prompt-library.json"),
+  );
   await agentStorage.initialize();
   logger.info({ elapsed: elapsed() }, "Agent storage initialized");
   await usageLedger.initialize();
@@ -1583,6 +1587,7 @@ export async function createPaseoDaemon(
               serviceProxyPublicBaseUrl,
               browserToolsBroker,
               hubRelationships,
+              promptLibraryStore,
             );
             relayRuntime = createRelayRuntime({
               config: {

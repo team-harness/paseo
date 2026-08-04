@@ -119,9 +119,26 @@ export const fr: TranslationResources = {
       contentPlaceholder: "Saisissez le prompt à réutiliser",
       save: "Enregistrer",
       loading: "Chargement des prompts...",
+      disconnected: "Connectez-vous à l'Host pour utiliser les prompts enregistrés",
+      unsupported: "Mettez à jour cet Host pour utiliser les prompts enregistrés",
       loadError: "Impossible de charger les prompts enregistrés",
       corruptData:
         "Les données des prompts enregistrés sont endommagées. Réessayez ou réinitialisez la bibliothèque.",
+      migrationConfirmTitle: "Fusionner les anciens prompts enregistrés ?",
+      migrationConfirmMessage:
+        "{{count}} prompts enregistrés ont été trouvés sur cet appareil. Les fusionner avec l'Host actuel ? Les prompts existants ne seront pas remplacés.",
+      migrationConfirm: "Fusionner avec l'Host",
+      migrationLoading: "Traitement des anciens prompts...",
+      migrationSuccess: "{{addedCount}} prompts fusionnés et {{skippedCount}} doublons ignorés",
+      migrationFailed: "Impossible de fusionner les anciens prompts. Ils restent sur cet appareil.",
+      migrationCorrupt:
+        "Impossible de lire les anciens prompts locaux. Les prompts de l'Host actuel ne sont pas affectés.",
+      migrationCorruptTitle: "Impossible de lire les anciens prompts enregistrés",
+      migrationCorruptMessage:
+        "Les anciens prompts enregistrés sur cet appareil sont endommagés. Supprimer uniquement ces anciennes données locales ? Les prompts de l'Host actuel ne seront pas modifiés.",
+      migrationCorruptConfirm: "Supprimer les anciennes données locales",
+      migrationCleanupFailed:
+        "Impossible de supprimer les données locales endommagées. Elles restent sur cet appareil.",
       noResults: "Aucun prompt correspondant",
       empty: "Aucun prompt enregistré",
       errors: {
@@ -1814,6 +1831,10 @@ export const fr: TranslationResources = {
       open: "Ouvrir les commentaires de revue ({{count}})",
       copyAll: "Tout copier",
       copyFailed: "Impossible de copier les commentaires de revue",
+      deleteAll: "Tout supprimer",
+      deleteAllConfirmTitle: "Supprimer tous les commentaires ?",
+      deleteAllConfirmMessage:
+        "Les {{count}} commentaires de revue seront définitivement supprimés. Cette action est irréversible.",
     },
   },
   settings: {

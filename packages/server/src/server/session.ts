@@ -161,6 +161,8 @@ import {
 } from "./session/checkout/git-metadata-generator.js";
 import { ChatScheduleLoopSession } from "./session/chat/chat-schedule-loop-session.js";
 import { ProviderCatalogSession } from "./session/provider/provider-catalog-session.js";
+import { PromptLibrarySession } from "./session/prompt-library-session.js";
+import type { PromptLibraryStore } from "./prompt-library/store.js";
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
@@ -456,6 +458,7 @@ export interface SessionOptions {
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
   statusSummaryService: StatusSummaryService;
+  promptLibraryStore: PromptLibraryStore;
   hubExecutionAgents?: HubExecutionAgents;
   hubRelationships?: HubRelationshipManagement;
   serviceProxy?: ServiceProxySubsystem;
@@ -660,6 +663,7 @@ export class Session {
   private readonly providerCatalogSession: ProviderCatalogSession;
   private readonly statusSummaryService: StatusSummaryService;
   private unsubscribeStatusSummary: (() => void) | null = null;
+  private readonly promptLibrarySession: PromptLibrarySession;
   private readonly workspaceFilesSession: WorkspaceFilesSession;
   private readonly agentConfigSession: AgentConfigSession;
   private readonly projectConfigSession: ProjectConfigSession;
@@ -707,6 +711,7 @@ export class Session {
       providerSnapshotManager,
       providerUsageService,
       statusSummaryService,
+      promptLibraryStore,
       serviceProxy,
       scriptRuntimeStore,
       workspaceSetupSnapshots,
@@ -857,6 +862,10 @@ export class Session {
     this.statusSummaryService = statusSummaryService;
     this.unsubscribeStatusSummary = this.statusSummaryService.subscribe((summary) => {
       this.emitStatusSummaryUpdated(summary);
+    });
+    this.promptLibrarySession = new PromptLibrarySession({
+      emit: (message) => this.emit(message),
+      store: promptLibraryStore,
     });
     this.agentConfigSession = new AgentConfigSession({
       host: {
@@ -1843,6 +1852,7 @@ export class Session {
       this.dispatchWorkspaceFileMessage(msg, source) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchStatusSummaryMessage(msg) ??
+      this.promptLibrarySession.dispatch(msg) ??
       this.dispatchTerminalMessage(msg) ??
       this.dispatchChatScheduleLoopMessage(msg) ??
       this.dispatchMiscMessage(msg);

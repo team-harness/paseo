@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { Copy, MessageSquareText, Trash2 } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -8,13 +8,15 @@ import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-moda
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
-import { useReviewDraftStore } from "./store";
+import { confirmDialog } from "@/utils/confirm-dialog";
+import { deleteReviewDraftComments, useReviewDraftStore } from "./store";
 import {
   formatWorkspaceReviewSummary,
   type BuildWorkspaceReviewKeyInput,
   type WorkspaceReviewComment,
 } from "./workspace-comments";
 import {
+  deleteWorkspaceReviewComments,
   useWorkspaceReviewCommentsStore,
   useWorkspaceReviewSummary,
   type WorkspaceReviewSummaryEntry,
@@ -36,6 +38,7 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
   );
   const review = useWorkspaceReviewSummary(scope);
   const [visible, setVisible] = useState(false);
+  const deleteAllFlowRef = useRef(false);
   const count = review.entries.length;
   const summaryText = useMemo(
     () =>
@@ -80,22 +83,66 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
     }
     useReviewDraftStore.getState().deleteComment({ key: entry.ownerKey, id: entry.comment.id });
   }, []);
+  const handleDeleteAll = useCallback(async () => {
+    if (deleteAllFlowRef.current || review.entries.length === 0) {
+      return;
+    }
+    deleteAllFlowRef.current = true;
+    try {
+      const confirmed = await confirmDialog({
+        title: t("review.summary.deleteAllConfirmTitle"),
+        message: t("review.summary.deleteAllConfirmMessage", { count: review.entries.length }),
+        confirmLabel: t("review.summary.deleteAll"),
+        cancelLabel: t("common.actions.cancel"),
+        destructive: true,
+      });
+      if (!confirmed) {
+        return;
+      }
+      deleteWorkspaceReviewComments(
+        review.entries
+          .filter((entry) => entry.kind === "selection")
+          .map((entry) => ({ key: entry.ownerKey, id: entry.comment.id })),
+      );
+      deleteReviewDraftComments(
+        review.entries
+          .filter((entry) => entry.kind === "diff")
+          .map((entry) => ({ key: entry.ownerKey, id: entry.comment.id })),
+      );
+    } finally {
+      deleteAllFlowRef.current = false;
+    }
+  }, [review.entries, t]);
+  const handleDeleteAllPress = useCallback(() => {
+    void handleDeleteAll();
+  }, [handleDeleteAll]);
   const footer = useMemo(
     () => (
       <View style={styles.footer}>
         <Text style={styles.footerCount}>{t("review.summary.count", { count })}</Text>
-        <Button
-          variant="default"
-          size="sm"
-          leftIcon={Copy}
-          onPress={handleCopy}
-          testID="review-summary-copy"
-        >
-          {t("review.summary.copyAll")}
-        </Button>
+        <View style={styles.footerActions}>
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={Trash2}
+            onPress={handleDeleteAllPress}
+            testID="review-summary-clear-all"
+          >
+            {t("review.summary.deleteAll")}
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            leftIcon={Copy}
+            onPress={handleCopy}
+            testID="review-summary-copy"
+          >
+            {t("review.summary.copyAll")}
+          </Button>
+        </View>
       </View>
     ),
-    [count, handleCopy, t],
+    [count, handleCopy, handleDeleteAllPress, t],
   );
 
   if (count === 0) {
@@ -318,6 +365,7 @@ const styles = StyleSheet.create((theme) => ({
   footer: {
     flex: 1,
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[3],
@@ -325,5 +373,11 @@ const styles = StyleSheet.create((theme) => ({
   footerCount: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
+  },
+  footerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    marginLeft: "auto",
   },
 }));

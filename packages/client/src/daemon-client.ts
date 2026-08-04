@@ -83,6 +83,14 @@ import type {
   ProviderDiagnosticResponseMessage,
   ProviderUsageListResponseMessage,
   StatusSummaryGetResponseMessage,
+  PromptLibraryListResponseMessage,
+  PromptLibraryCreateResponseMessage,
+  PromptLibraryUpdateResponseMessage,
+  PromptLibraryDeleteResponseMessage,
+  PromptLibraryClearResponseMessage,
+  PromptLibraryMergeResponseMessage,
+  SavedPrompt,
+  SavedPromptDraft,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
   DiagnosticsResponse,
@@ -442,6 +450,12 @@ type RefreshProvidersSnapshotPayload = RefreshProvidersSnapshotResponseMessage["
 type ProviderDiagnosticPayload = ProviderDiagnosticResponseMessage["payload"];
 type ProviderUsageListPayload = ProviderUsageListResponseMessage["payload"];
 type StatusSummaryPayload = StatusSummaryGetResponseMessage["payload"];
+type PromptLibraryListPayload = PromptLibraryListResponseMessage["payload"];
+type PromptLibraryCreatePayload = PromptLibraryCreateResponseMessage["payload"];
+type PromptLibraryUpdatePayload = PromptLibraryUpdateResponseMessage["payload"];
+type PromptLibraryDeletePayload = PromptLibraryDeleteResponseMessage["payload"];
+type PromptLibraryClearPayload = PromptLibraryClearResponseMessage["payload"];
+type PromptLibraryMergePayload = PromptLibraryMergeResponseMessage["payload"];
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
 type DaemonPairingOfferPayload = DaemonGetPairingOfferResponse["payload"];
 type DiagnosticsPayload = DiagnosticsResponse["payload"];
@@ -4597,6 +4611,61 @@ export class DaemonClient {
       message: {
         type: "status.summary.get.request",
       },
+    });
+  }
+
+  async listSavedPrompts(options?: { requestId?: string }): Promise<PromptLibraryListPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"prompt.library.list.response">({
+      requestId: options?.requestId,
+      message: { type: "prompt.library.list.request" },
+    });
+  }
+
+  async createSavedPrompt(
+    draft: SavedPromptDraft,
+    options?: { requestId?: string },
+  ): Promise<PromptLibraryCreatePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"prompt.library.create.response">({
+      requestId: options?.requestId,
+      message: { type: "prompt.library.create.request", ...draft },
+    });
+  }
+
+  async updateSavedPrompt(
+    id: string,
+    draft: SavedPromptDraft,
+    options?: { requestId?: string },
+  ): Promise<PromptLibraryUpdatePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"prompt.library.update.response">({
+      requestId: options?.requestId,
+      message: { type: "prompt.library.update.request", id, ...draft },
+    });
+  }
+
+  async deleteSavedPrompt(
+    id: string,
+    options?: { requestId?: string },
+  ): Promise<PromptLibraryDeletePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"prompt.library.delete.response">({
+      requestId: options?.requestId,
+      message: { type: "prompt.library.delete.request", id },
+    });
+  }
+
+  async clearSavedPrompts(options?: { requestId?: string }): Promise<PromptLibraryClearPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"prompt.library.clear.response">({
+      requestId: options?.requestId,
+      message: { type: "prompt.library.clear.request" },
+    });
+  }
+
+  async mergeSavedPrompts(
+    items: readonly SavedPrompt[],
+    options?: { requestId?: string },
+  ): Promise<PromptLibraryMergePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"prompt.library.merge.response">({
+      requestId: options?.requestId,
+      message: { type: "prompt.library.merge.request", items: [...items] },
     });
   }
 

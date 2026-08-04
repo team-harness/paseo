@@ -116,8 +116,23 @@ export const zhCN: TranslationResources = {
       contentPlaceholder: "输入要重复使用的 Prompt",
       save: "保存",
       loading: "正在加载 Prompt...",
+      disconnected: "连接到 Host 后即可使用常用 Prompt",
+      unsupported: "当前 Host 版本不支持常用 Prompt，请先更新 Host",
       loadError: "无法加载常用 Prompt",
       corruptData: "常用 Prompt 数据已损坏。请重试，或重置集合后重新开始。",
+      migrationConfirmTitle: "合并旧的常用 Prompt？",
+      migrationConfirmMessage:
+        "发现此设备上保存的 {{count}} 条旧 Prompt。是否合并到当前 Host？已有内容不会被覆盖。",
+      migrationConfirm: "合并到 Host",
+      migrationLoading: "正在处理旧 Prompt...",
+      migrationSuccess: "已合并 {{addedCount}} 条 Prompt，跳过 {{skippedCount}} 条重复项",
+      migrationFailed: "无法合并旧 Prompt，旧数据仍保留在此设备上",
+      migrationCorrupt: "旧的本地 Prompt 无法读取；当前 Host 的 Prompt 不受影响",
+      migrationCorruptTitle: "旧的本地 Prompt 无法读取",
+      migrationCorruptMessage:
+        "此设备上保存的旧 Prompt 数据已损坏。是否只删除这份旧本地数据？当前 Host 上的 Prompt 不会被修改。",
+      migrationCorruptConfirm: "删除旧本地数据",
+      migrationCleanupFailed: "无法删除损坏的旧本地 Prompt 数据，数据仍保留在此设备上",
       noResults: "没有匹配的 Prompt",
       empty: "还没有常用 Prompt",
       errors: {
@@ -1744,6 +1759,9 @@ export const zhCN: TranslationResources = {
       open: "打开 Review comments（{{count}}）",
       copyAll: "复制全部",
       copyFailed: "无法复制 Review comments",
+      deleteAll: "删除全部",
+      deleteAllConfirmTitle: "删除全部评论？",
+      deleteAllConfirmMessage: "将永久删除这 {{count}} 条评论，此操作无法撤销。",
     },
   },
   settings: {

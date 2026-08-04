@@ -45,6 +45,7 @@ Store APIs own persistence atomicity and should not make services coordinate raw
 ```
 $PASEO_HOME/
 ├── config.json                          # Daemon configuration
+├── prompt-library.json                  # Host-owned saved Prompt library
 ├── server-id                            # Stable daemon identifier (plain text, "srv_<base64url>")
 ├── daemon-keypair.json                  # E2EE keypair for relay (mode 0600)
 ├── paseo.pid                            # Daemon PID lock file
@@ -203,7 +204,38 @@ Writes use `writeJsonFileAtomic`. Files are parsed with Zod at daemon bootstrap;
 
 ---
 
-## 3. Daemon Configuration
+## 3. Saved Prompt Library
+
+**Path:** `$PASEO_HOME/prompt-library.json`
+
+The daemon owns one saved Prompt library for the Host. Every browser, desktop app, mobile app, and
+terminal connected to that Host reads and changes the same collection. Prompts are not scoped to a
+project, workspace, or agent.
+
+```typescript
+{
+  version: 1,
+  items: Array<{
+    id: string;
+    title: string;
+    content: string;
+  }>
+}
+```
+
+Writes are atomic and serialized. Skip malformed individual entries so one bad Prompt does not hide
+the rest. Treat malformed JSON or a malformed root envelope as a load error; normal CRUD must not
+overwrite it, while an explicit clear can recover the library.
+
+`@paseo:prompt-library` is the legacy app-local AsyncStorage key. On the first library open, the app
+asks before merging valid legacy entries into the current Host. Merge is idempotent by exact
+normalized title and content, preserves Host order, and allocates a new ID when an imported ID
+collides. Remove the legacy key only after the Host merge succeeds so a failed migration can be
+retried without data loss.
+
+---
+
+## 4. Daemon Configuration
 
 **Path:** `$PASEO_HOME/config.json`
 
@@ -340,7 +372,7 @@ Paseo uses these paths under the configured OpenAI base URL:
 
 ---
 
-## 4. Schedule
+## 5. Schedule
 
 **Path:** `$PASEO_HOME/schedules/{id}.json`
 
@@ -388,7 +420,7 @@ One file per schedule. ID is 8 hex characters.
 
 ---
 
-## 5. Chat
+## 6. Chat
 
 **Path:** `$PASEO_HOME/chat/rooms.json`
 
@@ -425,7 +457,7 @@ Single file containing all rooms and messages.
 
 ---
 
-## 6. Loop
+## 7. Loop
 
 **Path:** `$PASEO_HOME/loops/loops.json`
 
@@ -514,7 +546,7 @@ Single file containing an array of all loop records. Writes are direct (not atom
 
 ---
 
-## 7. Project Registry
+## 8. Project Registry
 
 **Path:** `$PASEO_HOME/projects/projects.json`
 
@@ -549,7 +581,7 @@ workspace together with its owning project.
 
 ---
 
-## 8. Workspace Registry
+## 9. Workspace Registry
 
 **Path:** `$PASEO_HOME/projects/workspaces.json`
 
@@ -583,7 +615,7 @@ than treating it as valid.
 
 ---
 
-## 9. Push Token Store
+## 10. Push Token Store
 
 **Path:** `$PASEO_HOME/push-tokens.json`
 
@@ -597,7 +629,7 @@ Simple set of Expo push notification tokens. Loaded with permissive parsing (fil
 
 ---
 
-## 10. Daemon meta files
+## 11. Daemon meta files
 
 These small files are not validated as full Zod schemas but are persisted under `$PASEO_HOME` for daemon identity and runtime coordination.
 
@@ -620,28 +652,6 @@ Right-sidebar client state splits on whether it is determined by the directory o
 
 - **Directory-backed** (shared by same-`cwd` workspaces): keyed by `(serverId, cwd)`. Git status/diff, GitHub PR status, PR timeline, file preview content. These are TanStack Query caches, not persisted stores.
 - **Workspace-owned** (independent per workspace): keyed by `workspaceId`, with `cwd` used only as a fallback when no `workspaceId` is present. Diff-line review drafts (`@paseo:review-draft-store`), file selection review comments (`@paseo:workspace-review-comments`), diff-mode overrides (in-memory), workspace composer attachments, and file-explorer nav/expand state. The `workspaceId` part of these keys is **opaque** — never parse it back into a path.
-
-### Saved Prompt Library
-
-**AsyncStorage key:** `@paseo:prompt-library`
-
-The library is shared across hosts, projects, workspaces, and agents in one app installation. It is
-not stored on the daemon or synchronized through the relay, so each browser profile, desktop app,
-and mobile installation has its own collection.
-
-```typescript
-{
-  items: Array<{
-    id: string;
-    title: string;
-    content: string;
-  }>;
-}
-```
-
-Skip malformed individual entries so one bad prompt does not hide the rest. Treat malformed JSON or
-a malformed root envelope as a load error. Do not overwrite it through normal CRUD; recovery requires
-an explicit destructive reset.
 
 ### Draft Store
 

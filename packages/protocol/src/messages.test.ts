@@ -337,6 +337,69 @@ describe("status-summary message contract", () => {
   });
 });
 
+describe("prompt library message contract", () => {
+  const prompt = {
+    id: "prompt-review",
+    title: "Review",
+    content: "Review the current diff.",
+  };
+
+  test.each([
+    { type: "prompt.library.list.request", requestId: "prompt-list" },
+    {
+      type: "prompt.library.create.request",
+      requestId: "prompt-create",
+      title: "Review",
+      content: "Review the current diff.",
+    },
+    {
+      type: "prompt.library.update.request",
+      requestId: "prompt-update",
+      id: prompt.id,
+      title: "Review carefully",
+      content: prompt.content,
+    },
+    { type: "prompt.library.delete.request", requestId: "prompt-delete", id: prompt.id },
+    { type: "prompt.library.clear.request", requestId: "prompt-clear" },
+    { type: "prompt.library.merge.request", requestId: "prompt-merge", items: [prompt] },
+  ])("accepts $type as a namespaced correlated RPC", (message) => {
+    expect(SessionInboundMessageSchema.parse(message)).toEqual(message);
+  });
+
+  test("accepts authoritative prompt library snapshots and merge counts", () => {
+    const parsed = SessionOutboundMessageSchema.parse({
+      type: "prompt.library.merge.response",
+      payload: {
+        requestId: "prompt-merge",
+        items: [prompt],
+        addedCount: 1,
+        skippedCount: 0,
+      },
+    });
+
+    expect(parsed.type).toBe("prompt.library.merge.response");
+    if (parsed.type !== "prompt.library.merge.response") {
+      throw new Error("Expected prompt.library.merge.response");
+    }
+    expect(parsed.payload).toEqual({
+      requestId: "prompt-merge",
+      items: [prompt],
+      addedCount: 1,
+      skippedCount: 0,
+    });
+  });
+
+  test("parses the prompt library server feature gate", () => {
+    const parsed = parseServerInfoStatusPayload({
+      status: "server_info",
+      serverId: "srv-test",
+      features: { promptLibrary: true },
+    });
+
+    expect(parsed?.features?.promptLibrary).toBe(true);
+  });
+});
+
 describe("diagnostics message contract", () => {
   test("accepts the diagnostics request as a simple namespaced RPC", () => {
     const parsed = SessionInboundMessageSchema.parse({

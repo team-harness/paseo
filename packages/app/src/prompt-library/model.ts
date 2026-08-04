@@ -1,16 +1,10 @@
-export const SAVED_PROMPT_TITLE_MAX_LENGTH = 80;
-export const SAVED_PROMPT_CONTENT_MAX_LENGTH = 50_000;
+import type { SavedPrompt } from "@getpaseo/protocol/messages";
 
-export interface SavedPrompt {
-  id: string;
-  title: string;
-  content: string;
-}
-
-export interface SavedPromptDraft {
-  title: string;
-  content: string;
-}
+export {
+  PROMPT_LIBRARY_CONTENT_MAX_LENGTH as SAVED_PROMPT_CONTENT_MAX_LENGTH,
+  PROMPT_LIBRARY_TITLE_MAX_LENGTH as SAVED_PROMPT_TITLE_MAX_LENGTH,
+} from "@getpaseo/protocol/messages";
+export type { SavedPrompt, SavedPromptDraft } from "@getpaseo/protocol/messages";
 
 export interface TextSelection {
   start: number;

@@ -320,6 +320,22 @@ export function addReviewDraftComment(input: {
   return useReviewDraftStore.getState().addComment(input);
 }
 
+export function deleteReviewDraftComments(inputs: readonly { key: string; id: string }[]): void {
+  if (inputs.length === 0) {
+    return;
+  }
+  useReviewDraftStore.setState((state) => {
+    const nextState = inputs.reduce<ReviewDraftStoreState>(
+      (currentState, input) => deleteCommentFromState(currentState, input),
+      state,
+    );
+    return {
+      drafts: nextState.drafts,
+      diffModeOverrides: nextState.diffModeOverrides,
+    };
+  });
+}
+
 export function getReviewDraftComments(key: string): ReviewDraftComment[] | undefined {
   return useReviewDraftStore.getState().drafts[key];
 }

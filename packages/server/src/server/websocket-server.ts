@@ -77,6 +77,7 @@ import {
 } from "./websocket/runtime-metrics.js";
 import { ProviderUsageService } from "../services/quota-fetcher/service.js";
 import type { StatusSummaryService } from "./status-summary/status-summary-service.js";
+import { PromptLibraryStore } from "./prompt-library/store.js";
 import { getProcessMemoryDiagnostics, getProcessUptimeSeconds } from "./process-diagnostics.js";
 import {
   CLIENT_SHUTDOWN_RPC_REASON,
@@ -553,6 +554,7 @@ export class VoiceAssistantWebSocketServer {
   private unsubscribeDaemonConfigChange: (() => void) | null = null;
   private readonly providerUsageService: ProviderUsageService;
   private readonly statusSummaryService: StatusSummaryService;
+  private readonly promptLibraryStore: PromptLibraryStore;
   private unsubscribeTerminalActivity: (() => void) | null = null;
   private readonly browserToolsBroker: BrowserToolsBroker | null;
   private readonly hubRelationships: HubRelationshipManagement | null;
@@ -606,6 +608,7 @@ export class VoiceAssistantWebSocketServer {
     serviceProxyPublicBaseUrl?: string | null,
     browserToolsBroker?: BrowserToolsBroker | null,
     hubRelationships?: HubRelationshipManagement | null,
+    promptLibraryStore?: PromptLibraryStore,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.advertiseDaemonStatusRpc = wsConfig.daemonStatusRpc !== false;
@@ -661,6 +664,8 @@ export class VoiceAssistantWebSocketServer {
       throw new Error("statusSummaryService is required");
     }
     this.statusSummaryService = statusSummaryService;
+    this.promptLibraryStore =
+      promptLibraryStore ?? new PromptLibraryStore(join(paseoHome, "prompt-library.json"));
     this.serverCapabilities = buildServerCapabilities({
       readiness: this.speech?.getReadiness() ?? null,
     });
@@ -1350,6 +1355,7 @@ export class VoiceAssistantWebSocketServer {
       providerSnapshotManager: this.providerSnapshotManager,
       providerUsageService: this.providerUsageService,
       statusSummaryService: this.statusSummaryService,
+      promptLibraryStore: this.promptLibraryStore,
       hubExecutionAgents: options.hubExecutionAgents,
       hubRelationships: options.hubRelationships,
       serviceProxy: this.serviceProxy ?? undefined,
@@ -1570,6 +1576,8 @@ export class VoiceAssistantWebSocketServer {
         providerUsageList: true,
         // COMPAT(statusSummary): added in v0.1.104, drop the gate when floor >= v0.1.104.
         statusSummary: true,
+        // COMPAT(promptLibrary): added in v0.2.6, remove gate after 2027-02-04.
+        promptLibrary: true,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
         // COMPAT(agentThinkingUpdate): added in v0.2.4, remove gate after 2027-01-28.

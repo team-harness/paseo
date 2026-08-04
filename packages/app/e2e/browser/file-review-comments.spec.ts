@@ -187,4 +187,18 @@ test("file selection comments persist and remain available from Changes", async 
     .click();
   await expect(summarySheet.getByText(diffComment, { exact: true })).not.toBeVisible();
   await expect(changesSummaryTrigger).toHaveAccessibleName("Open review comments (3)");
+
+  const deleteAllButton = page.getByTestId("review-summary-clear-all");
+  await expect(deleteAllButton).toHaveAccessibleName("Delete all");
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await deleteAllButton.click();
+  await expect(changesSummaryTrigger).toHaveAccessibleName("Open review comments (3)");
+
+  page.once("dialog", (dialog) => void dialog.accept());
+  await deleteAllButton.click();
+  await expect(summarySheet).not.toBeVisible();
+  await expect(page.getByTestId("review-summary-trigger").filter({ visible: true })).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByTestId("review-summary-trigger").filter({ visible: true })).toHaveCount(0);
 });

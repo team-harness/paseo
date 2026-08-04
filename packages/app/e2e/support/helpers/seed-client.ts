@@ -1,6 +1,7 @@
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
+import type { SavedPrompt } from "@getpaseo/protocol/messages";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { withProjectOwnership } from "./project-ownership";
 import { createTempDirectory, createTempGitRepo } from "./workspace";
@@ -28,6 +29,13 @@ interface SeedProjectDescriptor {
 export interface SeedDaemonClient {
   connect(): Promise<void>;
   close(): Promise<void>;
+  listSavedPrompts(): Promise<{ items: SavedPrompt[] }>;
+  clearSavedPrompts(): Promise<{ items: SavedPrompt[] }>;
+  mergeSavedPrompts(items: readonly SavedPrompt[]): Promise<{
+    items: SavedPrompt[];
+    addedCount: number;
+    skippedCount: number;
+  }>;
   addProject(cwd: string): Promise<{
     project: {
       projectId: string;

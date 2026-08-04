@@ -4,7 +4,6 @@ import {
   type SavedPrompt,
   type SavedPromptDraft,
 } from "./model";
-import { loadSavedPrompts, saveSavedPrompts, type PromptLibraryStorage } from "./storage";
 
 export type PromptLibraryValidationCode =
   | "title_required"
@@ -19,15 +18,26 @@ export class PromptLibraryValidationError extends Error {
   }
 }
 
-export class PromptLibraryNotFoundError extends Error {
-  constructor(id: string) {
-    super(`Saved prompt not found: ${id}`);
-    this.name = "PromptLibraryNotFoundError";
+export class PromptLibraryCorruptDataError extends Error {
+  constructor() {
+    super("Saved prompt library data is corrupted.");
+    this.name = "PromptLibraryCorruptDataError";
   }
 }
 
-interface PromptLibraryServiceOptions {
-  createId?: () => string;
+export interface PromptLibraryMergeResult {
+  items: SavedPrompt[];
+  addedCount: number;
+  skippedCount: number;
+}
+
+export interface PromptLibraryClient {
+  listSavedPrompts(): Promise<{ items: SavedPrompt[] }>;
+  createSavedPrompt(draft: SavedPromptDraft): Promise<{ items: SavedPrompt[] }>;
+  updateSavedPrompt(id: string, draft: SavedPromptDraft): Promise<{ items: SavedPrompt[] }>;
+  deleteSavedPrompt(id: string): Promise<{ items: SavedPrompt[] }>;
+  clearSavedPrompts(): Promise<{ items: SavedPrompt[] }>;
+  mergeSavedPrompts(items: readonly SavedPrompt[]): Promise<PromptLibraryMergeResult>;
 }
 
 function normalizeDraft(draft: SavedPromptDraft): SavedPromptDraft {
@@ -43,76 +53,63 @@ function normalizeDraft(draft: SavedPromptDraft): SavedPromptDraft {
   return { title, content: draft.content };
 }
 
-function createDefaultId(): string {
-  return `prompt_${globalThis.crypto.randomUUID()}`;
+function mapPromptLibraryError(error: unknown): never {
+  if (error instanceof Error && error.message.includes("Saved prompt library data is corrupted.")) {
+    throw new PromptLibraryCorruptDataError();
+  }
+  throw error;
 }
 
 export class PromptLibraryService {
-  private readonly createId: () => string;
-  private operationTail: Promise<void> = Promise.resolve();
+  constructor(private readonly client: PromptLibraryClient) {}
 
-  constructor(
-    private readonly storage: PromptLibraryStorage,
-    options: PromptLibraryServiceOptions = {},
-  ) {
-    this.createId = options.createId ?? createDefaultId;
-  }
-
-  list(): Promise<SavedPrompt[]> {
-    return this.enqueue(() => loadSavedPrompts(this.storage));
+  async list(): Promise<SavedPrompt[]> {
+    try {
+      return (await this.client.listSavedPrompts()).items;
+    } catch (error) {
+      mapPromptLibraryError(error);
+    }
   }
 
   async create(draft: SavedPromptDraft): Promise<SavedPrompt[]> {
     const normalized = normalizeDraft(draft);
-    const prompt: SavedPrompt = {
-      id: this.createId(),
-      ...normalized,
-    };
-    return await this.mutate((current) => [prompt, ...current]);
+    try {
+      return (await this.client.createSavedPrompt(normalized)).items;
+    } catch (error) {
+      mapPromptLibraryError(error);
+    }
   }
 
   async update(id: string, draft: SavedPromptDraft): Promise<SavedPrompt[]> {
     const normalized = normalizeDraft(draft);
-    return await this.mutate((current) => {
-      if (!current.some((prompt) => prompt.id === id)) {
-        throw new PromptLibraryNotFoundError(id);
-      }
-      return current.map((prompt) => (prompt.id === id ? { id, ...normalized } : prompt));
-    });
+    try {
+      return (await this.client.updateSavedPrompt(id, normalized)).items;
+    } catch (error) {
+      mapPromptLibraryError(error);
+    }
   }
 
   async remove(id: string): Promise<SavedPrompt[]> {
-    return await this.mutate((current) => {
-      if (!current.some((prompt) => prompt.id === id)) {
-        throw new PromptLibraryNotFoundError(id);
-      }
-      return current.filter((prompt) => prompt.id !== id);
-    });
+    try {
+      return (await this.client.deleteSavedPrompt(id)).items;
+    } catch (error) {
+      mapPromptLibraryError(error);
+    }
   }
 
-  reset(): Promise<SavedPrompt[]> {
-    return this.enqueue(async () => {
-      const next: SavedPrompt[] = [];
-      await saveSavedPrompts(this.storage, next);
-      return next;
-    });
+  async reset(): Promise<SavedPrompt[]> {
+    try {
+      return (await this.client.clearSavedPrompts()).items;
+    } catch (error) {
+      mapPromptLibraryError(error);
+    }
   }
 
-  private mutate(update: (current: SavedPrompt[]) => SavedPrompt[]): Promise<SavedPrompt[]> {
-    return this.enqueue(async () => {
-      const current = await loadSavedPrompts(this.storage);
-      const next = update(current);
-      await saveSavedPrompts(this.storage, next);
-      return next;
-    });
-  }
-
-  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.operationTail.then(operation);
-    this.operationTail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
+  async merge(items: readonly SavedPrompt[]): Promise<PromptLibraryMergeResult> {
+    try {
+      return await this.client.mergeSavedPrompts(items);
+    } catch (error) {
+      mapPromptLibraryError(error);
+    }
   }
 }

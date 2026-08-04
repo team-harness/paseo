@@ -1352,6 +1352,54 @@ export const StatusSummaryGetRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const PROMPT_LIBRARY_TITLE_MAX_LENGTH = 80;
+export const PROMPT_LIBRARY_CONTENT_MAX_LENGTH = 50_000;
+
+export const SavedPromptSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1).max(PROMPT_LIBRARY_TITLE_MAX_LENGTH),
+  content: z.string().min(1).max(PROMPT_LIBRARY_CONTENT_MAX_LENGTH),
+});
+
+export const SavedPromptDraftSchema = SavedPromptSchema.omit({ id: true });
+
+export const PromptLibraryListRequestMessageSchema = z.object({
+  type: z.literal("prompt.library.list.request"),
+  requestId: z.string(),
+});
+
+export const PromptLibraryCreateRequestMessageSchema = z.object({
+  type: z.literal("prompt.library.create.request"),
+  requestId: z.string(),
+  title: z.string().min(1).max(PROMPT_LIBRARY_TITLE_MAX_LENGTH),
+  content: z.string().min(1).max(PROMPT_LIBRARY_CONTENT_MAX_LENGTH),
+});
+
+export const PromptLibraryUpdateRequestMessageSchema = z.object({
+  type: z.literal("prompt.library.update.request"),
+  requestId: z.string(),
+  id: z.string().min(1),
+  title: z.string().min(1).max(PROMPT_LIBRARY_TITLE_MAX_LENGTH),
+  content: z.string().min(1).max(PROMPT_LIBRARY_CONTENT_MAX_LENGTH),
+});
+
+export const PromptLibraryDeleteRequestMessageSchema = z.object({
+  type: z.literal("prompt.library.delete.request"),
+  requestId: z.string(),
+  id: z.string().min(1),
+});
+
+export const PromptLibraryClearRequestMessageSchema = z.object({
+  type: z.literal("prompt.library.clear.request"),
+  requestId: z.string(),
+});
+
+export const PromptLibraryMergeRequestMessageSchema = z.object({
+  type: z.literal("prompt.library.merge.request"),
+  requestId: z.string(),
+  items: z.array(SavedPromptSchema),
+});
+
 export const ResumeAgentRequestMessageSchema = z.object({
   type: z.literal("resume_agent_request"),
   handle: AgentPersistenceHandleSchema,
@@ -2557,6 +2605,12 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProviderDiagnosticRequestMessageSchema,
   ProviderUsageListRequestMessageSchema,
   StatusSummaryGetRequestMessageSchema,
+  PromptLibraryListRequestMessageSchema,
+  PromptLibraryCreateRequestMessageSchema,
+  PromptLibraryUpdateRequestMessageSchema,
+  PromptLibraryDeleteRequestMessageSchema,
+  PromptLibraryClearRequestMessageSchema,
+  PromptLibraryMergeRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
   RefreshAgentRequestMessageSchema,
@@ -2892,6 +2946,8 @@ export const ServerInfoStatusPayloadSchema = z
         daemonSelfUpdate: z.boolean().optional(),
         // COMPAT(statusSummary): added in v0.1.104, drop the gate when floor >= v0.1.104.
         statusSummary: z.boolean().optional(),
+        // COMPAT(promptLibrary): added in v0.2.6, remove gate after 2027-02-04.
+        promptLibrary: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
         // COMPAT(agentForkContextCursor): added in v0.1.108, remove gate after 2027-01-14.
@@ -5126,6 +5182,44 @@ export const StatusSummaryUpdatedMessageSchema = z.object({
   payload: HostStatusSummaryPayloadSchema,
 });
 
+const PromptLibraryResponsePayloadSchema = z.object({
+  requestId: z.string(),
+  items: z.array(SavedPromptSchema),
+});
+
+export const PromptLibraryListResponseMessageSchema = z.object({
+  type: z.literal("prompt.library.list.response"),
+  payload: PromptLibraryResponsePayloadSchema,
+});
+
+export const PromptLibraryCreateResponseMessageSchema = z.object({
+  type: z.literal("prompt.library.create.response"),
+  payload: PromptLibraryResponsePayloadSchema,
+});
+
+export const PromptLibraryUpdateResponseMessageSchema = z.object({
+  type: z.literal("prompt.library.update.response"),
+  payload: PromptLibraryResponsePayloadSchema,
+});
+
+export const PromptLibraryDeleteResponseMessageSchema = z.object({
+  type: z.literal("prompt.library.delete.response"),
+  payload: PromptLibraryResponsePayloadSchema,
+});
+
+export const PromptLibraryClearResponseMessageSchema = z.object({
+  type: z.literal("prompt.library.clear.response"),
+  payload: PromptLibraryResponsePayloadSchema,
+});
+
+export const PromptLibraryMergeResponseMessageSchema = z.object({
+  type: z.literal("prompt.library.merge.response"),
+  payload: PromptLibraryResponsePayloadSchema.extend({
+    addedCount: z.number().int().nonnegative(),
+    skippedCount: z.number().int().nonnegative(),
+  }),
+});
+
 const AgentSlashCommandSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -5531,6 +5625,12 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProviderUsageListResponseMessageSchema,
   StatusSummaryGetResponseMessageSchema,
   StatusSummaryUpdatedMessageSchema,
+  PromptLibraryListResponseMessageSchema,
+  PromptLibraryCreateResponseMessageSchema,
+  PromptLibraryUpdateResponseMessageSchema,
+  PromptLibraryDeleteResponseMessageSchema,
+  PromptLibraryClearResponseMessageSchema,
+  PromptLibraryMergeResponseMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
   TerminalsChangedSchema,
@@ -5719,6 +5819,26 @@ export type StatusAgentSnapshot = z.infer<typeof StatusAgentSnapshotSchema>;
 export type HostStatusSummaryPayload = z.infer<typeof HostStatusSummaryPayloadSchema>;
 export type StatusSummaryGetResponseMessage = z.infer<typeof StatusSummaryGetResponseMessageSchema>;
 export type StatusSummaryUpdatedMessage = z.infer<typeof StatusSummaryUpdatedMessageSchema>;
+export type SavedPrompt = z.infer<typeof SavedPromptSchema>;
+export type SavedPromptDraft = z.infer<typeof SavedPromptDraftSchema>;
+export type PromptLibraryListResponseMessage = z.infer<
+  typeof PromptLibraryListResponseMessageSchema
+>;
+export type PromptLibraryCreateResponseMessage = z.infer<
+  typeof PromptLibraryCreateResponseMessageSchema
+>;
+export type PromptLibraryUpdateResponseMessage = z.infer<
+  typeof PromptLibraryUpdateResponseMessageSchema
+>;
+export type PromptLibraryDeleteResponseMessage = z.infer<
+  typeof PromptLibraryDeleteResponseMessageSchema
+>;
+export type PromptLibraryClearResponseMessage = z.infer<
+  typeof PromptLibraryClearResponseMessageSchema
+>;
+export type PromptLibraryMergeResponseMessage = z.infer<
+  typeof PromptLibraryMergeResponseMessageSchema
+>;
 export type ChatCreateResponse = z.infer<typeof ChatCreateResponseSchema>;
 export type ChatListResponse = z.infer<typeof ChatListResponseSchema>;
 export type ChatInspectResponse = z.infer<typeof ChatInspectResponseSchema>;
@@ -5786,6 +5906,22 @@ export type RefreshProvidersSnapshotRequestMessage = z.infer<
 >;
 export type ProviderDiagnosticRequestMessage = z.infer<
   typeof ProviderDiagnosticRequestMessageSchema
+>;
+export type PromptLibraryListRequestMessage = z.infer<typeof PromptLibraryListRequestMessageSchema>;
+export type PromptLibraryCreateRequestMessage = z.infer<
+  typeof PromptLibraryCreateRequestMessageSchema
+>;
+export type PromptLibraryUpdateRequestMessage = z.infer<
+  typeof PromptLibraryUpdateRequestMessageSchema
+>;
+export type PromptLibraryDeleteRequestMessage = z.infer<
+  typeof PromptLibraryDeleteRequestMessageSchema
+>;
+export type PromptLibraryClearRequestMessage = z.infer<
+  typeof PromptLibraryClearRequestMessageSchema
+>;
+export type PromptLibraryMergeRequestMessage = z.infer<
+  typeof PromptLibraryMergeRequestMessageSchema
 >;
 export type ChatCreateRequest = z.infer<typeof ChatCreateRequestSchema>;
 export type ChatListRequest = z.infer<typeof ChatListRequestSchema>;

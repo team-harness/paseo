@@ -5487,6 +5487,71 @@ test("sends status-summary get request and resolves status-summary response", as
   });
 });
 
+test("sends prompt-library list and merge requests to the connected host", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const prompt = {
+    id: "legacy-prompt",
+    title: "Review",
+    content: "Review the current diff.",
+  };
+  const listPromise = client.listSavedPrompts({ requestId: "prompt-list" });
+  expect(JSON.parse(assertStr(mock.sent[0]))).toEqual({
+    type: "session",
+    message: {
+      type: "prompt.library.list.request",
+      requestId: "prompt-list",
+    },
+  });
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "prompt.library.list.response",
+      payload: { requestId: "prompt-list", items: [] },
+    }),
+  );
+  await expect(listPromise).resolves.toEqual({ requestId: "prompt-list", items: [] });
+
+  const mergePromise = client.mergeSavedPrompts([prompt], { requestId: "prompt-merge" });
+  expect(JSON.parse(assertStr(mock.sent[1]))).toEqual({
+    type: "session",
+    message: {
+      type: "prompt.library.merge.request",
+      requestId: "prompt-merge",
+      items: [prompt],
+    },
+  });
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "prompt.library.merge.response",
+      payload: {
+        requestId: "prompt-merge",
+        items: [prompt],
+        addedCount: 1,
+        skippedCount: 0,
+      },
+    }),
+  );
+  await expect(mergePromise).resolves.toEqual({
+    requestId: "prompt-merge",
+    items: [prompt],
+    addedCount: 1,
+    skippedCount: 0,
+  });
+});
+
 test("sends close_items_request and resolves close_items_response", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

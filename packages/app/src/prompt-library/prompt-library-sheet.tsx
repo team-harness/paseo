@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { useToast } from "@/contexts/toast-context";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import {
@@ -36,14 +37,19 @@ import {
   type SavedPrompt,
   type SavedPromptDraft,
 } from "./model";
-import { PromptLibraryValidationError, type PromptLibraryValidationCode } from "./service";
-import { PromptLibraryCorruptStorageError } from "./storage";
-import { usePromptLibrary } from "./use-prompt-library";
+import {
+  PromptLibraryCorruptDataError,
+  PromptLibraryValidationError,
+  type PromptLibraryValidationCode,
+} from "./service";
+import { LegacyPromptLibraryCorruptStorageError } from "./storage";
+import { usePromptLibrary, type UsePromptLibraryReturn } from "./use-prompt-library";
 
 const PROMPT_LIBRARY_SNAP_POINTS = ["72%", "92%"];
 const BUSY_ACCESSIBILITY_STATE = { busy: true } as const;
 
 interface PromptLibrarySheetProps {
+  serverId: string;
   visible: boolean;
   onClose: () => void;
   onDismiss: () => void;
@@ -185,14 +191,154 @@ function validationMessage(code: PromptLibraryValidationCode, t: (key: string) =
   return t(`composer.promptLibrary.errors.${code}`);
 }
 
+function validatePromptDraft(draft: SavedPromptDraft, t: (key: string) => string): FieldErrors {
+  const errors: FieldErrors = {};
+  if (!draft.title.trim()) {
+    errors.title = t("composer.promptLibrary.errors.title_required");
+  } else if (draft.title.trim().length > SAVED_PROMPT_TITLE_MAX_LENGTH) {
+    errors.title = t("composer.promptLibrary.errors.title_too_long");
+  }
+  if (!draft.content.trim()) {
+    errors.content = t("composer.promptLibrary.errors.content_required");
+  } else if (draft.content.length > SAVED_PROMPT_CONTENT_MAX_LENGTH) {
+    errors.content = t("composer.promptLibrary.errors.content_too_long");
+  }
+  return errors;
+}
+
+interface PromptLibraryStatusState {
+  messageKey:
+    | "composer.promptLibrary.disconnected"
+    | "composer.promptLibrary.unsupported"
+    | "composer.promptLibrary.migrationLoading"
+    | "composer.promptLibrary.loading";
+  loading: boolean;
+}
+
+function resolvePromptLibraryStatus(input: {
+  isConnected: boolean;
+  isSupported: boolean;
+  isMigrating: boolean;
+  isLoading: boolean;
+}): PromptLibraryStatusState | null {
+  if (!input.isConnected) {
+    return { messageKey: "composer.promptLibrary.disconnected", loading: false };
+  }
+  if (!input.isSupported) {
+    return { messageKey: "composer.promptLibrary.unsupported", loading: false };
+  }
+  if (input.isMigrating) {
+    return { messageKey: "composer.promptLibrary.migrationLoading", loading: true };
+  }
+  if (input.isLoading) {
+    return { messageKey: "composer.promptLibrary.loading", loading: true };
+  }
+  return null;
+}
+
+function useLegacyPromptMigration({
+  visible,
+  library,
+  onMigratingChange,
+}: {
+  visible: boolean;
+  library: UsePromptLibraryReturn;
+  onMigratingChange: (isMigrating: boolean) => void;
+}): void {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const migrationFlowRef = useRef(false);
+  const migrationPromptHandledRef = useRef(false);
+
+  useEffect(() => {
+    if (
+      !visible ||
+      migrationPromptHandledRef.current ||
+      migrationFlowRef.current ||
+      !library.isConnected ||
+      !library.isSupported ||
+      library.isLoading ||
+      library.error ||
+      library.legacyMigration.status === "loading" ||
+      library.legacyMigration.status === "none"
+    ) {
+      return;
+    }
+
+    const legacyMigration = library.legacyMigration;
+    migrationPromptHandledRef.current = true;
+    if (
+      legacyMigration.status === "error" &&
+      !(legacyMigration.error instanceof LegacyPromptLibraryCorruptStorageError)
+    ) {
+      toast.error(t("composer.promptLibrary.migrationCorrupt"));
+      return;
+    }
+
+    const isDiscardingCorruptData = legacyMigration.status === "error";
+    const legacyPromptCount =
+      legacyMigration.status === "available" ? legacyMigration.items.length : 0;
+    migrationFlowRef.current = true;
+    void (async () => {
+      try {
+        const confirmed = await confirmDialog(
+          isDiscardingCorruptData
+            ? {
+                title: t("composer.promptLibrary.migrationCorruptTitle"),
+                message: t("composer.promptLibrary.migrationCorruptMessage"),
+                confirmLabel: t("composer.promptLibrary.migrationCorruptConfirm"),
+                cancelLabel: t("common.actions.cancel"),
+                destructive: true,
+              }
+            : {
+                title: t("composer.promptLibrary.migrationConfirmTitle"),
+                message: t("composer.promptLibrary.migrationConfirmMessage", {
+                  count: legacyPromptCount,
+                }),
+                confirmLabel: t("composer.promptLibrary.migrationConfirm"),
+                cancelLabel: t("common.actions.cancel"),
+              },
+        );
+        if (!confirmed) return;
+
+        onMigratingChange(true);
+        if (isDiscardingCorruptData) {
+          await library.discardLegacyPrompts();
+          return;
+        }
+        const result = await library.migrateLegacyPrompts();
+        toast.show(
+          t("composer.promptLibrary.migrationSuccess", {
+            addedCount: result.addedCount,
+            skippedCount: result.skippedCount,
+          }),
+          { variant: "success" },
+        );
+      } catch {
+        toast.error(
+          t(
+            isDiscardingCorruptData
+              ? "composer.promptLibrary.migrationCleanupFailed"
+              : "composer.promptLibrary.migrationFailed",
+          ),
+        );
+      } finally {
+        migrationFlowRef.current = false;
+        onMigratingChange(false);
+      }
+    })();
+  }, [library, onMigratingChange, t, toast, visible]);
+}
+
 export function PromptLibrarySheet({
+  serverId,
   visible,
   onClose,
   onDismiss,
   onInsert,
 }: PromptLibrarySheetProps) {
   const { t } = useTranslation();
-  const library = usePromptLibrary();
+  const library = usePromptLibrary(serverId);
   const [mode, setMode] = useState<SheetMode>({ kind: "library" });
   const [query, setQuery] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -202,10 +348,13 @@ export function PromptLibrarySheet({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [isMigrating, setIsMigrating] = useState(false);
   const draftRef = useRef<SavedPromptDraft>({ title: "", content: "" });
   const titleInputRef = useRef<TextInput>(null);
   const deleteFlowRef = useRef(false);
   const resetFlowRef = useRef(false);
+
+  useLegacyPromptMigration({ visible, library, onMigratingChange: setIsMigrating });
 
   const resetEditor = useCallback(() => {
     setMode({ kind: "library" });
@@ -222,6 +371,7 @@ export function PromptLibrarySheet({
       setDeletingId(null);
       setIsResetting(false);
       setResetError(null);
+      setIsMigrating(false);
       resetEditor();
     }
   }, [resetEditor, visible]);
@@ -242,9 +392,9 @@ export function PromptLibrarySheet({
     resetEditor();
   }, [isSaving, resetEditor]);
   const handleClose = useCallback(() => {
-    if (isSaving || deletingId || isResetting) return;
+    if (isSaving || deletingId || isResetting || isMigrating) return;
     onClose();
-  }, [deletingId, isResetting, isSaving, onClose]);
+  }, [deletingId, isMigrating, isResetting, isSaving, onClose]);
 
   const handleTitleChange = useCallback((title: string) => {
     draftRef.current = { ...draftRef.current, title };
@@ -262,18 +412,7 @@ export function PromptLibrarySheet({
   }, []);
 
   const validateDraft = useCallback((): boolean => {
-    const draft = draftRef.current;
-    const errors: FieldErrors = {};
-    if (!draft.title.trim()) {
-      errors.title = t("composer.promptLibrary.errors.title_required");
-    } else if (draft.title.trim().length > SAVED_PROMPT_TITLE_MAX_LENGTH) {
-      errors.title = t("composer.promptLibrary.errors.title_too_long");
-    }
-    if (!draft.content.trim()) {
-      errors.content = t("composer.promptLibrary.errors.content_required");
-    } else if (draft.content.length > SAVED_PROMPT_CONTENT_MAX_LENGTH) {
-      errors.content = t("composer.promptLibrary.errors.content_too_long");
-    }
+    const errors = validatePromptDraft(draftRef.current, t);
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   }, [t]);
@@ -387,13 +526,31 @@ export function PromptLibrarySheet({
         size="xs"
         leftIcon={Plus}
         onPress={handleNew}
-        disabled={library.isLoading || Boolean(library.error) || Boolean(deletingId) || isResetting}
+        disabled={
+          !library.isConnected ||
+          !library.isSupported ||
+          library.isLoading ||
+          Boolean(library.error) ||
+          Boolean(deletingId) ||
+          isResetting ||
+          isMigrating
+        }
         testID="prompt-library-new-button"
       >
         {t("composer.promptLibrary.new")}
       </Button>
     ),
-    [deletingId, handleNew, isResetting, library.error, library.isLoading, t],
+    [
+      deletingId,
+      handleNew,
+      isMigrating,
+      isResetting,
+      library.error,
+      library.isConnected,
+      library.isLoading,
+      library.isSupported,
+      t,
+    ],
   );
 
   const header = useMemo<SheetHeader>(() => {
@@ -457,13 +614,13 @@ export function PromptLibrarySheet({
         variant="secondary"
         size="sm"
         onPress={library.reload}
-        disabled={isResetting}
+        disabled={isResetting || isMigrating}
         testID="prompt-library-retry-button"
       >
         {t("common.actions.retry")}
       </Button>
     ),
-    [isResetting, library.reload, t],
+    [isMigrating, isResetting, library.reload, t],
   );
   const corruptStorageAction = useMemo(
     () => (
@@ -498,6 +655,12 @@ export function PromptLibrarySheet({
       ),
     [handleNew, query, t],
   );
+  const statusState = resolvePromptLibraryStatus({
+    isConnected: library.isConnected,
+    isSupported: library.isSupported,
+    isMigrating,
+    isLoading: library.isLoading,
+  });
 
   let content: ReactElement;
   if (mode.kind === "editor") {
@@ -548,12 +711,15 @@ export function PromptLibrarySheet({
         ) : null}
       </View>
     );
-  } else if (library.isLoading) {
+  } else if (statusState) {
     content = (
-      <PromptLibraryState icon={loadingStateIcon} message={t("composer.promptLibrary.loading")} />
+      <PromptLibraryState
+        icon={statusState.loading ? loadingStateIcon : undefined}
+        message={t(statusState.messageKey)}
+      />
     );
   } else if (library.error) {
-    const isCorruptStorage = library.error instanceof PromptLibraryCorruptStorageError;
+    const isCorruptStorage = library.error instanceof PromptLibraryCorruptDataError;
     content = (
       <PromptLibraryState
         message={t(

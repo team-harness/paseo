@@ -31,17 +31,6 @@ function readLocalStorageValue(key: string): string | null {
   return localStorage.getItem(key);
 }
 
-function installOneShotStorageFailure(input: { key: string; message: string }): void {
-  const originalSetItem = Storage.prototype.setItem;
-  Storage.prototype.setItem = function setItem(key: string, value: string): void {
-    if (key === input.key) {
-      Storage.prototype.setItem = originalSetItem;
-      throw new Error(input.message);
-    }
-    originalSetItem.call(this, key, value);
-  };
-}
-
 async function getComposerSelection(composer: Locator): Promise<[number | null, number | null]> {
   return await composer.evaluate(readTextareaSelection);
 }
@@ -56,11 +45,18 @@ async function getStoredPromptLibrary(page: Page): Promise<string | null> {
   return await page.evaluate(readLocalStorageValue, PROMPT_LIBRARY_STORAGE_KEY);
 }
 
-async function failNextPromptLibraryWrite(page: Page, message: string): Promise<void> {
-  await page.evaluate(installOneShotStorageFailure, {
-    key: PROMPT_LIBRARY_STORAGE_KEY,
-    message,
-  });
+async function seedLegacyPromptLibrary(
+  page: Page,
+  items: Array<{ id: string; title: string; content: string }>,
+): Promise<void> {
+  await page.evaluate(
+    ({ key, prompts }) => localStorage.setItem(key, JSON.stringify({ items: prompts })),
+    { key: PROMPT_LIBRARY_STORAGE_KEY, prompts: items },
+  );
+}
+
+async function seedCorruptLegacyPromptLibrary(page: Page): Promise<void> {
+  await page.evaluate((key) => localStorage.setItem(key, "not-json"), PROMPT_LIBRARY_STORAGE_KEY);
 }
 
 async function typeWithIme(page: Page, input: Locator, text: string): Promise<void> {
@@ -103,7 +99,19 @@ async function fillNewSavedPrompt(
 }
 
 test.describe("Saved prompts", () => {
-  test("accepts Chinese IME composition in the prompt editor", async ({ page, withWorkspace }) => {
+  test.beforeEach(async ({ e2eWorkerClient }) => {
+    await e2eWorkerClient.clearSavedPrompts();
+  });
+
+  test.afterEach(async ({ e2eWorkerClient }) => {
+    await e2eWorkerClient.clearSavedPrompts();
+  });
+
+  test("accepts Chinese IME composition in the prompt editor", async ({
+    page,
+    withWorkspace,
+    e2eWorkerClient,
+  }) => {
     const workspace = await withWorkspace({ prefix: "prompt-library-ime-" });
     await workspace.navigateTo();
     await clickNewChat(page);
@@ -124,11 +132,15 @@ test.describe("Saved prompts", () => {
 
     await page.getByTestId("prompt-library-save-button").click();
     await expect(page.getByText(title, { exact: true })).toBeVisible();
+    await expect
+      .poll(async () => (await e2eWorkerClient.listSavedPrompts()).items)
+      .toEqual([expect.objectContaining({ title, content })]);
   });
 
-  test("supports CRUD, persistence, search, and exact selection insertion", async ({
+  test("supports Host-backed CRUD, reload, search, and exact selection insertion", async ({
     page,
     withWorkspace,
+    e2eWorkerClient,
   }) => {
     test.setTimeout(120_000);
     const workspace = await withWorkspace({ prefix: "prompt-library-" });
@@ -144,17 +156,12 @@ test.describe("Saved prompts", () => {
     await openPromptLibrary(page);
     await expect(page.getByText("No saved prompts yet", { exact: true })).toBeVisible();
     await fillNewSavedPrompt(page, { title: initialTitle, content: initialContent });
-
-    const saveFailureMessage = "Injected saved prompt write failure";
-    await failNextPromptLibraryWrite(page, saveFailureMessage);
-    await page.getByTestId("prompt-library-save-button").click();
-    await expect(page.getByTestId("prompt-library-submit-error")).toHaveText(saveFailureMessage);
-    await expect(page.getByTestId("prompt-library-title-input")).toHaveValue(initialTitle);
-    await expect(page.getByTestId("prompt-library-content-input")).toHaveValue(initialContent);
-    await expect(getStoredPromptLibrary(page)).resolves.toBeNull();
-
     await page.getByTestId("prompt-library-save-button").click();
     await expect(page.getByText(initialTitle, { exact: true })).toBeVisible();
+    await expect(getStoredPromptLibrary(page)).resolves.toBeNull();
+    await expect
+      .poll(async () => (await e2eWorkerClient.listSavedPrompts()).items)
+      .toEqual([expect.objectContaining({ title: initialTitle, content: initialContent })]);
 
     const searchInput = page.getByTestId("prompt-library-search-input");
     await searchInput.fill("ACTIONABLE");
@@ -165,7 +172,6 @@ test.describe("Saved prompts", () => {
 
     await page.locator('[data-testid^="prompt-library-menu-"]').click();
     await page.locator('[data-testid^="prompt-library-edit-"]').click();
-    await expect(page.getByTestId("prompt-library-title-input")).toBeVisible();
     await page.getByTestId("prompt-library-title-input").fill(updatedTitle);
     await page.getByTestId("prompt-library-content-input").fill(updatedContent);
     await page.getByTestId("prompt-library-save-button").click();
@@ -199,62 +205,142 @@ test.describe("Saved prompts", () => {
 
     await openPromptLibrary(page);
     await page.locator('[data-testid^="prompt-library-menu-"]').click();
-    const deleteFailureMessage = "Injected saved prompt delete failure";
-    await failNextPromptLibraryWrite(page, deleteFailureMessage);
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.locator('[data-testid^="prompt-library-delete-"]').click();
-    await expect(page.getByTestId("prompt-library-action-error")).toHaveText(deleteFailureMessage);
-    await expect(page.getByText(updatedTitle, { exact: true })).toBeVisible();
-    await expect(getStoredPromptLibrary(page)).resolves.toContain(updatedTitle);
-
-    await page.locator('[data-testid^="prompt-library-menu-"]').click();
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator('[data-testid^="prompt-library-delete-"]').click();
     await expect(page.getByText(updatedTitle, { exact: true })).toHaveCount(0);
     await expect(page.getByText("No saved prompts yet", { exact: true })).toBeVisible();
-    await expect.poll(() => getStoredPromptLibrary(page)).toBe(JSON.stringify({ items: [] }));
+    await expect.poll(async () => (await e2eWorkerClient.listSavedPrompts()).items).toEqual([]);
   });
 
-  test("preserves corrupt storage until an explicit reset is confirmed", async ({
+  test("asks once, merges legacy prompts into the Host, and removes the legacy key", async ({
     page,
     withWorkspace,
+    e2eWorkerClient,
   }) => {
     test.setTimeout(120_000);
-    const workspace = await withWorkspace({ prefix: "prompt-library-corrupt-" });
+    const workspace = await withWorkspace({ prefix: "prompt-library-migration-" });
     await workspace.navigateTo();
     await clickNewChat(page);
     await expectComposerVisible(page);
 
-    await page.evaluate(({ key, value }) => localStorage.setItem(key, value), {
-      key: PROMPT_LIBRARY_STORAGE_KEY,
-      value: "not-json",
+    const hostPrompt = {
+      id: "shared-id",
+      title: "Host prompt",
+      content: "Already stored on the Host",
+    };
+    const exactDuplicate = { ...hostPrompt, id: "legacy-duplicate" };
+    const idCollision = {
+      id: "shared-id",
+      title: "Legacy collision",
+      content: "Keep this legacy prompt with a new ID",
+    };
+    const legacyUnique = {
+      id: "legacy-unique",
+      title: "Legacy unique",
+      content: "Move this prompt to the Host",
+    };
+    await e2eWorkerClient.mergeSavedPrompts([hostPrompt]);
+    await seedLegacyPromptLibrary(page, [exactDuplicate, idCollision, legacyUnique]);
+
+    let migrationDialogCount = 0;
+    page.on("dialog", async (dialog) => {
+      migrationDialogCount += 1;
+      expect(dialog.message()).toContain("Merge old saved prompts?");
+      await dialog.accept();
     });
-    await page.reload();
-    await expectComposerVisible(page, { timeout: 30_000 });
     await openPromptLibrary(page);
 
-    await expect(page.getByText(/saved prompt data is damaged/i)).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId("prompt-library-new-button")).toBeDisabled();
-    await expect(getStoredPromptLibrary(page)).resolves.toBe("not-json");
+    await expect(page.getByText(hostPrompt.title, { exact: true })).toBeVisible();
+    await expect(page.getByText(idCollision.title, { exact: true })).toBeVisible();
+    await expect(page.getByText(legacyUnique.title, { exact: true })).toBeVisible();
+    await expect.poll(() => getStoredPromptLibrary(page)).toBeNull();
+    await expect
+      .poll(async () => (await e2eWorkerClient.listSavedPrompts()).items)
+      .toEqual([
+        hostPrompt,
+        expect.objectContaining({
+          title: idCollision.title,
+          content: idCollision.content,
+        }),
+        legacyUnique,
+      ]);
+    expect(migrationDialogCount).toBe(1);
 
-    await page.getByTestId("prompt-library-retry-button").click();
-    await expect(page.getByText(/saved prompt data is damaged/i)).toBeVisible({ timeout: 20_000 });
-    await expect(getStoredPromptLibrary(page)).resolves.toBe("not-json");
+    await closePromptLibrary(page);
+    await openPromptLibrary(page);
+    await expect(page.getByText(legacyUnique.title, { exact: true })).toBeVisible();
+    expect(migrationDialogCount).toBe(1);
+  });
 
-    const resetFailureMessage = "Injected saved prompt reset failure";
-    await failNextPromptLibraryWrite(page, resetFailureMessage);
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.getByTestId("prompt-library-reset-button").click();
-    await expect(page.getByTestId("prompt-library-reset-error")).toHaveText(
-      "Couldn't reset saved prompts",
-    );
-    await expect(page.getByText(/saved prompt data is damaged/i)).toBeVisible();
-    await expect(getStoredPromptLibrary(page)).resolves.toBe("not-json");
-    await expect(page.getByTestId("prompt-library-reset-button")).toBeEnabled();
+  test("keeps legacy prompts after cancel and asks again on the next open", async ({
+    page,
+    withWorkspace,
+    e2eWorkerClient,
+  }) => {
+    const workspace = await withWorkspace({ prefix: "prompt-library-migration-cancel-" });
+    await workspace.navigateTo();
+    await clickNewChat(page);
+    await expectComposerVisible(page);
 
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.getByTestId("prompt-library-reset-button").click();
+    const legacyPrompt = {
+      id: "legacy-cancelled",
+      title: "Migrate after retry",
+      content: "Keep this until migration succeeds",
+    };
+    await seedLegacyPromptLibrary(page, [legacyPrompt]);
+
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await openPromptLibrary(page);
     await expect(page.getByText("No saved prompts yet", { exact: true })).toBeVisible();
-    await expect.poll(() => getStoredPromptLibrary(page)).toBe(JSON.stringify({ items: [] }));
+    await expect(getStoredPromptLibrary(page)).resolves.toContain(legacyPrompt.title);
+    await expect.poll(async () => (await e2eWorkerClient.listSavedPrompts()).items).toEqual([]);
+
+    await closePromptLibrary(page);
+    page.once("dialog", (dialog) => dialog.accept());
+    await openPromptLibrary(page);
+    await expect(page.getByText(legacyPrompt.title, { exact: true })).toBeVisible();
+    await expect.poll(() => getStoredPromptLibrary(page)).toBeNull();
+    await expect
+      .poll(async () => (await e2eWorkerClient.listSavedPrompts()).items)
+      .toEqual([legacyPrompt]);
+  });
+
+  test("can discard corrupt legacy data without changing Host prompts", async ({
+    page,
+    withWorkspace,
+    e2eWorkerClient,
+  }) => {
+    const workspace = await withWorkspace({ prefix: "prompt-library-corrupt-migration-" });
+    await workspace.navigateTo();
+    await clickNewChat(page);
+    await expectComposerVisible(page);
+
+    const hostPrompt = {
+      id: "host-prompt",
+      title: "Host prompt survives cleanup",
+      content: "Keep this prompt on the Host",
+    };
+    await e2eWorkerClient.mergeSavedPrompts([hostPrompt]);
+    await seedCorruptLegacyPromptLibrary(page);
+
+    let cleanupDialogCount = 0;
+    page.on("dialog", async (dialog) => {
+      cleanupDialogCount += 1;
+      expect(dialog.message()).toContain("Old saved prompts cannot be read");
+      await dialog.accept();
+    });
+    await openPromptLibrary(page);
+
+    await expect(page.getByText(hostPrompt.title, { exact: true })).toBeVisible();
+    await expect.poll(() => getStoredPromptLibrary(page)).toBeNull();
+    await expect
+      .poll(async () => (await e2eWorkerClient.listSavedPrompts()).items)
+      .toEqual([hostPrompt]);
+    expect(cleanupDialogCount).toBe(1);
+
+    await closePromptLibrary(page);
+    await openPromptLibrary(page);
+    await expect(page.getByText(hostPrompt.title, { exact: true })).toBeVisible();
+    expect(cleanupDialogCount).toBe(1);
   });
 });

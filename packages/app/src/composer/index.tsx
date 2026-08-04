@@ -1985,6 +1985,7 @@ export function Composer({
     () => (
       <>
         <PromptLibraryTrigger
+          serverId={serverId}
           disabled={isComposerLocked}
           isPaneFocused={isPaneFocused}
           onInsert={handleInsertText}

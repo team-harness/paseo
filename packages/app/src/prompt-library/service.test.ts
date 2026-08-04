@@ -1,11 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { SavedPrompt, SavedPromptDraft } from "./model";
+import {
+  PromptLibraryCorruptDataError,
+  PromptLibraryService,
+  PromptLibraryValidationError,
+  type PromptLibraryClient,
+} from "./service";
 import {
   PROMPT_LIBRARY_STORAGE_KEY,
-  PromptLibraryCorruptStorageError,
+  LegacyPromptLibraryCorruptStorageError,
   type PromptLibraryStorage,
-  loadSavedPrompts,
+  loadLegacySavedPrompts,
+  removeLegacySavedPrompts,
 } from "./storage";
-import { PromptLibraryService, PromptLibraryValidationError } from "./service";
 
 class MemoryStorage implements PromptLibraryStorage {
   readonly values = new Map<string, string>();
@@ -14,13 +21,37 @@ class MemoryStorage implements PromptLibraryStorage {
     return this.values.get(key) ?? null;
   }
 
-  async setItem(key: string, value: string): Promise<void> {
-    this.values.set(key, value);
+  async removeItem(key: string): Promise<void> {
+    this.values.delete(key);
   }
 }
 
-describe("loadSavedPrompts", () => {
-  it("keeps valid unique prompts when other stored entries are malformed", async () => {
+function createPromptLibraryClient(
+  overrides: Partial<PromptLibraryClient> = {},
+): PromptLibraryClient {
+  const empty = async () => ({ items: [] as SavedPrompt[] });
+  return {
+    listSavedPrompts: empty,
+    createSavedPrompt: empty,
+    updateSavedPrompt: empty,
+    deleteSavedPrompt: empty,
+    clearSavedPrompts: empty,
+    mergeSavedPrompts: async () => ({ items: [], addedCount: 0, skippedCount: 0 }),
+    ...overrides,
+  };
+}
+
+describe("legacy saved prompt storage", () => {
+  it("distinguishes an absent legacy library from an empty one", async () => {
+    const storage = new MemoryStorage();
+
+    await expect(loadLegacySavedPrompts(storage)).resolves.toBeNull();
+
+    storage.values.set(PROMPT_LIBRARY_STORAGE_KEY, JSON.stringify({ items: [] }));
+    await expect(loadLegacySavedPrompts(storage)).resolves.toEqual([]);
+  });
+
+  it("keeps valid unique prompts when other legacy entries are malformed", async () => {
     const storage = new MemoryStorage();
     storage.values.set(
       PROMPT_LIBRARY_STORAGE_KEY,
@@ -34,135 +65,87 @@ describe("loadSavedPrompts", () => {
       }),
     );
 
-    await expect(loadSavedPrompts(storage)).resolves.toEqual([
+    await expect(loadLegacySavedPrompts(storage)).resolves.toEqual([
       { id: "one", title: "Review", content: "Review the diff" },
     ]);
   });
 
-  it("rejects malformed JSON instead of treating it as an empty library", async () => {
+  it("preserves malformed legacy data until migration recovery is explicit", async () => {
     const storage = new MemoryStorage();
     storage.values.set(PROMPT_LIBRARY_STORAGE_KEY, "not-json");
 
-    await expect(loadSavedPrompts(storage)).rejects.toBeInstanceOf(
-      PromptLibraryCorruptStorageError,
+    await expect(loadLegacySavedPrompts(storage)).rejects.toBeInstanceOf(
+      LegacyPromptLibraryCorruptStorageError,
     );
+    expect(storage.values.get(PROMPT_LIBRARY_STORAGE_KEY)).toBe("not-json");
   });
 
-  it("rejects a malformed root envelope while still tolerating bad individual entries", async () => {
+  it("removes the legacy key only when requested", async () => {
     const storage = new MemoryStorage();
-    storage.values.set(PROMPT_LIBRARY_STORAGE_KEY, JSON.stringify({ prompts: [] }));
+    storage.values.set(PROMPT_LIBRARY_STORAGE_KEY, JSON.stringify({ items: [] }));
 
-    await expect(loadSavedPrompts(storage)).rejects.toBeInstanceOf(
-      PromptLibraryCorruptStorageError,
-    );
+    await removeLegacySavedPrompts(storage);
+
+    expect(storage.values.has(PROMPT_LIBRARY_STORAGE_KEY)).toBe(false);
   });
 });
 
 describe("PromptLibraryService", () => {
-  it("serializes concurrent creates so neither prompt is overwritten", async () => {
-    const storage = new MemoryStorage();
-    const ids = ["first", "second"];
-    const service = new PromptLibraryService(storage, {
-      createId: () => ids.shift() ?? "unexpected",
+  it("normalizes a draft before sending it to the Host and preserves body whitespace", async () => {
+    const createSavedPrompt = vi.fn(async (draft: SavedPromptDraft) => ({
+      items: [{ id: "created", ...draft }],
+    }));
+    const service = new PromptLibraryService(createPromptLibraryClient({ createSavedPrompt }));
+
+    await expect(
+      service.create({ title: "  Review  ", content: "\n  keep indentation\n" }),
+    ).resolves.toEqual([{ id: "created", title: "Review", content: "\n  keep indentation\n" }]);
+    expect(createSavedPrompt).toHaveBeenCalledWith({
+      title: "Review",
+      content: "\n  keep indentation\n",
     });
-
-    await Promise.all([
-      service.create({ title: "First", content: "One" }),
-      service.create({ title: "Second", content: "Two" }),
-    ]);
-
-    await expect(service.list()).resolves.toEqual([
-      { id: "second", title: "Second", content: "Two" },
-      { id: "first", title: "First", content: "One" },
-    ]);
   });
 
-  it("serializes a pending list before a create", async () => {
-    let releaseFirstRead: () => void = () => undefined;
-    let markFirstReadStarted: () => void = () => undefined;
-    const firstReadStarted = new Promise<void>((resolve) => {
-      markFirstReadStarted = () => resolve();
-    });
-    const firstReadReleased = new Promise<void>((resolve) => {
-      releaseFirstRead = () => resolve();
-    });
-    class DelayedReadStorage extends MemoryStorage {
-      readCount = 0;
-
-      override async getItem(key: string): Promise<string | null> {
-        this.readCount += 1;
-        if (this.readCount === 1) {
-          const snapshot = await super.getItem(key);
-          markFirstReadStarted();
-          await firstReadReleased;
-          return snapshot;
-        }
-        return super.getItem(key);
-      }
-    }
-
-    const storage = new DelayedReadStorage();
-    const service = new PromptLibraryService(storage, { createId: () => "created" });
-    const pendingList = service.list();
-    await firstReadStarted;
-    const pendingCreate = service.create({ title: "Created", content: "Body" });
-
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(storage.readCount).toBe(1);
-
-    releaseFirstRead();
-    await expect(pendingList).resolves.toEqual([]);
-    await expect(pendingCreate).resolves.toEqual([
-      { id: "created", title: "Created", content: "Body" },
-    ]);
-    await expect(service.list()).resolves.toEqual([
-      { id: "created", title: "Created", content: "Body" },
-    ]);
-  });
-
-  it("does not overwrite corrupt data until the user explicitly resets it", async () => {
-    const storage = new MemoryStorage();
-    const corruptValue = "not-json";
-    storage.values.set(PROMPT_LIBRARY_STORAGE_KEY, corruptValue);
-    const service = new PromptLibraryService(storage, { createId: () => "created" });
-
-    await expect(service.create({ title: "Created", content: "Body" })).rejects.toBeInstanceOf(
-      PromptLibraryCorruptStorageError,
-    );
-    expect(storage.values.get(PROMPT_LIBRARY_STORAGE_KEY)).toBe(corruptValue);
-
-    await expect(service.reset()).resolves.toEqual([]);
-    await expect(service.list()).resolves.toEqual([]);
-    expect(storage.values.get(PROMPT_LIBRARY_STORAGE_KEY)).toBe(JSON.stringify({ items: [] }));
-  });
-
-  it("updates and removes prompts while preserving exact body whitespace", async () => {
-    const storage = new MemoryStorage();
-    const service = new PromptLibraryService(storage, { createId: () => "prompt-id" });
-    await service.create({ title: " Draft ", content: "  keep indentation\n" });
-
-    await service.update("prompt-id", {
-      title: " Updated ",
-      content: "\n  code block\n",
-    });
-    await expect(service.list()).resolves.toEqual([
-      { id: "prompt-id", title: "Updated", content: "\n  code block\n" },
-    ]);
-
-    await service.remove("prompt-id");
-    await expect(service.list()).resolves.toEqual([]);
-  });
-
-  it("rejects blank prompt content with a stable validation code", async () => {
-    const service = new PromptLibraryService(new MemoryStorage(), {
-      createId: () => "prompt-id",
-    });
+  it("rejects invalid drafts before sending them to the Host", async () => {
+    const createSavedPrompt = vi.fn(async () => ({ items: [] as SavedPrompt[] }));
+    const service = new PromptLibraryService(createPromptLibraryClient({ createSavedPrompt }));
 
     await expect(service.create({ title: "Empty", content: "   " })).rejects.toEqual(
       expect.objectContaining<Partial<PromptLibraryValidationError>>({
         code: "content_required",
       }),
     );
+    expect(createSavedPrompt).not.toHaveBeenCalled();
+  });
+
+  it("delegates merge and returns the Host's idempotency counts", async () => {
+    const imported: SavedPrompt[] = [{ id: "legacy", title: "Review", content: "Review it" }];
+    const mergeSavedPrompts = vi.fn(async () => ({
+      items: imported,
+      addedCount: 1,
+      skippedCount: 0,
+    }));
+    const service = new PromptLibraryService(createPromptLibraryClient({ mergeSavedPrompts }));
+
+    await expect(service.merge(imported)).resolves.toEqual({
+      items: imported,
+      addedCount: 1,
+      skippedCount: 0,
+    });
+    expect(mergeSavedPrompts).toHaveBeenCalledWith(imported);
+  });
+
+  it("maps a corrupt Host library to a stable UI error", async () => {
+    const service = new PromptLibraryService(
+      createPromptLibraryClient({
+        listSavedPrompts: async () => {
+          throw new Error(
+            "Saved prompt library data is corrupted. requestType=prompt.library.list.request",
+          );
+        },
+      }),
+    );
+
+    await expect(service.list()).rejects.toBeInstanceOf(PromptLibraryCorruptDataError);
   });
 });

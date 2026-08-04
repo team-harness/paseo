@@ -116,9 +116,27 @@ export const ptBR: TranslationResources = {
       contentPlaceholder: "Digite o prompt que deseja reutilizar",
       save: "Salvar",
       loading: "Carregando prompts...",
+      disconnected: "Conecte-se ao Host para usar os prompts salvos",
+      unsupported: "Atualize este Host para usar os prompts salvos",
       loadError: "Não foi possível carregar os prompts salvos",
       corruptData:
         "Os dados dos prompts salvos estão corrompidos. Tente novamente ou redefina a biblioteca.",
+      migrationConfirmTitle: "Mesclar prompts salvos antigos?",
+      migrationConfirmMessage:
+        "Foram encontrados {{count}} prompts salvos neste dispositivo. Mesclar com o Host atual? Os prompts existentes não serão substituídos.",
+      migrationConfirm: "Mesclar com o Host",
+      migrationLoading: "Processando prompts antigos...",
+      migrationSuccess: "{{addedCount}} prompts mesclados e {{skippedCount}} duplicados ignorados",
+      migrationFailed:
+        "Não foi possível mesclar os prompts antigos. Eles continuam neste dispositivo.",
+      migrationCorrupt:
+        "Não foi possível ler os prompts locais antigos. Os prompts do Host atual não foram afetados.",
+      migrationCorruptTitle: "Não foi possível ler os prompts salvos antigos",
+      migrationCorruptMessage:
+        "Os prompts antigos salvos neste dispositivo estão corrompidos. Excluir apenas esses dados locais antigos? Os prompts do Host atual não serão alterados.",
+      migrationCorruptConfirm: "Excluir dados locais antigos",
+      migrationCleanupFailed:
+        "Não foi possível excluir os dados locais corrompidos. Eles continuam neste dispositivo.",
       noResults: "Nenhum prompt correspondente",
       empty: "Ainda não há prompts salvos",
       errors: {
@@ -1795,6 +1813,10 @@ export const ptBR: TranslationResources = {
       open: "Abrir comentários de revisão ({{count}})",
       copyAll: "Copiar tudo",
       copyFailed: "Não foi possível copiar os comentários de revisão",
+      deleteAll: "Excluir tudo",
+      deleteAllConfirmTitle: "Excluir todos os comentários?",
+      deleteAllConfirmMessage:
+        "Os {{count}} comentários de revisão serão excluídos permanentemente. Esta ação não pode ser desfeita.",
     },
   },
   settings: {

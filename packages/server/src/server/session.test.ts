@@ -44,6 +44,7 @@ import {
   asGitHubService,
   asWorkspaceGitService,
   asDaemonConfigStore,
+  asPromptLibraryStore,
   createProviderSnapshotManagerStub,
 } from "./test-utils/session-stubs.js";
 import { isPlatform } from "../test-utils/platform.js";
@@ -353,6 +354,7 @@ interface SessionForTestOptions {
   projectRegistry?: Partial<SessionOptions["projectRegistry"]>;
   terminalManager?: SessionOptions["terminalManager"];
   statusSummaryService?: FakeStatusSummaryService;
+  promptLibraryStore?: SessionOptions["promptLibraryStore"];
   serviceProxy?: SessionOptions["serviceProxy"];
   scriptRuntimeStore?: SessionOptions["scriptRuntimeStore"];
   getDaemonTcpPort?: () => number | null;
@@ -462,6 +464,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
       options.providerSnapshotManager ?? createProviderSnapshotManagerStub().manager,
     statusSummaryService: (options.statusSummaryService ??
       new FakeStatusSummaryService()) as unknown as SessionOptions["statusSummaryService"],
+    promptLibraryStore: options.promptLibraryStore ?? asPromptLibraryStore(),
     serviceProxy: options.serviceProxy,
     scriptRuntimeStore: options.scriptRuntimeStore,
     getDaemonTcpPort: options.getDaemonTcpPort,
@@ -4776,6 +4779,53 @@ describe("status-summary", () => {
       {
         type: "status.summary.updated",
         payload: statusSummaryService.summary,
+      },
+    ]);
+  });
+});
+
+describe("prompt-library", () => {
+  test("routes Host prompt list and merge through the injected store", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const prompt = {
+      id: "legacy-prompt",
+      title: "Review",
+      content: "Review the current diff.",
+    };
+    const promptLibraryStore = asPromptLibraryStore({
+      list: vi.fn().mockResolvedValue([]),
+      merge: vi.fn().mockResolvedValue({
+        items: [prompt],
+        addedCount: 1,
+        skippedCount: 0,
+      }),
+    });
+    const session = createSessionForTest({ messages, promptLibraryStore });
+
+    await session.handleMessage({
+      type: "prompt.library.list.request",
+      requestId: "prompt-list",
+    });
+    await session.handleMessage({
+      type: "prompt.library.merge.request",
+      requestId: "prompt-merge",
+      items: [prompt],
+    });
+
+    expect(promptLibraryStore.merge).toHaveBeenCalledWith([prompt]);
+    expect(messages).toEqual([
+      {
+        type: "prompt.library.list.response",
+        payload: { requestId: "prompt-list", items: [] },
+      },
+      {
+        type: "prompt.library.merge.response",
+        payload: {
+          requestId: "prompt-merge",
+          items: [prompt],
+          addedCount: 1,
+          skippedCount: 0,
+        },
       },
     ]);
   });

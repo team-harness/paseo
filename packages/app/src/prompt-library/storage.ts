@@ -10,13 +10,13 @@ export const PROMPT_LIBRARY_STORAGE_KEY = "@paseo:prompt-library";
 
 export interface PromptLibraryStorage {
   getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<void>;
+  removeItem(key: string): Promise<void>;
 }
 
-export class PromptLibraryCorruptStorageError extends Error {
+export class LegacyPromptLibraryCorruptStorageError extends Error {
   constructor() {
-    super("Saved prompt library data is corrupted.");
-    this.name = "PromptLibraryCorruptStorageError";
+    super("Legacy saved prompt library data is corrupted.");
+    this.name = "LegacyPromptLibraryCorruptStorageError";
   }
 }
 
@@ -37,7 +37,7 @@ export const asyncStoragePromptLibrary: PromptLibraryStorage = AsyncStorage;
 
 export function normalizeSavedPrompts(value: unknown): SavedPrompt[] {
   const envelope = promptLibraryEnvelopeSchema.safeParse(value);
-  if (!envelope.success) throw new PromptLibraryCorruptStorageError();
+  if (!envelope.success) throw new LegacyPromptLibraryCorruptStorageError();
 
   const ids = new Set<string>();
   const prompts: SavedPrompt[] = [];
@@ -50,22 +50,21 @@ export function normalizeSavedPrompts(value: unknown): SavedPrompt[] {
   return prompts;
 }
 
-export async function loadSavedPrompts(storage: PromptLibraryStorage): Promise<SavedPrompt[]> {
+export async function loadLegacySavedPrompts(
+  storage: PromptLibraryStorage,
+): Promise<SavedPrompt[] | null> {
   const stored = await storage.getItem(PROMPT_LIBRARY_STORAGE_KEY);
-  if (stored === null) return [];
+  if (stored === null) return null;
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(stored);
   } catch {
-    throw new PromptLibraryCorruptStorageError();
+    throw new LegacyPromptLibraryCorruptStorageError();
   }
   return normalizeSavedPrompts(parsed);
 }
 
-export async function saveSavedPrompts(
-  storage: PromptLibraryStorage,
-  prompts: SavedPrompt[],
-): Promise<void> {
-  await storage.setItem(PROMPT_LIBRARY_STORAGE_KEY, JSON.stringify({ items: prompts }));
+export async function removeLegacySavedPrompts(storage: PromptLibraryStorage): Promise<void> {
+  await storage.removeItem(PROMPT_LIBRARY_STORAGE_KEY);
 }
