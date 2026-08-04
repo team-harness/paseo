@@ -328,6 +328,34 @@
 
 **最近同步判断**：2026-08-04 的上游 `74dea3845` 没有等价常用 Prompt 集合，保留 fork 实现。
 
+### 10. 对话选区引用与文件 Review Comments
+
+**状态**：fork 功能。提交：`044802203`。
+
+**行为**：对话中的用户或 Assistant 文本可以按原 Markdown 引用到 Composer，替换当前选区、恢复焦点且不自动发送。文件 Markdown 预览、代码预览和 Source 视图支持对选区留评论；代码与 Source 使用精确行号，Markdown 预览在没有可靠源码映射时只记录选中文字。评论按 workspace 隔离并持久化，File 与 Changes 共用 Review summary，汇总选区评论和 diff 行评论，支持一键复制与逐条删除。
+
+**关键文件**：
+
+- `packages/app/src/assistant-selection-copy/`
+- `packages/app/src/composer/index.tsx`
+- `packages/app/src/review/workspace-comments.ts`
+- `packages/app/src/review/workspace-comments-store.ts`
+- `packages/app/src/review/selection-surface.web.tsx`
+- `packages/app/src/review/summary-trigger.tsx`
+- `packages/app/src/file-pane/`
+
+**同步规则**：
+
+- 上游若提供等价能力，采用其交互表面和数据模型，迁移已有 workspace 评论后删除 fork 重复入口，不保留双路径。
+- 引用必须生成合法 Markdown blockquote，精确替换 Composer 当前选区、恢复焦点且不自动发送。
+- 评论必须按 `workspaceId` 隔离；同一 workspace 的 File、Changes、preview/source/diff 需要汇总到同一 Review summary。
+- 没有 AST 级源码映射时，Markdown 预览不得猜测行号；代码预览和 Source 选区继续保留精确范围。
+- 自定义选区操作只在 Web/Electron 提供；Native 保留系统复制菜单，不显示不可用入口。
+
+**验证**：`quote.test.ts`、`workspace-comments.test.ts`、`store.test.ts`、`resources.test.ts`、`assistant-selection-copy.spec.ts`、`file-review-comments.spec.ts`、`npm run typecheck`、`npm run lint`。
+
+**最近同步判断**：2026-08-04 的上游 `74dea3845` 有基础选区复制，但没有直接引用到 Composer、文件选区 Review Comments 或跨预览与 diff 的 Review summary，保留 fork 实现。
+
 ## 同步上游操作清单
 
 1. 先确认工作区干净或把本地未提交改动隔离；当前待提交的变更必须单独处理，不能混入上游 merge。
