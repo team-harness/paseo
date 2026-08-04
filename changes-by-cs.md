@@ -306,9 +306,9 @@
 
 ### 9. 常用 Prompt 集合
 
-**状态**：fork 功能。提交：`947f4cbae`。
+**状态**：fork 功能。提交：`947f4cbae`、`3b1dc3e0a`。
 
-**行为**：Composer 工具栏提供客户端本地的常用 Prompt 集合，支持搜索、新建、编辑、删除，并把 Prompt 精确插入当前选区后恢复输入焦点；插入不会自动发送。集合在同一客户端安装内跨 Host、项目、工作区和 Agent 共享，不通过 daemon 或 relay 同步。
+**行为**：Composer 工具栏提供客户端本地的常用 Prompt 集合，支持搜索、新建、编辑、删除，并把 Prompt 精确插入当前选区后恢复输入焦点；插入不会自动发送。集合在同一客户端安装内跨 Host、项目、工作区和 Agent 共享，不通过 daemon 或 relay 同步。Web/Electron 编辑器保留中文等 IME 的完整 composition，标题和正文不会在候选提交时重复或丢失。
 
 **关键文件**：
 
@@ -323,8 +323,9 @@
 - 插入必须替换当前选区、恢复焦点且不自动发送。
 - 单条损坏记录可以跳过；JSON 或根 envelope 损坏必须阻止普通 CRUD 覆盖，只有显式确认重置可以清空。
 - 客户端存储操作保持串行，避免多个 Composer 或并发查询/写入互相覆盖。
+- `AdaptiveTextInput` 的文字由原生控件持有；Prompt 未提交 draft 不得在每次 `onChangeText` 时触发父组件重渲染，否则 Web/Electron 会提前结束 IME composition。
 
-**验证**：`model.test.ts`、`service.test.ts`、`resources.test.ts`、`prompt-library.spec.ts`、`npm run typecheck`、`npm run lint`。
+**验证**：`model.test.ts`、`service.test.ts`、`resources.test.ts`、`prompt-library.spec.ts`（包含 Chromium CDP 中文 IME composition）、`npm run typecheck`、`npm run lint`。
 
 **最近同步判断**：2026-08-04 的上游 `74dea3845` 没有等价常用 Prompt 集合，保留 fork 实现。
 
