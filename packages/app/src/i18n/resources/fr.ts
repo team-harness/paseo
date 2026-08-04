@@ -505,7 +505,7 @@ export const fr: TranslationResources = {
       openFile: "Ouvrir le fichier",
       copyPath: "Copier le chemin",
       download: "Télécharger",
-      addToChat: "Ajouter au chat…",
+      addToChat: "Ajouter au chat",
       moreActions: "Plus de propositions",
     },
     fileExplorer: {
@@ -602,6 +602,7 @@ export const fr: TranslationResources = {
     },
     terminal: {
       hostDisconnected: "Hostn'est pas connecté",
+      updateHost: "Mettez à jour l’hôte pour utiliser le terminal natif.",
       unableToSubscribe: "Impossible de s'abonner au terminal",
     },
     tabs: {
@@ -981,6 +982,14 @@ export const fr: TranslationResources = {
           viewPullRequest: "Voir",
           openOn: "Ouvrir sur {{brand}}",
         },
+        checksSummary: {
+          passedLabel: "succès",
+          failedLabel: "échec",
+          runningLabel: "en cours",
+          passedAccessible: "Vérifications réussies",
+          failedAccessible: "Vérifications en échec",
+          runningAccessible: "Vérifications en cours",
+        },
         sections: {
           checks: "Chèques",
           pipeline: "Pipeline",
@@ -1028,6 +1037,33 @@ export const fr: TranslationResources = {
     },
   },
   sidebar: {
+    display: {
+      trigger: "Préférences d'affichage",
+      heading: "Affichage",
+      grouping: {
+        label: "Regroupement",
+        project: "Projet",
+        status: "Statut",
+      },
+      titleSource: {
+        label: "Titre",
+        title: "Titre",
+        branch: "Nom de branche",
+      },
+      show: {
+        label: "Afficher",
+        host: "Hôte",
+        changeRequest: "Pull request",
+        checks: "Vérifications",
+        scripts: "Scripts",
+        diff: "Statistiques de diff",
+        timestamp: "Dernière activité",
+      },
+      hostFilter: {
+        label: "Hôte",
+        all: "Tous les hôtes",
+      },
+    },
     pinned: {
       title: "Épinglés",
     },
@@ -1882,6 +1918,11 @@ export const fr: TranslationResources = {
     },
     diagnostics: {
       title: "Diagnostic",
+      legacyTerminalRenderer: {
+        label: "Utiliser l’ancien rendu du terminal",
+        description: "Utilise l’ancien terminal WebView après la réouverture d’un terminal",
+        accessibilityLabel: "Utiliser l’ancien rendu du terminal",
+      },
       testAudio: "Tester le son",
       playTest: "Jouer à l'essai",
       playing: "Jouant...",

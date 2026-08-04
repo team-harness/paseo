@@ -86,6 +86,7 @@ import {
   type BottomAnchorRouteRequest,
 } from "./bottom-anchor-controller";
 import { createAssistantImageOccurrenceKey } from "@/assistant-image/acquisition-cache";
+import { AssistantSelectionCopySurface } from "@/assistant-selection-copy/surface";
 import {
   AssistantFileLinkResolverProvider,
   normalizeInlinePathTarget,
@@ -345,6 +346,14 @@ const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
 ];
 
 const EMPTY_STREAM_HEAD: StreamItem[] = [];
+
+function useRetainedValue<T>(value: T, active: boolean): T {
+  const retainedRef = useRef(value);
+  if (active) {
+    retainedRef.current = value;
+  }
+  return active ? value : retainedRef.current;
+}
 const EMPTY_PENDING_MESSAGE_SUBMISSIONS: readonly PendingMessageSubmission[] = [];
 const GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT = 200;
 
@@ -556,19 +565,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       });
     });
 
-    // Freeze stream data while this tab slot is hidden to prevent offscreen FlatList
-    // cell-window renders on every 48ms flush from background agents.
+    // Freeze stream presentation while this tab slot is hidden to prevent offscreen
+    // cell-window and turn-lifecycle renders from background agents.
     // When isActive flips back to true, the context change triggers a re-render and
     // the component reads the current (fresh) streamItems/streamHead from props.
     const isActive = useRetainedPanelActive();
-    const frozenStreamItemsRef = useRef(streamItems);
-    const frozenStreamHeadRef = useRef(streamHead);
-    if (isActive) {
-      frozenStreamItemsRef.current = streamItems;
-      frozenStreamHeadRef.current = streamHead;
-    }
-    const effectiveStreamItems = isActive ? streamItems : frozenStreamItemsRef.current;
-    const effectiveStreamHead = isActive ? streamHead : frozenStreamHeadRef.current;
+    const effectiveStreamItems = useRetainedValue(streamItems, isActive);
+    const effectiveStreamHead = useRetainedValue(streamHead, isActive);
+    const effectiveTurnPresentation = useRetainedValue(turnPresentation, isActive);
     const shareStartHeader = useMemo<SheetHeader>(
       () => ({ title: t("message.actions.shareStartTitle") }),
       [t],
@@ -662,7 +666,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         setIsSharingAssistantTurn(false);
       }
     });
-    const isTurnActive = turnPresentation.isActive;
+    const isTurnActive = effectiveTurnPresentation.isActive;
     // Keep retained history outside the 48ms live-head flush path.
     const preparedToolCallHistory = useMemo(
       () => prepareToolCallHistory(toolCallDetailLevel, effectiveStreamItems),
@@ -689,7 +693,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
         isTurnActive,
-        activeTurnStartedAt: turnPresentation.startedAt,
+        activeTurnStartedAt: effectiveTurnPresentation.startedAt,
         tail: projectedToolCalls.tail,
         head: projectedToolCalls.head,
         platform: isWeb ? "web" : "native",
@@ -700,7 +704,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       isTurnActive,
       projectedToolCalls.head,
       projectedToolCalls.tail,
-      turnPresentation.startedAt,
+      effectiveTurnPresentation.startedAt,
     ]);
     const streamLayout = useMemo(
       () =>
@@ -1176,7 +1180,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     return (
       <ToolCallSheetProvider>
-        <View style={stylesheet.container}>
+        <AssistantSelectionCopySurface style={stylesheet.container}>
           <MessageOuterSpacingProvider disableOuterSpacing>
             {streamRenderStrategy.render({
               agentId,
@@ -1221,7 +1225,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               </Animated.View>
             </View>
           )}
-        </View>
+        </AssistantSelectionCopySurface>
         {shareStartSelection ? (
           <AdaptiveModalSheet
             header={shareStartHeader}

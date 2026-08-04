@@ -1,6 +1,6 @@
 import { unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import { buildHostWorkspaceRoute, buildSettingsSectionRoute } from "../../src/utils/host-routes";
 import { test, expect } from "../support/fixtures";
 import { getServerId } from "../support/helpers/server-id";
@@ -24,6 +24,103 @@ interface CleanupTask {
 const cleanupTasks: CleanupTask[] = [];
 const APP_SETTINGS_KEY = "@paseo:app-settings";
 const CHANGES_PREFERENCES_KEY = "@paseo:changes-preferences";
+
+interface HorizontalInkBounds {
+  left: number;
+  right: number;
+}
+
+async function readSvgInkBounds(svgLocator: Locator): Promise<HorizontalInkBounds> {
+  return svgLocator.evaluate((svg) => {
+    const graphics = Array.from(svg.querySelectorAll<SVGGraphicsElement>("path, line, polyline"));
+    const bounds = graphics.map((graphic) => {
+      const box = graphic.getBBox();
+      const matrix = graphic.getScreenCTM();
+      if (!matrix) {
+        throw new Error("SVG glyph has no screen transform");
+      }
+      const strokeInset = Number.parseFloat(getComputedStyle(graphic).strokeWidth) / 2 || 0;
+      const corners = [
+        new DOMPoint(box.x - strokeInset, box.y - strokeInset),
+        new DOMPoint(box.x + box.width + strokeInset, box.y - strokeInset),
+        new DOMPoint(box.x - strokeInset, box.y + box.height + strokeInset),
+        new DOMPoint(box.x + box.width + strokeInset, box.y + box.height + strokeInset),
+      ].map((point) => point.matrixTransform(matrix));
+      return {
+        left: Math.min(...corners.map((point) => point.x)),
+        right: Math.max(...corners.map((point) => point.x)),
+      };
+    });
+    return {
+      left: Math.min(...bounds.map((bound) => bound.left)),
+      right: Math.max(...bounds.map((bound) => bound.right)),
+    };
+  });
+}
+
+async function readTextInkBounds(
+  container: Locator,
+  edge: "first" | "last" = "first",
+): Promise<HorizontalInkBounds> {
+  return container.evaluate((root, requestedEdge) => {
+    const textElements = [root, ...Array.from(root.querySelectorAll("*"))].filter((element) =>
+      Array.from(element.childNodes).some(
+        (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
+      ),
+    );
+    const element = textElements[requestedEdge === "first" ? 0 : textElements.length - 1];
+    const text = Array.from(element.childNodes)
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent ?? "")
+      .join("")
+      .trim();
+    const style = getComputedStyle(element);
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context || !text) {
+      throw new Error("Text glyph could not be measured");
+    }
+    context.font = style.font;
+    const metrics = context.measureText(text);
+    const origin = element.getBoundingClientRect().left;
+    return {
+      left: origin - metrics.actualBoundingBoxLeft,
+      right: origin + metrics.actualBoundingBoxRight,
+    };
+  }, edge);
+}
+
+async function readScrollbarGutter(scrollContainer: Locator): Promise<number> {
+  return scrollContainer.evaluate((element) => {
+    const htmlElement = element as HTMLElement;
+    return htmlElement.offsetWidth - htmlElement.clientWidth;
+  });
+}
+
+async function dragOverlayScrollbarDown(page: Page, scrollContainer: Locator): Promise<void> {
+  const thumb = page.getByTestId("workspace-overlay-scrollbar-grab");
+  const thumbBounds = await thumb.boundingBox();
+  expect(thumbBounds).not.toBeNull();
+  const initialOffset = await scrollContainer.evaluate((element) => element.scrollTop);
+  await page.mouse.move(
+    thumbBounds!.x + thumbBounds!.width / 2,
+    thumbBounds!.y + thumbBounds!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    thumbBounds!.x + thumbBounds!.width / 2,
+    thumbBounds!.y + thumbBounds!.height / 2 + 40,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  await expect
+    .poll(() => scrollContainer.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(initialOffset);
+}
+
+function expectSameRail(actual: number, expected: number): void {
+  expect(Math.abs(actual - expected)).toBeLessThanOrEqual(1);
+}
 
 const BEFORE = `import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -223,19 +320,29 @@ test("changes diff keeps code rows aligned with the gutter", async ({ page }) =>
   });
 });
 
-test("changes file actions open from the kebab and right-click", async ({ page }) => {
+test("changes file actions open below the right-click without a reserved kebab", async ({
+  page,
+}) => {
   const workspace = await createWorkspaceWithMountedTabDiff({ includeDeletedFile: true });
   await useUnwrappedDiffLines(page);
   await openWorkspaceChanges(page, workspace);
 
   await expect(page.getByTestId("diff-file-1")).toContainText("zz-deleted.ts");
-  await page.getByTestId("diff-file-1-actions").click();
+  await expect(page.getByTestId(/diff-file-\d+-actions/)).toHaveCount(0);
+  await page.getByTestId("diff-file-1-toggle").click({ button: "right" });
   await expect(page.getByText("Copy path")).toBeVisible();
   await expect(page.getByTestId("diff-file-1-open-file")).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  await page.getByTestId("diff-file-0-toggle").click({ button: "right" });
+  const fileRow = page.getByTestId("diff-file-0-toggle");
+  const fileRowBounds = await fileRow.boundingBox();
+  expect(fileRowBounds).not.toBeNull();
+  await fileRow.click({ button: "right", position: { x: 80, y: 10 } });
   await expect(page.getByTestId("diff-file-0-open-file")).toBeVisible();
+  const menuBounds = await page.getByTestId("diff-file-0-context-menu").boundingBox();
+  expect(menuBounds).not.toBeNull();
+  expect(menuBounds!.x).toBeCloseTo(fileRowBounds!.x + 80, 0);
+  expect(menuBounds!.y).toBeGreaterThan(fileRowBounds!.y + 10);
   await page.getByTestId("diff-file-0-open-file").click();
 
   await expect(page.getByTestId("workspace-file-pane")).toBeVisible();
@@ -303,7 +410,7 @@ test("Changes switches between inline and full-tab navigation", async ({ page })
   await page.getByTestId("explorer-content-area").getByTestId("diff-file-1-toggle").click();
   await expect(page.getByTestId(/^workspace-working-diff-close-/)).toHaveCount(1);
   await expect(visiblePanel.getByText("zz-deleted.ts", { exact: true })).toBeVisible();
-  await expect(visiblePanel).toContainText("Deleted");
+  await expect(visiblePanel.getByRole("img", { name: "Deleted" })).toBeVisible();
 
   await changesTabToggle.click();
   await expect(page.getByTestId(/^workspace-working-diff-close-/)).toHaveCount(0);
@@ -340,6 +447,9 @@ test("changes diff switches between flat and tree file lists", async ({ page }) 
   await page.getByTestId("changes-toggle-view-mode").click();
   await expect(page.getByTestId("diff-folder-src")).toBeVisible();
   await expect(page.getByTestId("diff-file-0")).toBeVisible();
+  await page.getByTestId("diff-file-0-toggle").click({ button: "right" });
+  await expect(page.getByTestId("diff-file-0-context-menu")).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Collapse all" }).click();
   await expect(page.getByTestId("diff-file-0")).toHaveCount(0);
@@ -357,45 +467,127 @@ test("workspace file panes keep their controls on shared alignment rails", async
   const workspace = await createWorkspaceWithMountedTabDiff();
   await openWorkspaceChanges(page, workspace);
 
+  const diffScroll = page.getByTestId("git-diff-scroll");
+  await diffScroll.evaluate((element) => {
+    element.style.scrollbarGutter = "stable";
+  });
+  expect(await readScrollbarGutter(diffScroll)).toBe(0);
+  const overlayScrollbarBounds = await page
+    .getByTestId("workspace-overlay-scrollbar")
+    .boundingBox();
+  const overlayThumbBounds = await page
+    .getByTestId("workspace-overlay-scrollbar-thumb")
+    .boundingBox();
+  expect(overlayScrollbarBounds?.width).toBe(8);
+  expect(overlayThumbBounds?.width).toBe(4);
+  const flatFileStat = await readTextInkBounds(page.getByTestId("diff-file-0-stat"), "last");
   await page.getByTestId("changes-toggle-view-mode").click();
   await expect(page.getByTestId("diff-folder-src")).toBeVisible();
 
-  const changesRightRail = await Promise.all([
-    readSvgRight(page, "explorer-close"),
-    readSvgRight(page, "changes-options-menu"),
-    readSvgRight(page, "diff-file-0-actions"),
-  ]);
-  expectAligned(changesRightRail);
+  await expect(page.getByTestId("diff-file-0-actions")).toHaveCount(0);
 
-  const [folderStat, fileStat] = await Promise.all([
-    page.getByTestId("diff-folder-src-stat").boundingBox(),
-    page.getByTestId("diff-file-0-stat").boundingBox(),
+  const folderRow = page.getByTestId("diff-folder-src-toggle");
+  const fileRow = page.getByTestId("diff-file-0-toggle");
+  await folderRow.hover();
+  const folderHoverColor = await folderRow.evaluate((row) => getComputedStyle(row).backgroundColor);
+  await fileRow.hover();
+  const fileHoverColor = await fileRow.evaluate((row) => getComputedStyle(row).backgroundColor);
+  expect(fileHoverColor).toBe(folderHoverColor);
+
+  const diffFolderName = folderRow.getByText("src", { exact: true });
+  const diffFileName = fileRow.getByText("use-mounted-tab-set.ts", { exact: true });
+  const diffFolderIconLocator = folderRow.locator("svg").first();
+  const diffFileIconLocator = fileRow.locator("svg").first();
+  const [diffFolderIcon, diffFileIcon, diffFolderNameBounds, diffFileNameBounds] =
+    await Promise.all([
+      readSvgInkBounds(diffFolderIconLocator),
+      readSvgInkBounds(diffFileIconLocator),
+      diffFolderName.boundingBox(),
+      diffFileName.boundingBox(),
+    ]);
+  expect(diffFolderNameBounds).not.toBeNull();
+  expect(diffFileNameBounds).not.toBeNull();
+  const diffTreeIconNameGap = diffFolderNameBounds!.x - diffFolderIcon.right;
+  expectSameRail(diffTreeIconNameGap, diffFileNameBounds!.x - diffFileIcon.right);
+
+  const [folderStat, fileStat, optionsChevron, explorerCloseIcon] = await Promise.all([
+    readTextInkBounds(page.getByTestId("diff-folder-src-stat"), "last"),
+    readTextInkBounds(page.getByTestId("diff-file-0-stat"), "last"),
+    readSvgInkBounds(page.getByTestId("changes-options-menu").locator("svg")),
+    readSvgInkBounds(page.getByTestId("explorer-close").locator("svg")),
   ]);
-  expect(folderStat).not.toBeNull();
-  expect(fileStat).not.toBeNull();
-  expect(folderStat!.x + folderStat!.width).toBeCloseTo(fileStat!.x + fileStat!.width, 0);
+  expectSameRail(folderStat.right, fileStat.right);
+  expectSameRail(flatFileStat.right, fileStat.right);
+  expectSameRail(fileStat.right, explorerCloseIcon.right);
+  expectSameRail(fileStat.right, optionsChevron.right);
+  expectSameRail(optionsChevron.right, explorerCloseIcon.right);
+  await folderRow.click();
+  await folderRow.click();
+  await dragOverlayScrollbarDown(page, diffScroll);
 
   await page.getByTestId("explorer-tab-files").click();
   await expect(page.getByTestId("file-explorer-row-0")).toBeVisible();
+  const filesScroll = page.getByTestId("file-explorer-tree-scroll");
+  await filesScroll.evaluate((element) => {
+    element.style.scrollbarGutter = "stable";
+  });
+  expect(await readScrollbarGutter(filesScroll)).toBe(0);
 
-  const filesRightRail = await Promise.all([
-    readSvgRight(page, "explorer-close"),
-    readSvgRight(page, "files-refresh"),
-    readSvgRight(page, "file-explorer-row-0-actions"),
+  await expect(page.getByTestId("file-explorer-row-0-actions")).toHaveCount(0);
+  const fileExplorerRow = page.getByTestId("file-explorer-row-0");
+  const fileExplorerRowBounds = await fileExplorerRow.boundingBox();
+  expect(fileExplorerRowBounds).not.toBeNull();
+  await fileExplorerRow.click({ button: "right", position: { x: 80, y: 10 } });
+  await expect(page.getByTestId("file-explorer-row-0-context-menu")).toBeVisible();
+  const fileMenuBounds = await page.getByTestId("file-explorer-row-0-context-menu").boundingBox();
+  expect(fileMenuBounds).not.toBeNull();
+  expect(fileMenuBounds!.x).toBeCloseTo(fileExplorerRowBounds!.x + 80, 0);
+  expect(fileMenuBounds!.y).toBeGreaterThan(fileExplorerRowBounds!.y + 10);
+  await page.keyboard.press("Escape");
+
+  const directoryRow = page.getByTestId(/^file-explorer-row-\d+$/).filter({ hasText: "src" });
+  const directoryName = directoryRow.getByText("src", { exact: true });
+  const [collapsedDirectoryIcon, collapsedDirectoryNameBounds] = await Promise.all([
+    readSvgInkBounds(directoryRow.locator("svg").first()),
+    directoryName.boundingBox(),
   ]);
-  expectAligned(filesRightRail);
+  expect(collapsedDirectoryNameBounds).not.toBeNull();
 
-  const [sortLabel, firstRowIcon, treeBounds, rowBounds] = await Promise.all([
-    page.getByTestId("files-sort-label").boundingBox(),
-    page.getByTestId("file-explorer-row-0").locator("svg").first().boundingBox(),
+  await directoryRow.click();
+  const nestedFileRow = page
+    .getByTestId(/^file-explorer-row-\d+$/)
+    .filter({ hasText: "use-mounted-tab-set.ts" });
+  await expect(nestedFileRow).toBeVisible();
+  const [expandedDirectoryIcon, expandedDirectoryNameBounds, fileIcon, fileNameBounds] =
+    await Promise.all([
+      readSvgInkBounds(directoryRow.locator("svg").first()),
+      directoryName.boundingBox(),
+      readSvgInkBounds(nestedFileRow.locator("svg").first()),
+      nestedFileRow.getByText("use-mounted-tab-set.ts", { exact: true }).boundingBox(),
+    ]);
+  expect(expandedDirectoryNameBounds).not.toBeNull();
+  expect(fileNameBounds).not.toBeNull();
+  expect(expandedDirectoryNameBounds!.x).toBeCloseTo(collapsedDirectoryNameBounds!.x, 1);
+  expectSameRail(
+    collapsedDirectoryNameBounds!.x - collapsedDirectoryIcon.right,
+    fileNameBounds!.x - fileIcon.right,
+  );
+  expectSameRail(
+    expandedDirectoryNameBounds!.x - expandedDirectoryIcon.right,
+    fileNameBounds!.x - fileIcon.right,
+  );
+  expectSameRail(diffTreeIconNameGap, fileNameBounds!.x - fileIcon.right);
+
+  const readmeRow = page.getByTestId(/^file-explorer-row-\d+$/).filter({ hasText: "README.md" });
+  const [sortLabel, fileRowIcon, treeBounds, rowBounds] = await Promise.all([
+    readTextInkBounds(page.getByTestId("files-sort-label")),
+    readSvgInkBounds(readmeRow.locator("svg").first()),
     page.getByTestId("file-explorer-tree-scroll").boundingBox(),
     page.getByTestId("file-explorer-row-0").boundingBox(),
   ]);
-  expect(sortLabel).not.toBeNull();
-  expect(firstRowIcon).not.toBeNull();
   expect(treeBounds).not.toBeNull();
   expect(rowBounds).not.toBeNull();
-  expect(sortLabel!.x).toBeCloseTo(firstRowIcon!.x, 0);
+  expectSameRail(fileRowIcon.left, sortLabel.left);
   expect(rowBounds!.x).toBeCloseTo(treeBounds!.x, 0);
   expect(rowBounds!.x + rowBounds!.width).toBeCloseTo(treeBounds!.x + treeBounds!.width, 0);
 });
@@ -591,21 +783,6 @@ async function openWorkspaceChanges(page: Page, workspace: DirtyWorkspace): Prom
 async function openChangesInVisibleExplorer(page: Page): Promise<void> {
   await expect(page.getByTestId("explorer-tab-changes")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("use-mounted-tab-set.ts")).toBeVisible({ timeout: 30_000 });
-}
-
-async function readSvgRight(page: Page, testID: string): Promise<number> {
-  const box = await page.getByTestId(testID).locator("svg").first().boundingBox();
-  if (!box) {
-    throw new Error(`Could not measure ${testID}`);
-  }
-  return box.x + box.width;
-}
-
-function expectAligned(values: number[]): void {
-  const [first, ...rest] = values;
-  for (const value of rest) {
-    expect(value).toBeCloseTo(first, 0);
-  }
 }
 
 async function expectExpandedMountedTabDiff(page: Page): Promise<void> {

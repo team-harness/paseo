@@ -1095,6 +1095,7 @@ export class AgentManager {
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const createOptions = this.buildCreateSessionOptions(options);
     const session = await client.createSession(providerLaunchConfig, launchContext, createOptions);
+    await this.requireExternalMcpSupport(session, storedConfig);
     return this.registerSession(session, storedConfig, resolvedAgentId, {
       labels: options.labels,
       initialTitle: options.initialTitle,
@@ -1177,6 +1178,7 @@ export class AgentManager {
       launchContext,
       resumeOptions,
     );
+    await this.requireExternalMcpSupport(session, storedConfig);
     return this.registerSession(session, storedConfig, resolvedAgentId, {
       ...options,
       persistence: handle,
@@ -1303,6 +1305,7 @@ export class AgentManager {
     const session = handle
       ? await client.resumeSession(handle, providerLaunchConfig, launchContext)
       : await client.createSession(providerLaunchConfig, launchContext);
+    await this.requireExternalMcpSupport(session, storedConfig);
 
     let handedToRegistration = false;
     try {
@@ -2900,6 +2903,20 @@ export class AgentManager {
     } catch (error) {
       this.logger.warn({ err: error }, "Failed to close unregistered agent session");
     }
+  }
+
+  private async requireExternalMcpSupport(
+    session: AgentSession,
+    storedConfig: AgentSessionConfig,
+  ): Promise<void> {
+    if (
+      Object.keys(storedConfig.mcpServers ?? {}).length === 0 ||
+      session.capabilities.supportsMcpServers === true
+    ) {
+      return;
+    }
+    await this.closeUnregisteredSession(session);
+    throw new Error(`Provider '${storedConfig.provider}' does not support MCP servers`);
   }
 
   private async initializeAgentTimelineForRegister(params: {

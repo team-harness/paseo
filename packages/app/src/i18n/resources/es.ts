@@ -505,7 +505,7 @@ export const es: TranslationResources = {
       openFile: "Abrir archivo",
       copyPath: "Copiar ruta",
       download: "Descargar",
-      addToChat: "Añadir al chat…",
+      addToChat: "Añadir al chat",
       moreActions: "Más acciones",
     },
     fileExplorer: {
@@ -602,6 +602,7 @@ export const es: TranslationResources = {
     },
     terminal: {
       hostDisconnected: "Hostno está conectado",
+      updateHost: "Actualiza el host para usar el renderizador de terminal nativo.",
       unableToSubscribe: "No se puede suscribir al terminal",
     },
     tabs: {
@@ -982,6 +983,14 @@ export const es: TranslationResources = {
           viewPullRequest: "Ver",
           openOn: "Abrir en {{brand}}",
         },
+        checksSummary: {
+          passedLabel: "pasó",
+          failedLabel: "falló",
+          runningLabel: "en curso",
+          passedAccessible: "Comprobaciones superadas",
+          failedAccessible: "Comprobaciones fallidas",
+          runningAccessible: "Comprobaciones en curso",
+        },
         sections: {
           checks: "cheques",
           pipeline: "Pipeline",
@@ -1029,6 +1038,33 @@ export const es: TranslationResources = {
     },
   },
   sidebar: {
+    display: {
+      trigger: "Preferencias de visualización",
+      heading: "Visualización",
+      grouping: {
+        label: "Agrupación",
+        project: "Proyecto",
+        status: "Estado",
+      },
+      titleSource: {
+        label: "Título",
+        title: "Título",
+        branch: "Nombre de rama",
+      },
+      show: {
+        label: "Mostrar",
+        host: "Host",
+        changeRequest: "Pull request",
+        checks: "Comprobaciones",
+        scripts: "Scripts",
+        diff: "Estadísticas de cambios",
+        timestamp: "Última actividad",
+      },
+      hostFilter: {
+        label: "Host",
+        all: "Todos los hosts",
+      },
+    },
     pinned: {
       title: "Anclados",
     },
@@ -1880,6 +1916,11 @@ export const es: TranslationResources = {
     },
     diagnostics: {
       title: "Diagnóstico",
+      legacyTerminalRenderer: {
+        label: "Usar el renderizador de terminal anterior",
+        description: "Usa el terminal WebView anterior al volver a abrir un terminal",
+        accessibilityLabel: "Usar el renderizador de terminal anterior",
+      },
       testAudio: "audio de prueba",
       playTest: "Prueba de juego",
       playing: "Jugando...",

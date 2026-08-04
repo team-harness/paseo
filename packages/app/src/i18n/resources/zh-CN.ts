@@ -498,7 +498,7 @@ export const zhCN: TranslationResources = {
       openFile: "打开文件",
       copyPath: "复制路径",
       download: "下载",
-      addToChat: "添加到聊天…",
+      addToChat: "添加到聊天",
       moreActions: "更多操作",
     },
     fileExplorer: {
@@ -595,6 +595,7 @@ export const zhCN: TranslationResources = {
     },
     terminal: {
       hostDisconnected: "Host 未连接",
+      updateHost: "请更新主机以使用原生终端渲染器。",
       unableToSubscribe: "无法订阅 Terminal",
     },
     tabs: {
@@ -940,6 +941,14 @@ export const zhCN: TranslationResources = {
           viewPullRequest: "查看",
           openOn: "在 {{brand}} 上打开",
         },
+        checksSummary: {
+          passedLabel: "通过",
+          failedLabel: "失败",
+          runningLabel: "运行中",
+          passedAccessible: "检查通过",
+          failedAccessible: "检查失败",
+          runningAccessible: "检查运行中",
+        },
         sections: {
           checks: "Checks",
           pipeline: "流水线",
@@ -987,6 +996,33 @@ export const zhCN: TranslationResources = {
     },
   },
   sidebar: {
+    display: {
+      trigger: "显示偏好",
+      heading: "显示",
+      grouping: {
+        label: "分组",
+        project: "项目",
+        status: "状态",
+      },
+      titleSource: {
+        label: "标题",
+        title: "标题",
+        branch: "分支名称",
+      },
+      show: {
+        label: "显示",
+        host: "主机",
+        changeRequest: "拉取请求",
+        checks: "检查",
+        scripts: "脚本",
+        diff: "差异统计",
+        timestamp: "最近活动",
+      },
+      hostFilter: {
+        label: "主机",
+        all: "所有主机",
+      },
+    },
     pinned: {
       title: "已置顶",
     },
@@ -1809,6 +1845,11 @@ export const zhCN: TranslationResources = {
     },
     diagnostics: {
       title: "诊断",
+      legacyTerminalRenderer: {
+        label: "使用旧版终端渲染器",
+        description: "重新打开终端后使用之前的 WebView 终端",
+        accessibilityLabel: "使用旧版终端渲染器",
+      },
       testAudio: "测试音频",
       playTest: "播放测试",
       playing: "正在播放...",

@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `5d15e40a2b057ec7775f9884861fb462e637a59d`，同步于 2026-08-03。
-- 最近同步 merge commit：`53a87c924`。
+- 最近同步基线：`upstream/main` = `74dea384566dee6e5458c107191c13bdc16b9960`，同步于 2026-08-04。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `74dea384566dee6e5458c107191c13bdc16b9960`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-04: `upstream/main` `74dea3845` / `v0.2.5`
+
+- 合入上游原生移动终端重构、Android 键盘与终端尺寸归属修复、assistant 选区语义化复制、聊天滚动位置恢复与最近会话保活、Hub execution MCP、OpenCode 活跃回合 context usage 更新，以及网站 Hub/连接文档。
+- 侧边栏采用上游的显示偏好、共享菜单、Meta Row、check/script 摘要和行背景模型。脱离项目分组的 fork 行仍显示项目名，但项目名迁入 Meta Row 的首项，与 Host、PR、checks 和 scripts 共用第二行；运行中状态继续使用 `SyncedLoader`，创建/归档继续使用普通加载指示器。
+- 聊天分享接入上游的 retained turn presentation 和 assistant 选区复制表面，仍在分享前加载权威完整历史、选择起点、脱敏并执行 5 MiB 约束。上游仍未实现 Status Bar/`status.summary`、usage ledger、多 Host 汇总、共享侧边栏 Pin、计划任务创建时选择既有 Agent、Codex 定价与 usage accounting、Threadshare 分享或常用 Prompt 集合；上述 fork 能力全部保留，本轮没有重复能力下线。
 
 ### 2026-08-03: `upstream/main` `5d15e40a2` / `v0.2.5`
 
@@ -269,6 +275,7 @@
 **同步规则**：
 
 - 上游若提供等价聊天分享，优先采用其导出协议、上传 API 和 Viewer URL 结构；迁移时保留全量历史分页、分享起点选择和异步 UI 状态。独立 Threadshare 服务仍应作为其他 Agent 客户端的通用实现。
+- 上游的 assistant 选区复制、聊天滚动恢复和最近会话保活可以作为聊天表面的基础能力，但不能替代完整历史加载、分享起点选择、producer 侧脱敏和上传体积限制。
 - 导出的时间线页必须跟随上游 `TimelinePage` 协议字段，尤其是 history epoch 与权威基线语义，不能把客户端当前已加载的局部消息当作完整历史。
 - Codex 子 Agent 分享不得按普通 Agent ID 读取本地持久化文件；必须使用上游 provider-subagent timeline API，并在 epoch 重置、游标过期或 timeline gap 时中止分享。
 - 分享导出的所有可见文本和工具数据必须在 producer 侧完成凭据脱敏；不能假设 Threadshare API 会清洗正文。字符串化 JSON 必须结构化处理，不能用正则直接改写；同时不能误删 token usage、鉴权状态等非凭据元数据或说明性认证文本。
@@ -295,7 +302,7 @@
 - 次级文字保持单行截断，不能撑宽窄侧边栏或移动端布局。
 - 必跑：`status-bar-running-sessions.test.tsx`，以及 `sidebar-model-b.spec.ts` 的状态分组场景和 `sidebar-workspace-pin-shortcut.spec.ts` 的 Pinned 场景。
 
-**最近同步判断**：2026-08-03 合入上游 `ccb668b3b` 后，其单行侧边栏重构移除了脱离项目分组行的项目名文字；保留上游项目图标与 Host badge，同时恢复项目名次级文字。
+**最近同步判断**：2026-08-04 合入上游 `74dea3845` 后，采用其 Meta Row、显示偏好、check/script 摘要和行背景模型；脱离项目分组的项目名迁入 Meta Row 首项，继续作为可见次级文字。运行中状态保留 fork 的 `SyncedLoader`，没有恢复上游的呼吸圆点。
 
 ### 9. 常用 Prompt 集合
 
@@ -319,7 +326,7 @@
 
 **验证**：`model.test.ts`、`service.test.ts`、`resources.test.ts`、`prompt-library.spec.ts`、`npm run typecheck`、`npm run lint`。
 
-**最近同步判断**：2026-08-03 的上游 `v0.2.5` 没有等价常用 Prompt 集合，保留 fork 实现。
+**最近同步判断**：2026-08-04 的上游 `74dea3845` 没有等价常用 Prompt 集合，保留 fork 实现。
 
 ## 同步上游操作清单
 

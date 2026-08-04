@@ -256,6 +256,7 @@ function StatusBarSessionPinRow({
           isHovered={false}
           isLoading={false}
           reserveIdleStatusIndicatorSpace={false}
+          backdrop="surface2"
         >
           <ThemedArrowUpRight size={14} />
         </SidebarWorkspaceRowContent>
