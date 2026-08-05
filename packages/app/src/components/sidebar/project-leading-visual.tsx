@@ -47,14 +47,11 @@ const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
-const amberColorMapping = (theme: Theme) => ({
-  color: theme.colors.palette.amber[500],
+const needsInputColorMapping = (theme: Theme) => ({
+  color: getStatusDotColor({ theme, bucket: "needs_input" }) ?? undefined,
 });
 const syncedLoaderColorMapping = (theme: Theme) => ({
-  color:
-    theme.colorScheme === "light"
-      ? theme.colors.palette.amber[700]
-      : theme.colors.palette.amber[500],
+  color: getStatusDotColor({ theme, bucket: "running" }) ?? undefined,
 });
 
 /**
@@ -248,7 +245,7 @@ function renderProjectStatusBadgeContent(content: ProjectStatusBadgeContent): Re
         </View>
       );
     case "alert":
-      return <ThemedCircleAlert size={STATUS_BADGE_ALERT_SIZE} uniProps={amberColorMapping} />;
+      return <ThemedCircleAlert size={STATUS_BADGE_ALERT_SIZE} uniProps={needsInputColorMapping} />;
     case "dot":
       return <View testID="project-status-dot" style={getStatusDotColorStyle(content.bucket)} />;
   }

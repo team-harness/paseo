@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `0b624b5585123f1401d2178508340766b2b31d7d`，同步于 2026-08-05。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `0b624b5585123f1401d2178508340766b2b31d7d`）。
+- 最近同步基线：`upstream/main` = `fb5cfb9fb90ac1957fe09653bce2667bfe1ec070`，同步于 2026-08-06。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `fb5cfb9fb90ac1957fe09653bce2667bfe1ec070`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-06: `upstream/main` `fb5cfb9fb` / `v0.3.0-beta.2`
+
+- 合入上游终端失焦后保持输出订阅、Host 连接选择持久化、忽略 Git ignored workspace 建议、Pi 委派任务生命周期、语音空闲时释放 audio session、韩语本地化和网站 beta 下载入口。
+- 侧边栏采用上游 checks 显示偏好、运行中 Service 摘要、统一状态色与 `SyncedLoader` 尺寸修正；脱离项目分组的 Pinned/状态行继续在 Meta Row 首项显示项目名，运行中继续使用 fork 的 `SyncedLoader` 形态而非呼吸圆点。loader 颜色改为消费上游统一的 running 状态色。
+- 能力决策：继续保留 fork 的 Status Bar/usage ledger/多 Host 汇总、计划任务选择既有 Agent、Codex 定价与 usage accounting、Threadshare 分享、Host 常用 Prompt、对话选区引用、跨 File/Changes Review Comments、工作区内聊天标签切回跟随最新消息、固定签名桌面/Web Server 分发，以及独立 Android 安装身份与本地 APK 构建。本轮没有上游等价能力可下线。
 
 ### 2026-08-05: `upstream/main` `0b624b558` / `v0.3.0-beta.1`
 
@@ -319,7 +325,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - 次级文字保持单行截断，不能撑宽窄侧边栏或移动端布局。
 - 必跑：`status-bar-running-sessions.test.tsx`，以及 `sidebar-model-b.spec.ts` 的状态分组场景和 `sidebar-workspace-pin-shortcut.spec.ts` 的 Pinned 场景。
 
-**最近同步判断**：2026-08-05 合入上游 `0b624b558` 后，采用集中式 `HostBadge`、菜单 sheet 和 press highlight；脱离项目分组的项目名继续位于 Meta Row 首项。运行中状态保留 fork 的 `SyncedLoader`，没有恢复呼吸圆点。
+**最近同步判断**：2026-08-06 合入上游 `fb5cfb9fb` 后，采用 checks 显示偏好、运行中 Service 摘要和统一状态色；脱离项目分组的项目名继续位于 Meta Row 首项。运行中状态保留 fork 的 `SyncedLoader`，并使用上游统一的 running 状态色，没有恢复呼吸圆点。
 
 ### 9. 常用 Prompt 集合
 
@@ -435,7 +441,7 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
 `apksigner verify --print-certs`、APK ABI 列表、`npm run typecheck`、
 `npm run lint`。
 
-**最近同步判断**：2026-08-05 的上游 `0b624b558` 没有 fork 独立 Android
+**最近同步判断**：2026-08-06 的上游 `fb5cfb9fb` 没有 fork 独立 Android
 安装身份或固定本地签名的离线 APK 构建入口，保留本能力。
 
 ## 同步上游操作清单
