@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `74dea384566dee6e5458c107191c13bdc16b9960`，同步于 2026-08-04。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `74dea384566dee6e5458c107191c13bdc16b9960`）。
+- 最近同步基线：`upstream/main` = `0b624b5585123f1401d2178508340766b2b31d7d`，同步于 2026-08-05。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `0b624b5585123f1401d2178508340766b2b31d7d`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-05: `upstream/main` `0b624b558` / `v0.3.0-beta.1`
+
+- 合入上游新 worktree 默认跟随 upstream branch、Android 键盘与 Composer 修复、原生 IME composition 修复、移动端菜单与终端交互修复、Git watcher 防停滞、assistant 时间线顺序修复、Provider 快照条件缓存和 WebSocket 启动性能优化，以及桌面包排除开发产物。
+- 侧边栏采用上游集中式 `HostBadge`、菜单 sheet 和 press highlight；状态分组与 Pinned 行继续把项目名作为 Meta Row 首项，运行中继续使用 fork 的 `SyncedLoader`。Provider 快照采用上游 hash/cache 链路，Session Context 不再主动预取快照，但保留独立的 `status.summary` 刷新和推送订阅。
+- 能力决策：保留 fork 的 Status Bar/usage ledger/多 Host 汇总、计划任务选择既有 Agent、Codex 定价与 usage accounting、Threadshare 聊天分享、Host 常用 Prompt、对话选区引用和跨 File/Changes 的 Review Comments；桌面端在上游包体排除规则上继续保留固定本地签名、entitlements 和标准 APFS DMG；Task Agent workspace 继承与 Markdown Preview/Source 继续使用上游实现。本轮没有重复能力下线。
 
 ### 2026-08-04: `upstream/main` `74dea3845` / `v0.2.5`
 
@@ -302,7 +308,7 @@
 - 次级文字保持单行截断，不能撑宽窄侧边栏或移动端布局。
 - 必跑：`status-bar-running-sessions.test.tsx`，以及 `sidebar-model-b.spec.ts` 的状态分组场景和 `sidebar-workspace-pin-shortcut.spec.ts` 的 Pinned 场景。
 
-**最近同步判断**：2026-08-04 合入上游 `74dea3845` 后，采用其 Meta Row、显示偏好、check/script 摘要和行背景模型；脱离项目分组的项目名迁入 Meta Row 首项，继续作为可见次级文字。运行中状态保留 fork 的 `SyncedLoader`，没有恢复上游的呼吸圆点。
+**最近同步判断**：2026-08-05 合入上游 `0b624b558` 后，采用集中式 `HostBadge`、菜单 sheet 和 press highlight；脱离项目分组的项目名继续位于 Meta Row 首项。运行中状态保留 fork 的 `SyncedLoader`，没有恢复呼吸圆点。
 
 ### 9. 常用 Prompt 集合
 
@@ -332,7 +338,7 @@
 
 **验证**：`model.test.ts`、`service.test.ts`、`resources.test.ts`、`prompt-library.spec.ts`（包含 Chromium CDP 中文 IME composition）、`npm run typecheck`、`npm run lint`。
 
-**最近同步判断**：2026-08-04 的上游 `74dea3845` 没有等价常用 Prompt 集合，保留 fork 实现。
+**最近同步判断**：2026-08-05 的上游 `0b624b558` 没有等价常用 Prompt 集合；保留 Host 端存储、旧客户端数据确认迁移和 IME 安全编辑实现。
 
 ### 10. 对话选区引用与文件 Review Comments
 
@@ -361,7 +367,7 @@
 
 **验证**：`quote.test.ts`、`workspace-comments.test.ts`、`store.test.ts`、`resources.test.ts`、`assistant-selection-copy.spec.ts`、`file-review-comments.spec.ts`、`npm run typecheck`、`npm run lint`。
 
-**最近同步判断**：2026-08-04 的上游 `74dea3845` 有基础选区复制，但没有直接引用到 Composer、文件选区 Review Comments 或跨预览与 diff 的 Review summary，保留 fork 实现。
+**最近同步判断**：2026-08-05 的上游 `0b624b558` 仍只有基础选区复制，没有直接引用到 Composer、文件选区 Review Comments 或跨预览与 diff 的 Review summary，保留 fork 实现。
 
 ## 同步上游操作清单
 

@@ -10,7 +10,6 @@ import {
   createSetAgentInitializing,
   refreshAgentInitializationTimeout,
 } from "@/hooks/use-agent-initialization";
-import { prefetchProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { applyStatusSummaryUpdate } from "@/status-summary/push";
 import { refreshStatusSummary, shouldRefreshStatusSummary } from "@/status-summary/query";
 import { generateMessageId, type StreamItem } from "@/types/stream";
@@ -522,19 +521,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   }, [client, serverId, updateSessionServerInfo]);
 
   useEffect(() => {
-    if (!isConnected) {
-      return;
-    }
-
-    const serverInfo = client.getLastServerInfoMessage();
-    if (!serverInfo?.features?.providersSnapshot) {
-      return;
-    }
-
-    prefetchProvidersSnapshot(serverId, client);
-  }, [client, isConnected, serverId]);
-
-  useEffect(() => {
     const unregister = voiceRuntime?.registerSession({
       serverId,
       setVoiceMode: async (enabled, agentId) => {
@@ -765,19 +751,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   useEffect(() => {
     viewedTimelineSyncRef.current?.setConnected(isConnected);
   }, [isConnected]);
-
-  useEffect(
-    () =>
-      getHostRuntimeStore().subscribeAgentStoppedRunning(serverId, (agentId) => {
-        const session = useSessionStore.getState().sessions[serverId];
-        const timeline = selectAgentTimelineState(session, agentId);
-        if (timeline.status === "synced" && timeline.newer === "available") {
-          return;
-        }
-        viewedTimelineSyncRef.current?.reconcileAgent(agentId);
-      }),
-    [serverId],
-  );
 
   // Daemon message handlers - directly update Zustand store
   useEffect(() => {

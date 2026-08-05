@@ -71,9 +71,18 @@ export interface SidebarWorkspaceMenuProps {
   isPinned?: boolean;
   onTogglePin?: () => void;
   openInFileManagerPath?: string | null;
+  /**
+   * Lifted so the row that reveals the kebab can keep it mounted while its menu is up. See
+   * `useOpenKebabMenuVisibility`.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-interface SidebarWorkspaceMenuItemsProps extends Omit<SidebarWorkspaceMenuProps, "onArchive"> {
+interface SidebarWorkspaceMenuItemsProps extends Omit<
+  SidebarWorkspaceMenuProps,
+  "onArchive" | "open" | "onOpenChange"
+> {
   onArchive?: () => void;
 }
 
@@ -202,10 +211,12 @@ export function SidebarWorkspaceMenu({
   isPinned,
   onTogglePin,
   openInFileManagerPath,
+  open,
+  onOpenChange,
 }: SidebarWorkspaceMenuProps) {
   const { t } = useTranslation();
   return (
-    <DropdownMenu compactMode="sheet">
+    <DropdownMenu compactMode="sheet" open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
         hitSlop={8}
         style={triggerStyle}
@@ -239,7 +250,7 @@ export function SidebarWorkspaceMenu({
 
 type ContextTriggerProps = Omit<
   ComponentProps<typeof ContextMenuTrigger>,
-  "children" | "enabledOnMobile"
+  "children" | "enabledOnMobile" | "highlightStyle"
 >;
 
 export function SidebarWorkspaceContextMenu({
@@ -264,6 +275,7 @@ export function SidebarWorkspaceContextMenu({
   onTogglePin,
   openInFileManagerPath,
   accessibilityLabel,
+  highlightStyle,
   ...triggerProps
 }: PropsWithChildren<
   SidebarWorkspaceMenuItemsProps &
@@ -274,6 +286,7 @@ export function SidebarWorkspaceContextMenu({
       leadingProjectName?: string | null;
       hostBadgeLabel?: string | null;
       scriptSummary?: WorkspaceScriptSummary | null;
+      highlightStyle: ComponentProps<typeof ContextMenuTrigger>["highlightStyle"];
     }
 >) {
   const {
@@ -301,6 +314,7 @@ export function SidebarWorkspaceContextMenu({
         {...triggerProps}
         enabledOnMobile={false}
         accessibilityLabel={accessibilityLabel ?? rowAccessibilityLabel}
+        highlightStyle={highlightStyle}
       >
         {children}
       </ContextMenuTrigger>
