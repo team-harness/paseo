@@ -88,9 +88,11 @@ Prerelease package versions use the numeric native app version returned by
 `versionCode` `3000`. The full package version remains in the release filename. The build command
 checks all three values before it reports success.
 
-The scheduled release uploads the APK and verifies its public OSS URL before deleting the local
-release APK, checksum sidecar, and Gradle APK output. It keeps the release keystore, Android SDK,
-Gradle/Maven caches, and generated native project so the next build does not repeat downloads.
+The scheduled release uploads the APK and verifies its public OSS URL through the bucket CNAME
+`openweb.bzy.ai` before deleting the local release APK, checksum sidecar, and Gradle APK output.
+Aliyun OSS rejects APK downloads through its default bucket endpoint. The cleanup keeps the release
+keystore, Android SDK, Gradle/Maven caches, and generated native project so the next build does not
+repeat downloads.
 
 `mise install` only lays down the command-line tools. Install the rest and create an emulator. On Apple Silicon:
 

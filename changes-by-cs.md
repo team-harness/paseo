@@ -444,6 +444,8 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
   DMG、Web + Server 和 APK 三个下载链接。
 - APK 的 `versionName` / `versionCode` 必须按 `native-release-version.js` 校验；beta
   后缀保留在发布文件名中，原生 `versionName` 使用三段数字版本。
+- APK 公网下载与验证必须使用 bucket CNAME `openweb.bzy.ai`；阿里云 OSS 默认域名会以
+  `ApkDownloadForbidden` 拒绝 APK 分发。
 - 只有 OSS 对象元数据和公网 URL 均验证成功后，才删除本轮本地 APK、checksum sidecar
   和 Gradle APK 输出。上传失败时保留重试；keystore、SDK、Gradle/Maven 缓存和 generated
   Android project 始终保留。

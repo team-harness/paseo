@@ -144,7 +144,7 @@
    - Web + Server 目标目录：`releases/paseo/<version>/<commit>/web-server/`；只上传经验证的单个 tar.gz，不混入解压目录或中间 `.tgz`。
    - APK 目标目录：`releases/paseo/<version>/<commit>/android/`；只上传经验证的单个 APK，不上传旧 APK、`.sha256` sidecar、generated Android project 或 Gradle 中间产物。
    - 遵循 licell 的操作契约：先 `licell catalog --output json` 发现命令、再 `licell <command> --help --output json` 读取用法，最后带 `--output json` 执行，不要凭记忆猜命令和参数。
-2. 拿到可下载的 URL 后，以 `curl -I --fail` 验证公网返回 `200` 和预期的 `Content-Length`。DMG 的 `Content-Type` 必须为 `application/x-apple-diskimage`；Web + Server 包必须为 gzip 类型；APK 必须为 `application/vnd.android.package-archive`。确认三个对象路径都与本轮 commit 一致后再发送。
+2. 拿到可下载的 URL 后，以 `curl -I --fail` 验证公网返回 `200` 和预期的 `Content-Length`。DMG 的 `Content-Type` 必须为 `application/x-apple-diskimage`；Web + Server 包必须为 gzip 类型；APK 必须为 `application/vnd.android.package-archive`。APK 下载链接固定使用 bucket 已绑定的 CNAME `https://openweb.bzy.ai/<object-key>`；阿里云会以 `ApkDownloadForbidden` 拒绝通过 `opencoder.oss-cn-shanghai.aliyuncs.com` 默认域名分发 APK。确认三个对象路径都与本轮 commit 一致后再发送。
 3. APK 的 OSS 对象元数据和公网 URL 验证成功后，删除本轮本地 APK：
    - 精确删除 `artifacts/android/Paseo-<version>-<commit>-android.apk` 及对应 `.sha256` sidecar；
    - 精确删除 `packages/app/android/app/build/outputs/apk/release/app-release.apk`；
