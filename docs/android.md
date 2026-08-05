@@ -72,6 +72,17 @@ npm run build:android-apk -- --offline --reuse-native-project
 Use this only while `packages/app/android` still matches the current app config and dependencies. The
 default command regenerates that directory with `expo prebuild --clean` for a reproducible release.
 
+The artifact filename gets a `-dirty` suffix when Git reports local changes. A release build may
+ignore unrelated untracked files after you inspect `git status --short` and confirm none of them are
+app source, configuration, dependencies, or other build inputs:
+
+```bash
+npm run build:android-apk -- --offline --ignore-untracked
+```
+
+This option never ignores modifications to tracked files. Do not use it when an untracked file can
+affect the APK; commit the input or build from a clean checkout instead.
+
 `mise install` only lays down the command-line tools. Install the rest and create an emulator. On Apple Silicon:
 
 ```bash

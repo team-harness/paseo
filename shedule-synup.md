@@ -1,6 +1,6 @@
-# 定时任务：上游同步 → 双安装包构建 → 发布通知
+# 定时任务：上游同步 → 三安装包构建 → 发布通知
 
-本文件是一个可重复执行的 runbook，用于定时把原作者仓库的最新改动同步进本 fork，并同时分发 macOS Apple Silicon 桌面安装包和 Web + Paseo Server 升级包。
+本文件是一个可重复执行的 runbook，用于定时把原作者仓库的最新改动同步进本 fork，并同时分发 macOS Apple Silicon 桌面安装包、Web + Paseo Server 升级包和 Android APK。
 
 ## 前置事实
 
@@ -15,7 +15,7 @@
 
 ## Step 1：同步上游改动
 
-1. `git fetch upstream --prune`，对比 `changes-by-cs.md` 里记录的“最近同步基线”，确认是否真的有新提交。若没有新提交，记录一句“本轮无上游更新”，跳过 Step 2 / Step 3 / Step 4。
+1. `git fetch upstream --prune`，对比 `changes-by-cs.md` 里记录的“最近同步基线”，确认是否真的有新提交。若没有新提交，记录一句“本轮无上游更新”，跳过 Step 2 / Step 3 / Step 4 / Step 5。
 2. 通读 [changes-by-cs.md](changes-by-cs.md)，把 fork 的每一项改动逐条过一遍，判断它属于哪一类：
    - **保留**：上游没有等价能力 → 合并时必须保住 fork 的实现和行为，不允许回归。
    - **下线**：上游已经实现了同等能力（例如计划任务本身已支持选择已有的 Agent）→ **以原作者实现为准**，删除 fork 的重复实现、测试与文案，不保留双路径。
@@ -116,19 +116,40 @@
 
 5. 构建前记录端口 `6767` 的监听 PID 并请求 `/api/health`；上传前再次执行同样的只读检查。PID 改变或健康检查失败时立即中止发布并报告，不尝试修复、重启或停止主 daemon。禁止在发布流程中使用会匹配 Paseo 进程的 `killall`、`pkill` 或宽泛 `kill`。需要端到端 daemon 冒烟测试时，必须在不承载用户会话的独立主机或容器中执行。
 
-## Step 4：上传 OSS 并通过 Lark 通知
+## Step 4：构建 Android APK
 
-1. 用 `licell` 把两个安装包分别上传到阿里云 OSS：
+前提：Step 1 确实合入了上游改动。若本轮无上游更新，跳过本步。
+
+该 APK 使用独立安装身份 `com.teamharness.paseo`，包含 `armeabi-v7a`、`arm64-v8a`、`x86` 和 `x86_64` 四种 ABI。固定 release keystore 位于 `packages/app/.secrets/`，不得提交、替换或重新生成；使用不同证书签名后，Android 将拒绝覆盖升级已有安装。
+
+1. 构建前确认所有已跟踪改动都已提交，并记录端口 `6767` 的监听 PID 与 `/api/health`。逐项检查 `git status --short` 中的未跟踪文件：
+   - 没有未跟踪文件时，运行 `npm run build:android-apk -- --offline`；
+   - 只有确认不参与 APK 构建的文档等文件时，可运行 `npm run build:android-apk -- --offline --ignore-untracked`；
+   - 存在未跟踪的应用源码、配置、依赖或其他构建输入时，禁止忽略，先提交或使用干净 checkout。
+2. 默认让脚本执行干净的 Expo prebuild，不使用旧 generated Android project。只有为当前同一提交补齐缓存后重试时，才允许追加 `--reuse-native-project`。若离线构建因本轮依赖或工具链变化缺少缓存，先确认本机代理，再执行一次联网构建补齐 SDK、Gradle 与 Maven 缓存，随后必须重新以 `--offline` 构建成功。
+3. 构建过程禁止启动模拟器、执行 `adb install`，也禁止运行任何 Paseo daemon start/stop/restart 命令。构建后再次检查端口 `6767` 的 PID 和健康状态，PID 改变或健康检查失败时立即中止发布。
+4. 交付前必须全部验证：
+   - 产物位于 `artifacts/android/Paseo-<version>-<commit>-android.apk`，版本和 commit 与本轮发布一致，文件名不得包含 `-dirty`；
+   - `aapt dump badging` 显示 package name 为 `com.teamharness.paseo`，`versionName` 等于当前版本；
+   - `apksigner verify --verbose --print-certs` 成功，签名证书与固定 keystore 一致；
+   - APK 的 native libraries 同时包含 `armeabi-v7a`、`arm64-v8a`、`x86`、`x86_64`；
+   - 记录文件名、版本号、提交 SHA、大小和 SHA-256，并确认 `.sha256` sidecar 内容匹配。
+
+## Step 5：上传 OSS 并通过 Lark 通知
+
+1. 用 `licell` 把三个安装包分别上传到阿里云 OSS：
    - bucket：`opencoder`
    - region：`cn-shanghai`
    - DMG 目标目录：`releases/paseo/<version>/<commit>/standard/`；只上传经验证的单个 DMG，避免把旧版本、`.DS_Store`、blockmap 或 unpacked app 一并发布。
    - Web + Server 目标目录：`releases/paseo/<version>/<commit>/web-server/`；只上传经验证的单个 tar.gz，不混入解压目录或中间 `.tgz`。
+   - APK 目标目录：`releases/paseo/<version>/<commit>/android/`；只上传经验证的单个 APK，不上传旧 APK、`.sha256` sidecar、generated Android project 或 Gradle 中间产物。
    - 遵循 licell 的操作契约：先 `licell catalog --output json` 发现命令、再 `licell <command> --help --output json` 读取用法，最后带 `--output json` 执行，不要凭记忆猜命令和参数。
-2. 拿到可下载的 URL 后，以 `curl -I --fail` 验证公网返回 `200` 和预期的 `Content-Length`。DMG 的 `Content-Type` 必须为 `application/x-apple-diskimage`；Web + Server 包必须为 gzip 类型。确认两个对象路径都与本轮 commit 一致后再发送。
+2. 拿到可下载的 URL 后，以 `curl -I --fail` 验证公网返回 `200` 和预期的 `Content-Length`。DMG 的 `Content-Type` 必须为 `application/x-apple-diskimage`；Web + Server 包必须为 gzip 类型；APK 必须为 `application/vnd.android.package-archive`。确认三个对象路径都与本轮 commit 一致后再发送。
 3. 通过 Lark CLI 固定使用 **bot 身份**（`--as bot`），把发布通知发送到群会话 `oc_0f6042243cb5e249e558ac750aaf60cd`。执行命令时显式传入 `--chat-id oc_0f6042243cb5e249e558ac750aaf60cd` 和本轮唯一的 idempotency key；不要改用用户身份或点对点私聊。消息内容包含：
-   - 两个下载链接与版本号；
+   - 三个下载链接与版本号；
    - DMG 明确标注“仅 macOS Apple Silicon（arm64 / M 系列芯片）”；
    - tar.gz 明确标注“Web + Paseo Server，供非 arm64 主机或浏览器用户升级”，并提示 Node.js 22、npm registry 网络和目标架构安装依赖的要求；
+   - APK 明确标注 Android package id `com.teamharness.paseo`、包含四种 ABI，并提示只有使用同一 fork release keystore 签名的旧版本才能原地升级；
    - 本轮主要改动点总结：上游合入了什么、fork 保留了什么、本轮下线了哪些重复实现（若有）。
 
 ---
@@ -137,5 +158,5 @@
 
 - `changes-by-cs.md` 与实际代码状态一致，且已 commit。
 - typecheck / lint / 目标测试全绿。
-- macOS Apple Silicon DMG 和 Web + Paseo Server tar.gz 都已上传 OSS 且链接可下载。
-- 群会话 `oc_0f6042243cb5e249e558ac750aaf60cd` 已收到 bot 发送的两个链接、架构说明和改动摘要。
+- macOS Apple Silicon DMG、Web + Paseo Server tar.gz 和 Android APK 都已上传 OSS 且链接可下载。
+- 群会话 `oc_0f6042243cb5e249e558ac750aaf60cd` 已收到 bot 发送的三个链接、架构说明和改动摘要。

@@ -417,7 +417,8 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 `npm run build:android-apk` 在不启动模拟器、不控制 Paseo daemon 的前提下，
 构建包含四种 Android ABI 的 production APK，并校验包名、固定本地签名和
 SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本地 Maven 缓存，
-后续支持 `--offline` 冷构建和 `--reuse-native-project` 增量重试。
+后续支持 `--offline` 冷构建和 `--reuse-native-project` 增量重试。定时同步发布
+必须把 APK 与 DMG、Web + Server 包一起上传 OSS，并通过固定群的 bot 通知分发。
 
 **关键文件**：
 
@@ -425,6 +426,7 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
 - `scripts/build-android-apk.mjs`
 - `scripts/android-local-maven.init.gradle`
 - `docs/android.md`
+- `shedule-synup.md`
 
 **同步规则**：
 
@@ -436,6 +438,10 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
   daemon start/stop/restart 命令。
 - 依赖或工具链升级后先联网补齐缓存，再以 `--offline` 验证当前依赖闭包；
   不把构建机的缓存、generated Android project 或 APK 提交进 Git。
+- 发布 APK 必须对应当前已提交版本且文件名不能带 `-dirty`。只有逐项确认未跟踪
+  文件与 Android 构建无关时才能使用 `--ignore-untracked`；该选项不得隐藏已跟踪改动。
+- 每次有上游更新的定时发布都必须构建、校验、上传 APK，并在群通知中同时给出
+  DMG、Web + Server 和 APK 三个下载链接。
 
 **验证**：`npm run build:android-apk -- --offline`、`aapt dump badging`、
 `apksigner verify --print-certs`、APK ABI 列表、`npm run typecheck`、

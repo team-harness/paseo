@@ -34,6 +34,7 @@ function parseArgs(argv) {
   let outputDir = DEFAULT_OUTPUT_DIR;
   let offline = false;
   let reuseNativeProject = false;
+  let ignoreUntracked = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -52,16 +53,20 @@ function parseArgs(argv) {
       reuseNativeProject = true;
       continue;
     }
+    if (arg === "--ignore-untracked") {
+      ignoreUntracked = true;
+      continue;
+    }
     if (arg === "--help" || arg === "-h") {
       console.log(
-        "Usage: npm run build:android-apk -- [--offline] [--reuse-native-project] [--output-dir <path>]",
+        "Usage: npm run build:android-apk -- [--offline] [--reuse-native-project] [--ignore-untracked] [--output-dir <path>]",
       );
       process.exit(0);
     }
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  return { offline, outputDir, reuseNativeProject };
+  return { ignoreUntracked, offline, outputDir, reuseNativeProject };
 }
 
 function run(command, args, options = {}) {
@@ -470,7 +475,9 @@ async function sha256(filePath) {
 }
 
 async function main() {
-  const { offline, outputDir, reuseNativeProject } = parseArgs(process.argv.slice(2));
+  const { ignoreUntracked, offline, outputDir, reuseNativeProject } = parseArgs(
+    process.argv.slice(2),
+  );
   const env = { ...process.env };
   const proxy = await resolveProxy();
   applyProxyToEnv(env, proxy);
@@ -558,7 +565,9 @@ async function main() {
 
   const packageJson = JSON.parse(await readFile(path.join(APP_DIR, "package.json"), "utf8"));
   const commit = await capture("git", ["rev-parse", "--short=10", "HEAD"], { env });
-  const dirty = (await capture("git", ["status", "--porcelain"], { env })) ? "-dirty" : "";
+  const statusArgs = ["status", "--porcelain"];
+  if (ignoreUntracked) statusArgs.push("--untracked-files=no");
+  const dirty = (await capture("git", statusArgs, { env })) ? "-dirty" : "";
   const filename = `Paseo-${packageJson.version}-${commit}${dirty}-android.apk`;
   const outputPath = path.join(outputDir, filename);
   await mkdir(outputDir, { recursive: true });
