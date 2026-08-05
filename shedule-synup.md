@@ -130,7 +130,7 @@
 3. 构建过程禁止启动模拟器、执行 `adb install`，也禁止运行任何 Paseo daemon start/stop/restart 命令。构建后再次检查端口 `6767` 的 PID 和健康状态，PID 改变或健康检查失败时立即中止发布。
 4. 交付前必须全部验证：
    - 产物位于 `artifacts/android/Paseo-<version>-<commit>-android.apk`，版本和 commit 与本轮发布一致，文件名不得包含 `-dirty`；
-   - `aapt dump badging` 显示 package name 为 `com.teamharness.paseo`，`versionName` 等于当前版本；
+   - `aapt dump badging` 显示 package name 为 `com.teamharness.paseo`，`versionName` 和 `versionCode` 等于 `packages/app/native-release-version.js` 对当前 package 版本的映射；例如 `0.3.0-beta.2` 映射为 `versionName 0.3.0`、`versionCode 3000`，完整 beta 版本保留在发布文件名中；
    - `apksigner verify --verbose --print-certs` 成功，签名证书与固定 keystore 一致；
    - APK 的 native libraries 同时包含 `armeabi-v7a`、`arm64-v8a`、`x86`、`x86_64`；
    - 记录文件名、版本号、提交 SHA、大小和 SHA-256，并确认 `.sha256` sidecar 内容匹配。
@@ -145,7 +145,12 @@
    - APK 目标目录：`releases/paseo/<version>/<commit>/android/`；只上传经验证的单个 APK，不上传旧 APK、`.sha256` sidecar、generated Android project 或 Gradle 中间产物。
    - 遵循 licell 的操作契约：先 `licell catalog --output json` 发现命令、再 `licell <command> --help --output json` 读取用法，最后带 `--output json` 执行，不要凭记忆猜命令和参数。
 2. 拿到可下载的 URL 后，以 `curl -I --fail` 验证公网返回 `200` 和预期的 `Content-Length`。DMG 的 `Content-Type` 必须为 `application/x-apple-diskimage`；Web + Server 包必须为 gzip 类型；APK 必须为 `application/vnd.android.package-archive`。确认三个对象路径都与本轮 commit 一致后再发送。
-3. 通过 Lark CLI 固定使用 **bot 身份**（`--as bot`），把发布通知发送到群会话 `oc_0f6042243cb5e249e558ac750aaf60cd`。执行命令时显式传入 `--chat-id oc_0f6042243cb5e249e558ac750aaf60cd` 和本轮唯一的 idempotency key；不要改用用户身份或点对点私聊。消息内容包含：
+3. APK 的 OSS 对象元数据和公网 URL 验证成功后，删除本轮本地 APK：
+   - 精确删除 `artifacts/android/Paseo-<version>-<commit>-android.apk` 及对应 `.sha256` sidecar；
+   - 精确删除 `packages/app/android/app/build/outputs/apk/release/app-release.apk`；
+   - 禁止用 glob、`rm -rf artifacts/android` 或其他宽泛删除；不得删除 `packages/app/.secrets/`、Android SDK、Gradle/Maven 缓存或 generated Android project；
+   - 上传或公网验证失败时不删除任何本轮 APK，保留用于重试。
+4. 通过 Lark CLI 固定使用 **bot 身份**（`--as bot`），把发布通知发送到群会话 `oc_0f6042243cb5e249e558ac750aaf60cd`。执行命令时显式传入 `--chat-id oc_0f6042243cb5e249e558ac750aaf60cd` 和本轮唯一的 idempotency key；不要改用用户身份或点对点私聊。消息内容包含：
    - 三个下载链接与版本号；
    - DMG 明确标注“仅 macOS Apple Silicon（arm64 / M 系列芯片）”；
    - tar.gz 明确标注“Web + Paseo Server，供非 arm64 主机或浏览器用户升级”，并提示 Node.js 22、npm registry 网络和目标架构安装依赖的要求；
@@ -159,4 +164,5 @@
 - `changes-by-cs.md` 与实际代码状态一致，且已 commit。
 - typecheck / lint / 目标测试全绿。
 - macOS Apple Silicon DMG、Web + Paseo Server tar.gz 和 Android APK 都已上传 OSS 且链接可下载。
+- OSS 验证成功后，本轮 APK、checksum sidecar 和 Gradle APK 输出已从本机删除；Android 签名与依赖缓存仍保留。
 - 群会话 `oc_0f6042243cb5e249e558ac750aaf60cd` 已收到 bot 发送的三个链接、架构说明和改动摘要。

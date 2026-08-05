@@ -3,11 +3,14 @@
 import { createHash, randomBytes } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { access, chmod, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
+const require = createRequire(import.meta.url);
+const { getNativeReleaseVersion } = require("../packages/app/native-release-version");
 const execFileAsync = promisify(execFile);
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..");
@@ -564,6 +567,7 @@ async function main() {
   await access(sourceApk);
 
   const packageJson = JSON.parse(await readFile(path.join(APP_DIR, "package.json"), "utf8"));
+  const nativeReleaseVersion = getNativeReleaseVersion(packageJson.version);
   const commit = await capture("git", ["rev-parse", "--short=10", "HEAD"], { env });
   const statusArgs = ["status", "--porcelain"];
   if (ignoreUntracked) statusArgs.push("--untracked-files=no");
@@ -575,8 +579,21 @@ async function main() {
 
   const aapt = path.join(androidHome, "build-tools", ANDROID_BUILD_TOOLS_VERSION, "aapt");
   const badging = await capture(aapt, ["dump", "badging", outputPath], { env });
-  if (!badging.includes(`package: name='${EXPECTED_PACKAGE_ID}'`)) {
+  const packageMatch = badging.match(
+    /^package:\s+name='([^']+)'\s+versionCode='([^']+)'\s+versionName='([^']+)'/m,
+  );
+  if (!packageMatch || packageMatch[1] !== EXPECTED_PACKAGE_ID) {
     throw new Error(`Built APK does not use ${EXPECTED_PACKAGE_ID}`);
+  }
+  if (packageMatch[2] !== String(nativeReleaseVersion.androidVersionCode)) {
+    throw new Error(
+      `Built APK versionCode ${packageMatch[2]} does not match ${nativeReleaseVersion.androidVersionCode}`,
+    );
+  }
+  if (packageMatch[3] !== nativeReleaseVersion.appVersion) {
+    throw new Error(
+      `Built APK versionName ${packageMatch[3]} does not match ${nativeReleaseVersion.appVersion}`,
+    );
   }
 
   const apkSigner = path.join(androidHome, "build-tools", ANDROID_BUILD_TOOLS_VERSION, "apksigner");
@@ -586,6 +603,9 @@ async function main() {
 
   console.log(`\nAPK: ${outputPath}`);
   console.log(`Package: ${EXPECTED_PACKAGE_ID}`);
+  console.log(
+    `Version: ${packageJson.version} (Android ${nativeReleaseVersion.appVersion}, code ${nativeReleaseVersion.androidVersionCode})`,
+  );
   console.log(`SHA-256: ${digest}`);
   console.log(`Host: ${os.hostname()}`);
 }

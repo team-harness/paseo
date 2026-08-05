@@ -83,6 +83,15 @@ npm run build:android-apk -- --offline --ignore-untracked
 This option never ignores modifications to tracked files. Do not use it when an untracked file can
 affect the APK; commit the input or build from a clean checkout instead.
 
+Prerelease package versions use the numeric native app version returned by
+`native-release-version.js`: for example, `0.3.0-beta.2` produces Android `versionName` `0.3.0` and
+`versionCode` `3000`. The full package version remains in the release filename. The build command
+checks all three values before it reports success.
+
+The scheduled release uploads the APK and verifies its public OSS URL before deleting the local
+release APK, checksum sidecar, and Gradle APK output. It keeps the release keystore, Android SDK,
+Gradle/Maven caches, and generated native project so the next build does not repeat downloads.
+
 `mise install` only lays down the command-line tools. Install the rest and create an emulator. On Apple Silicon:
 
 ```bash

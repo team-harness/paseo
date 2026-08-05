@@ -442,6 +442,11 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
   文件与 Android 构建无关时才能使用 `--ignore-untracked`；该选项不得隐藏已跟踪改动。
 - 每次有上游更新的定时发布都必须构建、校验、上传 APK，并在群通知中同时给出
   DMG、Web + Server 和 APK 三个下载链接。
+- APK 的 `versionName` / `versionCode` 必须按 `native-release-version.js` 校验；beta
+  后缀保留在发布文件名中，原生 `versionName` 使用三段数字版本。
+- 只有 OSS 对象元数据和公网 URL 均验证成功后，才删除本轮本地 APK、checksum sidecar
+  和 Gradle APK 输出。上传失败时保留重试；keystore、SDK、Gradle/Maven 缓存和 generated
+  Android project 始终保留。
 
 **验证**：`npm run build:android-apk -- --offline`、`aapt dump badging`、
 `apksigner verify --print-certs`、APK ABI 列表、`npm run typecheck`、
