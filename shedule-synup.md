@@ -1,6 +1,6 @@
-# 定时任务：上游同步 → 桌面打包 → 发布通知
+# 定时任务：上游同步 → 双安装包构建 → 发布通知
 
-本文件是一个可重复执行的 runbook，用于定时把原作者仓库的最新改动同步进本 fork，并把新的 macOS 桌面安装包分发出去。
+本文件是一个可重复执行的 runbook，用于定时把原作者仓库的最新改动同步进本 fork，并同时分发 macOS Apple Silicon 桌面安装包和 Web + Paseo Server 升级包。
 
 ## 前置事实
 
@@ -15,7 +15,7 @@
 
 ## Step 1：同步上游改动
 
-1. `git fetch upstream --prune`，对比 `changes-by-cs.md` 里记录的“最近同步基线”，确认是否真的有新提交。若没有新提交，记录一句“本轮无上游更新”，跳过 Step 2 / Step 3。
+1. `git fetch upstream --prune`，对比 `changes-by-cs.md` 里记录的“最近同步基线”，确认是否真的有新提交。若没有新提交，记录一句“本轮无上游更新”，跳过 Step 2 / Step 3 / Step 4。
 2. 通读 [changes-by-cs.md](changes-by-cs.md)，把 fork 的每一项改动逐条过一遍，判断它属于哪一类：
    - **保留**：上游没有等价能力 → 合并时必须保住 fork 的实现和行为，不允许回归。
    - **下线**：上游已经实现了同等能力（例如计划任务本身已支持选择已有的 Agent）→ **以原作者实现为准**，删除 fork 的重复实现、测试与文案，不保留双路径。
@@ -33,9 +33,11 @@
 
 ---
 
-## Step 2：构建 macOS arm64 桌面安装包
+## Step 2：构建 macOS Apple Silicon 桌面安装包
 
 前提：Step 1 确实合入了上游改动。若本轮无上游更新，跳过本步。
+
+该 DMG **仅支持 Apple Silicon（arm64、M 系列芯片）的 Mac**，不能交给 Intel Mac、Linux 或 Windows 用户。非 arm64 用户使用 Step 3 的 Web + Paseo Server 包。
 
 1. 本机发布固定使用 `Paseo Local Code Signing` 身份。签名材料放在
    `~/.paseo/signing/`，权限必须是目录 `0700`、文件 `0600`：
@@ -79,16 +81,53 @@
 
 ---
 
-## Step 3：上传 OSS 并通过 Lark 通知
+## Step 3：构建 Web + Paseo Server 升级包
 
-1. 用 `licell` 把安装包上传到阿里云 OSS：
+前提：Step 1 确实合入了上游改动。若本轮无上游更新，跳过本步。
+
+上游 GitHub Release 中的 `Paseo-<version>-x64.tar.gz` 是 Linux x64 Electron 桌面包，不是 Web + Server 包，不能拿它代替本步骤。
+
+1. 在仓库根目录运行：
+
+   ```bash
+   npm run build:web-server-release
+   ```
+
+   产物为 `artifacts/releases/Paseo-<version>-web-server-<commit>.tar.gz`。脚本沿用官方 Docker 发布机制，依次 `npm pack` 以下 6 个 workspace：
+   - `@getpaseo/highlight`
+   - `@getpaseo/relay`
+   - `@getpaseo/protocol`
+   - `@getpaseo/client`
+   - `@getpaseo/server`
+   - `@getpaseo/cli`
+
+   `@getpaseo/server` 的 `prepack` 会构建并嵌入匹配版本的浏览器 Web UI。必须同时交付 6 个包；只发布 server/CLI 会从 npm registry 拉取上游依赖，导致 fork 协议和功能丢失。
+
+2. 归档根目录必须包含 `paseo-packs/*.tgz`、`manifest.json`、`paseo-source-revision`、`SHA256SUMS`、校验/安装脚本和 README。这个布局可以直接替换同事现有 Dockerfile 中拉 Git 源码、执行 `npm ci` 和 6 次 `npm pack` 的 `paseo-pack` 阶段。
+
+3. 此包中的 workspace `.tgz` 与 CPU 架构无关，不携带本机 arm64 `node_modules`。目标电脑或 Docker runtime 使用 Node.js 22 和 npm，一次性安装 `paseo-packs/*.tgz`，由 npm 为目标架构下载外部依赖和原生模块。因此目标环境需要可访问 npm registry；该包不是离线依赖镜像。
+
+4. 交付前必须全部验证：
+   - `node --check scripts/build-web-server-release.mjs` 成功；
+   - 解压到新建临时目录后，`node verify.mjs` 成功，且恰好包含上述 6 个 fork package；
+   - server tgz 包含 `package/dist/server/web-ui/index.html`；
+   - 使用临时 `NPM_CONFIG_PREFIX` 运行 `install.sh`，确认 6 个已安装 package 的版本都等于当前版本；
+   - 使用隔离的 `PASEO_HOME` 和随机端口启动已安装的 server，确认 `/api/health` 和 Web UI 首页返回成功，再停止这个隔离实例；禁止重启或停止主 daemon（端口 6767）；
+   - 记录文件名、版本号、提交 SHA、大小和 SHA-256。
+
+## Step 4：上传 OSS 并通过 Lark 通知
+
+1. 用 `licell` 把两个安装包分别上传到阿里云 OSS：
    - bucket：`opencoder`
    - region：`cn-shanghai`
-   - 目标目录：`releases/paseo/<version>/<commit>/standard/`；只上传经验证的单个 DMG，避免把旧版本、`.DS_Store`、blockmap 或 unpacked app 一并发布。
+   - DMG 目标目录：`releases/paseo/<version>/<commit>/standard/`；只上传经验证的单个 DMG，避免把旧版本、`.DS_Store`、blockmap 或 unpacked app 一并发布。
+   - Web + Server 目标目录：`releases/paseo/<version>/<commit>/web-server/`；只上传经验证的单个 tar.gz，不混入解压目录或中间 `.tgz`。
    - 遵循 licell 的操作契约：先 `licell catalog --output json` 发现命令、再 `licell <command> --help --output json` 读取用法，最后带 `--output json` 执行，不要凭记忆猜命令和参数。
-2. 拿到可下载的 URL 后，以 `curl -I --fail` 验证公网返回 `200`、`Content-Type: application/x-apple-diskimage` 和预期的 `Content-Length`；确认对象路径与本轮 commit 一致后再发送。
+2. 拿到可下载的 URL 后，以 `curl -I --fail` 验证公网返回 `200` 和预期的 `Content-Length`。DMG 的 `Content-Type` 必须为 `application/x-apple-diskimage`；Web + Server 包必须为 gzip 类型。确认两个对象路径都与本轮 commit 一致后再发送。
 3. 通过 Lark CLI 固定使用 **bot 身份**（`--as bot`），把发布通知发送到群会话 `oc_0f6042243cb5e249e558ac750aaf60cd`。执行命令时显式传入 `--chat-id oc_0f6042243cb5e249e558ac750aaf60cd` 和本轮唯一的 idempotency key；不要改用用户身份或点对点私聊。消息内容包含：
-   - 下载链接与版本号；
+   - 两个下载链接与版本号；
+   - DMG 明确标注“仅 macOS Apple Silicon（arm64 / M 系列芯片）”；
+   - tar.gz 明确标注“Web + Paseo Server，供非 arm64 主机或浏览器用户升级”，并提示 Node.js 22、npm registry 网络和目标架构安装依赖的要求；
    - 本轮主要改动点总结：上游合入了什么、fork 保留了什么、本轮下线了哪些重复实现（若有）。
 
 ---
@@ -97,5 +136,5 @@
 
 - `changes-by-cs.md` 与实际代码状态一致，且已 commit。
 - typecheck / lint / 目标测试全绿。
-- macOS arm64 安装包已上传 OSS 且链接可下载。
-- 群会话 `oc_0f6042243cb5e249e558ac750aaf60cd` 已收到 bot 发送的链接和改动摘要。
+- macOS Apple Silicon DMG 和 Web + Paseo Server tar.gz 都已上传 OSS 且链接可下载。
+- 群会话 `oc_0f6042243cb5e249e558ac750aaf60cd` 已收到 bot 发送的两个链接、架构说明和改动摘要。

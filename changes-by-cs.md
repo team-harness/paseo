@@ -200,11 +200,13 @@
 - 上游调整 Codex token usage payload 或 ledger 记账时，保留 turn 内累计、native turn id 校验和旧 payload 的单次快照兼容路径；修复不回填既有 ledger 数据。
 - 必跑：`codex-app-server-agent.test.ts`、usage ledger 与 Status Bar usage 目标测试。
 
-### 4. 桌面端本地打包兼容
+### 4. 桌面端与 Web Server 本地打包兼容
 
 **状态**：fork 打包修复，主要来自 `036d6108b`、`cafe5188a`。
 
-**行为**：保留 macOS desktop 打包所需的 entitlements 与 daemon packaging 测试，并允许 desktop 开发环境在 React DevTools 下载失败时继续运行。
+**行为**：保留 macOS desktop 打包所需的 entitlements 与 daemon packaging 测试，并允许 desktop 开发环境在 React DevTools 下载失败时继续运行。同步发布两个用途不同的产物：仅支持 Apple Silicon 的固定本地签名 APFS DMG，以及供非 arm64 主机和浏览器用户升级的 Web + Paseo Server tar.gz。
+
+Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highlight`、`relay`、`protocol`、`client`、`server` 和 `cli` 六个 fork npm 包；server 包内嵌同版本 Web UI。归档不携带构建机的 arm64 `node_modules`，目标主机使用 Node.js 22/npm 为自身架构安装外部依赖。
 
 **关键文件**：
 
@@ -212,12 +214,17 @@
 - `packages/desktop/build/entitlements.mac.inherit.plist`
 - `packages/desktop/src/main.ts`
 - `packages/desktop/src/daemon/desktop-packaging.test.ts`
+- `scripts/build-web-server-release.mjs`
+- `scripts/build-daemon-web-ui.mjs`
+- `shedule-synup.md`
 
 **同步规则**：
 
 - 上游调整 Electron 版本、签名、entitlements 或 daemon 打包时，先保留本 fork 的 macOS 打包约束，再按上游机制重写；不要只解决 TypeScript 冲突后跳过实际 arm64 DMG 验证。
-- 必跑：desktop packaging 目标测试和 macOS arm64 打包/启动冒烟。
+- 上游 GitHub Release 的 x64 tar.gz 是 Linux Electron 桌面包，不视为 Web + Server 等价产物。若上游改变 Docker/npm 发布机制，保持六个内部 package 同批安装和 server 内嵌 Web UI，再按新机制迁移。
+- 必跑：desktop packaging 目标测试、macOS arm64 打包/启动冒烟，以及 Web + Server 归档的校验、临时 npm prefix 安装和隔离 Web UI 启动冒烟。
 - 本地构建前删除同版本的 `Paseo-*.dmg`、`*.blockmap`、`*.zip` 和 `release/mac-arm64/`，防止误将旧产物当成新包上传。
+- 两种产物上传到 commit 隔离的 OSS 路径；发布通知必须明确 DMG 仅支持 Apple Silicon，并单列 Web + Server 下载链接和 Node.js 22/npm 要求。
 - 上传前检查 DMG 修改时间、SHA-256 和打包后的 `app-dist` 是否包含本次功能；OSS 使用 `版本/commit SHA` 的不可变路径，不能只覆盖同名 URL。
 
 ### 5. Task Agent CLI workspace 继承
