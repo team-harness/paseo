@@ -4,6 +4,23 @@ This file records fork-specific changes that intentionally build on upstream
 Paseo behavior. Keep entries narrow and point to upstream-owned abstractions so
 future upstream syncs have a clear integration boundary.
 
+## Fork Android Distribution
+
+Production Android builds use `com.teamharness.paseo` so this fork owns an
+independent install and signing identity. The iOS bundle identifier stays
+`sh.paseo`; do not couple the two platform identifiers again when syncing
+upstream app configuration.
+
+`npm run build:android-apk` builds the current checkout locally without opening
+an emulator or touching the Paseo daemon. It stores the persistent release key
+under the ignored `packages/app/.secrets/` directory and writes the verified APK
+and SHA-256 file to `artifacts/android/`. Back up the signing directory: replacing
+that key prevents Android from upgrading an existing installation in place.
+The Android SDK, Gradle, and local Maven caches persist across builds; use
+`--offline` after the current toolchain and dependency versions have been resolved.
+Use `--reuse-native-project` only for an incremental retry against the existing
+generated `packages/app/android` directory.
+
 ## Saved Prompt Library
 
 The composer exposes a client-local library for reusable prompts without adding

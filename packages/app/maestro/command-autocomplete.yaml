@@ -1,4 +1,4 @@
-appId: sh.paseo
+appId: com.teamharness.paseo
 ---
 - launchApp:
     clearState: false

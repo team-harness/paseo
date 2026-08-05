@@ -4,10 +4,10 @@
 
 Controlled by `APP_VARIANT` in `packages/app/app.config.js` (vanilla Expo, no custom Gradle plugin):
 
-| Variant       | App name    | Package ID       |
-| ------------- | ----------- | ---------------- |
-| `production`  | Paseo       | `sh.paseo`       |
-| `development` | Paseo Debug | `sh.paseo.debug` |
+| Variant       | App name    | Android package ID      | iOS bundle identifier |
+| ------------- | ----------- | ----------------------- | --------------------- |
+| `production`  | Paseo       | `com.teamharness.paseo` | `sh.paseo`            |
+| `development` | Paseo Debug | `sh.paseo.debug`        | `sh.paseo.debug`      |
 
 EAS profiles: `development`, `production`, and `production-apk` in `packages/app/eas.json`.
 
@@ -34,6 +34,43 @@ mise install        # java 21 + android-sdk 21.0 command-line tools
 ```
 
 > **Pin a real `android-sdk` version, not `latest`.** The mise `android-sdk` plugin's `latest` resolved to the ancient `1.0` bundle, whose `sdkmanager` (3.6.0) predates the `emulator` package and fails with `Failed to find package emulator`. `21.0` ships a current `sdkmanager`. If you bump it, update only the version in `.tool-versions`; `.mise.toml` derives its paths from that tool entry.
+
+## Local release APK
+
+Build a signed production APK from the current checkout without starting an emulator or touching the
+Paseo daemon:
+
+```bash
+npm run build:android-apk
+```
+
+The command uses the macOS system proxy when one is enabled, installs the pinned Java, Android SDK,
+NDK, CMake, platform, and build-tools versions, and writes the APK plus its SHA-256 file to
+`artifacts/android/`. The toolchain stays under the mise Android SDK, Gradle keeps its dependency and
+build caches under `~/.gradle`, and an existing `~/.cache/paseo/android-maven` mirror is preferred over
+remote Maven repositories. After one connected build has resolved the current dependency set, verify
+that it can rebuild without downloads:
+
+```bash
+npm run build:android-apk -- --offline
+```
+
+Changing Expo, React Native, Gradle plugins, Android tool versions, or npm dependencies can require a
+connected build again. Clearing the SDK, Gradle, or Maven caches also forces downloads.
+
+The first run creates a release keystore and credentials under `packages/app/.secrets/`; keep that
+directory private and back it up. Every later build must use the same keystore or Android will reject
+an in-place upgrade.
+
+For a retry after only adding a missing dependency to the local cache, preserve the generated native
+project and its incremental outputs:
+
+```bash
+npm run build:android-apk -- --offline --reuse-native-project
+```
+
+Use this only while `packages/app/android` still matches the current app config and dependencies. The
+default command regenerates that directory with `expo prebuild --clean` for a reproducible release.
 
 `mise install` only lays down the command-line tools. Install the rest and create an emulator. On Apple Silicon:
 
@@ -73,10 +110,11 @@ For a production-ID release APK that local Android profiling tools can attach to
 PASEO_PROFILE_BUILD=1 npm run android:production
 ```
 
-This keeps the `sh.paseo` package id, release Hermes bundle, and release optimizations. It adds
+This keeps the production package id, release Hermes bundle, and release optimizations. It adds
 `<profileable android:shell="true" />` and enables local Android trace markers for workspace mounts
 and daemon WebSocket traffic. The markers contain message types and sizes, never payload contents,
-and emit only while a system trace records the `sh.paseo` app (`perfetto -a sh.paseo ...`).
+and emit only while a system trace records the `com.teamharness.paseo` app
+(`perfetto -a com.teamharness.paseo ...`).
 
 Or from `packages/app`:
 

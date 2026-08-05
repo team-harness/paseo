@@ -1,0 +1,34 @@
+def mirrorPath = System.getProperty("paseo.android.mavenMirror")
+def ndkVersion = System.getProperty("paseo.android.ndkVersion")
+
+if (mirrorPath) {
+    def mirrorUri = new File(mirrorPath).toURI()
+
+    gradle.beforeSettings { settings ->
+        settings.pluginManagement.repositories.maven { repository ->
+            repository.url = mirrorUri
+        }
+        settings.dependencyResolutionManagement.repositories.maven { repository ->
+            repository.url = mirrorUri
+        }
+    }
+
+    gradle.beforeProject { project ->
+        project.buildscript.repositories.maven { repository ->
+            repository.url = mirrorUri
+        }
+        project.repositories.maven { repository ->
+            repository.url = mirrorUri
+        }
+    }
+}
+
+if (ndkVersion) {
+    gradle.beforeProject { project ->
+        ["com.android.application", "com.android.library"].each { pluginId ->
+            project.pluginManager.withPlugin(pluginId) {
+                project.android.ndkVersion = ndkVersion
+            }
+        }
+    }
+}

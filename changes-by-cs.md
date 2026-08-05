@@ -402,6 +402,42 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 
 **最近同步判断**：2026-08-05 的上游 `0b624b558` 支持 retained chat 阅读位置恢复，但没有区分工作区祖先可见性和同一工作区内 Agent 标签的本地激活语义；保留 fork 修复。
 
+### 12. Fork Android 独立安装与本地 APK 构建
+
+**状态**：fork 分发能力。
+
+**行为**：Android production 使用 `com.teamharness.paseo`，与上游
+`sh.paseo` 独立安装；iOS bundle identifier 保持 `sh.paseo`。仓库根目录的
+`npm run build:android-apk` 在不启动模拟器、不控制 Paseo daemon 的前提下，
+构建包含四种 Android ABI 的 production APK，并校验包名、固定本地签名和
+SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本地 Maven 缓存，
+后续支持 `--offline` 冷构建和 `--reuse-native-project` 增量重试。
+
+**关键文件**：
+
+- `packages/app/app.config.js`
+- `scripts/build-android-apk.mjs`
+- `scripts/android-local-maven.init.gradle`
+- `docs/android.md`
+
+**同步规则**：
+
+- 上游 production Android package id 变化时，继续保留
+  `com.teamharness.paseo`；不要连带修改 iOS bundle identifier。
+- `packages/app/.secrets/` 下的 release keystore 是本 fork Android 升级身份；
+  不得提交、替换或在每次构建时重新生成。构建脚本只能在文件缺失时创建。
+- 本地构建必须保持主 daemon 只读，不运行 emulator、`adb install` 或任何
+  daemon start/stop/restart 命令。
+- 依赖或工具链升级后先联网补齐缓存，再以 `--offline` 验证当前依赖闭包；
+  不把构建机的缓存、generated Android project 或 APK 提交进 Git。
+
+**验证**：`npm run build:android-apk -- --offline`、`aapt dump badging`、
+`apksigner verify --print-certs`、APK ABI 列表、`npm run typecheck`、
+`npm run lint`。
+
+**最近同步判断**：2026-08-05 的上游 `0b624b558` 没有 fork 独立 Android
+安装身份或固定本地签名的离线 APK 构建入口，保留本能力。
+
 ## 同步上游操作清单
 
 1. 先确认工作区干净或把本地未提交改动隔离；当前待提交的变更必须单独处理，不能混入上游 merge。
