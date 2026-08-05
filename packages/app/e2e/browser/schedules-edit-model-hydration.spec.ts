@@ -1,3 +1,4 @@
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import {
@@ -8,6 +9,7 @@ import {
   installFakeScheduleHost,
 } from "../support/helpers/schedule-fake-host";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
+import { seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 import { expectSettled, expectStableHeight } from "../support/helpers/settled";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 import { buildSchedulesRoute } from "../../src/utils/host-routes";
@@ -17,19 +19,39 @@ interface ScheduleSeedClient {
     prompt: string;
     name?: string;
     cadence: { type: "cron"; expression: string };
-    target: {
-      type: "new-agent";
-      config: {
-        provider: "mock";
-        cwd: string;
-        model: string;
-        modeId: string;
-        title: string;
-      };
-    };
+    target:
+      | {
+          type: "new-agent";
+          config: {
+            provider: "mock";
+            cwd: string;
+            model: string;
+            modeId: string;
+            title: string;
+          };
+        }
+      | { type: "agent"; agentId: string };
     runOnCreate: boolean;
   }): Promise<{ schedule: { id: string } | null; error: string | null }>;
   scheduleDelete(input: { id: string }): Promise<{ error: string | null }>;
+  scheduleList(): Promise<{ schedules: Array<{ id: string; prompt: string }> }>;
+}
+
+async function typeWithIme(page: Page, input: Locator, value: string): Promise<void> {
+  await input.focus();
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send("Input.imeSetComposition", {
+      text: value,
+      selectionStart: value.length,
+      selectionEnd: value.length,
+      replacementStart: 0,
+      replacementEnd: 0,
+    });
+    await session.send("Input.insertText", { text: value });
+  } finally {
+    await session.detach();
+  }
 }
 
 async function seedMockSchedule(workspace: SeededWorkspace, name: string): Promise<string> {
@@ -60,10 +82,15 @@ async function seedMockSchedule(workspace: SeededWorkspace, name: string): Promi
 
 function ignoreScheduleDeleteError(): void {}
 
-async function deleteSeededSchedule(workspace: SeededWorkspace, id: string): Promise<void> {
-  await (workspace.client as unknown as ScheduleSeedClient)
+async function deleteSeededSchedule(owner: { client: unknown }, id: string): Promise<void> {
+  await (owner.client as ScheduleSeedClient)
     .scheduleDelete({ id })
     .catch(ignoreScheduleDeleteError);
+}
+
+async function readSchedulePrompt(client: ScheduleSeedClient, id: string): Promise<string | null> {
+  const schedules = await client.scheduleList();
+  return schedules.schedules.find((schedule) => schedule.id === id)?.prompt ?? null;
 }
 
 type FakeScheduleHostSchedule = NonNullable<
@@ -148,6 +175,58 @@ test.describe("Schedules", () => {
     await expect(page.getByTestId("schedule-cadence-preset-trigger")).toContainText("Daily 9:00");
     await expect(page.getByText(/Times are in/)).toHaveCount(0);
     await expect(formSheet.getByText("Cron", { exact: true })).toHaveCount(0);
+  });
+
+  test("new schedule prompt accepts Chinese IME composition", async ({ page }) => {
+    const workspace = await seedWorkspace({ repoPrefix: "schedule-prompt-ime-" });
+    cleanupTasks.push(() => workspace.cleanup());
+
+    await page.goto(buildSchedulesRoute());
+    const newSchedule = page
+      .getByTestId("schedules-new")
+      .or(page.getByTestId("schedules-empty-new"))
+      .first();
+    await expect(newSchedule).toBeVisible({ timeout: 30_000 });
+    await newSchedule.click();
+
+    const promptInput = page.getByTestId("schedule-prompt-input");
+    await expect(promptInput).toBeVisible({ timeout: 10_000 });
+    await typeWithIme(page, promptInput, "检查项目状态并汇总最新变更");
+    await expect(promptInput).toHaveValue("检查项目状态并汇总最新变更");
+  });
+
+  test("existing agent schedule exposes and saves its prompt", async ({ page }) => {
+    const agent = await seedMockAgentWorkspace({
+      repoPrefix: "schedule-heartbeat-prompt-",
+      title: "Heartbeat prompt target",
+    });
+    cleanupTasks.push(() => agent.cleanup());
+    const client = agent.client as unknown as ScheduleSeedClient;
+    const result = await client.scheduleCreate({
+      prompt: "Check the agent status",
+      name: "Editable heartbeat prompt",
+      cadence: { type: "cron", expression: "0 9 * * *" },
+      target: { type: "agent", agentId: agent.agentId },
+      runOnCreate: false,
+    });
+    if (!result.schedule) {
+      throw new Error(result.error ?? "Failed to seed heartbeat schedule");
+    }
+    const scheduleId = result.schedule.id;
+    cleanupTasks.push(() => deleteSeededSchedule(agent, scheduleId));
+
+    await page.goto(buildSchedulesRoute());
+    const row = page.getByTestId(`schedule-row-${scheduleId}`);
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    await row.click();
+
+    const promptInput = page.getByTestId("schedule-prompt-input");
+    await expect(promptInput).toBeVisible({ timeout: 10_000 });
+    await expect(promptInput).toHaveValue("Check the agent status");
+    await promptInput.fill("检查运行状态并汇总结果");
+    await page.getByRole("button", { name: "Save changes" }).click();
+
+    await expect.poll(() => readSchedulePrompt(client, scheduleId)).toBe("检查运行状态并汇总结果");
   });
 
   test("edit form hydrates a non-default host schedule after reload", async ({ page }) => {

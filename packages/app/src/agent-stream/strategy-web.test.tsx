@@ -1210,6 +1210,9 @@ describe("createWebStreamStrategy", () => {
     Object.defineProperty(scrollContainer, "scrollHeight", { configurable: true, value: 1500 });
     Object.defineProperty(scrollContainer, "scrollTop", { configurable: true, value: 1000 });
     act(() => scrollContainer.dispatchEvent(new Event("scroll")));
+    act(() => scrollContainer.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 })));
+    Object.defineProperty(scrollContainer, "scrollTop", { configurable: true, value: 600 });
+    act(() => scrollContainer.dispatchEvent(new Event("scroll")));
     const viewportObserverDisconnect = observed.get(scrollContainer);
     expect(viewportObserverDisconnect).toBeDefined();
 

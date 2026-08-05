@@ -9,7 +9,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Text, View } from "react-native";
+import { Text, View, type NativeSyntheticEvent, type TextInputChangeEventData } from "react-native";
 import { Bot, Brain, Folder, GitBranch } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
@@ -78,6 +78,13 @@ interface ScheduleAgentOptions {
 function parseMaxRuns(raw: string): number | null {
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function readCommittedTextInputValue(
+  event: NativeSyntheticEvent<TextInputChangeEventData>,
+): string | null {
+  const nativeEvent = event.nativeEvent as TextInputChangeEventData & { isComposing?: boolean };
+  return nativeEvent.isComposing ? null : nativeEvent.text;
 }
 
 function buildAgentOptionKey(agent: Pick<AggregatedAgent, "serverId" | "id">): string {
@@ -363,15 +370,19 @@ function OpenScheduleFormSheet({
   ]);
 
   const submitAgentTarget = useCallback(async (): Promise<boolean> => {
-    if (!schedule || !state.submitCadence) {
+    if (!schedule) {
       return false;
     }
+    const maxRuns = parseMaxRuns(state.maxRuns);
     await updateSchedule({
       id: schedule.id,
-      cadence: requireCronCadence(state.submitCadence),
+      name: state.name.trim() || null,
+      prompt: state.prompt.trim(),
+      ...(state.submitCadence ? { cadence: state.submitCadence } : {}),
+      maxRuns,
     });
     return true;
-  }, [schedule, state.submitCadence, updateSchedule]);
+  }, [schedule, state.maxRuns, state.name, state.prompt, state.submitCadence, updateSchedule]);
 
   const submitNewAgent = useCallback(async (): Promise<boolean> => {
     const provider = state.selectedProvider;
@@ -570,20 +581,27 @@ function ScheduleFormFields({
   cadenceError,
   mutationServerId,
 }: ScheduleFormFieldsProps): ReactElement {
-  if (state.targetKind === "agent") {
-    return (
-      <>
-        <ScheduleAgentTargetField label={agentTargetLabel} size={controlSize} />
-        <CadenceEditor
-          value={state.cadence}
-          onChange={model.setCadence}
-          error={cadenceError ?? undefined}
-          size={controlSize}
-        />
-        {state.submitError ? <Text style={styles.submitError}>{state.submitError}</Text> : null}
-      </>
-    );
-  }
+  const handleNameChange = useCallback(
+    (event: NativeSyntheticEvent<TextInputChangeEventData>) => {
+      const value = readCommittedTextInputValue(event);
+      if (value !== null) model.setName(value);
+    },
+    [model],
+  );
+  const handlePromptChange = useCallback(
+    (event: NativeSyntheticEvent<TextInputChangeEventData>) => {
+      const value = readCommittedTextInputValue(event);
+      if (value !== null) model.setPrompt(value);
+    },
+    [model],
+  );
+  const handleMaxRunsChange = useCallback(
+    (event: NativeSyntheticEvent<TextInputChangeEventData>) => {
+      const value = readCommittedTextInputValue(event);
+      if (value !== null) model.setMaxRuns(value);
+    },
+    [model],
+  );
 
   return (
     <>
@@ -594,7 +612,7 @@ function ScheduleFormFields({
           accessibilityLabel="Schedule name"
           initialValue={state.name}
           value={state.name}
-          onChangeText={model.setName}
+          onChange={handleNameChange}
           placeholder="Optional"
           autoCapitalize="none"
           autoCorrect={false}
@@ -608,7 +626,7 @@ function ScheduleFormFields({
           accessibilityLabel="Prompt"
           initialValue={state.prompt}
           value={state.prompt}
-          onChangeText={model.setPrompt}
+          onChange={handlePromptChange}
           placeholder="What should the agent do each run?"
           style={styles.multilineInput}
           multiline
@@ -645,7 +663,7 @@ function ScheduleFormFields({
           accessibilityLabel="Max runs"
           initialValue={state.maxRuns}
           value={state.maxRuns}
-          onChangeText={model.setMaxRuns}
+          onChange={handleMaxRunsChange}
           placeholder="Unlimited"
           keyboardType="number-pad"
         />

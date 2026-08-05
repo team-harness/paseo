@@ -894,7 +894,11 @@ const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
 
   return (
     <RenderProfile id={`MobileMountedTabSlot:${tabDescriptor.kind}:${tabDescriptor.tabId}`}>
-      <RetainedPanel active={isVisible} style={styles.mobileMountedTabSlot}>
+      <RetainedPanel
+        active={isVisible}
+        localActive={isPaneFocused}
+        style={styles.mobileMountedTabSlot}
+      >
         <WorkspacePaneContent
           content={content}
           isWorkspaceFocused={isWorkspaceFocused}

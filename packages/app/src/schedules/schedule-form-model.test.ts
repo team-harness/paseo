@@ -479,7 +479,7 @@ describe("schedule form model", () => {
     });
   });
 
-  it("requires a cron choice before updating a legacy heartbeat", () => {
+  it("allows heartbeat fields to update without rewriting a legacy cadence", () => {
     const form = open({
       mode: "edit",
       schedule: heartbeatOnHost({ type: "every", everyMs: 90 * 60_000 }),
@@ -491,7 +491,12 @@ describe("schedule form model", () => {
       },
     });
 
-    expect(form.getState()).toMatchObject({ targetKind: "agent", canSubmit: false });
+    expect(form.getState()).toMatchObject({
+      targetKind: "agent",
+      prompt: "Check status",
+      submitCadence: undefined,
+      canSubmit: true,
+    });
 
     form.setCadence({ type: "cron", expression: "0 9 * * *", timezone: "Europe/Madrid" });
 

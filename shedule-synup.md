@@ -58,11 +58,10 @@
    CSC_LINK="$PASEO_SIGNING_DIR/Paseo-Local-Code-Signing.p12" \
    CSC_KEY_PASSWORD="$(< "$PASEO_SIGNING_DIR/Paseo-Local-Code-Signing.password")" \
    CSC_NAME="Paseo Local Code Signing" \
-   PASEO_DESKTOP_SMOKE=1 \
    npm run build:desktop -- --mac --arm64 --publish never -c.mac.timestamp=none
    ```
 
-   该脚本会重建 server 栈、导出 Expo web（`PASEO_WEB_PLATFORM=electron`）并调用 `electron-builder`，随后用隔离 home 和随机端口运行 packaged desktop smoke，不触碰主 daemon。
+   该脚本会重建 server 栈、导出 Expo web（`PASEO_WEB_PLATFORM=electron`）并调用 `electron-builder`。发布构建禁止启用 packaged desktop smoke，也禁止启动构建产物中的 Paseo 应用；同机运行的主 daemon 属于构建流程之外的生产进程。
 
 3. **不要直接交付** `electron-builder` 刚生成的轻量 DMG。它在本机表现为约 130 MB 的 HFS 镜像，虽然 `hdiutil verify` 可通过，但用户的 Mac 不能可靠安装。必须生成与已验证历史安装包一致的标准布局：
    - 从 `packages/desktop/release/mac-arm64/Paseo.app` 复制本轮完整构建且已签名的应用；
@@ -112,8 +111,10 @@
    - 解压到新建临时目录后，`node verify.mjs` 成功，且恰好包含上述 6 个 fork package；
    - server tgz 包含 `package/dist/server/web-ui/index.html`；
    - 使用临时 `NPM_CONFIG_PREFIX` 运行 `install.sh`，确认 6 个已安装 package 的版本都等于当前版本；
-   - 使用隔离的 `PASEO_HOME` 和随机端口启动已安装的 server，确认 `/api/health` 和 Web UI 首页返回成功，再停止这个隔离实例；禁止重启或停止主 daemon（端口 6767）；
+   - 不启动已安装的 server，不运行任何 `paseo daemon start`、`paseo daemon stop` 或 `paseo daemon restart`。`PASEO_HOME` 只隔离数据目录，不能保证 daemon 控制命令不会连接默认端口 `6767`；
    - 记录文件名、版本号、提交 SHA、大小和 SHA-256。
+
+5. 构建前记录端口 `6767` 的监听 PID 并请求 `/api/health`；上传前再次执行同样的只读检查。PID 改变或健康检查失败时立即中止发布并报告，不尝试修复、重启或停止主 daemon。禁止在发布流程中使用会匹配 Paseo 进程的 `killall`、`pkill` 或宽泛 `kill`。需要端到端 daemon 冒烟测试时，必须在不承载用户会话的独立主机或容器中执行。
 
 ## Step 4：上传 OSS 并通过 Lark 通知
 

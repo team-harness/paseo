@@ -18,6 +18,7 @@ import {
   openAgentTimeline,
   seedLongMockAgentTimeline,
 } from "../support/helpers/timeline-pagination";
+import { openWorkspaceWithAgents } from "../support/helpers/archive-tab";
 import { switchWorkspaceViaSidebar } from "../support/helpers/workspace-ui";
 
 async function expectChatAtBottom(page: Page): Promise<void> {
@@ -181,6 +182,60 @@ test("a retained chat preserves an intentional reading position", async ({ page 
       .toBeLessThanOrEqual(24);
   } finally {
     await Promise.allSettled([longChat.cleanup(), otherWorkspace.cleanup()]);
+  }
+});
+
+test("switching agent tabs returns the selected chat to the bottom", async ({ page }) => {
+  test.setTimeout(240_000);
+  const longChat = await seedLongMockAgentTimeline({ turns: 30 });
+  const otherTitle = "Other agent tab";
+  const otherAgent = await longChat.client.createAgent({
+    provider: "mock",
+    cwd: longChat.cwd,
+    workspaceId: longChat.workspaceId,
+    title: otherTitle,
+    modeId: "load-test",
+    model: "ten-second-stream",
+  });
+  await longChat.client.waitForAgentUpsert(
+    otherAgent.id,
+    (snapshot) => snapshot.status === "idle",
+    30_000,
+  );
+
+  try {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await openWorkspaceWithAgents(page, [
+      {
+        id: otherAgent.id,
+        title: otherTitle,
+        cwd: longChat.cwd,
+        workspaceId: longChat.workspaceId,
+      },
+      {
+        id: longChat.agentId,
+        title: "Timeline pagination regression",
+        cwd: longChat.cwd,
+        workspaceId: longChat.workspaceId,
+      },
+    ]);
+    await expectTimelinePromptVisible(page, longChat.newestPrompt);
+    await expectChatAtBottom(page);
+    await scrollChatAwayFromBottom(page, {
+      deltaY: -900,
+      minDistanceFromBottom: 300,
+    });
+
+    await page.getByTestId(`workspace-tab-agent_${otherAgent.id}`).click();
+    await expect(page.getByTestId(`workspace-tab-agent_${otherAgent.id}`)).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await page.getByTestId(`workspace-tab-agent_${longChat.agentId}`).click();
+    await expectTimelinePromptVisible(page, longChat.newestPrompt);
+    await expectChatAtBottom(page);
+  } finally {
+    await longChat.cleanup();
   }
 });
 

@@ -9,7 +9,7 @@ import React, {
 } from "react";
 import { measureElement as measureVirtualElement, useVirtualizer } from "@tanstack/react-virtual";
 import { withUnistyles } from "react-native-unistyles";
-import { useRetainedPanelActive } from "@/components/retained-panel";
+import { useRetainedPanelActive, useRetainedPanelLocalActive } from "@/components/retained-panel";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import type { Theme } from "@/styles/theme";
@@ -233,7 +233,9 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     isMobileBreakpoint,
   } = props;
   const isActive = useRetainedPanelActive();
+  const isLocallyActive = useRetainedPanelLocalActive();
   const isActiveRef = useRef(isActive);
+  const wasLocallyActiveRef = useRef(isLocallyActive);
   const scrollContainerRef = useRef<HTMLElement | null>(null);
   const contentRef = useRef<HTMLElement | null>(null);
   const handleScrollContainerRef = useCallback((node: HTMLElement | null) => {
@@ -244,11 +246,11 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   }, []);
   const [followOutput, setFollowOutputr] = useState(true);
   const followOutputRef = useRef(followOutput);
-  const setFollowOutput = (value: boolean) => {
+  const setFollowOutput = useCallback((value: boolean) => {
     followOutputRef.current = value;
     setFollowOutputr(value);
     return value;
-  };
+  }, []);
   const lastKnownScrollTopRef = useRef(0);
   const mouseScrollGestureRef = useRef<
     | { kind: "scrollbar"; pointerId: number }
@@ -604,6 +606,24 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     scheduleStickToBottom();
   }, [cancelPendingStickToBottom, scheduleStickToBottom, scrollMessagesToBottom]);
 
+  const settleFollowingOutputAtBottom = useCallback(() => {
+    setFollowOutput(true);
+    forceStickToBottom();
+    const timeout = window.setTimeout(() => {
+      if (!followOutputRef.current) {
+        return;
+      }
+      const scrollContainer = scrollContainerRef.current;
+      if (!scrollContainer || isScrollContainerNearBottom(scrollContainer)) {
+        return;
+      }
+      scheduleStickToBottom();
+    }, WEB_BOTTOM_SETTLE_TIMEOUT_MS);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [forceStickToBottom, scheduleStickToBottom, setFollowOutput]);
+
   // Rows are laid out in DOM order, virtualized block first, so the first row whose bottom
   // clears the reading line is the one the reader is looking at.
   const reportReadingPosition = useStableEvent(() => {
@@ -694,6 +714,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   }, [
     evaluateHistoryStart,
     isJumpSettling,
+    setFollowOutput,
     stopFollowingOutputFromUserIntent,
     updateScrollMetrics,
   ]);
@@ -717,36 +738,27 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   }, [evaluateHistoryStart, props.agentId]);
 
   useLayoutEffect(() => {
+    const wasLocallyActive = wasLocallyActiveRef.current;
+    wasLocallyActiveRef.current = isLocallyActive;
+    if (!isActive || !isLocallyActive || wasLocallyActive) {
+      return;
+    }
+    return settleFollowingOutputAtBottom();
+  }, [isActive, isLocallyActive, settleFollowingOutputAtBottom]);
+
+  useLayoutEffect(() => {
     if (!isActiveRef.current || !isActivationReady) {
       return;
     }
     if (hasRouteBottomAnchorRequest && !followOutputRef.current) {
       return;
     }
-    setFollowOutput(true);
-    forceStickToBottom();
-    const timeout = window.setTimeout(() => {
-      if (!followOutputRef.current) {
-        return;
-      }
-      const scrollContainer = scrollContainerRef.current;
-      if (!scrollContainer) {
-        return;
-      }
-      if (isScrollContainerNearBottom(scrollContainer)) {
-        return;
-      }
-      scheduleStickToBottom();
-    }, WEB_BOTTOM_SETTLE_TIMEOUT_MS);
-    return () => {
-      window.clearTimeout(timeout);
-    };
+    return settleFollowingOutputAtBottom();
   }, [
     activationKey,
-    forceStickToBottom,
     hasRouteBottomAnchorRequest,
     isActivationReady,
-    scheduleStickToBottom,
+    settleFollowingOutputAtBottom,
   ]);
 
   // Following output is a layout invariant: rows, footer, and bottom offset must
@@ -1009,6 +1021,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     forceStickToBottom,
     scheduleStickToBottom,
     scrollToMessage,
+    setFollowOutput,
     viewportRef,
   ]);
 

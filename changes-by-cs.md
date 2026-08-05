@@ -167,11 +167,12 @@
 
 **状态**：fork 功能。主要提交：`231d25f9c`、`c7132c197`。
 
-**用户可见行为**：计划任务表单可以选择已有 Agent 作为执行目标；CLI schedule 创建参数与表单行为保持一致。
+**用户可见行为**：计划任务表单可以选择已有 Agent 作为执行目标；CLI schedule 创建参数与表单行为保持一致。新建和编辑表单的名称、Prompt 与最大运行次数支持中文等 IME composition。已有 Agent 的计划不再只显示 cadence，可以编辑名称、Prompt 和最大运行次数；旧 heartbeat cadence 无法映射到当前编辑器时，保存其他字段不会强制改写 cadence。
 
 **关键文件**：
 
 - `packages/app/src/components/schedules/schedule-form-sheet.tsx`
+- `packages/app/src/schedules/schedule-form-model.ts`
 - `packages/cli/src/commands/schedule/create.ts`
 - `packages/cli/src/commands/schedule/shared.ts`
 
@@ -179,7 +180,9 @@
 
 - 如果上游已支持在计划中选择/复用已有 Agent，直接采用上游的数据模型、表单和 CLI 参数，删除本 fork 的同等分支，不维护两套选择语义。
 - 若上游仅增加 UI、但没有等价 CLI 或持久化语义，先保持本 fork 实现并对齐字段命名，再补齐测试。
-- 必跑：schedule form 目标测试、`packages/cli/src/commands/schedule/shared.test.ts`、`npm run typecheck`。
+- 已有 Agent 计划必须保留 Prompt 编辑入口。更新旧 heartbeat 时 cadence 是可选字段；用户没有明确选择新 cadence 时，不得用默认 cron 覆盖原值。
+- Web/Electron 的受控输入只在 composition 提交后写入表单模型，不能在中文候选过程中用父组件状态覆盖原生输入值。
+- 必跑：`schedule-form-model.test.ts`、`schedules-edit-model-hydration.spec.ts`、`packages/cli/src/commands/schedule/shared.test.ts`、`npm run typecheck`。
 
 ### 3. Codex 模型价格表
 
@@ -204,7 +207,7 @@
 
 **状态**：fork 打包修复，主要来自 `036d6108b`、`cafe5188a`。
 
-**行为**：保留 macOS desktop 打包所需的 entitlements 与 daemon packaging 测试，并允许 desktop 开发环境在 React DevTools 下载失败时继续运行。同步发布两个用途不同的产物：仅支持 Apple Silicon 的固定本地签名 APFS DMG，以及供非 arm64 主机和浏览器用户升级的 Web + Paseo Server tar.gz。
+**行为**：保留 macOS desktop 打包所需的 entitlements 与 daemon packaging 测试，并允许 desktop 开发环境在 React DevTools 下载失败时继续运行。同步发布两个用途不同的产物：仅支持 Apple Silicon 的固定本地签名 APFS DMG，以及供非 arm64 主机和浏览器用户升级的 Web + Paseo Server tar.gz。承载用户会话的构建机上只做离线产物校验；发布流程不启动打包后的 Paseo 或 Server，也不控制当前运行的主 daemon。
 
 Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highlight`、`relay`、`protocol`、`client`、`server` 和 `cli` 六个 fork npm 包；server 包内嵌同版本 Web UI。归档不携带构建机的 arm64 `node_modules`，目标主机使用 Node.js 22/npm 为自身架构安装外部依赖。
 
@@ -222,8 +225,9 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 
 - 上游调整 Electron 版本、签名、entitlements 或 daemon 打包时，先保留本 fork 的 macOS 打包约束，再按上游机制重写；不要只解决 TypeScript 冲突后跳过实际 arm64 DMG 验证。
 - 上游 GitHub Release 的 x64 tar.gz 是 Linux Electron 桌面包，不视为 Web + Server 等价产物。若上游改变 Docker/npm 发布机制，保持六个内部 package 同批安装和 server 内嵌 Web UI，再按新机制迁移。
-- 必跑：desktop packaging 目标测试、macOS arm64 打包/启动冒烟，以及 Web + Server 归档的校验、临时 npm prefix 安装和隔离 Web UI 启动冒烟。
+- 必跑：desktop packaging 目标测试、macOS arm64 DMG/签名/包内容离线校验，以及 Web + Server 归档校验和临时 npm prefix 安装。需要 daemon 或 packaged desktop 端到端冒烟时，改在不承载用户会话的独立主机或容器执行。
 - 本地构建前删除同版本的 `Paseo-*.dmg`、`*.blockmap`、`*.zip` 和 `release/mac-arm64/`，防止误将旧产物当成新包上传。
+- 发布流程禁止运行 packaged desktop smoke 以及 `paseo daemon start`、`stop`、`restart`。临时 `PASEO_HOME` 只隔离数据，不保证控制命令不会连接默认端口 `6767`；构建前和上传前只读核对主 daemon 的监听 PID 与 `/api/health`，状态变化时中止并报告。
 - 两种产物上传到 commit 隔离的 OSS 路径；发布通知必须明确 DMG 仅支持 Apple Silicon，并单列 Web + Server 下载链接和 Node.js 22/npm 要求。
 - 上传前检查 DMG 修改时间、SHA-256 和打包后的 `app-dist` 是否包含本次功能；OSS 使用 `版本/commit SHA` 的不可变路径，不能只覆盖同名 URL。
 
@@ -375,6 +379,28 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 **验证**：`quote.test.ts`、`workspace-comments.test.ts`、`store.test.ts`、`resources.test.ts`、`assistant-selection-copy.spec.ts`、`file-review-comments.spec.ts`、`npm run typecheck`、`npm run lint`。
 
 **最近同步判断**：2026-08-05 的上游 `0b624b558` 仍只有基础选区复制，没有直接引用到 Composer、文件选区 Review Comments 或跨预览与 diff 的 Review summary，保留 fork 实现。
+
+### 11. 工作区内聊天标签切回跟随最新消息
+
+**状态**：fork 修复。
+
+**行为**：同一工作区内从一个 Agent 标签切到另一个标签再切回时，重新选中的聊天回到对话底部并继续跟随最新输出。切换到其他工作区再返回时仍保留用户主动停留的历史阅读位置，不把工作区级隐藏误判为 Agent 标签切换。
+
+**关键文件**：
+
+- `packages/app/src/components/retained-panel.tsx`
+- `packages/app/src/agent-stream/strategy-web.tsx`
+- `packages/app/src/screens/workspace/workspace-screen.tsx`
+
+**同步规则**：
+
+- Retained panel 必须区分最近一层标签自身的 `localActive` 与包含祖先可见性的 `active`。聊天只在本工作区内由未选中变为选中时回到底部。
+- 工作区路由失焦/恢复继续走阅读位置恢复链路；不能因为祖先重新可见就覆盖用户保留的历史位置。
+- 回到底部时恢复 follow-output，并在虚拟列表布局稳定后补一次 settle；用户随后的滚轮或滚动条意图仍必须停止跟随。
+
+**验证**：`strategy-web.test.tsx`、`agent-scroll-return.spec.ts`、`npm run typecheck`、`npm run lint`。
+
+**最近同步判断**：2026-08-05 的上游 `0b624b558` 支持 retained chat 阅读位置恢复，但没有区分工作区祖先可见性和同一工作区内 Agent 标签的本地激活语义；保留 fork 修复。
 
 ## 同步上游操作清单
 

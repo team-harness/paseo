@@ -1,15 +1,29 @@
-import React, { createContext, memo, type ReactNode, useContext } from "react";
+import React, { createContext, memo, type ReactNode, useContext, useMemo } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
-const RetainedPanelActiveContext = createContext(true);
+interface RetainedPanelActivityState {
+  active: boolean;
+  // The nearest panel's own selection state, before ancestor visibility is folded in.
+  localActive: boolean;
+}
+
+const RetainedPanelActivityContext = createContext<RetainedPanelActivityState>({
+  active: true,
+  localActive: true,
+});
 
 export function useRetainedPanelActive(): boolean {
-  return useContext(RetainedPanelActiveContext);
+  return useContext(RetainedPanelActivityContext).active;
+}
+
+export function useRetainedPanelLocalActive(): boolean {
+  return useContext(RetainedPanelActivityContext).localActive;
 }
 
 interface RetainedPanelProps {
   active: boolean;
   children: ReactNode;
+  localActive?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -17,15 +31,20 @@ interface RetainedPanelProps {
 interface RetainedPanelActivityProps {
   active: boolean;
   children: ReactNode;
+  localActive?: boolean;
 }
 
-export function RetainedPanelActivity({ active, children }: RetainedPanelActivityProps) {
+export function RetainedPanelActivity({
+  active,
+  children,
+  localActive = active,
+}: RetainedPanelActivityProps) {
   const parentActive = useRetainedPanelActive();
-  return (
-    <RetainedPanelActiveContext value={parentActive && active}>
-      {children}
-    </RetainedPanelActiveContext>
+  const value = useMemo(
+    () => ({ active: parentActive && active, localActive }),
+    [active, localActive, parentActive],
   );
+  return <RetainedPanelActivityContext value={value}>{children}</RetainedPanelActivityContext>;
 }
 
 /**
@@ -37,6 +56,7 @@ export function RetainedPanelActivity({ active, children }: RetainedPanelActivit
 export const RetainedPanel = memo(function RetainedPanel({
   active,
   children,
+  localActive,
   style,
   testID,
 }: RetainedPanelProps) {
@@ -46,7 +66,7 @@ export const RetainedPanel = memo(function RetainedPanel({
     : StyleSheet.compose<ViewStyle, ViewStyle, ViewStyle>(visibleStyle, styles.hidden);
 
   return (
-    <RetainedPanelActivity active={active}>
+    <RetainedPanelActivity active={active} localActive={localActive}>
       <View
         collapsable={false}
         pointerEvents={active ? "auto" : "none"}
