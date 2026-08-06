@@ -10,7 +10,8 @@ import type { AgentManager, AgentRecordChange } from "../agent/agent-manager.js"
 import type { AgentStorage } from "../agent/agent-storage.js";
 import type { FileBackedChatService } from "../chat/chat-service.js";
 import { TeamInbox } from "./team-inbox.js";
-import { TeamPump, type TeamPumpGateway, type TurnLookup } from "./team-pump.js";
+import { TeamPump, type TeamPumpGateway } from "./team-pump.js";
+import { lookUpTurnOutcome } from "./team-turn-lookup.js";
 import { TeamScheduler } from "./team-scheduler.js";
 import { TeamStore } from "./team-store.js";
 import { TeamService, type TeamAgentGateway, type TeamRoomGateway } from "./team-service.js";
@@ -234,15 +235,16 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
       return outOfBand || agentManager.getAgent(input.agentId)?.activeTurnId !== null;
     },
 
-    lookUpTurnOutcome: async ({ agentId, turnId }): Promise<TurnLookup> => {
-      const outcome = await agentStorage.getTurnOutcome(agentId, turnId);
-      if (outcome) return { kind: "settled", outcome: outcome.outcome };
-      const record = await agentStorage.get(agentId);
-      if (record?.activeTurn?.turnId === turnId) return { kind: "running" };
-      // No outcome and no active marker: the turn died with a daemon, or its
-      // result has rolled out of the bounded history. Either way it is over.
-      return { kind: "unknown" };
-    },
+    lookUpTurnOutcome: (input) =>
+      lookUpTurnOutcome(
+        {
+          whenTurnStateSettled: (agentId) => agentManager.whenTurnStateSettled(agentId),
+          getTurnOutcome: (agentId, turnId) => agentStorage.getTurnOutcome(agentId, turnId),
+          getActiveTurnId: async (agentId) =>
+            (await agentStorage.get(agentId))?.activeTurn?.turnId ?? null,
+        },
+        input,
+      ),
   };
 
   const pump = new TeamPump({ inbox, gateway: pumpGateway, logger: teamLogger });
