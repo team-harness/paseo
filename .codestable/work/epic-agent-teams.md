@@ -3,7 +3,7 @@ epic: ../epics/agent-teams.md
 phase: executing
 approved_revision: 74667ea6e2b559834cbf8f6f7ec717d415917df36e718391620e39fae3935a79
 current_item: ITEM-3
-next_action: 执行 ITEM-3（chat 改造：postMessage(actor) 边界、author 模型、订阅协议、房间所有权与幂等创建、分文件存储与 DEC-9 迁移），owning skill = codestable:cs-feat
+next_action: ITEM-3 续：把 session.ts 的私有 resolveAgentIdentifier 抽成模块函数，再把 chat/post handler 切到 chatService.post() 并在 bootstrap 注入 notifier
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -87,3 +87,22 @@ change review：1 个阶段 3 轮（上限），reviewer = Paseo agent `dddac5db
 - 动核心文件前**先在干净基线跑一次目标测试文件**再归因。本子项一度把 4 个失败当作预存在，实际全是自己引入的。
 - 跑回归时明确排除 `*.e2e.test.ts`：`*.real.e2e` / `*.local.e2e` 需要真实 provider 凭据或本地资源，混进来会产生 9 个与改动无关的失败。
 - 测试的失败注入点会随实现路径迁移而**静默失效**（本子项 cascade 测试原本 spy `upsert`，写路径改走 `mutate` 后测试假绿）。改写入路径时要检查现有注入点。
+
+## ITEM-3 · chat 改造（进行中）
+
+已完成并提交（均为 checkpoint，非里程碑）：
+
+- `6ae83dc42` 分文件存储 + DEC-9 迁移状态机。`$PASEO_HOME/chat/rooms/{room-id}.json` + `.migrated` marker，per-room 写队列；迁移顺序 写全部 room → rename `.bak` → 写 marker，7 个场景测试（全新安装、完整迁移、第 k 个房间后中断、rename 后 marker 前中断、marker 已存在时 legacy 重现、重复启动、损坏 legacy）。
+- `cdfb871d9` author 模型 + `post()` 写入边界 + `ChatMentionNotifier` 端口。旧消息读回按 agent 归属；人类作者不进 `listRoomPosterAgentIds`（其 id 是 clientId，交给 mention fanout 会去找不存在的 agent）。
+
+剩余三块，按此顺序：
+
+1. **切 handler 到 `post()`**（下一步）。卡点：`chat-schedule-loop-session.ts` 的 fanout 编排要搬进 service 的 notifier，而 notifier 需要 `resolveAgentIdentifier` —— 它是 `session.ts:4118` 的私有方法（约 50 行，id 前缀/名称模糊匹配），只依赖 agentStorage/agentManager，应抽成模块函数供两处共用。notifier 在 `bootstrap.ts` 注入：chatService 于 :809 构造、agentManager 于 :840，顺序决定了要用 setter 而非构造参数。曾起过头并已 `git restore` 回退，当前行为与改动前一致，无半迁移状态。
+2. 房间所有权（`ownerKind`/`ownerId`/`displayName`）+ 指定 id/owner 幂等创建 + owner 专用清理接口；通用 `chat/delete` 拒绝有 owner 的房间。
+3. 订阅协议：`chat.room.subscribe/unsubscribe` + `chat.room.message_posted` 广播，原子首屏 + cursor + `afterCursor`/`hasMore`（语义已在 ITEM-1 冻结），订阅按物理 socket 保存与清理。
+
+### 实现决策
+
+- **方法名 `post` 而非设计文档的 `postMessage`**：lint 规则 `unicorn/require-post-message-target-origin` 把任何该名字的调用当作 `window.postMessage` 报错（6 处）。重命名比每个调用点加 disable 干净。
+- **`dispatchMessage` 保留为 deprecated 兼容入口**：现有调用方（session handler、schedule/loop 通知）仍在用；`post` 是新的唯一写入边界，切完 handler 后再评估能否移除。
+- **notifier 失败不影响投递**：消息已在房间里，让 post 失败会告诉作者"没发出去"，比漏一次通知更糟。
