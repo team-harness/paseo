@@ -226,6 +226,57 @@ describe("FileBackedChatService", () => {
       ]);
     });
 
+    // `@everyone` expands to the agents that spoke in the room. A message from
+    // before the author model cannot say whether it was one, and counting it as
+    // an agent both inflates that list against its cap and risks waking a real
+    // agent whose id happens to match some old client id.
+    test("keeps messages of unknown authorship out of the poster list", async () => {
+      const room = await service.createRoom({ name: "mixed-authors" });
+      await service.post({
+        actor: { kind: "agent", id: "agent-lead" },
+        room: room.name,
+        body: "ready",
+      });
+      await writeFile(
+        path.join(paseoHome, "chat", "rooms", `${room.id}.json`),
+        JSON.stringify({
+          room: { ...room, messageCount: undefined, lastMessageAt: undefined },
+          messages: [
+            {
+              id: "msg-legacy",
+              roomId: room.id,
+              authorAgentId: "client-42",
+              body: "posted the old way",
+              replyToMessageId: null,
+              mentionAgentIds: [],
+              createdAt: "2026-08-06T10:00:00.000Z",
+            },
+            {
+              id: "msg-known",
+              roomId: room.id,
+              authorAgentId: "agent-lead",
+              body: "ready",
+              replyToMessageId: null,
+              mentionAgentIds: [],
+              createdAt: "2026-08-06T10:01:00.000Z",
+              author: { kind: "agent", id: "agent-lead" },
+            },
+          ],
+        }),
+        "utf8",
+      );
+
+      const reloaded = new FileBackedChatService({
+        paseoHome,
+        logger: pino({ level: "silent" }),
+      });
+      await reloaded.initialize();
+
+      await expect(reloaded.listRoomPosterAgentIds({ room: room.id })).resolves.toEqual([
+        "agent-lead",
+      ]);
+    });
+
     test("reads back an author that was persisted", async () => {
       const room = await service.createRoom({ name: "reloaded" });
       await service.post({
@@ -407,6 +458,18 @@ describe("FileBackedChatService", () => {
 
     // An owner half-specified is an owner nobody can be: generic delete refuses
     // the room because it is owned, and no discard call can match the owner.
+    // The id becomes a filename. A caller that can pick it can otherwise pick
+    // where in the filesystem the room is written, and deleted.
+    test("refuses a room id that is not a single safe path segment", async () => {
+      for (const roomId of ["../../teams/victim", "nested/room", "..", ".", ""]) {
+        await expect(
+          service.createRoom({ roomId, name: `room-${roomId || "empty"}`, ...owner }),
+        ).rejects.toMatchObject<Partial<ChatServiceError>>({
+          code: "invalid_chat_room_id",
+        });
+      }
+    });
+
     test("refuses an owner kind with no owner id", async () => {
       await expect(
         service.createRoom({ roomId: "room-team-1", name: "team-team-1", ownerKind: "team" }),
@@ -504,6 +567,35 @@ describe("FileBackedChatService", () => {
       await expect(discarded).resolves.toBeUndefined();
       expect(delivered).toEqual([]);
       expect(await service.listRooms()).toEqual([]);
+    });
+
+    // Ids are chosen by the caller and get reused — a team room is named after
+    // its team. A room that takes over an id inherits nothing from the one it
+    // replaced.
+    test("a room that reuses an id starts empty", async () => {
+      const room = await service.createRoom({
+        roomId: "room-team-1",
+        name: "team-team-1",
+        ...owner,
+      });
+      await service.post({
+        actor: { kind: "agent", id: "agent-a" },
+        room: room.id,
+        body: "belongs to the first room",
+      });
+      await service.discardOwnedRoom({ roomId: room.id, ...owner });
+
+      const replacement = await service.createRoom({
+        roomId: "room-team-1",
+        name: "team-team-1-again",
+        ownerKind: "team",
+        ownerId: "team-2",
+      });
+
+      expect(replacement.messageCount).toBe(0);
+      const page = await service.readRoomPage({ room: "room-team-1" });
+      expect(page.messages).toEqual([]);
+      expect(page.cursor).toBe(0);
     });
   });
 

@@ -337,6 +337,18 @@ describe("chat mentions", () => {
       expect(woken).toEqual(["agent-a"]);
     });
 
+    // Not-running is not the same as wakeable. An initializing agent is busy
+    // starting up, and waking it either races its own first turn or is refused.
+    test("leaves an initializing agent alone", async () => {
+      const woken = await notifyOne({
+        agentId: "agent-a",
+        storedAgents: [storedAgent({ id: "agent-a", lastStatus: "initializing" })],
+        liveAgents: [liveAgent({ id: "agent-a", lifecycle: "initializing" })],
+      });
+
+      expect(woken).toEqual([]);
+    });
+
     test("leaves a running agent alone", async () => {
       const woken = await notifyOne({
         agentId: "agent-a",

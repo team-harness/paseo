@@ -1,7 +1,8 @@
+import { promises as fsPromises } from "node:fs";
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { FileBackedChatService } from "./chat-service.js";
@@ -345,5 +346,43 @@ describe("chat store migration", () => {
 
     expect(await listRoomFiles()).toEqual(["room-1.json"]);
     expect((await service.listRooms()).map((room) => room.name)).toEqual(["team-1"]);
+  });
+
+  // Cleanup is part of the migration, not a tidy-up after it. Letting a
+  // transient read failure pass would write the marker over a store that was
+  // never finished, and the rooms it failed to remove come back for good —
+  // the migration never runs again.
+  test("refuses to finish when it cannot check for stale room files", async () => {
+    await writeLegacy({
+      rooms: [legacyPayload.rooms[0]],
+      messages: legacyPayload.messages.slice(0, 2),
+    });
+    await mkdir(join(chatDir, "rooms"), { recursive: true });
+    await writeFile(
+      join(chatDir, "rooms", "room-2.json"),
+      JSON.stringify({
+        room: legacyPayload.rooms[1],
+        messages: [legacyPayload.messages[2]],
+      }),
+      "utf8",
+    );
+
+    const readdirSpy = vi.spyOn(fsPromises, "readdir").mockImplementationOnce(() => {
+      const failure: NodeJS.ErrnoException = new Error("EIO: i/o error");
+      failure.code = "EIO";
+      return Promise.reject(failure);
+    });
+
+    try {
+      await expect(createService().initialize()).rejects.toThrow("EIO");
+    } finally {
+      readdirSpy.mockRestore();
+    }
+
+    // Nothing committed: the legacy file is where it was, and the next start
+    // gets to try the whole migration again.
+    expect(await exists(".migrated")).toBe(false);
+    expect(await exists("rooms.json")).toBe(true);
+    expect(await exists("rooms.json.bak")).toBe(false);
   });
 });

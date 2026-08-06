@@ -455,13 +455,15 @@ rewrites every other one and a damaged file costs one room instead of all of the
 on first start, in an order that is load-bearing: write every room file, rename
 the legacy file to `rooms.json.bak`, then write the `.migrated` marker.
 
-Nothing writes the new layout before that marker exists, which is what makes
-recovery from an interrupted run exact. While the legacy file is in place it is
-the only authority, so every room file is rewritten from it — including files an
-earlier attempt already produced, whose data may since have changed, and
-excluding rooms it no longer lists, which are deleted. Skipping what is already
-there would lose whatever a user said after downgrading to a daemon that still
-writes the legacy layout.
+Only the migration writes the new layout before that marker exists — ordinary
+chat writes are refused until it lands — which is what makes recovery from an
+interrupted run exact. While the legacy file is in place it is the only
+authority, so every room file is rewritten from it: including files an earlier
+attempt already produced, whose data may since have changed, and excluding rooms
+it no longer lists, which are deleted. Skipping what is already there would lose
+whatever a user said after downgrading to a daemon that still writes the legacy
+layout. That cleanup is part of the migration, so failing to read the directory
+aborts before the rename rather than committing a half-cleaned store.
 
 A legacy file that cannot be read leaves the marker unwritten **and** the store
 read-only. The marker means "the legacy file has been dealt with"; writing it
@@ -469,8 +471,14 @@ over a store nobody could read would put every conversation in it permanently
 out of reach. Read-only is the other half — a room created before the file is
 repaired would be erased by the rewrite that eventually migrates it.
 
-Damaged entries cost themselves and nothing else: rooms and messages are
-validated one at a time, on both the legacy and per-room paths.
+A damaged legacy entry costs itself and nothing else: rooms and messages there
+are validated one at a time. A damaged per-room file costs that room, since the
+file is the unit.
+
+A room id becomes a filename, so ids are restricted to one path segment and a
+file whose id does not match its own name is skipped. Callers can choose ids —
+a team room is named after its team — and that choice must not become a choice
+of where on disk to write, or delete.
 
 ### ChatRoom
 

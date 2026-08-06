@@ -43,6 +43,18 @@ function trimToNull(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * A room id becomes a filename, so a caller that picks the id would otherwise
+ * pick where in the filesystem the room is written — and, on discard, deleted.
+ * Ids are restricted to one path segment of characters that mean nothing to the
+ * filesystem; `.` and `..` are excluded because they resolve elsewhere.
+ */
+const SAFE_ROOM_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+function isSafeRoomId(roomId: string): boolean {
+  return roomId !== "." && roomId !== ".." && SAFE_ROOM_ID_PATTERN.test(roomId);
+}
+
 const CHAT_MENTION_PATTERN = /(?:^|[\s(])@([A-Za-z0-9][A-Za-z0-9._-]*)/g;
 
 export function parseMentionAgentIds(body: string): string[] {
@@ -203,6 +215,13 @@ export class FileBackedChatService {
   private loaded = false;
   private readOnly = false;
   private readonly rooms = new Map<string, ChatRoom>();
+  /**
+   * Which incarnation of an id is current. Ids are chosen by callers and get
+   * reused — a team room is named after its team — so "a room with this id
+   * exists" does not answer "the room this write was for still exists". Counts
+   * survive removal so a recreated id never looks like the one it replaced.
+   */
+  private readonly roomIncarnations = new Map<string, number>();
   private readonly messagesByRoomId = new Map<string, ChatMessage[]>();
   /** Serialized per room: one busy room no longer rewrites every other room. */
   private readonly persistQueues = new Map<string, Promise<void>>();
@@ -243,6 +262,13 @@ export class FileBackedChatService {
     const name = input.name.trim();
     if (name.length === 0) {
       throw new ChatServiceError("invalid_chat_room_name", "Chat room name is required");
+    }
+
+    if (input.roomId !== undefined && !isSafeRoomId(input.roomId)) {
+      throw new ChatServiceError(
+        "invalid_chat_room_id",
+        "Chat room id must be a single path segment of letters, digits, dots, dashes or underscores",
+      );
     }
 
     // An owner is a pair. Half of one produces a room that generic delete
@@ -303,6 +329,7 @@ export class FileBackedChatService {
       ...(input.displayName ? { displayName: input.displayName } : {}),
     });
     this.rooms.set(room.id, room);
+    this.bumpRoomIncarnation(room.id);
     await this.enqueuePersist(room.id);
     return this.toRoomDetail(room);
   }
@@ -337,12 +364,16 @@ export class FileBackedChatService {
     const detail = this.toRoomDetail(room);
     this.rooms.delete(room.id);
     this.messagesByRoomId.delete(room.id);
-    await this.enqueuePersist(room.id);
+    this.retireRoomIncarnation(room.id);
+    // Announced with the removal, not after the write it triggers. The id can
+    // be taken by a new room while that write is queued, and a removal
+    // announced then would tear down subscriptions to the replacement.
     this.rejectWaiters(
       room.id,
       new ChatServiceError("chat_room_deleted", `Chat room deleted: ${room.name}`),
     );
     this.publishRoomRemoved(room.id);
+    await this.enqueuePersist(room.id);
     return { room: detail };
   }
 
@@ -448,12 +479,13 @@ export class FileBackedChatService {
     }
     this.rooms.delete(room.id);
     this.messagesByRoomId.delete(room.id);
-    await this.enqueuePersist(room.id);
+    this.retireRoomIncarnation(room.id);
     this.rejectWaiters(
       room.id,
       new ChatServiceError("chat_room_deleted", `Chat room deleted: ${room.name}`),
     );
     this.publishRoomRemoved(room.id);
+    await this.enqueuePersist(room.id);
   }
 
   /**
@@ -575,13 +607,15 @@ export class FileBackedChatService {
         updatedAt: createdAt,
       }),
     );
+    const incarnation = this.roomIncarnations.get(room.id);
     await this.enqueuePersist(room.id);
     // The room can be removed while that write is queued, and the write then
     // deletes the file instead of creating it — a removed room has no file. So
     // getting here proves nothing about whether the message was stored; only
-    // the room still existing does. Reporting success and broadcasting a
-    // message that is on no disk anywhere is the worse failure.
-    if (!this.rooms.has(room.id)) {
+    // the room still being the same room does. Checking the id alone would let
+    // a room removed and recreated under it pass, and this message would be
+    // announced as belonging to a room that never stored it.
+    if (this.roomIncarnations.get(room.id) !== incarnation) {
       throw new ChatServiceError(
         "chat_room_not_found",
         `Chat room was removed before the message could be stored: ${room.id}`,
@@ -621,9 +655,12 @@ export class FileBackedChatService {
     const room = this.resolveRoom(input.room);
     const posters = new Set<string>();
     for (const message of this.getRoomMessages(room.id)) {
-      // Humans post here too, and their id is a client id. Handing it to mention
-      // fanout would have it look for an agent that does not exist.
-      if (message.author?.kind === "human") {
+      // Only a message that says it came from an agent counts. Humans post here
+      // too and their id is a client id, which mention fanout would go looking
+      // for an agent under; a message from before `author` existed cannot say
+      // which it was, and guessing would both inflate `@everyone` against its
+      // cap and risk waking whichever agent shares that id.
+      if (message.author?.kind !== "agent") {
         continue;
       }
       posters.add(message.authorAgentId);
@@ -805,13 +842,23 @@ export class FileBackedChatService {
     return true;
   }
 
-  /** Drops room files an interrupted attempt left behind for rooms since gone. */
+  /**
+   * Drops room files an interrupted attempt left behind for rooms since gone.
+   *
+   * Throws on anything but an absent directory. A transient read failure that
+   * was swallowed here would let the migration finish and write its marker over
+   * a store it did not finish cleaning, and the rooms it failed to remove come
+   * back for good on the next start — the migration never runs again.
+   */
   private async removeRoomFilesOutside(keepRoomIds: Set<string>): Promise<void> {
     let entries: string[];
     try {
       entries = await fs.readdir(this.roomsDir);
-    } catch {
-      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return;
+      }
+      throw error;
     }
     for (const entry of entries) {
       if (!entry.endsWith(".json")) continue;
@@ -883,6 +930,13 @@ export class FileBackedChatService {
         );
         continue;
       }
+      if (!isSafeRoomId(room.data.id)) {
+        this.logger.error(
+          { roomId: room.data.id },
+          "Skipping legacy room whose id would not be a safe filename",
+        );
+        continue;
+      }
       rooms.push(room.data);
     }
 
@@ -930,12 +984,33 @@ export class FileBackedChatService {
           );
           continue;
         }
+        // The id inside the file decides where this room is written next, so it
+        // has to be a safe filename however it got onto disk. It also has to be
+        // the name of the file it came from: two files claiming one id would
+        // otherwise take turns overwriting each other.
+        if (!isSafeRoomId(parsed.data.room.id) || `${parsed.data.room.id}.json` !== entry) {
+          this.logger.error(
+            { roomId: parsed.data.room.id, filePath },
+            "Skipping chat room file whose id does not match its name",
+          );
+          continue;
+        }
         this.rooms.set(parsed.data.room.id, parsed.data.room);
         this.messagesByRoomId.set(parsed.data.room.id, parsed.data.messages);
       } catch (error) {
         this.logger.error({ err: error, filePath }, "Skipping unreadable chat room file");
       }
     }
+  }
+
+  /** A new room under this id. Anything still referring to the old one is stale. */
+  private bumpRoomIncarnation(roomId: string): void {
+    this.roomIncarnations.set(roomId, (this.roomIncarnations.get(roomId) ?? 0) + 1);
+  }
+
+  /** The room under this id is gone. Same effect: everything holding it is stale. */
+  private retireRoomIncarnation(roomId: string): void {
+    this.bumpRoomIncarnation(roomId);
   }
 
   private roomFilePath(roomId: string): string {

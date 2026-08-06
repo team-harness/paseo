@@ -230,6 +230,14 @@ New session RPCs use dotted names with `.request` and `.response` suffixes, such
 - `agent_permission_request` / `agent_permission_resolved` — Tool-call permission flow
 - `agent_deleted`, `agent_archived`, `agent_status`, `agent_list`
 - `checkout_status_update`, `checkout_diff_update`, and the full `checkout_*` request/response set for git operations
+- `chat.room.subscribe` / `chat.room.unsubscribe` request/response pairs, plus the `chat.room.message_posted` broadcast
+
+A chat room subscription belongs to one physical socket and dies with it, so the broadcast is gated
+per socket on the `chat_room_subscriptions` capability rather than per session. The daemon starts
+following the room before it reads the first page, which means a message posted in between arrives
+twice — once in the page, once on the stream — and the client drops any streamed message whose cursor
+is at or below the one in the subscribe response. The other order would lose that message instead,
+and a client cannot detect a hole it was never told about.
 
 Agent snapshots optionally carry the daemon-owned active turn identity, and turn lifecycle stream events
 optionally carry the same `turnId`. New clients use these fields when present and normalize an old daemon's

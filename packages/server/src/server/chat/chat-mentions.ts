@@ -4,6 +4,14 @@ import type { ManagedAgent } from "../agent/agent-manager.js";
 
 export const CHAT_MENTION_FANOUT_LIMIT = 25;
 
+/**
+ * DEC-10's wakeable states, listed rather than derived from "not running".
+ * `initializing` is busy too — AgentManager counts it as such — and an agent
+ * woken there either races its own first turn or is refused outright.
+ */
+const WAKEABLE_LIVE_LIFECYCLES: ReadonlySet<string> = new Set(["idle", "error", "closed"]);
+const WAKEABLE_STORED_STATUSES: ReadonlySet<string> = new Set(["closed", "idle", "error"]);
+
 export interface ChatMentionNotificationInput {
   room: string;
   authorAgentId: string;
@@ -199,11 +207,11 @@ function isChatMentionTargetWakeable(input: {
 }): boolean {
   const live = input.liveAgents.find((agent) => agent.id === input.agentId);
   if (live) {
-    return live.lifecycle !== "running";
+    return WAKEABLE_LIVE_LIFECYCLES.has(live.lifecycle);
   }
 
   const stored = input.storedAgents.find((record) => record.id === input.agentId);
-  return stored?.lastStatus !== "running";
+  return stored === undefined || WAKEABLE_STORED_STATUSES.has(stored.lastStatus);
 }
 
 function isChatMentionTargetEligible(input: {
