@@ -8,6 +8,7 @@ import {
   ChatMessageSchema,
   ChatRoomDetailSchema,
   ChatRoomSchema,
+  type ChatAuthor,
   type ChatMessage,
   type ChatRoom,
   type ChatRoomDetail,
@@ -89,6 +90,30 @@ export interface PostChatMessageInput {
   replyToMessageId?: string | null;
 }
 
+/** Who is speaking. A human's id is a client id, not an agent id. */
+export type ChatActor = ChatAuthor;
+
+export interface PostMessageInput {
+  actor: ChatActor;
+  room: string;
+  body: string;
+  replyToMessageId?: string | null;
+}
+
+export interface ChatMentionNotification {
+  roomId: string;
+  actor: ChatActor;
+  body: string;
+  mentionAgentIds: string[];
+}
+
+/**
+ * Wakes mentioned agents. Injected rather than imported so the service stays
+ * independent of the agent runtime, and so a test can watch the fanout without
+ * one.
+ */
+export type ChatMentionNotifier = (input: ChatMentionNotification) => Promise<void>;
+
 export interface ReadChatMessagesInput {
   room: string;
   limit?: number;
@@ -127,7 +152,14 @@ export class FileBackedChatService {
   private readonly persistQueues = new Map<string, Promise<void>>();
   private readonly waitersByRoomId = new Map<string, Set<Waiter>>();
 
-  constructor(options: { paseoHome: string; logger: pino.Logger }) {
+  private readonly notifyMentions: ChatMentionNotifier | null;
+
+  constructor(options: {
+    paseoHome: string;
+    logger: pino.Logger;
+    notifyMentions?: ChatMentionNotifier;
+  }) {
+    this.notifyMentions = options.notifyMentions ?? null;
     this.chatDir = path.join(options.paseoHome, "chat");
     this.roomsDir = path.join(this.chatDir, "rooms");
     this.legacyFilePath = path.join(this.chatDir, "rooms.json");
@@ -194,7 +226,44 @@ export class FileBackedChatService {
     return { room: detail };
   }
 
-  async dispatchMessage(input: PostChatMessageInput): Promise<ChatMessage> {
+  /**
+   * The single way a message enters a room: validate, persist, then wake whoever
+   * was mentioned. Fanout lives here rather than in each caller so a message
+   * posted by an agent tool reaches the same people as one posted over the
+   * WebSocket — previously only the latter woke anyone.
+   */
+  async post(input: PostMessageInput): Promise<ChatMessage> {
+    const message = await this.dispatchMessage({
+      room: input.room,
+      authorAgentId: input.actor.id,
+      body: input.body,
+      replyToMessageId: input.replyToMessageId,
+      actor: input.actor,
+    });
+
+    if (this.notifyMentions && message.mentionAgentIds.length > 0) {
+      try {
+        await this.notifyMentions({
+          roomId: message.roomId,
+          actor: input.actor,
+          body: message.body,
+          mentionAgentIds: message.mentionAgentIds,
+        });
+      } catch (error) {
+        // The message is already in the room. Failing the post would tell the
+        // author it never landed, which is worse than a missed notification.
+        this.logger.error(
+          { err: error, roomId: message.roomId },
+          "Failed to notify mentioned agents",
+        );
+      }
+    }
+
+    return message;
+  }
+
+  /** @deprecated Prefer {@link post}, which also runs mention fanout. */
+  async dispatchMessage(input: PostChatMessageInput & { actor?: ChatActor }): Promise<ChatMessage> {
     await this.load();
     const room = this.resolveRoom(input.room);
     const body = input.body.trim();
@@ -205,6 +274,9 @@ export class FileBackedChatService {
     if (authorAgentId.length === 0) {
       throw new ChatServiceError("invalid_chat_author", "Chat message author is required");
     }
+    // A caller that predates the author model is an agent by definition: humans
+    // could not post before there was a way to say so.
+    const author: ChatAuthor = input.actor ?? { kind: "agent", id: authorAgentId };
 
     const messages = this.getRoomMessages(room.id);
     const replyToMessageId = trimToNull(input.replyToMessageId);
@@ -227,6 +299,7 @@ export class FileBackedChatService {
       replyToMessageId,
       mentionAgentIds: parseMentionAgentIds(body),
       createdAt,
+      author,
     });
 
     messages.push(message);
@@ -272,6 +345,11 @@ export class FileBackedChatService {
     const room = this.resolveRoom(input.room);
     const posters = new Set<string>();
     for (const message of this.getRoomMessages(room.id)) {
+      // Humans post here too, and their id is a client id. Handing it to mention
+      // fanout would have it look for an agent that does not exist.
+      if (message.author?.kind === "human") {
+        continue;
+      }
       posters.add(message.authorAgentId);
     }
     return Array.from(posters);

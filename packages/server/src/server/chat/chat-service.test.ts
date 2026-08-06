@@ -181,6 +181,121 @@ describe("FileBackedChatService", () => {
     });
   });
 
+  // The room has to be able to say who spoke. `authorAgentId` carries a client
+  // id for a human, which nothing downstream could tell apart from an agent id.
+  describe("message authors", () => {
+    test("records an agent author", async () => {
+      const room = await service.createRoom({ name: "authored" });
+
+      const message = await service.post({
+        actor: { kind: "agent", id: "agent-lead" },
+        room: room.name,
+        body: "assigned the server work",
+      });
+
+      expect(message.author).toEqual({ kind: "agent", id: "agent-lead" });
+      // Still written for clients that predate the author model.
+      expect(message.authorAgentId).toBe("agent-lead");
+    });
+
+    test("records a human author and keeps them out of the poster list", async () => {
+      const room = await service.createRoom({ name: "human-authored" });
+      await service.post({
+        actor: { kind: "agent", id: "agent-lead" },
+        room: room.name,
+        body: "ready",
+      });
+
+      const message = await service.post({
+        actor: { kind: "human", id: "client-42" },
+        room: room.name,
+        body: "put it in the sidebar instead",
+      });
+
+      expect(message.author).toEqual({ kind: "human", id: "client-42" });
+      expect(message.authorAgentId).toBe("client-42");
+      // Mention fanout targets agents that spoke in the room; a human is not one.
+      await expect(service.listRoomPosterAgentIds({ room: room.name })).resolves.toEqual([
+        "agent-lead",
+      ]);
+    });
+
+    test("reads back an author that was persisted", async () => {
+      const room = await service.createRoom({ name: "reloaded" });
+      await service.post({
+        actor: { kind: "human", id: "client-42" },
+        room: room.name,
+        body: "hello",
+      });
+
+      const reloaded = new FileBackedChatService({
+        paseoHome,
+        logger: pino({ level: "silent" }),
+      });
+      const [message] = await reloaded.readMessages({ room: room.name });
+      expect(message.author).toEqual({ kind: "human", id: "client-42" });
+    });
+
+    test("treats a message written before the author model as an agent", async () => {
+      const room = await service.createRoom({ name: "legacy-author" });
+      const message = await service.dispatchMessage({
+        room: room.name,
+        authorAgentId: "agent-a",
+        body: "posted the old way",
+      });
+
+      expect(message.author).toEqual({ kind: "agent", id: "agent-a" });
+    });
+  });
+
+  describe("mention fanout", () => {
+    test("notifies mentioned agents through the service, not the caller", async () => {
+      const notified: Array<{ room: string; mentionAgentIds: string[]; authorId: string }> = [];
+      const withNotifier = new FileBackedChatService({
+        paseoHome,
+        logger: pino({ level: "silent" }),
+        notifyMentions: async (input) => {
+          notified.push({
+            room: input.roomId,
+            mentionAgentIds: input.mentionAgentIds,
+            authorId: input.actor.id,
+          });
+        },
+      });
+      const room = await withNotifier.createRoom({ name: "fanout" });
+
+      await withNotifier.post({
+        actor: { kind: "human", id: "client-42" },
+        room: room.name,
+        body: "@agent-impl please pick this up",
+      });
+
+      expect(notified).toEqual([
+        { room: room.id, mentionAgentIds: ["agent-impl"], authorId: "client-42" },
+      ]);
+    });
+
+    test("a failing notifier does not lose the message", async () => {
+      const withNotifier = new FileBackedChatService({
+        paseoHome,
+        logger: pino({ level: "silent" }),
+        notifyMentions: async () => {
+          throw new Error("waking the agent blew up");
+        },
+      });
+      const room = await withNotifier.createRoom({ name: "fanout-failure" });
+
+      const message = await withNotifier.post({
+        actor: { kind: "agent", id: "agent-lead" },
+        room: room.name,
+        body: "@agent-impl heads up",
+      });
+
+      expect(message.body).toBe("@agent-impl heads up");
+      expect(await withNotifier.readMessages({ room: room.name })).toHaveLength(1);
+    });
+  });
+
   test("extracts inline mentions from chat bodies", () => {
     expect(
       parseMentionAgentIds(
