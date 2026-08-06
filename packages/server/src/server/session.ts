@@ -630,6 +630,10 @@ export class Session {
   private isCleanedUp = false;
   private viewedTimelineAgentIds = new Set<string>();
   private readonly viewedTimelineAgentIdsBySource = new Map<object, Set<string>>();
+  /** Room ids each socket is following. One session can hold several sockets. */
+  private readonly chatRoomSubscriptionsBySource = new Map<object, Set<string>>();
+  private unsubscribeChatRoomMessages: (() => void) | null = null;
+  private readonly chatService: FileBackedChatService;
   private readonly clientCapabilitiesBySource = new Map<object, ReadonlySet<ClientCapability>>();
   private readonly defaultTimelineSubscriptionSource = {};
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
@@ -729,6 +733,7 @@ export class Session {
       daemonRuntimeConfig,
       getWebSocketRuntimeMetrics,
     } = options;
+    this.chatService = chatService;
     this.clientId = clientId;
     this.scopes = [...scopes];
     this.appVersion = appVersion ?? null;
@@ -1070,6 +1075,94 @@ export class Session {
     if (this.viewedTimelineAgentIdsBySource.delete(source)) {
       this.rebuildViewedTimelineAgentIds();
     }
+    // A room subscription belongs to the socket that asked for it and dies with
+    // it; nothing else would ever take it down.
+    this.chatRoomSubscriptionsBySource.delete(source);
+  }
+
+  /**
+   * Answers a subscribe with the room's page and the cursor it ends on, then
+   * starts forwarding what follows. Both halves happen here so nothing can slip
+   * in between them and go unseen.
+   */
+  private async handleChatRoomSubscribeRequest(
+    msg: Extract<SessionInboundMessage, { type: "chat.room.subscribe.request" }>,
+    source: object | undefined,
+  ): Promise<void> {
+    try {
+      const page = await this.chatService.readRoomPage({
+        room: msg.room,
+        ...(typeof msg.afterCursor === "number" ? { afterCursor: msg.afterCursor } : {}),
+        ...(typeof msg.limit === "number" ? { limit: msg.limit } : {}),
+      });
+      this.rememberChatRoomSubscription(source, page.roomId);
+      this.sendToSource(source, {
+        type: "chat.room.subscribe.response",
+        payload: {
+          requestId: msg.requestId,
+          roomId: page.roomId,
+          messages: page.messages,
+          cursor: page.cursor,
+          hasMore: page.hasMore,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.sendToSource(source, {
+        type: "chat.room.subscribe.response",
+        payload: {
+          requestId: msg.requestId,
+          roomId: msg.room,
+          messages: [],
+          cursor: 0,
+          hasMore: false,
+          error: error instanceof Error ? error.message : "Failed to subscribe to chat room",
+        },
+      });
+    }
+  }
+
+  private handleChatRoomUnsubscribeRequest(
+    msg: Extract<SessionInboundMessage, { type: "chat.room.unsubscribe.request" }>,
+    source: object | undefined,
+  ): void {
+    const key = source ?? this.defaultTimelineSubscriptionSource;
+    this.chatRoomSubscriptionsBySource.get(key)?.delete(msg.room);
+    this.sendToSource(source, {
+      type: "chat.room.unsubscribe.response",
+      payload: { requestId: msg.requestId, roomId: msg.room, error: null },
+    });
+  }
+
+  private rememberChatRoomSubscription(source: object | undefined, roomId: string): void {
+    const key = source ?? this.defaultTimelineSubscriptionSource;
+    const rooms = this.chatRoomSubscriptionsBySource.get(key) ?? new Set<string>();
+    rooms.add(roomId);
+    this.chatRoomSubscriptionsBySource.set(key, rooms);
+    this.ensureChatRoomForwarding();
+  }
+
+  private ensureChatRoomForwarding(): void {
+    if (this.unsubscribeChatRoomMessages) {
+      return;
+    }
+    this.unsubscribeChatRoomMessages = this.chatService.onRoomMessage((event) => {
+      for (const [source, rooms] of this.chatRoomSubscriptionsBySource) {
+        if (!rooms.has(event.roomId)) continue;
+        // Gated per socket: one session can hold sockets of different vintages,
+        // and an older one cannot parse this message.
+        if (!this.supportsForSource(CLIENT_CAPS.chatRoomSubscriptions, source)) continue;
+        this.sendToSource(source, {
+          type: "chat.room.message_posted",
+          payload: { roomId: event.roomId, message: event.message, cursor: event.cursor },
+        });
+      }
+    });
+  }
+
+  private sendToSource(source: object | undefined, message: SessionOutboundMessage): void {
+    if (source && this.onMessageToSource) this.onMessageToSource(source, message);
+    else this.emit(message);
   }
 
   private replaceAgentTimelineSubscription(source: object | undefined, agentIds: string[]): void {
@@ -1934,6 +2027,15 @@ export class Session {
     source?: object,
   ): Promise<void> | undefined {
     switch (msg.type) {
+      // Dispatched alongside the timeline subscription rather than with the
+      // other chat RPCs: a room subscription belongs to one socket, and only a
+      // source-aware dispatcher knows which one.
+      case "chat.room.subscribe.request":
+        return this.handleChatRoomSubscribeRequest(msg, source);
+      case "chat.room.unsubscribe.request": {
+        this.handleChatRoomUnsubscribeRequest(msg, source);
+        return undefined;
+      }
       case "fetch_agent_timeline_request":
         return this.handleFetchAgentTimelineRequest(msg, source);
       case "agent.timeline.list_prompts.request":

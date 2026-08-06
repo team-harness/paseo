@@ -50,8 +50,10 @@ export function asPushTokenStore(): SessionOptions["pushTokenStore"] {
   return createStub<SessionOptions["pushTokenStore"]>({});
 }
 
-export function asChatService(): SessionOptions["chatService"] {
-  return createStub<SessionOptions["chatService"]>({});
+export function asChatService(
+  stub: { [K in keyof SessionOptions["chatService"]]?: unknown } = {},
+): SessionOptions["chatService"] {
+  return createStub<SessionOptions["chatService"]>(stub);
 }
 
 export function asScheduleService(): SessionOptions["scheduleService"] {
