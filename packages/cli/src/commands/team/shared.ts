@@ -13,8 +13,12 @@ export interface TeamCommandOptions extends CommandOptions {
 
 export async function connectTeamClient(host?: string) {
   const daemonHost = getDaemonHost({ host });
+  // Connecting and asking what the host can do are two failures with two
+  // answers. One `try` around both reports "cannot connect" for a daemon that
+  // answered perfectly well and simply has no teams.
+  let connected: Awaited<ReturnType<typeof connectToDaemon>>;
   try {
-    return { client: await connectToDaemon({ host }), daemonHost };
+    connected = await connectToDaemon({ host });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {
@@ -24,6 +28,17 @@ export async function connectTeamClient(host?: string) {
     };
     throw error;
   }
+
+  // COMPAT(teams): added in v0.3.0, remove gate after 2027-02-06. Gated once
+  // here rather than letting each subcommand fail on an unknown schema.
+  if (!connected.getLastServerInfoMessage()?.features?.teams) {
+    await connected.close().catch(() => {});
+    throw {
+      code: "DAEMON_UPDATE_REQUIRED",
+      message: `Update the host at ${daemonHost} to use teams.`,
+    } satisfies CommandError;
+  }
+  return { client: connected, daemonHost };
 }
 
 /**

@@ -10,7 +10,7 @@ work: ../work/epic-agent-teams.md
 
 Paseo 已有多 agent 基元（agent-scoped `create_agent` 委派、subagents track、chat rooms、labels、workspace/worktree），但没有把它们组合成可用的产品概念：用户无法一键创建一个跨 provider 的协作小组，无法在一个视图里看到小组的协调过程、成员状态与待处理权限。
 
-详细设计已定稿并经过外部架构评审一轮、Epic design review 阶段一（3 轮）、复核阶段（3 轮已达上限）修订（当前 v2.6）：**`docs/refactors/agent-teams-design.md` 是本 Epic 的 canonical 设计文档**，本文档不复述其内容，只固化契约与拆解。设计文档在 final acceptance 阶段并入正式 docs 并删除，届时同步更新本节的 canonical 引用与"最终交付索引"。
+详细设计经过外部架构评审一轮、Epic design review 阶段一（3 轮）、复核阶段（3 轮）修订，最终版本 v2.6。设计文档已在 final acceptance 阶段并入正式 docs 并删除：**canonical 现在是 `docs/` 下的常规文档**，见下方"最终交付索引"。本文档只固化契约与拆解。
 
 ## 目标
 
@@ -100,7 +100,26 @@ Team / Lead / Member / Roster / Team room / Remove（退队）的定义以设计
 
 ## 最终交付索引
 
-（accepted 时填写）
+设计文档 `docs/refactors/agent-teams-design.md` 已删除，其内容分派到各自主题的正式文档：
+
+| 主题                                                                | 去处                                               |
+| ------------------------------------------------------------------- | -------------------------------------------------- |
+| 术语（Team / Lead / Team role / Assignment / Recruitment）          | `docs/glossary.md`                                 |
+| 生命周期、成员 tab 的关闭语义、lead 与 team 的收敛                  | `docs/agent-lifecycle.md` §Teams、§Tabs vs archive |
+| 持久化形状（`StoredTeam`、roster、ledger、`turnOutcomes`）          | `docs/data-model.md` §7                            |
+| 模块分层、RPC 与广播、`chat.room.*` 订阅协议、`onAgentRecordChange` | `docs/architecture.md`                             |
+| team 深链路由与 handshake 先后                                      | `docs/expo-router.md`                              |
+| CLI                                                                 | `docs/architecture.md` 的 CLI 一节                 |
+
+实现索引：
+
+| 层       | 位置                                                                                                                                                                                                                  |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| protocol | `packages/protocol/src/team/`、`packages/protocol/src/chat/rpc-schemas.ts`、`agent-labels.ts`                                                                                                                         |
+| daemon   | `packages/server/src/server/team/`（service、store、inbox、pump、tools、scheduler、runtime）                                                                                                                          |
+| CLI      | `packages/cli/src/commands/team/`                                                                                                                                                                                     |
+| app      | `packages/app/src/teams/`、`packages/app/src/runtime/team-sync/`、`packages/app/src/components/teams/`、`packages/app/src/panels/team-panel-registration.tsx`、`packages/app/src/navigation/team-route-resolution.ts` |
+| E2E      | `packages/server/src/server/team-e2e.e2e.test.ts`（daemon）、`packages/app/e2e/browser/team-panel.spec.ts`（浏览器）                                                                                                  |
 
 ## 整体验收
 

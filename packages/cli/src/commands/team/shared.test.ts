@@ -1,8 +1,45 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { TEAM_ERROR_CODES } from "@getpaseo/protocol/team/rpc-schemas";
 
-import { newIdempotencyKey, parseMemberSpec, toTeamResponseError } from "./shared.js";
+import {
+  connectTeamClient,
+  newIdempotencyKey,
+  parseMemberSpec,
+  toTeamResponseError,
+} from "./shared.js";
+
+const { connectToDaemon } = vi.hoisted(() => ({ connectToDaemon: vi.fn() }));
+
+vi.mock("../../utils/client.js", () => ({
+  connectToDaemon,
+  getDaemonHost: () => "127.0.0.1:6767",
+}));
+
+function fakeClient(features: Record<string, boolean> | null) {
+  return {
+    getLastServerInfoMessage: () => (features ? { features } : null),
+    close: vi.fn(async () => {}),
+  };
+}
+
+describe("connecting for a team command", () => {
+  it("refuses a daemon that does not have teams", async () => {
+    // Without the gate each subcommand fails on an unknown schema, which reads
+    // as a broken command rather than as an old host.
+    const client = fakeClient({ teams: false });
+    connectToDaemon.mockResolvedValueOnce(client);
+
+    await expect(connectTeamClient()).rejects.toMatchObject({ code: "DAEMON_UPDATE_REQUIRED" });
+    expect(client.close).toHaveBeenCalled();
+  });
+
+  it("connects to a daemon that has them", async () => {
+    connectToDaemon.mockResolvedValueOnce(fakeClient({ teams: true }));
+
+    await expect(connectTeamClient()).resolves.toMatchObject({ daemonHost: "127.0.0.1:6767" });
+  });
+});
 
 describe("reading a member off the command line", () => {
   it("splits role from provider", () => {

@@ -1,11 +1,22 @@
 import { randomUUID } from "node:crypto";
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
 import { metroTest as test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import { buildCreateAgentPreferences, buildSeededHost } from "../support/helpers/daemon-registry";
 import { startIsolatedHostDaemon } from "../support/helpers/isolated-host-daemon";
 import { seedWorkspace } from "../support/helpers/seed-client";
+
+/**
+ * Picks the first provider from an open provider picker.
+ *
+ * By list position rather than by name: once a picker has a selection, its
+ * trigger shows that provider's label too, so matching on the label picks the
+ * trigger of the field that is already answered.
+ */
+async function pickProvider(page: Page): Promise<void> {
+  await page.locator('[data-testid="combobox-desktop-container"] [role="button"]').first().click();
+}
 
 /**
  * The team panel over a real daemon and a real browser.
@@ -74,6 +85,76 @@ test("a team reaches the sidebar and its deep link opens the panel", async ({ pa
       await expect(page.getByTestId(`team-member-${member.agentId}`)).toBeVisible();
     }
     await expect(page.getByTestId("team-panel-archive")).toBeVisible();
+  } finally {
+    await workspace?.cleanup();
+    await daemon.close();
+  }
+});
+
+test("a team can be created from the workspace, without touching the daemon directly", async ({
+  page,
+}) => {
+  const serverId = `srv_team_new_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+  const daemon = await startIsolatedHostDaemon(serverId);
+  let workspace: Awaited<ReturnType<typeof seedWorkspace>> | null = null;
+
+  try {
+    workspace = await seedWorkspace({ repoPrefix: "team-new-", port: daemon.port });
+    const host = buildSeededHost({
+      serverId,
+      endpoint: `127.0.0.1:${daemon.port}`,
+      nowIso: new Date().toISOString(),
+    });
+    await page.route(/:6767\b/, (route) => route.abort());
+    await page.routeWebSocket(/:6767\b/, async (webSocket) => {
+      await webSocket.close({ code: 1008, reason: "Blocked developer daemon during e2e." });
+    });
+    await page.addInitScript(
+      ({ seededHost, preferences }) => {
+        localStorage.setItem("@paseo:e2e", "1");
+        localStorage.setItem("@paseo:daemon-registry", JSON.stringify([seededHost]));
+        localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(preferences));
+      },
+      { seededHost: host, preferences: buildCreateAgentPreferences(serverId) },
+    );
+
+    await gotoAppShell(page);
+    await page.locator('[data-testid^="sidebar-workspace-row-"]').first().click();
+
+    // Every other team test seeds through the daemon, so none of them would
+    // notice the entry missing from the workspace. This one is the entry.
+    await page.getByTestId("workspace-header-menu-trigger").first().click();
+    await page.getByTestId("workspace-header-new-team").click();
+
+    await page.getByTestId("team-form-name").fill("Disk usage");
+    await page.getByTestId("team-form-task").fill("find what is eating the disk");
+
+    // The lead's provider comes from the daemon's own list — the form has no
+    // default, because a team built on a provider that is not installed fails
+    // at creation rather than at the picker.
+    await page.getByTestId("team-form-lead").click();
+    await pickProvider(page);
+
+    // One member beside the lead, so the confirmation has a count to be wrong
+    // about.
+    await page.getByTestId("team-form-add-member").click();
+    await page.getByTestId("team-form-member-0-role").fill("reviewer");
+    await page.getByTestId("team-form-member-0-provider").click();
+    await pickProvider(page);
+
+    await expect(page.getByTestId("team-form-review")).toBeEnabled({ timeout: 30_000 });
+    await page.getByTestId("team-form-review").click();
+
+    // The confirmation says what it will cost before it spends it: a lead plus
+    // the members, which is the number of agents about to start.
+    await expect(page.getByTestId("team-form-cost")).toContainText("2 agents");
+    await page.getByTestId("team-form-submit").click();
+
+    // Straight onto the team that was made, and the daemon agrees it exists.
+    await expect(page.getByTestId("team-panel")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId("team-panel-name")).toHaveText("Disk usage");
+    const listed = await workspace.client.listTeams();
+    expect(listed.teams.map((team) => team.name)).toContain("Disk usage");
   } finally {
     await workspace?.cleanup();
     await daemon.close();

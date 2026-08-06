@@ -27,6 +27,7 @@ import {
   Copy,
   Ellipsis,
   Globe,
+  Users,
   Import as ImportIcon,
   PanelRight,
   Pencil,
@@ -71,6 +72,8 @@ import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
+import { NewTeamSheet } from "@/components/teams/new-team-sheet";
+import { useWorkspaceNewTeam } from "@/teams/use-workspace-new-team";
 import { useToast } from "@/contexts/toast-context";
 import { selectIsFileExplorerOpen, usePanelStore } from "@/stores/panel-store";
 import { type ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
@@ -257,6 +260,7 @@ const ThemedX = withUnistyles(X);
 const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
+const ThemedUsers = withUnistyles(Users);
 const ThemedImport = withUnistyles(ImportIcon);
 const ThemedSettings = withUnistyles(Settings);
 const ThemedPanelRight = withUnistyles(PanelRight);
@@ -286,6 +290,7 @@ const sourceControlPanelStrokeWidth15 = { strokeWidth: 1.5 };
 const MENU_NEW_AGENT_ICON = <ThemedSquarePen size={16} uniProps={mutedColorMapping} />;
 const MENU_NEW_TERMINAL_ICON = <ThemedSquareTerminal size={16} uniProps={mutedColorMapping} />;
 const MENU_NEW_BROWSER_ICON = <ThemedGlobe size={16} uniProps={mutedColorMapping} />;
+const MENU_NEW_TEAM_ICON = <ThemedUsers size={16} uniProps={mutedColorMapping} />;
 const MENU_IMPORT_ICON = <ThemedImport size={16} uniProps={mutedColorMapping} />;
 const MENU_COPY_ICON = <ThemedCopy size={16} uniProps={mutedColorMapping} />;
 const MENU_SETTINGS_ICON = <ThemedSettings size={16} uniProps={mutedColorMapping} />;
@@ -1004,6 +1009,7 @@ interface WorkspaceHeaderMenuProps {
   createTerminalDisabled: boolean;
   importAgentDisabled: boolean;
   copyPathDisabled: boolean;
+  showNewTeam: boolean;
   menuNewAgentIcon: ReactElement;
   menuNewTerminalIcon: ReactElement;
   menuNewBrowserIcon: ReactElement;
@@ -1015,6 +1021,7 @@ interface WorkspaceHeaderMenuProps {
   onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
   onCreateBrowser: () => void;
   onOpenImportSheet: () => void;
+  onOpenNewTeamSheet: () => void;
   onCopyWorkspacePath: () => void;
   onCopyBranchName: () => void;
   onOpenSetupTab: () => void;
@@ -1083,6 +1090,7 @@ function WorkspaceHeaderMenu({
   createTerminalDisabled,
   importAgentDisabled,
   copyPathDisabled,
+  showNewTeam,
   menuNewAgentIcon,
   menuNewTerminalIcon,
   menuNewBrowserIcon,
@@ -1094,6 +1102,7 @@ function WorkspaceHeaderMenu({
   onCreateTerminalWithProfile,
   onCreateBrowser,
   onOpenImportSheet,
+  onOpenNewTeamSheet,
   onCopyWorkspacePath,
   onCopyBranchName,
   onOpenSetupTab,
@@ -1141,6 +1150,15 @@ function WorkspaceHeaderMenu({
         >
           {t("workspace.header.actions.newAgent")}
         </DropdownMenuItem>
+        {showNewTeam ? (
+          <DropdownMenuItem
+            testID="workspace-header-new-team"
+            leading={MENU_NEW_TEAM_ICON}
+            onSelect={onOpenNewTeamSheet}
+          >
+            {t("workspace.header.actions.newTeam")}
+          </DropdownMenuItem>
+        ) : null}
         {showCreateBrowserTab ? (
           <DropdownMenuItem
             testID="workspace-header-new-browser"
@@ -1285,6 +1303,8 @@ interface WorkspaceHeaderTitleBarProps {
   onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
   onCreateBrowser: () => void;
   onOpenImportSheet: () => void;
+  onOpenNewTeamSheet: () => void;
+  showNewTeam: boolean;
   onCopyWorkspacePath: () => void;
   onCopyBranchName: () => void;
   onOpenSetupTab: () => void;
@@ -1309,6 +1329,7 @@ function WorkspaceHeaderTitleBar({
   createTerminalDisabled,
   importAgentDisabled,
   copyPathDisabled,
+  showNewTeam,
   menuNewAgentIcon,
   menuNewTerminalIcon,
   menuNewBrowserIcon,
@@ -1320,6 +1341,7 @@ function WorkspaceHeaderTitleBar({
   onCreateTerminalWithProfile,
   onCreateBrowser,
   onOpenImportSheet,
+  onOpenNewTeamSheet,
   onCopyWorkspacePath,
   onCopyBranchName,
   onOpenSetupTab,
@@ -1366,6 +1388,8 @@ function WorkspaceHeaderTitleBar({
           onCreateTerminalWithProfile={onCreateTerminalWithProfile}
           onCreateBrowser={onCreateBrowser}
           onOpenImportSheet={onOpenImportSheet}
+          onOpenNewTeamSheet={onOpenNewTeamSheet}
+          showNewTeam={showNewTeam}
           onCopyWorkspacePath={onCopyWorkspacePath}
           onCopyBranchName={onCopyBranchName}
           onOpenSetupTab={onOpenSetupTab}
@@ -1875,6 +1899,15 @@ function WorkspaceScreenContent({
     [normalizedServerId, normalizedWorkspaceId],
   );
   const openWorkspaceTabFocused = useWorkspaceLayoutStore((state) => state.openTabFocused);
+  const newTeam = useWorkspaceNewTeam({
+    serverId: normalizedServerId,
+    persistenceKey,
+    workspaceDirectory,
+    // A backgrounded workspace keeps its tree mounted; its sheet must not sit
+    // over whatever the user actually navigated to.
+    routeFocused: isRouteFocused,
+    openWorkspaceTabFocused,
+  });
   const openWorkspaceChildTabFocused = useWorkspaceLayoutStore(
     (state) => state.openChildTabFocused,
   );
@@ -2778,14 +2811,13 @@ function WorkspaceScreenContent({
           });
         }
 
-        if (closePolicy.kind === "team-lead") {
+        if (closesWithoutArchiving(closePolicy)) {
           // Closing a root agent's tab archives it, so a lead's tab closing and
           // leaving everything running is the surprise. Say where the team does
           // end, once, rather than letting the user hunt for it.
-          toast.show(t("teams.panel.leadTabClosed", { teamName: closePolicy.teamName }));
-          return;
-        }
-        if (closesWithoutArchiving(closePolicy)) {
+          if (closePolicy.kind === "team-lead") {
+            toast.show(t("teams.panel.leadTabClosed", { teamName: closePolicy.teamName }));
+          }
           return;
         }
 
@@ -3866,6 +3898,8 @@ function WorkspaceScreenContent({
                 onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
                 onCreateBrowser={handleCreateBrowserTab}
                 onOpenImportSheet={openImportSheet}
+                onOpenNewTeamSheet={newTeam.open}
+                showNewTeam={newTeam.supported}
                 onCopyWorkspacePath={handleCopyWorkspacePath}
                 onCopyBranchName={handleCopyBranchName}
                 onOpenSetupTab={handleOpenSetupTab}
@@ -3977,6 +4011,15 @@ function WorkspaceScreenContent({
               workspaceId={normalizedWorkspaceId}
               onClose={closeImportSheet}
               onImportedAgent={handleImportedAgent}
+            />
+            <NewTeamSheet
+              serverId={normalizedServerId}
+              workspaceId={normalizedWorkspaceId}
+              workspaceDisplay={newTeam.cwd}
+              cwd={newTeam.cwd}
+              visible={newTeam.visible}
+              onClose={newTeam.close}
+              onCreated={newTeam.onCreated}
             />
             <WorkspaceTabRenameModal
               renamingTab={isRouteFocused ? renamingTab : null}

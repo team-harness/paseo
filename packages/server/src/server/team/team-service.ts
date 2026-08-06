@@ -598,6 +598,13 @@ export class TeamService {
       case "failed":
         await this.cancelOutstandingRecruits(team);
         await this.cleanUpFailed(team);
+        // Same rule as `archived`, and for the same reason: an agent unarchived
+        // while the daemon was down leaves an entry that says archived over an
+        // agent that is running, which DEC-11 says does not exist. Ordered after
+        // the cleanup so the agents it archives are not evicted on the way in,
+        // and outside its `failedCleanupAt` short-circuit so a later unarchive
+        // is still seen.
+        await this.evictAgentsThatCameBack(team);
         return;
       case "active":
         await this.reconcileActive(team);

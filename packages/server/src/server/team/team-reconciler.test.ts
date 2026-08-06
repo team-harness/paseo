@@ -269,6 +269,39 @@ describe("TeamService reconciliation", () => {
       expect(rooms.discarded).toEqual([team.chatRoomId]);
     });
 
+    // §5.7 puts `archived` and `failed` on the same line for this: the state
+    // DEC-11 says does not exist — an entry marked archived over an agent that
+    // is running — is reachable either way.
+    test("evicts a member that was unarchived while the daemon was down", async () => {
+      const team = await seedTeam();
+      const memberId = nonLeadIdOf(team);
+      await forceLifecycle(team.id, "failed");
+      await markEntryArchived(team.id, memberId);
+
+      await service.reconcile();
+
+      const entry = entryFor(await store.get(team.id), memberId);
+      expect(entry?.state).toBe("removed");
+      expect(entry?.removalReason).toBe("unarchive_evicted");
+      // Its labels go too, or `create_agent` keeps finding a team that failed
+      // and refusing to recruit for it — this agent could never recruit again.
+      expect(agents.labelsCleared).toContain(memberId);
+    });
+
+    test("still evicts after the cleanup already ran once", async () => {
+      // `failedCleanupAt` short-circuits the cleanup, and eviction used to sit
+      // behind it. An unarchive after the first pass would then never be seen.
+      const team = await seedTeam();
+      const memberId = nonLeadIdOf(team);
+      await forceLifecycle(team.id, "failed");
+      await service.reconcile();
+      await markEntryArchived(team.id, memberId);
+
+      await service.reconcile();
+
+      expect(entryFor(await store.get(team.id), memberId)?.state).toBe("removed");
+    });
+
     test("does not clean up twice", async () => {
       const team = await seedTeam();
       await forceLifecycle(team.id, "failed");

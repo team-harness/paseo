@@ -8,7 +8,6 @@ import {
   selectMemberActivity,
   selectSubagentsWithoutTeamMembers,
   selectTeamActivity,
-  selectTeamOfAgent,
   selectTeamRoster,
   selectTeamStage,
   teamStageAcceptsActions,
@@ -208,27 +207,5 @@ describe("keeping a subagents track from repeating the team panel", () => {
     ]);
 
     expect([...selectLiveTeamIds(teams)]).toEqual(["live"]);
-  });
-});
-
-describe("finding the team an agent belongs to", () => {
-  it("ignores an entry that has been removed", () => {
-    const teams = new Map([["team-1", team([entry({ agentId: "gone", state: "removed" })])]]);
-
-    expect(selectTeamOfAgent(teams, "gone")).toBeNull();
-  });
-
-  it("finds one that is still a member", () => {
-    const teams = new Map([["team-1", team([entry()])]]);
-
-    expect(selectTeamOfAgent(teams, "member-1")?.id).toBe("team-1");
-  });
-
-  it("ignores a team that is over", () => {
-    const teams = new Map([["team-1", team([entry()], { lifecycle: "archived" })]]);
-
-    // The team list hides these; a panel resolving one by agent has to agree,
-    // or the two disagree about what counts as a team.
-    expect(selectTeamOfAgent(teams, "member-1")).toBeNull();
   });
 });

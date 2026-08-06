@@ -1,4 +1,5 @@
 import { useCallback, useMemo, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Users } from "lucide-react-native";
@@ -9,6 +10,7 @@ import { getStatusDotColor } from "@/utils/status-dot-color";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { useSessionStore } from "@/stores/session-store";
 import { selectWorkspaceTeamRows, type WorkspaceTeamRow } from "@/teams/workspace-team-rows";
+import { useTeams } from "@/teams/use-teams";
 import type { Theme } from "@/styles/theme";
 
 const ThemedUsers = withUnistyles(Users);
@@ -26,17 +28,35 @@ export function SidebarWorkspaceTeamRows({
 }: {
   workspace: Pick<SidebarWorkspaceEntry, "serverId" | "workspaceId" | "workspaceKey">;
 }): ReactElement | null {
-  const teams = useSessionStore((state) => state.sessions[workspace.serverId]?.teams);
+  const { t } = useTranslation();
+  const load = useTeams(workspace.serverId);
   const agents = useSessionStore((state) => state.sessions[workspace.serverId]?.agents);
+  const teams = useMemo(
+    () =>
+      new Map(
+        load.status === "failed" || load.status === "loaded"
+          ? load.teams.map((team) => [team.id, team])
+          : [],
+      ),
+    [load],
+  );
   const rows = useMemo(
-    () => (teams ? selectWorkspaceTeamRows(teams, workspace.workspaceId, agents ?? new Map()) : []),
+    () => selectWorkspaceTeamRows(teams, workspace.workspaceId, agents ?? new Map()),
     [teams, agents, workspace.workspaceId],
   );
 
-  if (rows.length === 0) return null;
+  // A read that failed is not a workspace with no teams. Saying nothing there
+  // is the same screen as having none, and one of them is wrong.
+  const failed = load.status === "failed";
+  if (rows.length === 0 && !failed) return null;
 
   return (
     <View style={styles.list} testID={`sidebar-teams-${workspace.workspaceKey}`}>
+      {failed ? (
+        <Text style={styles.failure} testID={`sidebar-teams-${workspace.workspaceKey}-error`}>
+          {t("teams.list.unreadable")}
+        </Text>
+      ) : null}
       {rows.map((row) => (
         <TeamRow
           key={row.teamId}
@@ -130,6 +150,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     paddingRight: theme.spacing[2],
+  },
+  failure: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   name: {
     flexShrink: 1,

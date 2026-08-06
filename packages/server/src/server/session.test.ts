@@ -14,6 +14,7 @@ import type {
   HostStatusSummaryPayload,
   WorkspaceDescriptorPayload,
 } from "@getpaseo/protocol/messages";
+import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import {
   decodeFileTransferFrame,
@@ -5799,6 +5800,53 @@ describe("chat room subscriptions", () => {
     expect(response?.message).toMatchObject({
       payload: { requestId: "sub-1", roomId: "room-1", error: "room file is unreadable" },
     });
+  });
+});
+
+// DEC-5: the gate is per physical socket, not per session. One session can hold
+// sockets of different vintages, and an old one cannot parse `team.update`.
+describe("team.update socket gating", () => {
+  function team(): TeamSnapshot {
+    return {
+      id: "team-1",
+      name: "Disk usage",
+      workspaceId: "ws-1",
+      chatRoomId: "room-1",
+      leadAgentId: "lead-1",
+      members: [],
+      lifecycle: "active",
+      revision: 1,
+      templateId: null,
+      createdAt: "2026-08-06T10:00:00.000Z",
+      updatedAt: "2026-08-06T10:00:00.000Z",
+      archivedAt: null,
+    };
+  }
+
+  test("reaches only the sockets of this session that understand teams", () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    const session = createSessionForTest({ targetedMessages: targeted });
+    const modern = {};
+    const legacy = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.teams]: true }, modern);
+    session.updateClientCapabilities(null, legacy);
+
+    session.emitTeamUpdate(team());
+
+    const updates = targeted.filter((entry) => entry.message.type === "team.update");
+    expect(updates.map((entry) => entry.source)).toEqual([modern]);
+  });
+
+  test("sends nothing when no socket on the session claimed teams", () => {
+    // Not "send it anyway and let them ignore it": an old client fails to parse
+    // an unknown message and drops the connection.
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    const session = createSessionForTest({ targetedMessages: targeted });
+    session.updateClientCapabilities(null, {});
+
+    session.emitTeamUpdate(team());
+
+    expect(targeted.filter((entry) => entry.message.type === "team.update")).toHaveLength(0);
   });
 });
 

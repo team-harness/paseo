@@ -1,5 +1,5 @@
 import { deriveAgentStateBucket } from "@getpaseo/protocol/agent-state-bucket";
-import { TEAM_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import { getTeamIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import type { TeamMemberEntry, TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import { isLiveTeam } from "./team-replica";
@@ -140,10 +140,10 @@ export function selectSubagentsWithoutTeamMembers<T extends { id: string; labels
   return subagents.filter((subagent) => {
     const labels = subagent.labels;
     if (!labels || typeof labels !== "object") return true;
-    const teamId = (labels as Record<string, string>)[TEAM_ID_LABEL];
+    const teamId = getTeamIdFromLabels(labels as Record<string, unknown>);
     // A team that is over has no panel drawing its members, so hiding them
     // from the track as well would hide them everywhere.
-    return teamId === undefined || !liveTeamIds.has(teamId);
+    return teamId === null || !liveTeamIds.has(teamId);
   });
 }
 
@@ -154,21 +154,4 @@ export function selectLiveTeamIds(teams: ReadonlyMap<string, TeamSnapshot>): Set
     if (isLiveTeam(team)) live.add(team.id);
   }
   return live;
-}
-
-/** Teams whose lead or members include this agent, so a panel can find its team. */
-export function selectTeamOfAgent(
-  teams: ReadonlyMap<string, TeamSnapshot>,
-  agentId: string,
-): TeamSnapshot | null {
-  for (const team of teams.values()) {
-    // A team that is over is not one this agent belongs to. The list of teams
-    // hides those; a panel resolving one by agent has to agree, or the two
-    // disagree about what counts as a team.
-    if (!isLiveTeam(team)) continue;
-    const entry = team.members.find((member) => member.agentId === agentId);
-    // `removed` is history: an agent that left is not on this team any more.
-    if (entry && entry.state !== "removed") return team;
-  }
-  return null;
 }

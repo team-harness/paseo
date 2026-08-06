@@ -186,15 +186,6 @@ describe("TeamStore", () => {
     expect((await reloaded.list()).map((team) => team.id)).toEqual([healthy.id]);
   });
 
-  test("removes a team", async () => {
-    const created = await store.create(buildTeam());
-
-    await store.delete(created.id);
-
-    expect(await store.get(created.id)).toBeNull();
-    expect(await new TeamStore(dir, logger).list()).toEqual([]);
-  });
-
   /**
    * The deletion guard has to answer without awaiting: hard delete keeps no
    * tombstone, so a decision taken a moment too late cannot be corrected.
@@ -211,14 +202,6 @@ describe("TeamStore", () => {
       const created = await store.create(buildTeam());
 
       await store.update(created.id, markActive);
-
-      expect(store.creatingTeamNameOf("agent-lead")).toBeNull();
-    });
-
-    test("lets go when the team is deleted", async () => {
-      const created = await store.create(buildTeam());
-
-      await store.delete(created.id);
 
       expect(store.creatingTeamNameOf("agent-lead")).toBeNull();
     });

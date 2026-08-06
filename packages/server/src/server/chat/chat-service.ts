@@ -581,8 +581,9 @@ export class FileBackedChatService {
     // that predate the author model read; for a human it holds a client id,
     // which is why the second exists.
     //
-    // COMPAT(chat-message-author-dual-write): added in v0.3.0, remove once no
-    // client that reads `authorAgentId` is still supported.
+    // COMPAT(chatMessageAuthorDualWrite): added in v0.3.0, remove after
+    // 2027-02-06. `authorAgentId` is required and stays; what ends is writing a
+    // client id into it for a human, once the client floor reads `author`.
     const message = ChatMessageSchema.parse({
       id: randomUUID(),
       roomId: room.id,

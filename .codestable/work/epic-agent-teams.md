@@ -2,8 +2,8 @@
 epic: ../epics/agent-teams.md
 phase: executing
 approved_revision: 74667ea6e2b559834cbf8f6f7ec717d415917df36e718391620e39fae3935a79
-current_item: ITEM-3
-next_action: ITEM-3 续：把 session.ts 的私有 resolveAgentIdentifier 抽成模块函数，再把 chat/post handler 切到 chatService.post() 并在 bootstrap 注入 notifier
+current_item: acceptance
+next_action: 最终验收评审第二轮 + owner 验收；QA 证据（docs/qa.md 平台矩阵）随 PR
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -14,15 +14,15 @@ remote_publish: final
 
 - [x] ITEM-1 protocol + client schema
 - [x] ITEM-2 server 基础改造
-- [ ] ITEM-3 chat 改造
+- [x] ITEM-3 chat 改造
 - [x] ITEM-4 TeamService
-- [ ] ITEM-5 CLI
+- [x] ITEM-5 CLI + daemon E2E
 - [x] ITEM-6 app 运行时 + 新建表单
-- [ ] ITEM-7 app team 面板
+- [x] ITEM-7 app team 面板
 
 ## 临时决策与证据
 
-- canonical 设计：docs/refactors/agent-teams-design.md（v2，已经外部评审一轮，v1→v2 变更见其 §13）。
+- canonical 设计：docs/refactors/agent-teams-design.md（v2，已经外部评审一轮，v1→v2 变更见其 §13）。**验收阶段已按 Epic 要求并入正式 docs 并删除**——下文对它的引用都是当时的事实，去处见 epic 的"最终交付索引"。
 - 2026-08-06 起草 proposed Epic；lessons/v1 目录无相关命中。
 - design review 阶段：reviewer = Paseo agent `9db31667`（codex/gpt-5.6-sol · max thinking · 异构最强，受管理结构化委派创建，无回退）。
   - 轮 1（目标 `5a723409…`/`928f6e60…`）：建议先改再合，4 blocking + 6 important。
@@ -113,7 +113,7 @@ change review：1 个阶段 3 轮（上限），reviewer = Paseo agent `dddac5db
 ### 实现决策
 
 - **方法名 `post` 而非设计文档的 `postMessage`**：lint 规则 `unicorn/require-post-message-target-origin` 把任何该名字的调用当作 `window.postMessage` 报错（6 处）。重命名比每个调用点加 disable 干净。
-- **`dispatchMessage` 保留为 deprecated 兼容入口**：现有调用方（session handler、schedule/loop 通知）仍在用；`post` 是新的唯一写入边界，切完 handler 后再评估能否移除。
+- **`dispatchMessage` 已在第三轮评审中收为 `private appendMessage`**：`post` 是唯一写入边界，全部调用方都切过去了。
 - **notifier 失败不影响投递**：消息已在房间里，让 post 失败会告诉作者"没发出去"，比漏一次通知更糟。
 
 ### 验收要点覆盖

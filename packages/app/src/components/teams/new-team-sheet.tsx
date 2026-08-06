@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, useSyncExternalStore, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
@@ -66,6 +67,7 @@ function OpenNewTeamSheet({
   onClose,
   onCreated,
 }: NewTeamSheetProps): ReactElement {
+  const { t } = useTranslation();
   const controlSize: FieldControlSize = useIsCompactFormFactor() ? "md" : "sm";
   const client = useHostRuntimeClient(serverId);
 
@@ -96,7 +98,7 @@ function OpenNewTeamSheet({
     })();
   }, [client, model, onCreated]);
 
-  const header = useMemo<SheetHeader>(() => ({ title: "New Team" }), []);
+  const header = useMemo<SheetHeader>(() => ({ title: t("teams.form.title") }), [t]);
 
   return (
     <AdaptiveModalSheet visible={visible} onClose={onClose} header={header}>
@@ -118,6 +120,7 @@ function ComposeStep({
   state: TeamFormState;
   size: FieldControlSize;
 }): ReactElement {
+  const { t } = useTranslation();
   const providerOptions = useMemo<Array<SelectFieldOption<string>>>(
     () =>
       state.providerOptions.map((option: TeamFormProviderOption) => ({
@@ -142,34 +145,34 @@ function ComposeStep({
 
   return (
     <View style={styles.body}>
-      <Field label="Name">
+      <Field label={t("teams.form.name")}>
         <FormTextInput
           value={state.name}
           onChangeText={model.setName}
-          placeholder="What is this team for"
+          placeholder={t("teams.form.namePlaceholder")}
           testID="team-form-name"
         />
       </Field>
 
-      <Field label="Task">
+      <Field label={t("teams.form.task")}>
         <FormTextInput
           value={state.task}
           onChangeText={model.setTask}
-          placeholder="What the team should get done"
+          placeholder={t("teams.form.taskPlaceholder")}
           multiline
           testID="team-form-task"
         />
       </Field>
 
       <SelectField
-        label="Lead"
+        label={t("teams.form.lead")}
         value={state.leadProvider}
         selectedDisplay={leadDisplay}
         options={providerOptions}
         loading={loadingProviders}
         onChange={setLead}
-        placeholder="Provider"
-        emptyText="No providers on this daemon"
+        placeholder={t("teams.form.provider")}
+        emptyText={t("teams.form.noProviders")}
         size={size}
         testID="team-form-lead"
       />
@@ -192,11 +195,11 @@ function ComposeStep({
         onPress={model.addMember}
         testID="team-form-add-member"
       >
-        Add member
+        {t("teams.form.addMember")}
       </Button>
 
       <Button disabled={!state.canSubmit} onPress={model.review} testID="team-form-review">
-        Review
+        {t("teams.form.review")}
       </Button>
     </View>
   );
@@ -231,31 +234,32 @@ function MemberRow({
     [model, member.key],
   );
   const remove = useCallback(() => model.removeMember(member.key), [model, member.key]);
+  const { t } = useTranslation();
 
   return (
     <View style={styles.member} testID={`team-form-member-${index}`}>
-      <Field label="Role">
+      <Field label={t("teams.form.role")}>
         <FormTextInput
           value={member.role}
           onChangeText={setRole}
-          placeholder="server"
+          placeholder={t("teams.form.rolePlaceholder")}
           testID={`team-form-member-${index}-role`}
         />
       </Field>
       <SelectField
-        label="Provider"
+        label={t("teams.form.provider")}
         value={member.provider}
         selectedDisplay={display}
         options={providerOptions}
         loading={loadingProviders}
         onChange={setProvider}
-        placeholder="Provider"
-        emptyText="No providers on this daemon"
+        placeholder={t("teams.form.provider")}
+        emptyText={t("teams.form.noProviders")}
         size={size}
         testID={`team-form-member-${index}-provider`}
       />
       <Button variant="ghost" onPress={remove} testID={`team-form-member-${index}-remove`}>
-        Remove
+        {t("teams.form.removeMember")}
       </Button>
     </View>
   );
@@ -270,11 +274,12 @@ function ConfirmStep({
   onBack: () => void;
   onSubmit: () => void;
 }): ReactElement {
+  const { t } = useTranslation();
   const submission = state.submission;
   return (
     <View style={styles.body}>
       <Text style={styles.summary} testID="team-form-cost">
-        {`Creates ${state.agentCount} agents: a lead and ${state.memberCount} members.`}
+        {t("teams.form.cost", { agents: state.agentCount, members: state.memberCount })}
       </Text>
 
       {submission.status === "failure" ? (
@@ -284,12 +289,12 @@ function ConfirmStep({
       ) : null}
       {submission.status === "success" ? (
         <Text style={styles.summary} testID="team-form-success">
-          Team created.
+          {t("teams.form.created")}
         </Text>
       ) : null}
 
       <Button variant="secondary" onPress={onBack} testID="team-form-back">
-        Back
+        {t("teams.form.back")}
       </Button>
       <Button
         disabled={!state.canSubmit}
@@ -297,7 +302,7 @@ function ConfirmStep({
         onPress={onSubmit}
         testID="team-form-submit"
       >
-        Create team
+        {t("teams.form.submit")}
       </Button>
     </View>
   );

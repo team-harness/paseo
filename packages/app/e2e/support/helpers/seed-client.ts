@@ -117,6 +117,7 @@ export interface SeedDaemonClient {
     messages: Array<{ id: string; body: string; authorAgentId: string }>;
     error: string | null;
   }>;
+  listTeams(options?: { includeArchived?: boolean }): Promise<{ teams: TeamSnapshot[] }>;
   createTeam(options: {
     idempotencyKey: string;
     name: string;

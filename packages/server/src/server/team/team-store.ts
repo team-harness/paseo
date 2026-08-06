@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Logger } from "pino";
 
@@ -217,17 +217,6 @@ export class TeamStore {
       this.idempotencyIndex.set(stamped.idempotencyKey, stamped.id);
       this.indexCreatingMembers(stamped);
       return stamped;
-    });
-  }
-
-  async delete(id: string): Promise<void> {
-    await this.serialize(id, async () => {
-      const current = await this.get(id);
-      await rm(this.filePath(id), { force: true });
-      if (current) {
-        this.idempotencyIndex.delete(current.idempotencyKey);
-        this.indexCreatingMembers({ ...current, lifecycle: "archived" });
-      }
     });
   }
 
