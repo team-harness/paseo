@@ -15,6 +15,18 @@ export type TurnLookup =
   | { kind: "running" }
   | { kind: "unknown" };
 
+/**
+ * What became of a dispatch.
+ *
+ * `accepted_untracked` is the one that is easy to miss: some prompts are taken
+ * out of band and open no turn at all. Reading that as a refusal leaves the
+ * assignment queued and re-sends it for the life of the team.
+ */
+export type DispatchResult =
+  | { kind: "accepted"; turnId: string }
+  | { kind: "accepted_untracked" }
+  | { kind: "refused" };
+
 export interface TeamPumpGateway {
   /**
    * DEC-10's rule: not archived and not mid-turn, live state first.
@@ -33,15 +45,12 @@ export interface TeamPumpGateway {
    * not a departure.
    */
   isStillOnTheTeam(input: { teamId: string; agentId: string }): Promise<boolean>;
-  /**
-   * Submits an assignment without replacing anything in flight. Returns the
-   * turn it was accepted as, or null when the provider would not take it.
-   */
+  /** Submits an assignment without replacing anything in flight. */
   dispatchAssignment(input: {
     agentId: string;
     prompt: string;
     clientMessageId: string;
-  }): Promise<string | null>;
+  }): Promise<DispatchResult>;
   /** Returns whether the lead accepted the delivery. */
   deliverCompletions(input: {
     agentId: string;
@@ -73,6 +82,9 @@ export interface TeamPumpOptions {
  * never arrives must not strand the work. A pass reports whether anything is
  * still outstanding, which is what a periodic sweep hangs off.
  */
+/** Stands in for a turn id when the prompt was taken without opening one. */
+const OUT_OF_BAND_TURN = "out-of-band";
+
 export class TeamPump {
   private readonly inbox: TeamInbox;
   private readonly gateway: TeamPumpGateway;
@@ -176,9 +188,9 @@ export class TeamPump {
       // Caught per assignee, because one that fails must not take the rest of
       // the pass with it: the assignees after it would be skipped and the lead
       // would not be told about work that has already settled.
-      let turnId: string | null;
+      let dispatch: DispatchResult;
       try {
-        turnId = await this.gateway.dispatchAssignment({
+        dispatch = await this.gateway.dispatchAssignment({
           agentId: assigneeAgentId,
           prompt: next.prompt,
           clientMessageId: next.clientMessageId,
@@ -190,7 +202,7 @@ export class TeamPump {
         );
         continue;
       }
-      if (turnId === null) {
+      if (dispatch.kind === "refused") {
         // Recording a dispatch that did not happen would bind the assignment to
         // a turn that does not exist, and nothing would ever settle it.
         this.logger.info(
@@ -199,7 +211,19 @@ export class TeamPump {
         );
         continue;
       }
-      await this.inbox.markDispatched({ teamId, taskId: next.taskId, turnId });
+      if (dispatch.kind === "accepted_untracked") {
+        // Taken, but with no turn to watch. Settling it as `unknown` tells the
+        // lead the result cannot be known; leaving it queued would re-send the
+        // same instruction every pass, forever.
+        this.logger.info(
+          { teamId, taskId: next.taskId, assigneeAgentId },
+          "Assignment was accepted out of band, so its outcome cannot be tracked",
+        );
+        await this.inbox.markDispatched({ teamId, taskId: next.taskId, turnId: OUT_OF_BAND_TURN });
+        await this.inbox.settle({ teamId, taskId: next.taskId, outcome: "unknown" });
+        continue;
+      }
+      await this.inbox.markDispatched({ teamId, taskId: next.taskId, turnId: dispatch.turnId });
     }
   }
 

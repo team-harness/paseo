@@ -15,7 +15,7 @@ import type { AgentLabelPatch, AgentManager, AgentRecordChange } from "../agent/
 import type { AgentStorage } from "../agent/agent-storage.js";
 import type { FileBackedChatService } from "../chat/chat-service.js";
 import { TeamInbox } from "./team-inbox.js";
-import { TeamPump, type TeamPumpGateway } from "./team-pump.js";
+import { TeamPump, type DispatchResult, type TeamPumpGateway } from "./team-pump.js";
 import { lookUpTurnOutcome } from "./team-turn-lookup.js";
 import { TeamScheduler } from "./team-scheduler.js";
 import { TeamStore } from "./team-store.js";
@@ -141,7 +141,7 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
     agentId: string;
     prompt: string;
     clientMessageId: string;
-  }): Promise<string | null> {
+  }): Promise<DispatchResult> {
     const { outOfBand } = await sendPromptToAgent({
       agentManager,
       agentStorage,
@@ -152,16 +152,19 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
       replaceRunning: false,
       logger: teamLogger,
     });
-    if (outOfBand) return null;
+    // Taken, but no turn was opened — a control command intercepted before the
+    // provider ever saw it. Delivered, and nothing to watch.
+    if (outOfBand) return { kind: "accepted_untracked" };
     try {
       await waitForAgentRunStartWithTimeout(agentManager, input.agentId);
     } catch (error) {
       // The provider never opened a turn — busy, archived, or too slow. The
       // assignment stays queued and the next pass tries again.
       teamLogger.info({ err: error, agentId: input.agentId }, "No turn opened for a team prompt");
-      return null;
+      return { kind: "refused" };
     }
-    return agentManager.getAgent(input.agentId)?.activeTurnId ?? null;
+    const turnId = agentManager.getAgent(input.agentId)?.activeTurnId;
+    return turnId ? { kind: "accepted", turnId } : { kind: "refused" };
   }
 
   const agents: TeamAgentGateway = {
@@ -293,7 +296,7 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
       }),
 
     deliverCompletions: async (input) => {
-      const turnId = await startTeamTurn({
+      const delivery = await startTeamTurn({
         agentId: input.agentId,
         prompt: input.body,
         clientMessageId: input.deliveryId,
@@ -301,7 +304,7 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
       // Acknowledging on anything weaker discards the batch: a lead archived
       // between the wakeability check and the send makes `sendPromptToAgent` a
       // silent no-op, and calling that "delivered" loses the completions.
-      return turnId !== null;
+      return delivery.kind !== "refused";
     },
 
     lookUpTurnOutcome: (input) =>
@@ -343,6 +346,21 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
     const team = await store.get(teamId);
     if (!team || team.lifecycle !== "active") return;
     await scheduler.kick({ teamId, leadAgentId: team.leadAgentId });
+  }
+
+  /**
+   * Starts a pass without waiting for it.
+   *
+   * For a caller whose own work is already durable and who has nothing to do
+   * with the outcome — `assign_task` is the case. Awaiting would hold the
+   * lead's turn open for as long as the pass takes, and a pass can spend
+   * fifteen seconds per member waiting on a provider that never answers.
+   */
+  function kickTeamInBackground(teamId: string): Promise<void> {
+    void kickTeam(teamId).catch((error: unknown) => {
+      teamLogger.warn({ err: error, teamId }, "A team pump kick failed");
+    });
+    return Promise.resolve();
   }
 
   const roster: TeamToolsRoster = {
@@ -463,7 +481,7 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
           readMessages: (input) => chatService.readMessages(input),
           waitForMessages: (input) => chatService.waitForMessages(input),
         },
-        kickPump: kickTeam,
+        kickPump: kickTeamInBackground,
         logger: teamLogger,
       });
     },

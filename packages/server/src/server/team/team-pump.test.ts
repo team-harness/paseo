@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { TeamInbox } from "./team-inbox.js";
-import { TeamPump, type TeamPumpGateway } from "./team-pump.js";
+import { TeamPump, type DispatchResult, type TeamPumpGateway } from "./team-pump.js";
 
 const logger = createTestLogger();
 
@@ -54,13 +54,19 @@ describe("TeamPump", () => {
       return !this.departed.has(input.agentId);
     }
 
+    /** Set to answer the next dispatch with something other than a turn. */
+    nextDispatch: DispatchResult | null = null;
+
     async dispatchAssignment(input: {
       agentId: string;
       prompt: string;
       clientMessageId: string;
-    }): Promise<string | null> {
+    }): Promise<DispatchResult> {
       this.dispatched.push(input);
-      return this.turnIds.shift() ?? `turn-${this.dispatched.length}`;
+      const override = this.nextDispatch;
+      this.nextDispatch = null;
+      if (override) return override;
+      return { kind: "accepted", turnId: this.turnIds.shift() ?? `turn-${this.dispatched.length}` };
     }
 
     async deliverCompletions(input: {
@@ -172,11 +178,25 @@ describe("TeamPump", () => {
       expect(gateway.dispatched).toHaveLength(2);
     });
 
+    test("settles an assignment the provider took without opening a turn", async () => {
+      await assign("agent-a", "/compact");
+      gateway.nextDispatch = { kind: "accepted_untracked" };
+
+      await pump.run({ teamId: "team-1", leadAgentId: "lead" });
+
+      // Delivered, with nothing to watch. Leaving it queued would re-send the
+      // same instruction on every pass for the life of the team.
+      const [stored] = await inbox.listAssignments("team-1");
+      expect(stored?.state).toBe("settled");
+      expect(stored?.outcome).toBe("unknown");
+      expect(gateway.dispatched).toHaveLength(1);
+    });
+
     // A provider that refuses leaves the assignment queued to try again, rather
     // than recording a dispatch that never happened.
     test("keeps the assignment queued when the provider will not take it", async () => {
       await assign("agent-a", "work");
-      gateway.dispatchAssignment = async () => null;
+      gateway.dispatchAssignment = async () => ({ kind: "refused" });
 
       await pump.run({ teamId: "team-1", leadAgentId: "lead" });
 

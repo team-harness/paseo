@@ -204,13 +204,15 @@ describe("recovering from a crash mid-assignment", () => {
       return true;
     }
 
-    async dispatchAssignment(input: { clientMessageId: string }): Promise<string | null> {
+    async dispatchAssignment(input: { clientMessageId: string }) {
       // The prompt layer deduplicates, so a resend of the same assignment is
       // one delivery however many times the pump tries.
       if (!this.dispatched.includes(input.clientMessageId)) {
         this.dispatched.push(input.clientMessageId);
       }
-      return this.nextTurnId;
+      return this.nextTurnId
+        ? ({ kind: "accepted", turnId: this.nextTurnId } as const)
+        : ({ kind: "refused" } as const);
     }
 
     async deliverCompletions(input: { deliveryId: string }): Promise<boolean> {
