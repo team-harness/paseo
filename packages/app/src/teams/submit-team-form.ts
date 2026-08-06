@@ -38,6 +38,8 @@ export interface TeamFormLabels {
   keyReused: string;
   /** Anything else that went wrong with no message attached. */
   refused: string;
+  /** The key came back pointing at a team that never ran. */
+  neverStarted: string;
 }
 
 export function describeFailure(
@@ -91,7 +93,7 @@ export async function submitTeamForm(
     // id and keeps the key pointing at it forever.
     if (payload.team.lifecycle !== "active" && payload.team.lifecycle !== "creating") {
       form.submitFailed({
-        message: `The team could not be created (${payload.team.lifecycle}).`,
+        message: labels.neverStarted,
         retryable: false,
       });
       return;

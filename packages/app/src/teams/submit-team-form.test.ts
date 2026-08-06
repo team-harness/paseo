@@ -9,6 +9,7 @@ import { submitTeamForm, type TeamCreateGateway } from "./submit-team-form";
 const LABELS = {
   keyReused: "That request was already used for a different team. Try again.",
   refused: "The team could not be created.",
+  neverStarted: "That request already produced a team that never started. Try again.",
 };
 
 function openFilledForm(): TeamFormModel {

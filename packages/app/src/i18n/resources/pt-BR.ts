@@ -1052,6 +1052,7 @@ export const ptBR: TranslationResources = {
       unreadable: "Não foi possível ler os times.",
     },
     form: {
+      neverStarted: "Essa requisição gerou um time que nunca iniciou. Tente de novo.",
       keyReused: "Essa requisição já foi usada para outro time. Tente de novo.",
       refused: "Não foi possível criar o time.",
       title: "Novo time",

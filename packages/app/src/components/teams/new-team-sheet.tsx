@@ -41,7 +41,10 @@ export interface NewTeamSheetProps {
  */
 export function NewTeamSheet(props: NewTeamSheetProps): ReactElement | null {
   if (!props.visible) return null;
-  return <OpenNewTeamSheet {...props} />;
+  // Keyed by host: the form freezes its snapshot at mount, so an instance
+  // reused across a host change would submit one daemon's workspace id to
+  // another's client, with its provider list quietly frozen.
+  return <OpenNewTeamSheet key={props.serverId} {...props} />;
 }
 
 function OpenNewTeamSheet({
@@ -87,7 +90,11 @@ function OpenNewTeamSheet({
       await submitTeamForm(
         model,
         { createTeam: (input) => client.createTeam(input) },
-        { keyReused: t("teams.form.keyReused"), refused: t("teams.form.refused") },
+        {
+          keyReused: t("teams.form.keyReused"),
+          refused: t("teams.form.refused"),
+          neverStarted: t("teams.form.neverStarted"),
+        },
       );
       const result = model.getState().submission;
       if (result.status === "success") onCreated?.(result.teamId);

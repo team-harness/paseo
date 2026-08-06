@@ -1041,6 +1041,7 @@ export const ja: TranslationResources = {
       unreadable: "チーム一覧を読み取れませんでした。",
     },
     form: {
+      neverStarted: "このリクエストで作られたチームは起動しませんでした。もう一度お試しください。",
       keyReused: "このリクエストは別のチームに使われています。もう一度お試しください。",
       refused: "チームを作成できませんでした。",
       title: "新しいチーム",

@@ -1036,6 +1036,7 @@ export const ko: TranslationResources = {
       unreadable: "팀 목록을 읽지 못했습니다.",
     },
     form: {
+      neverStarted: "이 요청으로 만들어진 팀은 시작되지 못했습니다. 다시 시도해 주세요.",
       keyReused: "이 요청은 이미 다른 팀에 사용됐습니다. 다시 시도해 주세요.",
       refused: "팀을 만들지 못했습니다.",
       title: "새 팀",
