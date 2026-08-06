@@ -35,6 +35,8 @@ export type {
   BrowserAutomationExecuteResponseMessage,
   WebSocketFactory,
   WebSocketLike,
+  CreateTeamMemberSpec,
+  CreateTeamOptions,
 } from "./daemon-client.js";
 
 export type ConnectionState =

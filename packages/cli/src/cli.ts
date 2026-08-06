@@ -2,6 +2,7 @@ import { Command, Option } from "commander";
 import { createAgentCommand } from "./commands/agent/index.js";
 import { createDaemonCommand } from "./commands/daemon/index.js";
 import { createChatCommand } from "./commands/chat/index.js";
+import { createTeamCommand } from "./commands/team/index.js";
 import { createLoopCommand } from "./commands/loop/index.js";
 import { createPermitCommand } from "./commands/permit/index.js";
 import { createProviderCommand } from "./commands/provider/index.js";
@@ -169,6 +170,9 @@ export function createCli(): Command {
 
   // Chat commands
   program.addCommand(createChatCommand());
+
+  // Team commands
+  program.addCommand(createTeamCommand());
 
   // Terminal commands
   program.addCommand(createTerminalCommand());
