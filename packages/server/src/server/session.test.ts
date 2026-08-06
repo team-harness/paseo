@@ -5594,6 +5594,44 @@ describe("chat room subscriptions", () => {
 
   // The socket is gone by the time the subscribe finishes. Registering it then
   // resurrects an entry that nothing will ever clean up.
+  // A socket that never sent its own capabilities is absent from the per-source
+  // map but still passes the broadcast gate through the session-level fallback.
+  // Liveness has to be tracked separately, or such a socket could subscribe and
+  // never be served.
+  test("serves a socket that never registered its own capabilities", async () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    let subscriber: ((event: RoomEvent) => void) | null = null;
+    const session = createSessionForTest({
+      targetedMessages: targeted,
+      chatService: {
+        resolveRoomId: vi.fn(async (room: string) => room),
+        readRoomPage: vi.fn(async () => ({
+          roomId: "room-1",
+          messages: [],
+          cursor: 0,
+          hasMore: false,
+        })),
+        onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
+          subscriber = next;
+          return () => {
+            subscriber = null;
+          };
+        }),
+      },
+    });
+    // Session-wide capabilities, with no per-socket registration.
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true });
+    const socket = {};
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "room-1" },
+      socket,
+    );
+    subscriber?.({ roomId: "room-1", message: { id: "m1" }, cursor: 1 });
+
+    expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(1);
+  });
+
   test("does not resurrect a subscription for a socket that dropped mid-request", async () => {
     const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
     let subscriber: ((event: RoomEvent) => void) | null = null;

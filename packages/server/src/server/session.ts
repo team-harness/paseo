@@ -632,6 +632,15 @@ export class Session {
   private readonly viewedTimelineAgentIdsBySource = new Map<object, Set<string>>();
   /** Room ids each socket is following. One session can hold several sockets. */
   private readonly chatRoomSubscriptionsBySource = new Map<object, Set<string>>();
+  /**
+   * Sockets whose cleanup has already run. A subscribe that was still resolving
+   * its room at that moment would otherwise register afterwards, past the
+   * cleanup that was supposed to remove it, and nothing would take it down.
+   * Capability registration is not a usable liveness signal here: a socket that
+   * never sent its own capabilities is absent from that map yet still receives
+   * broadcasts through the session-level fallback.
+   */
+  private readonly retiredSources = new WeakSet<object>();
   private unsubscribeChatRoomMessages: (() => void) | null = null;
   private readonly chatService: FileBackedChatService;
   private readonly clientCapabilitiesBySource = new Map<object, ReadonlySet<ClientCapability>>();
@@ -1071,6 +1080,7 @@ export class Session {
   }
 
   clearAgentTimelineSubscription(source: object): void {
+    this.retiredSources.add(source);
     this.clientCapabilitiesBySource.delete(source);
     if (this.viewedTimelineAgentIdsBySource.delete(source)) {
       this.rebuildViewedTimelineAgentIds();
@@ -1159,7 +1169,7 @@ export class Session {
    * has already run past, and nothing would ever remove it.
    */
   private rememberChatRoomSubscription(source: object | undefined, roomId: string): boolean {
-    if (source && !this.clientCapabilitiesBySource.has(source)) {
+    if (source && this.retiredSources.has(source)) {
       return false;
     }
     const key = source ?? this.defaultTimelineSubscriptionSource;

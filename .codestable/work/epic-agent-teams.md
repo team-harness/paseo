@@ -130,6 +130,22 @@ change review：1 个阶段 3 轮（上限），reviewer = Paseo agent `dddac5db
 | mention 四分支                       | `chat-mentions.test.ts` "waking a mentioned agent" 4 例 + `agent-prompt.test.ts` "leaves a run in flight alone when replaceRunning is false"                        |
 | 旧 `authorAgentId` 兼容              | `chat-service.test.ts` "treats a message written before the author model as an agent"                                                                               |
 
+### 独立变更评审（codex，fresh）
+
+结论"不满足契约"，5 条 finding，其中 4 条 blocker。已全部处理（`8d794e956`），每条都先有失败测试：
+
+| finding       | 实质                                                                                                                                   | 处置                                                                                        |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 1 迁移        | 部分迁移后 legacy 变更被跳过丢消息；**一个坏房间导致整个 payload 校验失败后仍写 marker，全部有效房间永久丢失**；坏 JSON 抛异常阻止启动 | 不跳过重写（`6ec77a84a`）；房间逐条校验；`absent`/`unreadable` 判别，unreadable 不写 marker |
+| 2 订阅        | 读页→注册之间丢消息；按房间名 unsubscribe 无效但回成功；socket 中途断开后订阅被重建且无人清理                                          | 新增 `resolveRoomId`，先注册后读页；unsubscribe 也解析；注册前校验 socket 仍活              |
+| 3 cursor      | 并发 post 全部拿到同一 cursor（实测 `[3,3,3]`），客户端按 cursor 去重会丢消息；`afterCursor` 超界原样返回                              | cursor 取自 `messages.push` 返回值；超界钳制                                                |
+| 4 DEC-10      | stale stored `error` 否决 live idle（恢复后的 agent 永不再被 mention）；`replaceRunning:false` 测试是装饰性的                          | `lastStatus` 让位 live，`internal`/`archivedAt` 仍由 stored 权威；测试改注入真实抛错        |
+| 5 所有权/边界 | 同 id 同 owner 异配置静默返回旧房间；`ownerKind` 无 `ownerId`；`dispatchMessage` 绕过 fanout                                           | 配置冲突报错；owner 必须成对；`dispatchMessage` → `private appendMessage`                   |
+
+**未接受的一半**：评审主张 `error` 状态的 agent 应可唤醒。eligibility（要不要通知）与 wakeability（通知是否启动 turn）是两个问题，排除 error 是改动前既有的产品行为，DEC-10 的"可唤醒"只管后者。已在复核请求中说明并请其按 epic 原文反驳。
+
+**评审未发现、自查发现的**：旧格式消息读回时 `author` 为 undefined——原测试只覆盖了写入侧兜底，读取路径无兜底。加 `withAuthor` 在加载时补齐（带 COMPAT 标签）。
+
 ### 待办
 
-ITEM-3 独立变更评审进行中（fresh reviewer，codex，未看过本代码）。评审结论回来后据其修复，再做里程碑提交并转 ITEM-4。
+修复复核进行中（同一 reviewer，带完整攻击面清单）。通过后做 ITEM-3 里程碑提交并转 ITEM-4。
