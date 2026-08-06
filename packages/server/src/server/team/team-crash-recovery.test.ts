@@ -200,7 +200,7 @@ describe("recovering from a crash mid-assignment", () => {
       return true;
     }
 
-    async isActiveMember(): Promise<boolean> {
+    async isStillOnTheTeam(): Promise<boolean> {
       return true;
     }
 

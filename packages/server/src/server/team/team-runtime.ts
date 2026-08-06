@@ -120,9 +120,10 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
     try {
       await agentManager.updateAgentMetadata(agentId, { labels });
     } catch (error) {
-      // Hard-deleted. There is nothing left to label, and the roster change
-      // that prompted this is recorded either way.
-      if (!isAgentNotFound(error)) throw error;
+      // Hard-deleted: there is nothing left to label, and the roster change
+      // that prompted this is recorded either way. Asked of the record rather
+      // than the message, which cannot tell that from a write that failed.
+      if ((await agentStorage.get(agentId)) !== null) throw error;
     }
   }
 
@@ -228,10 +229,11 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
         await archiveAgentCommand({ agentManager, agentStorage, logger: teamLogger }, agentId);
         return { kind: "archived" as const };
       } catch (error) {
-        // Missing means hard-deleted, which for a team is already the end
-        // state. Anything else has to fail loudly, or a team records itself
+        // Decided from the record, not from the message. "Unknown agent" is
+        // also what a live-only lookup says about an agent that was unloaded
+        // mid-archive, and reading that as "already gone" would record a team
         // archived with a member still running.
-        if (isAgentNotFound(error)) return { kind: "not_found" as const };
+        if ((await agentStorage.get(agentId)) === null) return { kind: "not_found" as const };
         throw error;
       }
     },
@@ -268,10 +270,16 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
   const pumpGateway: TeamPumpGateway = {
     isWakeable: async (agentId) => isAgentWakeable(await agentState(agentId)),
 
-    isActiveMember: async ({ teamId, agentId }) => {
+    isStillOnTheTeam: async ({ teamId, agentId }) => {
       const team = await store.get(teamId);
-      const entry = team?.members.find((member) => member.agentId === agentId);
-      return entry?.state === "active";
+      // A record that cannot be read says nothing about who is on the team.
+      // The store tolerates a damaged file by skipping it, and reading that
+      // silence as "everyone left" would cancel real work.
+      if (!team) return true;
+      const entry = team.members.find((member) => member.agentId === agentId);
+      // `removed` is the terminal one. An `archived` member can be unarchived
+      // back into its seat (DEC-11), so its queue is left where it is.
+      return entry !== undefined && entry.state !== "removed";
     },
 
     dispatchAssignment: (input) =>
@@ -505,9 +513,4 @@ async function findTeamOfAgent(store: TeamStore, agentId: string): Promise<Store
     fallback ??= team;
   }
   return fallback;
-}
-
-/** Whether a lifecycle call failed because the record is gone. */
-function isAgentNotFound(error: unknown): boolean {
-  return error instanceof Error && /not found|unknown agent/i.test(error.message);
 }

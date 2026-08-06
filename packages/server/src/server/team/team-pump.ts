@@ -25,13 +25,14 @@ export interface TeamPumpGateway {
    */
   isWakeable(agentId: string): Promise<boolean>;
   /**
-   * Whether this agent is still an active member of the team.
+   * Whether this agent's roster entry is anything other than `removed`.
    *
    * Work for someone who has left has to end somewhere. Leaving it queued
    * keeps the team sweeping forever and never tells the lead what became of a
-   * task it assigned.
+   * task it assigned. Answers `true` when the team cannot be read — silence is
+   * not a departure.
    */
-  isActiveMember(input: { teamId: string; agentId: string }): Promise<boolean>;
+  isStillOnTheTeam(input: { teamId: string; agentId: string }): Promise<boolean>;
   /**
    * Submits an assignment without replacing anything in flight. Returns the
    * turn it was accepted as, or null when the provider would not take it.
@@ -48,6 +49,12 @@ export interface TeamPumpGateway {
     body: string;
   }): Promise<boolean>;
   lookUpTurnOutcome(input: { agentId: string; turnId: string }): Promise<TurnLookup>;
+}
+
+/** A pass in flight, and whether a trigger has asked for another round. */
+interface PumpRun {
+  rerun: boolean;
+  result: Promise<boolean>;
 }
 
 export interface TeamPumpOptions {
@@ -70,7 +77,7 @@ export class TeamPump {
   private readonly inbox: TeamInbox;
   private readonly gateway: TeamPumpGateway;
   private readonly logger: Logger;
-  private readonly runs = new Map<string, Promise<boolean>>();
+  private readonly runs = new Map<string, PumpRun>();
 
   constructor(options: TeamPumpOptions) {
     this.inbox = options.inbox;
@@ -78,25 +85,42 @@ export class TeamPump {
     this.logger = options.logger.child({ module: "team", component: "team-pump" });
   }
 
-  /** Returns whether the team still has work the pump should come back for. */
+  /**
+   * Runs passes for this team until one has seen everything the callers asked
+   * about, and reports whether work is still outstanding.
+   *
+   * One pass per team at a time, so two triggers never read the same ledger and
+   * dispatch the same assignment twice. But a trigger that arrives during a
+   * pass cannot simply join it: a pass reads the ledger at a point in time, and
+   * whatever the trigger is about may have landed after that read. So it asks
+   * for another round instead, and every caller comes back knowing a pass ran
+   * that could have seen its work.
+   */
   async run(input: { teamId: string; leadAgentId: string }): Promise<boolean> {
-    // One pass per team. A second caller joins the pass already running rather
-    // than reading the same ledger and dispatching the same assignment twice.
     const running = this.runs.get(input.teamId);
     if (running) {
-      await running;
-      // That pass may have looked at everything before this caller's trigger
-      // existed, and nothing here can tell whether it did. So a joiner always
-      // gets "come back": a wasted sweep costs nothing, while a scheduler
-      // dropping the team on a stale "nothing left" strands the work until
-      // some unrelated event happens to wake it.
-      return true;
+      running.rerun = true;
+      return await running.result;
     }
-    const pass = this.runPass(input).finally(() => {
+
+    const entry: PumpRun = { rerun: false, result: Promise.resolve(false) };
+    entry.result = this.runUntilQuiet(input, entry).finally(() => {
       this.runs.delete(input.teamId);
     });
-    this.runs.set(input.teamId, pass);
-    return await pass;
+    this.runs.set(input.teamId, entry);
+    return await entry.result;
+  }
+
+  private async runUntilQuiet(
+    input: { teamId: string; leadAgentId: string },
+    entry: PumpRun,
+  ): Promise<boolean> {
+    let outstanding = false;
+    do {
+      entry.rerun = false;
+      outstanding = await this.runPass(input);
+    } while (entry.rerun);
+    return outstanding;
   }
 
   private async runPass(input: { teamId: string; leadAgentId: string }): Promise<boolean> {
@@ -140,7 +164,7 @@ export class TeamPump {
 
   private async dispatchQueued(teamId: string): Promise<void> {
     for (const assigneeAgentId of await this.inbox.assigneesWithWork(teamId)) {
-      if (!(await this.gateway.isActiveMember({ teamId, agentId: assigneeAgentId }))) {
+      if (!(await this.gateway.isStillOnTheTeam({ teamId, agentId: assigneeAgentId }))) {
         await this.cancelWorkFor(teamId, assigneeAgentId);
         continue;
       }
@@ -149,11 +173,23 @@ export class TeamPump {
       const next = await this.inbox.nextDispatchable(teamId, assigneeAgentId);
       if (!next) continue;
 
-      const turnId = await this.gateway.dispatchAssignment({
-        agentId: assigneeAgentId,
-        prompt: next.prompt,
-        clientMessageId: next.clientMessageId,
-      });
+      // Caught per assignee, because one that fails must not take the rest of
+      // the pass with it: the assignees after it would be skipped and the lead
+      // would not be told about work that has already settled.
+      let turnId: string | null;
+      try {
+        turnId = await this.gateway.dispatchAssignment({
+          agentId: assigneeAgentId,
+          prompt: next.prompt,
+          clientMessageId: next.clientMessageId,
+        });
+      } catch (error) {
+        this.logger.warn(
+          { err: error, teamId, taskId: next.taskId, assigneeAgentId },
+          "Assignment stays queued: dispatching it failed",
+        );
+        continue;
+      }
       if (turnId === null) {
         // Recording a dispatch that did not happen would bind the assignment to
         // a turn that does not exist, and nothing would ever settle it.

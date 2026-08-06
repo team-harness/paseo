@@ -50,7 +50,7 @@ describe("TeamPump", () => {
       return !this.busy.has(agentId) && !this.unwakeable.has(agentId);
     }
 
-    async isActiveMember(input: { teamId: string; agentId: string }): Promise<boolean> {
+    async isStillOnTheTeam(input: { teamId: string; agentId: string }): Promise<boolean> {
       return !this.departed.has(input.agentId);
     }
 
@@ -340,22 +340,33 @@ describe("TeamPump", () => {
     // joiner always gets "come back" — a wasted sweep costs nothing, while a
     // scheduler dropping the team on a stale `false` strands the work until
     // some unrelated event happens to wake it.
-    test("tells a caller that joined a running pass to come back", async () => {
+    test("runs another round for a trigger that arrived during a pass", async () => {
+      let joined: Promise<boolean> | null = null;
+      // Every pass asks whether the lead can be woken, so this counts passes.
+      let passes = 0;
+      const isWakeable = gateway.isWakeable.bind(gateway);
+      gateway.isWakeable = async (agentId: string) => {
+        if (agentId === "lead") passes += 1;
+        return isWakeable(agentId);
+      };
+      gateway.deliverCompletions = async () => {
+        joined ??= pump.run({ teamId: "team-1", leadAgentId: "lead" });
+        return true;
+      };
       await assign("agent-a", "work");
       gateway.turnIds = ["turn-1"];
       await pump.run({ teamId: "team-1", leadAgentId: "lead" });
       gateway.outcomes.set("turn-1", "completed");
+      passes = 0;
 
-      // This pass settles the last assignment and delivers the news, so on its
-      // own it would report nothing left. The joiner arrives while it runs.
-      let joined: Promise<boolean> | null = null;
-      gateway.deliverCompletions = async () => {
-        joined = pump.run({ teamId: "team-1", leadAgentId: "lead" });
-        return true;
-      };
+      await pump.run({ teamId: "team-1", leadAgentId: "lead" });
+      await joined;
 
-      expect(await pump.run({ teamId: "team-1", leadAgentId: "lead" })).toBe(false);
-      expect(await joined).toBe(true);
+      // The trigger arrived after that pass had read the ledger, so joining it
+      // would have answered about work it never looked at. Another round runs
+      // instead, and both callers come back knowing a pass could have seen
+      // theirs.
+      expect(passes).toBe(2);
     });
 
     // A ledger that cannot be read looks empty, and empty means "nothing to

@@ -115,6 +115,14 @@ class StubClient implements AgentClient {
     return new StubSession(config);
   }
 
+  /** Loading a stored-only agent goes through here, which the replay path does. */
+  async resumeSession(
+    _handle: unknown,
+    config?: Partial<AgentSessionConfig>,
+  ): Promise<AgentSession> {
+    return new StubSession({ provider: "codex", cwd: config?.cwd ?? "/", ...config });
+  }
+
   async fetchCatalog() {
     return {
       models: [{ provider: this.provider, id: "gpt-5.4", label: "GPT-5.4", isDefault: true }],
@@ -245,6 +253,10 @@ describe("teams over the real agent runtime", () => {
       ...current,
       lifecycle: "creating" as const,
     }));
+    // Rebuilt, so the lead is stored-only the way it is after a restart. That
+    // is the branch that matters: creation by id has to recognise a record it
+    // owns rather than refuse the id.
+    await build();
     await runtime.service.reconcile();
 
     const replayed = await runtime.store.get(halfBuilt!.id);
@@ -269,6 +281,23 @@ describe("teams over the real agent runtime", () => {
     for (const member of team.members) {
       expect((await agentStorage.get(member.agentId))?.archivedAt).toBeTruthy();
     }
+  });
+
+  test("does not record a team archived when archiving a member failed", async () => {
+    const team = await createTeam();
+    const member = team.members.find((entry) => entry.role === "server");
+    // The window this closes: the agent was live when the archive started and
+    // was unloaded before the call landed. What comes back says "unknown
+    // agent", which is also what a hard-deleted one says — and the record is
+    // the only thing that can tell them apart.
+    agentManager.archiveAgent = async (agentId: string) => {
+      if (agentId === member!.agentId) throw new Error(`Unknown agent '${agentId}'`);
+    };
+
+    await expect(runtime.service.archive(team.id)).rejects.toThrow();
+
+    expect((await runtime.store.get(team.id))?.lifecycle).toBe("archiving");
+    expect((await agentStorage.get(member!.agentId))?.archivedAt).toBeFalsy();
   });
 
   test("takes the team labels off a member that leaves", async () => {
@@ -316,8 +345,9 @@ describe("teams over the real agent runtime", () => {
     await waitUntilIdle(member!.agentId);
     await runtime.pumpOnce(team.id);
     const [dispatched] = await runtime.inbox.listAssignments(team.id);
-    // Bound to a real turn — not to the briefing's, and not to nothing.
-    expect(dispatched?.acceptedTurnId).toBeTruthy();
+    // The member's second turn: its first was the briefing. Binding to that one
+    // would settle the assignment on a result that has nothing to do with it.
+    expect(dispatched?.acceptedTurnId).toBe("turn-2");
     await waitForTurnOutcome(member!.agentId, dispatched!.acceptedTurnId!);
     await runtime.pumpOnce(team.id);
 
@@ -326,5 +356,8 @@ describe("teams over the real agent runtime", () => {
     // Not `unknown`: the assignment was bound to the turn the provider really
     // opened, so its outcome is the turn's own.
     expect(assignment?.outcome).toBe("completed");
+    // And the lead has been told. A delivery that is never acknowledged is
+    // resent forever and no later completion ever reaches the lead.
+    expect(await runtime.inbox.hasNewsForLead(team.id)).toBe(false);
   });
 });
