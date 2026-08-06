@@ -16,7 +16,12 @@ describe("FileBackedChatService", () => {
   let service: FileBackedChatService;
 
   async function sendChatMessage(input: PostChatMessageInput) {
-    return await service.dispatchMessage(input);
+    return await service.post({
+      actor: { kind: "agent", id: input.authorAgentId },
+      room: input.room,
+      body: input.body,
+      replyToMessageId: input.replyToMessageId,
+    });
   }
 
   beforeEach(async () => {
@@ -237,15 +242,36 @@ describe("FileBackedChatService", () => {
       expect(message.author).toEqual({ kind: "human", id: "client-42" });
     });
 
+    // Messages on disk from before the author model have no `author` at all.
     test("treats a message written before the author model as an agent", async () => {
       const room = await service.createRoom({ name: "legacy-author" });
-      const message = await service.dispatchMessage({
-        room: room.name,
-        authorAgentId: "agent-a",
-        body: "posted the old way",
-      });
+      await writeFile(
+        path.join(paseoHome, "chat", "rooms", `${room.id}.json`),
+        JSON.stringify({
+          room: { ...room, messageCount: undefined, lastMessageAt: undefined },
+          messages: [
+            {
+              id: "msg-legacy",
+              roomId: room.id,
+              authorAgentId: "agent-a",
+              body: "posted the old way",
+              replyToMessageId: null,
+              mentionAgentIds: [],
+              createdAt: "2026-08-06T10:00:00.000Z",
+            },
+          ],
+        }),
+        "utf8",
+      );
 
-      expect(message.author).toEqual({ kind: "agent", id: "agent-a" });
+      const reloaded = new FileBackedChatService({
+        paseoHome,
+        logger: pino({ level: "silent" }),
+      });
+      await reloaded.initialize();
+
+      const [message] = await reloaded.readMessages({ room: room.id });
+      expect(message?.author).toEqual({ kind: "agent", id: "agent-a" });
     });
   });
 
@@ -356,6 +382,29 @@ describe("FileBackedChatService", () => {
       ).rejects.toMatchObject<Partial<ChatServiceError>>({ code: "chat_room_owner_conflict" });
     });
 
+    // A replay repeats the request. A request that differs is a different
+    // request against a taken id, and quietly handing back the old room would
+    // leave the caller believing settings it never got.
+    test("refuses a second create that asks for the same id with a different name", async () => {
+      await service.createRoom({ roomId: "room-team-1", name: "team-team-1", ...owner });
+
+      await expect(
+        service.createRoom({ roomId: "room-team-1", name: "team-team-1-renamed", ...owner }),
+      ).rejects.toMatchObject<Partial<ChatServiceError>>({
+        code: "chat_room_config_conflict",
+      });
+    });
+
+    // An owner half-specified is an owner nobody can be: generic delete refuses
+    // the room because it is owned, and no discard call can match the owner.
+    test("refuses an owner kind with no owner id", async () => {
+      await expect(
+        service.createRoom({ roomId: "room-team-1", name: "team-team-1", ownerKind: "team" }),
+      ).rejects.toMatchObject<Partial<ChatServiceError>>({
+        code: "invalid_chat_room_owner",
+      });
+    });
+
     test("refuses a taken id that has no owner at all", async () => {
       const plain = await service.createRoom({ name: "free-for-all" });
 
@@ -450,6 +499,10 @@ describe("FileBackedChatService", () => {
       throw new Error("subscriber blew up");
     }
 
+    function cursorOf(event: { cursor: number }): number {
+      return event.cursor;
+    }
+
     function bodiesOf(messages: Array<{ body: string }>): string[] {
       return messages.map((message) => message.body);
     }
@@ -495,6 +548,35 @@ describe("FileBackedChatService", () => {
 
       expect(page.messages).toEqual([]);
       expect(page.cursor).toBe(0);
+      expect(page.hasMore).toBe(false);
+    });
+
+    // The cursor is what a client dedupes and resumes on, so two messages
+    // sharing one is worse than a wrong number: the client keeps the first and
+    // discards the rest as replays it has already seen.
+    test("gives concurrent posts distinct, ascending cursors", async () => {
+      const room = await service.createRoom({ name: "concurrent" });
+      const seen: Array<{ roomId: string; body: string; cursor: number }> = [];
+      service.onRoomMessage(collectEvents(seen));
+
+      await Promise.all([
+        service.post({ actor: { kind: "agent", id: "agent-a" }, room: room.name, body: "one" }),
+        service.post({ actor: { kind: "agent", id: "agent-b" }, room: room.name, body: "two" }),
+        service.post({ actor: { kind: "agent", id: "agent-c" }, room: room.name, body: "three" }),
+      ]);
+
+      expect(seen.map(cursorOf).sort()).toEqual([1, 2, 3]);
+    });
+
+    // A cursor past the end would have the client discard everything up to it.
+    test("clamps a cursor past the end of the room", async () => {
+      const room = await service.createRoom({ name: "overshot" });
+      await seed(room.name, 3);
+
+      const page = await service.readRoomPage({ room: room.name, afterCursor: 100 });
+
+      expect(page.messages).toEqual([]);
+      expect(page.cursor).toBe(3);
       expect(page.hasMore).toBe(false);
     });
 

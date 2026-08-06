@@ -11,7 +11,7 @@ import { ChatServiceError, type FileBackedChatService } from "../../chat/chat-se
 import type { ScheduleService } from "../../schedule/service.js";
 import type { LoopService } from "../../loop-service.js";
 
-type ChatMessageFixture = Awaited<ReturnType<FileBackedChatService["dispatchMessage"]>>;
+type ChatMessageFixture = Awaited<ReturnType<FileBackedChatService["post"]>>;
 
 interface MakeOptions {
   chat?: { [K in keyof FileBackedChatService]?: unknown };

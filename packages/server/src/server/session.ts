@@ -1090,12 +1090,19 @@ export class Session {
     source: object | undefined,
   ): Promise<void> {
     try {
+      // Listening starts before the first read, with nothing awaited in
+      // between. The other order drops anything posted in the gap, and the
+      // client cannot see that it happened; this order can only repeat a
+      // message, which its cursor makes exactly removable.
+      const roomId = await this.chatService.resolveRoomId(msg.room);
+      if (!this.rememberChatRoomSubscription(source, roomId)) {
+        return;
+      }
       const page = await this.chatService.readRoomPage({
-        room: msg.room,
+        room: roomId,
         ...(typeof msg.afterCursor === "number" ? { afterCursor: msg.afterCursor } : {}),
         ...(typeof msg.limit === "number" ? { limit: msg.limit } : {}),
       });
-      this.rememberChatRoomSubscription(source, page.roomId);
       this.sendToSource(source, {
         type: "chat.room.subscribe.response",
         payload: {
@@ -1122,24 +1129,45 @@ export class Session {
     }
   }
 
-  private handleChatRoomUnsubscribeRequest(
+  /**
+   * Rooms are addressable by name or by id, and subscriptions are keyed by id.
+   * Deleting the selector the client happened to send would leave a
+   * subscription made by name running while the response says it stopped.
+   */
+  private async handleChatRoomUnsubscribeRequest(
     msg: Extract<SessionInboundMessage, { type: "chat.room.unsubscribe.request" }>,
     source: object | undefined,
-  ): void {
+  ): Promise<void> {
     const key = source ?? this.defaultTimelineSubscriptionSource;
-    this.chatRoomSubscriptionsBySource.get(key)?.delete(msg.room);
+    let roomId = msg.room;
+    try {
+      roomId = await this.chatService.resolveRoomId(msg.room);
+    } catch {
+      // A room that no longer resolves cannot be streaming either; fall back to
+      // the raw selector so a subscription keyed by id is still removed.
+    }
+    this.chatRoomSubscriptionsBySource.get(key)?.delete(roomId);
     this.sendToSource(source, {
       type: "chat.room.unsubscribe.response",
-      payload: { requestId: msg.requestId, roomId: msg.room, error: null },
+      payload: { requestId: msg.requestId, roomId, error: null },
     });
   }
 
-  private rememberChatRoomSubscription(source: object | undefined, roomId: string): void {
+  /**
+   * Returns false when the socket went away while the room was being resolved.
+   * Registering it then would rebuild an entry that the socket's own cleanup
+   * has already run past, and nothing would ever remove it.
+   */
+  private rememberChatRoomSubscription(source: object | undefined, roomId: string): boolean {
+    if (source && !this.clientCapabilitiesBySource.has(source)) {
+      return false;
+    }
     const key = source ?? this.defaultTimelineSubscriptionSource;
     const rooms = this.chatRoomSubscriptionsBySource.get(key) ?? new Set<string>();
     rooms.add(roomId);
     this.chatRoomSubscriptionsBySource.set(key, rooms);
     this.ensureChatRoomForwarding();
+    return true;
   }
 
   private ensureChatRoomForwarding(): void {
@@ -2032,10 +2060,8 @@ export class Session {
       // source-aware dispatcher knows which one.
       case "chat.room.subscribe.request":
         return this.handleChatRoomSubscribeRequest(msg, source);
-      case "chat.room.unsubscribe.request": {
-        this.handleChatRoomUnsubscribeRequest(msg, source);
-        return undefined;
-      }
+      case "chat.room.unsubscribe.request":
+        return this.handleChatRoomUnsubscribeRequest(msg, source);
       case "fetch_agent_timeline_request":
         return this.handleFetchAgentTimelineRequest(msg, source);
       case "agent.timeline.list_prompts.request":

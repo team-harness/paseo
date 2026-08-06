@@ -3,9 +3,15 @@ import { ChatMessageSchema, ChatRoomDetailSchema } from "./types.js";
 
 /**
  * Live room subscription. `chat/read` + `chat/wait` cannot express "start
- * following this room" without a gap or a duplicate between the two calls, so
- * subscribe returns the first page and its cursor atomically and every later
- * message arrives on `chat.room.message_posted` with the next cursor.
+ * following this room" without losing what is posted between the two calls, so
+ * subscribe returns the first page with its cursor and every later message
+ * arrives on `chat.room.message_posted` with the next cursor.
+ *
+ * The daemon starts following the room before it reads the page, so a message
+ * posted while the page is being assembled arrives twice: once in the page and
+ * once on the stream. Drop any streamed message whose `cursor` is at or below
+ * the `cursor` in the subscribe response. The other order would lose that
+ * message instead, and a client cannot detect a hole it was never told about.
  *
  * A subscription belongs to one physical socket and dies with it.
  *

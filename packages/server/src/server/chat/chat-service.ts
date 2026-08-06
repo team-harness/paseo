@@ -16,8 +16,11 @@ import {
 } from "@getpaseo/protocol/chat/types";
 
 /** The pre-0.3.0 layout: every room and every message in one file. */
+// Rooms and messages both come through as `unknown` and are validated one
+// entry at a time. Validating the arrays as a whole would let one damaged room
+// discard every healthy conversation in the file.
 const LegacyChatStorePayloadSchema = z.object({
-  rooms: z.array(ChatRoomSchema),
+  rooms: z.array(z.unknown()),
   messages: z.array(z.unknown()),
 });
 
@@ -38,6 +41,22 @@ function trimToNull(value: string | null | undefined): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Fills in `author` for messages stored before it existed. Everything written
+ * back then came from an agent — humans could not post — so `authorAgentId` is
+ * an agent id. Doing it here means the shape of old data stops at the store
+ * instead of every reader having to know about it.
+ *
+ * COMPAT(chat-message-author): added in v0.3.0, remove once no store predating
+ * the author model can still be in use.
+ */
+function withAuthor(message: ChatMessage): ChatMessage {
+  if (message.author) {
+    return message;
+  }
+  return { ...message, author: { kind: "agent", id: message.authorAgentId } };
 }
 
 const CHAT_MENTION_PATTERN = /(?:^|[\s(])@([A-Za-z0-9][A-Za-z0-9._-]*)/g;
@@ -237,22 +256,43 @@ export class FileBackedChatService {
       throw new ChatServiceError("invalid_chat_room_name", "Chat room name is required");
     }
 
+    // An owner is a pair. Half of one produces a room that generic delete
+    // refuses because it is owned, and that no discard call can ever match.
+    if ((input.ownerKind && !input.ownerId) || (input.ownerId && !input.ownerKind)) {
+      throw new ChatServiceError(
+        "invalid_chat_room_owner",
+        "Chat room owner needs both a kind and an id",
+      );
+    }
+
     if (input.roomId) {
       const existing = this.rooms.get(input.roomId);
       if (existing) {
-        // Same owner asking again is a replay, not a collision. Anything else
-        // under this id belongs to someone who did not expect to share it.
+        // Anything under this id that belongs to someone else is a collision.
         if (
-          input.ownerKind &&
-          existing.ownerKind === input.ownerKind &&
-          existing.ownerId === input.ownerId
+          !input.ownerKind ||
+          existing.ownerKind !== input.ownerKind ||
+          existing.ownerId !== input.ownerId
         ) {
-          return this.toRoomDetail(existing);
+          throw new ChatServiceError(
+            "chat_room_owner_conflict",
+            `Chat room ${input.roomId} already exists and belongs to someone else`,
+          );
         }
-        throw new ChatServiceError(
-          "chat_room_owner_conflict",
-          `Chat room ${input.roomId} already exists and belongs to someone else`,
-        );
+        // The same owner asking for the same room is a replay. Asking for a
+        // different room under that id is not, and returning the old one would
+        // leave the caller believing it got settings it did not.
+        if (
+          existing.name !== name ||
+          existing.purpose !== trimToNull(input.purpose) ||
+          existing.displayName !== input.displayName
+        ) {
+          throw new ChatServiceError(
+            "chat_room_config_conflict",
+            `Chat room ${input.roomId} already exists with different settings`,
+          );
+        }
+        return this.toRoomDetail(existing);
       }
     }
 
@@ -337,7 +377,10 @@ export class FileBackedChatService {
     }
 
     // Cursors are 1-based positions, so the message at cursor N is at index N-1.
-    const start = Math.max(0, input.afterCursor);
+    // A cursor past the end is clamped rather than echoed back: handing it
+    // straight back would have the client discard every message up to it as
+    // already seen. It can only come from a room that shrank or a bad client.
+    const start = Math.min(Math.max(0, input.afterCursor), messages.length);
     const page = messages.slice(start, start + limit);
     return {
       roomId: room.id,
@@ -421,7 +464,7 @@ export class FileBackedChatService {
       }
     }
 
-    const message = await this.dispatchMessage({
+    const message = await this.appendMessage({
       room: input.room,
       authorAgentId: input.actor.id,
       body: input.body,
@@ -450,8 +493,14 @@ export class FileBackedChatService {
     return message;
   }
 
-  /** @deprecated Prefer {@link post}, which also runs mention fanout. */
-  async dispatchMessage(input: PostChatMessageInput & { actor?: ChatActor }): Promise<ChatMessage> {
+  /**
+   * Private on purpose: {@link post} is the only way in. A public append would
+   * be a second write path that skips mention fanout, which is exactly the
+   * split this consolidation removed.
+   */
+  private async appendMessage(
+    input: PostChatMessageInput & { actor?: ChatActor },
+  ): Promise<ChatMessage> {
     await this.load();
     const room = this.resolveRoom(input.room);
     const body = input.body.trim();
@@ -479,6 +528,12 @@ export class FileBackedChatService {
     }
 
     const createdAt = new Date().toISOString();
+    // Both `authorAgentId` and `author` are written. The first is what clients
+    // that predate the author model read; for a human it holds a client id,
+    // which is why the second exists.
+    //
+    // COMPAT(chat-message-author-dual-write): added in v0.3.0, remove once no
+    // client that reads `authorAgentId` is still supported.
     const message = ChatMessageSchema.parse({
       id: randomUUID(),
       roomId: room.id,
@@ -490,7 +545,11 @@ export class FileBackedChatService {
       author,
     });
 
-    messages.push(message);
+    // The cursor is this message's own position, taken when it takes that
+    // position. Reading the length back after the await would give every post
+    // that overlapped the same number, and a client that dedupes on the cursor
+    // would keep one of them and discard the rest as replays.
+    const cursor = messages.push(message);
     this.messagesByRoomId.set(room.id, messages);
     this.rooms.set(
       room.id,
@@ -501,7 +560,7 @@ export class FileBackedChatService {
     );
     await this.enqueuePersist(room.id);
     this.notifyWaiters(room.id);
-    this.publishRoomMessage({ roomId: room.id, message, cursor: messages.length });
+    this.publishRoomMessage({ roomId: room.id, message, cursor });
     return message;
   }
 
@@ -601,6 +660,20 @@ export class FileBackedChatService {
     });
   }
 
+  /**
+   * Resolves a room name or id to its id, so a caller can register interest in
+   * the room before reading from it.
+   *
+   * A subscriber that reads its first page and only then starts listening
+   * misses anything posted in between, and the gap is invisible to it. Doing it
+   * the other way round can only duplicate, which the cursor on each message
+   * makes exactly removable.
+   */
+  async resolveRoomId(room: string): Promise<string> {
+    await this.load();
+    return this.resolveRoom(room).id;
+  }
+
   private async load(): Promise<void> {
     if (this.loaded) {
       return;
@@ -640,6 +713,12 @@ export class FileBackedChatService {
    *
    * A missing legacy file with a `.bak` present means the rename already
    * happened, which by the same ordering means the room files are complete.
+   *
+   * A legacy file that cannot be read at all leaves the marker unwritten. The
+   * marker means "the legacy file has been dealt with", and writing it over a
+   * store nobody could read would put every conversation in it out of reach on
+   * a path that never runs again. Chat comes up empty and the next start tries
+   * again, with the file still there to be repaired.
    */
   private async migrateIfNeeded(): Promise<void> {
     if (await this.fileExists(this.migratedMarkerPath)) {
@@ -648,7 +727,11 @@ export class FileBackedChatService {
 
     await fs.mkdir(this.roomsDir, { recursive: true });
     const legacy = await this.readLegacyStore();
-    if (legacy) {
+    if (legacy.status === "unreadable") {
+      return;
+    }
+
+    if (legacy.status === "present") {
       for (const room of legacy.rooms) {
         await writeJsonFileAtomic(this.roomFilePath(room.id), {
           room,
@@ -668,36 +751,72 @@ export class FileBackedChatService {
     });
   }
 
-  /** Returns null when there is nothing to migrate. */
-  private async readLegacyStore(): Promise<{
-    rooms: ChatRoom[];
-    messagesByRoomId: Map<string, ChatMessage[]>;
-  } | null> {
+  /**
+   * `absent` means there is nothing to migrate; `unreadable` means there is
+   * something and this process could not make sense of it. The caller has to
+   * tell them apart — the first is a finished migration, the second must not be
+   * recorded as one.
+   */
+  private async readLegacyStore(): Promise<
+    | { status: "absent" }
+    | { status: "unreadable" }
+    | {
+        status: "present";
+        rooms: ChatRoom[];
+        messagesByRoomId: Map<string, ChatMessage[]>;
+      }
+  > {
     let raw: string;
     try {
       raw = await fs.readFile(this.legacyFilePath, "utf8");
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "ENOENT") {
-        this.logger.error(
-          { err: error, filePath: this.legacyFilePath },
-          "Failed to read legacy chat store",
-        );
+      if (code === "ENOENT") {
+        return { status: "absent" };
       }
-      return null;
+      this.logger.error(
+        { err: error, filePath: this.legacyFilePath },
+        "Failed to read legacy chat store",
+      );
+      return { status: "unreadable" };
     }
 
-    const parsed = LegacyChatStorePayloadSchema.safeParse(JSON.parse(raw));
+    let payload: unknown;
+    try {
+      payload = JSON.parse(raw);
+    } catch (error) {
+      this.logger.error(
+        { err: error, filePath: this.legacyFilePath },
+        "Legacy chat store is not valid JSON; leaving it in place",
+      );
+      return { status: "unreadable" };
+    }
+
+    const parsed = LegacyChatStorePayloadSchema.safeParse(payload);
     if (!parsed.success) {
       this.logger.error(
         { issues: parsed.error.issues, filePath: this.legacyFilePath },
         "Legacy chat store is unreadable; leaving it in place",
       );
-      return null;
+      return { status: "unreadable" };
     }
 
-    // Messages are validated one by one: a single damaged entry should cost that
-    // entry, not every conversation in the file. The original is never edited.
+    // Entries are validated one at a time: a single damaged room or message
+    // should cost that entry, not every conversation in the file. The original
+    // is never edited.
+    const rooms: ChatRoom[] = [];
+    for (const candidate of parsed.data.rooms) {
+      const room = ChatRoomSchema.safeParse(candidate);
+      if (!room.success) {
+        this.logger.warn(
+          { issues: room.error.issues },
+          "Skipping unreadable room while migrating chat store",
+        );
+        continue;
+      }
+      rooms.push(room.data);
+    }
+
     const messagesByRoomId = new Map<string, ChatMessage[]>();
     for (const candidate of parsed.data.messages) {
       const message = ChatMessageSchema.safeParse(candidate);
@@ -709,10 +828,10 @@ export class FileBackedChatService {
         continue;
       }
       const bucket = messagesByRoomId.get(message.data.roomId) ?? [];
-      bucket.push(message.data);
+      bucket.push(withAuthor(message.data));
       messagesByRoomId.set(message.data.roomId, bucket);
     }
-    return { rooms: parsed.data.rooms, messagesByRoomId };
+    return { status: "present", rooms, messagesByRoomId };
   }
 
   private async loadRoomFiles(): Promise<void> {
@@ -743,7 +862,7 @@ export class FileBackedChatService {
           continue;
         }
         this.rooms.set(parsed.data.room.id, parsed.data.room);
-        this.messagesByRoomId.set(parsed.data.room.id, parsed.data.messages);
+        this.messagesByRoomId.set(parsed.data.room.id, parsed.data.messages.map(withAuthor));
       } catch (error) {
         this.logger.error({ err: error, filePath }, "Skipping unreadable chat room file");
       }

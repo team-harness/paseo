@@ -195,15 +195,19 @@ test("sendPromptToAgent forwards the client message id as run options", async ()
 });
 
 // DEC-10: the caller decides whether a prompt may cancel work in flight. A
-// mention that loses the race against a turn starting must still queue rather
-// than replace, so eligibility checked a moment earlier cannot become an
-// interrupt.
+// mention that loses the race against a turn starting gives up on waking the
+// agent, so eligibility checked a moment earlier cannot become an interrupt.
+// The message is in the room either way; the agent reads it when it next looks.
 test("sendPromptToAgent leaves a run in flight alone when replaceRunning is false", async () => {
   const agent: ManagedAgent = Object.create(null);
   Reflect.set(agent, "id", "agent-1");
   Reflect.set(agent, "provider", "codex");
 
-  const streamAgentSpy = vi.fn(() => (async function* noop() {})());
+  // What the real AgentManager does with a run already in flight: it refuses,
+  // rather than queueing behind it (agent-manager.ts:2276).
+  const streamAgentSpy = vi.fn(() => {
+    throw new Error("Agent agent-1 already has an active run");
+  });
   const replaceAgentRunSpy = vi.fn(async () => (async function* noop() {})());
   const agentManager: AgentManager = Object.create(AgentManager.prototype);
   Reflect.set(
@@ -224,17 +228,19 @@ test("sendPromptToAgent leaves a run in flight alone when replaceRunning is fals
     vi.fn(async () => null),
   );
 
-  await sendPromptToAgent({
-    agentManager,
-    agentStorage,
-    agentId: "agent-1",
-    prompt: "hello",
-    replaceRunning: false,
-    logger: createTestLogger(),
-  });
+  await expect(
+    sendPromptToAgent({
+      agentManager,
+      agentStorage,
+      agentId: "agent-1",
+      prompt: "hello",
+      replaceRunning: false,
+      logger: createTestLogger(),
+    }),
+  ).rejects.toThrow("already has an active run");
 
+  // The point of the flag: the turn in flight was never touched.
   expect(replaceAgentRunSpy).not.toHaveBeenCalled();
-  expect(streamAgentSpy).toHaveBeenCalledTimes(1);
 });
 
 test("finish notifications tell the parent the child's last assistant message", async () => {

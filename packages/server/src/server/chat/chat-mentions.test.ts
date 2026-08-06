@@ -104,6 +104,20 @@ describe("chat mentions", () => {
     expect(prepared.targetMentionAgentIds).toEqual(["active-agent"]);
   });
 
+  // `archivedAt` is a durable fact and the stored record owns it. `lastStatus`
+  // is a snapshot taken at a turn boundary, so a recovered agent still reads as
+  // `error` there until it next writes — and would never be mentioned again.
+  test("lets a live agent overrule a stored status that has gone stale", async () => {
+    const prepared = await prepare({
+      authorAgentId: "author-agent",
+      mentionAgentIds: ["recovered-agent"],
+      storedAgents: [storedAgent({ id: "recovered-agent", lastStatus: "error" })],
+      liveAgents: [liveAgent({ id: "recovered-agent", lifecycle: "idle" })],
+    });
+
+    expect(prepared.targetMentionAgentIds).toEqual(["recovered-agent"]);
+  });
+
   test("@everyone deduplicates with explicit mentions and keeps explicit non-everyone mentions", async () => {
     const prepared = await prepare({
       authorAgentId: "author-agent",
@@ -235,6 +249,41 @@ describe("chat mentions", () => {
       });
       return woken;
     }
+
+    // The agent went from idle to running between the check and the send, so
+    // the manager refuses the run. That is the non-interrupting outcome working
+    // as intended, and it must not cost the other mentioned agents their nudge.
+    test("gives up quietly when the agent starts a turn mid-send", async () => {
+      const woken: string[] = [];
+      await notifyChatMentions({
+        room: "coord-room",
+        authorAgentId: "author-agent",
+        body: "@agent-a @agent-b status?",
+        mentionAgentIds: ["agent-a", "agent-b"],
+        logger: { warn: vi.fn() } as unknown as pino.Logger,
+        storedAgents: [storedAgent({ id: "agent-a" }), storedAgent({ id: "agent-b" })],
+        liveAgents: [
+          liveAgent({ id: "agent-a", lifecycle: "idle" }),
+          liveAgent({ id: "agent-b", lifecycle: "idle" }),
+        ],
+        prepared: {
+          targetMentionAgentIds: ["agent-a", "agent-b"],
+          roomPosterAgentIds: [],
+        },
+        resolveAgentIdentifier: async (identifier: string) => ({
+          ok: true as const,
+          agentId: identifier,
+        }),
+        sendAgentMessage: async (agentId: string) => {
+          if (agentId === "agent-a") {
+            throw new Error("Agent agent-a already has an active run");
+          }
+          woken.push(agentId);
+        },
+      });
+
+      expect(woken).toEqual(["agent-b"]);
+    });
 
     test("wakes an agent that is live and idle", async () => {
       const woken = await notifyOne({

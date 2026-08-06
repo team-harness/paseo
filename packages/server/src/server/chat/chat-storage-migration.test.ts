@@ -269,4 +269,40 @@ describe("chat store migration", () => {
     expect((await service.readMessages({ room: "room-2" })).map((m) => m.id)).toEqual(["msg-3"]);
     expect(await exists("rooms.json.bak")).toBe(true);
   });
+
+  // One bad room used to fail the whole payload, and the marker went down
+  // anyway — every healthy conversation in the file gone, silently, forever.
+  test("carries over the healthy rooms when one room entry is damaged", async () => {
+    await writeLegacy({
+      rooms: [legacyPayload.rooms[0], { id: "room-broken" }, legacyPayload.rooms[1]],
+      messages: legacyPayload.messages,
+    });
+
+    const service = createService();
+    await service.initialize();
+
+    expect(await listRoomFiles()).toEqual(["room-1.json", "room-2.json"]);
+    expect((await service.readMessages({ room: "room-1" })).map((m) => m.id)).toEqual([
+      "msg-1",
+      "msg-2",
+    ]);
+    expect((await service.readMessages({ room: "room-2" })).map((m) => m.id)).toEqual(["msg-3"]);
+  });
+
+  // Refusing to start is bad; starting with an empty chat store and a marker
+  // that says "done" is worse, because the legacy file is then unreachable.
+  test("starts with chat unavailable rather than declaring an unreadable store migrated", async () => {
+    await mkdir(chatDir, { recursive: true });
+    await writeFile(join(chatDir, "rooms.json"), "{ not json at all", "utf8");
+
+    const service = createService();
+    await service.initialize();
+
+    expect(await service.listRooms()).toEqual([]);
+    // No marker and no rename: the legacy file is still there to be recovered,
+    // and the next start will try again.
+    expect(await exists(".migrated")).toBe(false);
+    expect(await exists("rooms.json")).toBe(true);
+    expect(await exists("rooms.json.bak")).toBe(false);
+  });
 });

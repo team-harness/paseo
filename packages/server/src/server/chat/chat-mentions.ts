@@ -216,15 +216,20 @@ function isChatMentionTargetEligible(input: {
     return false;
   }
 
+  // `internal` and `archivedAt` are durable facts the stored record owns.
   const stored = input.storedAgents.find((record) => record.id === input.agentId);
-  if (stored?.internal || stored?.archivedAt || stored?.lastStatus === "error") {
+  if (stored?.internal || stored?.archivedAt) {
     return false;
   }
 
+  // `lastStatus` is not: it is written at turn boundaries, so an agent that has
+  // recovered still reads as `error` there until it next writes. Letting that
+  // decide would make the agent permanently unmentionable. Where a live entry
+  // exists it is the current answer; the stored status only fills the gap.
   const live = input.liveAgents.find((agent) => agent.id === input.agentId);
   if (live) {
     return !live.internal && live.lifecycle !== "error";
   }
 
-  return true;
+  return stored?.lastStatus !== "error";
 }

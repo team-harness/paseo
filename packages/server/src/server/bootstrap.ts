@@ -906,8 +906,9 @@ export async function createPaseoDaemon(
             agentId,
             prompt: formatSystemNotificationPrompt(text),
             unarchive: false,
-            // DEC-10: the eligibility check happened a moment ago, so a turn may
-            // have started since. Queue behind it rather than cancel it.
+            // DEC-10: the wakeability check happened a moment ago, so a turn
+            // may have started since. Give up on the nudge rather than cancel
+            // that turn — the message is in the room and will be read there.
             replaceRunning: false,
             logger,
           });
