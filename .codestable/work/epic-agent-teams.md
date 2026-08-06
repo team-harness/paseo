@@ -290,6 +290,26 @@ ITEM-4 起遵守：
 
 另外补齐了 forms.md 规则 3/4——provider 解析是模型状态而非外壳的 effect，且按 host 隔离。
 
+---
+
+## ITEM-7 · app team 面板（完成）
+
+room 主区 + 名册 + 权限聚合条 + compact 适配（`components/teams/team-panel.tsx`、`team-room.tsx`）、tab target `{kind:"team"}` 走 panel registry、deep-link resolver `/h/:serverId/team/:teamId`、侧栏 team 条目，加一条真浏览器 E2E。
+
+**上游触点**：`workspace-screen.tsx` 两处、`sidebar-workspace-list.tsx` 与 `sidebar-status-list.tsx` 各一行 JSX + 一个 import、`register-panels.ts` +2、host `_layout.tsx` +1、`fake-agent-client.ts` 三处（多选权限请求）。面板自己注册进 registry，没有改 workspace-screen 的分发。
+
+### 评审：4 blocker + 一处契约偏离
+
+偏离最贵：契约 §6.3 写的是"关闭 lead 的 tab 不走归档"，我做成了"确认后归档"，并且只在提交信息里论证了这个改动——评审指出**确认对话框不是那个差别**：team 从面板结束，因为那是唯一能说清代价的地方。现在 lead 的 tab 关闭即走人，批量关闭问同一个规则（批量归档一样彻底，只是更安静），并提示归档在哪。
+
+四个 blocker：权限行自造 Allow/Deny（把 N 选一答成选项一，带 bespoke id 的请求会被解析成"取消"）；面板从不读 `team.lifecycle`（归档后按钮全在原地，于是归档一个 team 唯一可见的结果是什么都没变）；两个破坏性动作没有 `confirmDialog`（design.md §14 明令，且 team 级 unarchive 是 Phase 3 未做项）；gateway 测试两个方法共用一个 `vi.fn`，"移除调用 removeTeamMember"对着归档的实现也绿。
+
+### 侧栏那次：测试比我更清楚哪个组件在渲染
+
+team 行加进了 `sidebar/sidebar-workspace-row.tsx`——**没有任何地方 import 它**。真正画行的是 `sidebar-workspace-list` 和 `sidebar-status-list`。单测不会发现（没有组件测试），typecheck 也不会（文件本身合法）。是浏览器 E2E 找到的，而它能找到是因为它先开页面再建 team：先建 team 只会证明连接时那次列表读。
+
+顺带纠正了一个我自己的错误推断：我以为 app 从未声明 teams capability，加了两行；实际 `DaemonClient` 的 hello 默认就带着它们，两行是重复的，已删。
+
 ### 待办
 
-ITEM-7：app team 面板（权限聚合、关键动作三态）+ Playwright E2E。
+最终验收评审 + owner 验收。QA 证据（docs/qa.md 的平台矩阵）随 PR 提交。
