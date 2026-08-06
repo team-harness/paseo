@@ -1,5 +1,5 @@
 import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
-import type { OutputSchema } from "../../output/index.js";
+import type { AnyCommandResult, OutputOptions, OutputSchema } from "../../output/index.js";
 
 export interface TeamRow {
   id: string;
@@ -25,9 +25,11 @@ export function toTeamRow(team: TeamSnapshot): TeamRow {
     name: team.name,
     lifecycle: team.lifecycle,
     lead: team.leadAgentId,
-    // Only the seats that are still taken. Counting the whole roster would
-    // report a team as bigger than it is for the rest of its life.
-    members: team.members.filter((member) => member.state === "active").length,
+    // Seats still taken, and the lead does not occupy one — the cap the user is
+    // told about counts non-lead members only.
+    members: team.members.filter(
+      (member) => member.state === "active" && member.agentId !== team.leadAgentId,
+    ).length,
     room: team.chatRoomId,
     createdAt: team.createdAt,
   };
@@ -43,6 +45,15 @@ export function toTeamMemberRows(team: TeamSnapshot): TeamMemberRow[] {
   }));
 }
 
+/** The team and its roster together, so `inspect` answers both questions at once. */
+export interface TeamDetail extends TeamRow {
+  roster: TeamMemberRow[];
+}
+
+export function toTeamDetail(team: TeamSnapshot): TeamDetail {
+  return { ...toTeamRow(team), roster: toTeamMemberRows(team) };
+}
+
 export const teamSchema: OutputSchema<TeamRow> = {
   idField: "id",
   columns: [
@@ -55,6 +66,43 @@ export const teamSchema: OutputSchema<TeamRow> = {
     { header: "CREATED", field: "createdAt", width: 24 },
   ],
 };
+
+export const teamDetailSchema: OutputSchema<TeamDetail> = {
+  idField: "id",
+  columns: [
+    { header: "ID", field: "id", width: 12 },
+    { header: "NAME", field: "name", width: 24 },
+    { header: "LIFECYCLE", field: "lifecycle", width: 10 },
+    { header: "MEMBERS", field: "members", width: 8, align: "right" },
+    { header: "LEAD", field: "lead", width: 36 },
+    { header: "ROOM", field: "room", width: 20 },
+    { header: "CREATED", field: "createdAt", width: 24 },
+  ],
+  renderHuman: renderTeamDetail,
+};
+
+function renderTeamDetail(result: AnyCommandResult<TeamDetail>, _options: OutputOptions): string {
+  const teams = result.type === "list" ? result.data : [result.data];
+  return teams.map(renderTeamBlock).join("\n\n");
+}
+
+function renderTeamBlock(team: TeamDetail): string {
+  const lines = [
+    `${team.name} [${team.id}] — ${team.lifecycle}`,
+    `  lead: ${team.lead}`,
+    `  room: ${team.room}`,
+    `  created: ${team.createdAt}`,
+    "",
+    "  ROLE                 STATE      AGENT",
+  ];
+  for (const member of team.roster) {
+    lines.push(
+      `  ${member.role.padEnd(20)} ${member.state.padEnd(10)} ${member.agentId}` +
+        (member.removalReason === "-" ? "" : ` (${member.removalReason})`),
+    );
+  }
+  return lines.join("\n");
+}
 
 export const teamMemberSchema: OutputSchema<TeamMemberRow> = {
   idField: "agentId",

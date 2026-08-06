@@ -4,6 +4,7 @@ import {
   connectTeamClient,
   newIdempotencyKey,
   parseMemberSpec,
+  TEAM_LEAD_ROLE,
   toTeamCommandError,
   toTeamResponseError,
   type TeamCommandOptions,
@@ -18,6 +19,7 @@ export interface TeamCreateOptions extends TeamCommandOptions {
   lead?: string;
   member?: string[];
   template?: string;
+  idempotencyKey?: string;
 }
 
 function required(value: string | undefined, flag: string): string {
@@ -41,13 +43,16 @@ export async function runCreateCommand(
   const { client } = await connectTeamClient(options.host);
   try {
     const payload = await client.createTeam({
-      // One command is one attempt: a retry the user types is a new decision,
-      // and reusing the key would keep handing back the team that failed.
-      idempotencyKey: newIdempotencyKey(),
+      // A fresh key per invocation, unless the user passes the one from an
+      // attempt whose outcome they never learned. Without that option a dropped
+      // socket after the daemon had committed would cost them a second team;
+      // with it always on, a retry after a definite failure would keep handing
+      // back the team that failed.
+      idempotencyKey: options.idempotencyKey?.trim() || newIdempotencyKey(),
       name,
       workspaceId: workspace,
       task,
-      lead: parseMemberSpec(lead),
+      lead: { role: TEAM_LEAD_ROLE, provider: lead },
       members: (options.member ?? []).map(parseMemberSpec),
       ...(options.template ? { templateId: options.template } : {}),
     });

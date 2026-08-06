@@ -147,7 +147,7 @@ import {
   type WorkspaceArchiveContext,
 } from "./workspace-registry.js";
 import { FileBackedChatService } from "./chat/chat-service.js";
-import { createTeamRuntime } from "./team/team-runtime.js";
+import { createTeamRuntime, type TeamRuntime } from "./team/team-runtime.js";
 import { notifyChatMentions, prepareChatMentionFanout } from "./chat/chat-mentions.js";
 import { resolveAgentIdentifier } from "./agent/resolve-agent-identifier.js";
 import { formatSystemNotificationPrompt, sendPromptToAgent } from "./agent/agent-prompt.js";
@@ -455,6 +455,7 @@ export interface PaseoDaemon {
   config: PaseoDaemonConfig;
   agentManager: AgentManager;
   agentStorage: AgentStorage;
+  teamRuntime: TeamRuntime;
   terminalManager: TerminalManager;
   serviceProxy: ServiceProxySubsystem;
   scriptRuntimeStore: WorkspaceScriptRuntimeStore;
@@ -1786,6 +1787,7 @@ export async function createPaseoDaemon(
     config,
     agentManager,
     agentStorage,
+    teamRuntime,
     terminalManager,
     serviceProxy,
     scriptRuntimeStore,

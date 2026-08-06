@@ -63,8 +63,10 @@ describe("canonical CLI surface", () => {
     // Members are optional: a lead can build the rest of its team itself.
     expect(help).toContain("--workspace <id>");
     expect(help).toContain("--task <text>");
-    expect(help).toContain("--lead <role=provider>");
+    expect(help).toContain("--lead <provider>");
     expect(help).toContain("--member <role=provider>");
+    // The key exists for the retry whose outcome nobody learned.
+    expect(help).toContain("--idempotency-key <key>");
   });
 
   it("offers opening an existing agent in the desktop app", () => {

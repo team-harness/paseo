@@ -21,13 +21,18 @@ export function createTeamCommand(): Command {
       .argument("<name>", "Team name")
       .requiredOption("--workspace <id>", "Workspace the team's agents run in")
       .requiredOption("--task <text>", "What the team is for")
-      .requiredOption("--lead <role=provider>", "The lead, for example lead=claude")
+      .requiredOption("--lead <provider>", "Provider for the lead, for example claude")
       .option(
         "--member <role=provider>",
         "A member; repeat for more, for example --member server=codex",
         collectMember,
       )
-      .option("--template <id>", "Template this team was built from"),
+      .option("--template <id>", "Template this team was built from")
+      .option(
+        "--idempotency-key <key>",
+        "Reuse the key from an attempt whose outcome you never learned, so the daemon " +
+          "returns the team it already built instead of building a second one",
+      ),
   ).action(withOutput(runCreateCommand));
 
   addJsonAndDaemonHostOptions(

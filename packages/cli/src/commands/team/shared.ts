@@ -4,6 +4,9 @@ import { TEAM_ERROR_CODES } from "@getpaseo/protocol/team/rpc-schemas";
 import type { CommandError, CommandOptions } from "../../output/index.js";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 
+/** The role the daemon gives a lead, whatever the request called it. */
+export const TEAM_LEAD_ROLE = "lead";
+
 export interface TeamCommandOptions extends CommandOptions {
   host?: string;
 }
@@ -48,9 +51,10 @@ export function parseMemberSpec(input: string): CreateTeamMemberSpec {
 /**
  * A key for one create attempt.
  *
- * Reused only while the outcome is unknown, which for a CLI invocation is never
- * — one command is one attempt. A retry the user types is a new decision and
- * gets a new key, or the daemon would keep handing back the team that failed.
+ * A retry the user types after a definite failure is a new decision and needs a
+ * new key, or the daemon keeps handing back the team that failed. A retry after
+ * an outcome nobody learned is the opposite case, and that is what
+ * `--idempotency-key` is for.
  */
 export function newIdempotencyKey(): string {
   return `cli-${randomUUID()}`;
