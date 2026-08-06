@@ -128,6 +128,7 @@ import { ForgeBrandIcon } from "@/git/forge-icon";
 import { useComposerGithubAutoAttach } from "./github/auto-attach";
 import { readClipboardImage } from "./clipboard-image";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
+import { findLastUserMessageText, resolveLastMessageRecall } from "@/composer/history";
 import {
   appendWorkspaceFileAttachment,
   getWorkspaceFileAttachmentKey,
@@ -1081,6 +1082,14 @@ export function Composer({
   );
   const queuedMessages = queuedMessagesRaw ?? EMPTY_ARRAY;
 
+  const lastUserMessage = useSessionStore((state) => {
+    const session = state.sessions[serverId];
+    return findLastUserMessageText(
+      session?.agentStreamTail.get(agentId),
+      session?.agentStreamHead.get(agentId),
+    );
+  });
+
   const setQueuedMessages = useSessionStore((state) => state.setQueuedMessages);
 
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -1714,9 +1723,28 @@ export function Composer({
 
   // Handle keyboard navigation for command autocomplete.
   const handleCommandKeyPress = useCallback(
-    (event: { key: string; preventDefault: () => void }) =>
-      autocompleteOnKeyPressRef.current(event),
-    [],
+    (event: { key: string; preventDefault: () => void }) => {
+      if (autocompleteOnKeyPressRef.current(event)) {
+        return true;
+      }
+      const recall = resolveLastMessageRecall({
+        key: event.key,
+        value: userInput,
+        lastUserMessage,
+      });
+      if (!recall) {
+        return false;
+      }
+      event.preventDefault();
+      setUserInput(recall.value);
+      setCursorIndex(recall.selection.start);
+      setTextSelection(recall.selection);
+      requestAnimationFrame(() => {
+        messageInputRef.current?.setSelection(recall.selection);
+      });
+      return true;
+    },
+    [lastUserMessage, setUserInput, userInput],
   );
 
   const cancelButtonStyle = useMemo(
