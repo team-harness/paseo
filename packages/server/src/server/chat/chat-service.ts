@@ -43,22 +43,6 @@ function trimToNull(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-/**
- * Fills in `author` for messages stored before it existed. Everything written
- * back then came from an agent — humans could not post — so `authorAgentId` is
- * an agent id. Doing it here means the shape of old data stops at the store
- * instead of every reader having to know about it.
- *
- * COMPAT(chat-message-author): added in v0.3.0, remove once no store predating
- * the author model can still be in use.
- */
-function withAuthor(message: ChatMessage): ChatMessage {
-  if (message.author) {
-    return message;
-  }
-  return { ...message, author: { kind: "agent", id: message.authorAgentId } };
-}
-
 const CHAT_MENTION_PATTERN = /(?:^|[\s(])@([A-Za-z0-9][A-Za-z0-9._-]*)/g;
 
 export function parseMentionAgentIds(body: string): string[] {
@@ -134,6 +118,8 @@ export interface ChatRoomMessageEvent {
 }
 
 export type ChatRoomMessageSubscriber = (event: ChatRoomMessageEvent) => void;
+
+export type ChatRoomRemovedSubscriber = (roomId: string) => void;
 
 export interface InspectChatRoomInput {
   room: string;
@@ -215,12 +201,14 @@ export class FileBackedChatService {
   private readonly migratedMarkerPath: string;
   private readonly logger: pino.Logger;
   private loaded = false;
+  private readOnly = false;
   private readonly rooms = new Map<string, ChatRoom>();
   private readonly messagesByRoomId = new Map<string, ChatMessage[]>();
   /** Serialized per room: one busy room no longer rewrites every other room. */
   private readonly persistQueues = new Map<string, Promise<void>>();
   private readonly waitersByRoomId = new Map<string, Set<Waiter>>();
   private readonly roomMessageSubscribers = new Set<ChatRoomMessageSubscriber>();
+  private readonly roomRemovedSubscribers = new Set<ChatRoomRemovedSubscriber>();
 
   private mentionHandler: ChatMentionHandler | null;
 
@@ -251,6 +239,7 @@ export class FileBackedChatService {
 
   async createRoom(input: CreateChatRoomInput): Promise<ChatRoomDetail> {
     await this.load();
+    this.assertWritable();
     const name = input.name.trim();
     if (name.length === 0) {
       throw new ChatServiceError("invalid_chat_room_name", "Chat room name is required");
@@ -335,6 +324,7 @@ export class FileBackedChatService {
 
   async deleteRoom(input: DeleteChatRoomInput): Promise<DeleteChatRoomResult> {
     await this.load();
+    this.assertWritable();
     const room = this.resolveRoom(input.room);
     if (room.ownerKind) {
       // An owned room lives and dies with its owner. Deleting it from here would
@@ -352,6 +342,7 @@ export class FileBackedChatService {
       room.id,
       new ChatServiceError("chat_room_deleted", `Chat room deleted: ${room.name}`),
     );
+    this.publishRoomRemoved(room.id);
     return { room: detail };
   }
 
@@ -401,6 +392,19 @@ export class FileBackedChatService {
     };
   }
 
+  /**
+   * Announces a room that is gone, so watchers can let go of it. Ids are
+   * reusable — a team room is named after its team — so a subscription nobody
+   * unsubscribed would otherwise start streaming a different room under the
+   * same id to whoever was watching the old one.
+   */
+  onRoomRemoved(subscriber: ChatRoomRemovedSubscriber): () => void {
+    this.roomRemovedSubscribers.add(subscriber);
+    return () => {
+      this.roomRemovedSubscribers.delete(subscriber);
+    };
+  }
+
   private publishRoomMessage(event: ChatRoomMessageEvent): void {
     for (const subscriber of Array.from(this.roomMessageSubscribers)) {
       try {
@@ -413,6 +417,16 @@ export class FileBackedChatService {
     }
   }
 
+  private publishRoomRemoved(roomId: string): void {
+    for (const subscriber of Array.from(this.roomRemovedSubscribers)) {
+      try {
+        subscriber(roomId);
+      } catch (error) {
+        this.logger.error({ err: error, roomId }, "Chat room removal subscriber failed");
+      }
+    }
+  }
+
   /**
    * The owner's way to remove its own room, which generic delete refuses.
    *
@@ -421,6 +435,7 @@ export class FileBackedChatService {
    */
   async discardOwnedRoom(input: DiscardOwnedRoomInput): Promise<void> {
     await this.load();
+    this.assertWritable();
     const room = this.rooms.get(input.roomId);
     if (!room) {
       return;
@@ -438,6 +453,7 @@ export class FileBackedChatService {
       room.id,
       new ChatServiceError("chat_room_deleted", `Chat room deleted: ${room.name}`),
     );
+    this.publishRoomRemoved(room.id);
   }
 
   /**
@@ -502,6 +518,7 @@ export class FileBackedChatService {
     input: PostChatMessageInput & { actor?: ChatActor },
   ): Promise<ChatMessage> {
     await this.load();
+    this.assertWritable();
     const room = this.resolveRoom(input.room);
     const body = input.body.trim();
     if (body.length === 0) {
@@ -559,6 +576,17 @@ export class FileBackedChatService {
       }),
     );
     await this.enqueuePersist(room.id);
+    // The room can be removed while that write is queued, and the write then
+    // deletes the file instead of creating it — a removed room has no file. So
+    // getting here proves nothing about whether the message was stored; only
+    // the room still existing does. Reporting success and broadcasting a
+    // message that is on no disk anywhere is the worse failure.
+    if (!this.rooms.has(room.id)) {
+      throw new ChatServiceError(
+        "chat_room_not_found",
+        `Chat room was removed before the message could be stored: ${room.id}`,
+      );
+    }
     this.notifyWaiters(room.id);
     this.publishRoomMessage({ roomId: room.id, message, cursor });
     return message;
@@ -682,10 +710,25 @@ export class FileBackedChatService {
     this.rooms.clear();
     this.messagesByRoomId.clear();
 
-    await this.migrateIfNeeded();
+    this.readOnly = !(await this.migrateIfNeeded());
     await this.loadRoomFiles();
 
     this.loaded = true;
+  }
+
+  /**
+   * Refuses writes while an unreadable legacy store is still waiting to be
+   * migrated. Coming up empty is survivable; writing is not, because the
+   * migration rewrites every room from the legacy file once it can be read, and
+   * anything created in the meantime would go with it.
+   */
+  private assertWritable(): void {
+    if (this.readOnly) {
+      throw new ChatServiceError(
+        "chat_store_unavailable",
+        "Chat is read-only until the legacy store at chat/rooms.json can be read and migrated",
+      );
+    }
   }
 
   private async fileExists(filePath: string): Promise<boolean> {
@@ -714,30 +757,40 @@ export class FileBackedChatService {
    * A missing legacy file with a `.bak` present means the rename already
    * happened, which by the same ordering means the room files are complete.
    *
-   * A legacy file that cannot be read at all leaves the marker unwritten. The
-   * marker means "the legacy file has been dealt with", and writing it over a
-   * store nobody could read would put every conversation in it out of reach on
-   * a path that never runs again. Chat comes up empty and the next start tries
-   * again, with the file still there to be repaired.
+   * The legacy file is the whole truth while it is in place, not an upper bound
+   * on it, so a room file it does not account for is removed rather than kept:
+   * a room deleted while downgraded has to stay deleted.
+   *
+   * A legacy file that cannot be read at all leaves the marker unwritten and
+   * the store read-only. The marker means "the legacy file has been dealt
+   * with", and writing it over a store nobody could read would put every
+   * conversation in it out of reach on a path that never runs again. Staying
+   * read-only is the other half: a room created before the file is repaired
+   * would be erased by the rewrite that finally migrates it.
+   *
+   * Returns whether the store is safe to write to.
    */
-  private async migrateIfNeeded(): Promise<void> {
+  private async migrateIfNeeded(): Promise<boolean> {
     if (await this.fileExists(this.migratedMarkerPath)) {
-      return;
+      return true;
     }
 
     await fs.mkdir(this.roomsDir, { recursive: true });
     const legacy = await this.readLegacyStore();
     if (legacy.status === "unreadable") {
-      return;
+      return false;
     }
 
     if (legacy.status === "present") {
+      const migratedRoomIds = new Set<string>();
       for (const room of legacy.rooms) {
         await writeJsonFileAtomic(this.roomFilePath(room.id), {
           room,
           messages: legacy.messagesByRoomId.get(room.id) ?? [],
         } satisfies ChatRoomFile);
+        migratedRoomIds.add(room.id);
       }
+      await this.removeRoomFilesOutside(migratedRoomIds);
       await fs.rename(this.legacyFilePath, `${this.legacyFilePath}.bak`).catch((error) => {
         const code = (error as NodeJS.ErrnoException).code;
         if (code !== "ENOENT") {
@@ -749,6 +802,22 @@ export class FileBackedChatService {
     await writeJsonFileAtomic(this.migratedMarkerPath, {
       migratedAt: new Date().toISOString(),
     });
+    return true;
+  }
+
+  /** Drops room files an interrupted attempt left behind for rooms since gone. */
+  private async removeRoomFilesOutside(keepRoomIds: Set<string>): Promise<void> {
+    let entries: string[];
+    try {
+      entries = await fs.readdir(this.roomsDir);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.endsWith(".json")) continue;
+      if (keepRoomIds.has(entry.slice(0, -".json".length))) continue;
+      await fs.rm(path.join(this.roomsDir, entry), { force: true });
+    }
   }
 
   /**
@@ -828,7 +897,7 @@ export class FileBackedChatService {
         continue;
       }
       const bucket = messagesByRoomId.get(message.data.roomId) ?? [];
-      bucket.push(withAuthor(message.data));
+      bucket.push(message.data);
       messagesByRoomId.set(message.data.roomId, bucket);
     }
     return { status: "present", rooms, messagesByRoomId };
@@ -862,7 +931,7 @@ export class FileBackedChatService {
           continue;
         }
         this.rooms.set(parsed.data.room.id, parsed.data.room);
-        this.messagesByRoomId.set(parsed.data.room.id, parsed.data.messages.map(withAuthor));
+        this.messagesByRoomId.set(parsed.data.room.id, parsed.data.messages);
       } catch (error) {
         this.logger.error({ err: error, filePath }, "Skipping unreadable chat room file");
       }

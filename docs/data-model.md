@@ -62,7 +62,8 @@ $PASEO_HOME/
 ├── teams/
 │   └── {teamId}.json                    # One file per team; roster is the membership authority
 ├── chat/
-│   └── rooms.json                       # All rooms + messages
+│   ├── rooms/{room-id}.json             # One room and its messages
+│   └── .migrated                        # Single-file store has been dealt with
 ├── loops/
 │   └── loops.json                       # All loop records
 ├── projects/
@@ -444,38 +445,68 @@ One file per schedule. ID is 8 hex characters.
 
 ## 6. Chat
 
-**Path:** `$PASEO_HOME/chat/rooms.json`
+**Path:** `$PASEO_HOME/chat/rooms/{room-id}.json`, one file per room, each holding
+`{ room, messages }`. Writes are serialized per room, so a busy room no longer
+rewrites every other one and a damaged file costs one room instead of all of them.
 
-Single file containing all rooms and messages.
+### Migrating from the single-file store
 
-```json
-{
-  "rooms": [ ... ],
-  "messages": [ ... ]
-}
-```
+`$PASEO_HOME/chat/rooms.json` was the whole store before 0.3.0. It is migrated
+on first start, in an order that is load-bearing: write every room file, rename
+the legacy file to `rooms.json.bak`, then write the `.migrated` marker.
+
+Nothing writes the new layout before that marker exists, which is what makes
+recovery from an interrupted run exact. While the legacy file is in place it is
+the only authority, so every room file is rewritten from it — including files an
+earlier attempt already produced, whose data may since have changed, and
+excluding rooms it no longer lists, which are deleted. Skipping what is already
+there would lose whatever a user said after downgrading to a daemon that still
+writes the legacy layout.
+
+A legacy file that cannot be read leaves the marker unwritten **and** the store
+read-only. The marker means "the legacy file has been dealt with"; writing it
+over a store nobody could read would put every conversation in it permanently
+out of reach. Read-only is the other half — a room created before the file is
+repaired would be erased by the rewrite that eventually migrates it.
+
+Damaged entries cost themselves and nothing else: rooms and messages are
+validated one at a time, on both the legacy and per-room paths.
 
 ### ChatRoom
 
-| Field       | Type                | Description                         |
-| ----------- | ------------------- | ----------------------------------- |
-| `id`        | `string` (UUID)     |                                     |
-| `name`      | `string`            | Unique room name (case-insensitive) |
-| `purpose`   | `string?`           | Room description                    |
-| `createdAt` | `string` (ISO 8601) |                                     |
-| `updatedAt` | `string` (ISO 8601) | Updated on each new message         |
+| Field         | Type                | Description                                            |
+| ------------- | ------------------- | ------------------------------------------------------ |
+| `id`          | `string` (UUID)     |                                                        |
+| `name`        | `string`            | Unique room name (case-insensitive)                    |
+| `purpose`     | `string?`           | Room description                                       |
+| `createdAt`   | `string` (ISO 8601) |                                                        |
+| `updatedAt`   | `string` (ISO 8601) | Updated on each new message                            |
+| `ownerKind`   | `"team"?`           | Set when the room's lifetime belongs to something else |
+| `ownerId`     | `string?`           | Id of that owner; both halves are set or neither is    |
+| `displayName` | `string?`           | What a human reads; `name` stays the internal handle   |
+
+An owned room is created under an id its owner allocated, so replaying a
+creation plan finds the room instead of making a second one. Generic delete
+refuses it — only the owner can discard it, and discarding one that is already
+gone succeeds.
 
 ### ChatMessage
 
-| Field              | Type                | Description                         |
-| ------------------ | ------------------- | ----------------------------------- |
-| `id`               | `string` (UUID)     |                                     |
-| `roomId`           | `string`            | FK to ChatRoom.id                   |
-| `authorAgentId`    | `string`            | Agent ID of the author              |
-| `body`             | `string`            | Message text (supports `@mentions`) |
-| `replyToMessageId` | `string?`           | FK to another ChatMessage.id        |
-| `mentionAgentIds`  | `string[]`          | Extracted `@mention` agent IDs      |
-| `createdAt`        | `string` (ISO 8601) |                                     |
+| Field              | Type                | Description                                       |
+| ------------------ | ------------------- | ------------------------------------------------- |
+| `id`               | `string` (UUID)     |                                                   |
+| `roomId`           | `string`            | FK to ChatRoom.id                                 |
+| `authorAgentId`    | `string`            | Author id; a client id when the author is a human |
+| `body`             | `string`            | Message text (supports `@mentions`)               |
+| `replyToMessageId` | `string?`           | FK to another ChatMessage.id                      |
+| `mentionAgentIds`  | `string[]`          | Extracted `@mention` agent IDs                    |
+| `createdAt`        | `string` (ISO 8601) |                                                   |
+| `author`           | `ChatAuthor?`       | `{ kind: "agent" \| "human", id }`                |
+
+`author` says which kind of id `authorAgentId` holds; both are written. Messages
+stored before it exists keep it absent, and it stays absent — a human posting
+back then had their client id written to `authorAgentId`, which reads exactly
+like an agent id, so there is nothing to recover it from.
 
 ---
 

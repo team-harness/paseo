@@ -5419,6 +5419,7 @@ describe("chat room subscriptions", () => {
           cursor: 7,
           hasMore: false,
         })),
+        onRoomRemoved: vi.fn(() => () => {}),
         onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
           subscriber = next;
           return () => {
@@ -5460,6 +5461,7 @@ describe("chat room subscriptions", () => {
           queueMicrotask(postInTheGap);
           return { roomId: "room-1", messages: [], cursor: 7, hasMore: false };
         }),
+        onRoomRemoved: vi.fn(() => () => {}),
         onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
           subscriber = next;
           return () => {
@@ -5568,6 +5570,7 @@ describe("chat room subscriptions", () => {
           cursor: 0,
           hasMore: false,
         })),
+        onRoomRemoved: vi.fn(() => () => {}),
         onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
           subscriber = next;
           return () => {
@@ -5611,6 +5614,7 @@ describe("chat room subscriptions", () => {
           cursor: 0,
           hasMore: false,
         })),
+        onRoomRemoved: vi.fn(() => () => {}),
         onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
           subscriber = next;
           return () => {
@@ -5650,6 +5654,7 @@ describe("chat room subscriptions", () => {
           cursor: 0,
           hasMore: false,
         })),
+        onRoomRemoved: vi.fn(() => () => {}),
         onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
           subscriber = next;
           return () => {
@@ -5691,6 +5696,84 @@ describe("chat room subscriptions", () => {
     expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(0);
   });
 
+  // Listening starts before the page is read, so a read that fails leaves a
+  // subscription the client was told it does not have.
+  test("takes back the subscription when reading the first page fails", async () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    let subscriber: ((event: RoomEvent) => void) | null = null;
+    const session = createSessionForTest({
+      targetedMessages: targeted,
+      chatService: {
+        resolveRoomId: vi.fn(async (room: string) => room),
+        readRoomPage: vi.fn(async () => {
+          throw new Error("room was discarded");
+        }),
+        onRoomRemoved: vi.fn(() => () => {}),
+        onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
+          subscriber = next;
+          return () => {
+            subscriber = null;
+          };
+        }),
+      },
+    });
+    const socket = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true }, socket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "room-1" },
+      socket,
+    );
+    subscriber?.({ roomId: "room-1", message: { id: "m1" }, cursor: 1 });
+
+    expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(0);
+  });
+
+  // A room id can be reused — a team room is named after its team. A stale
+  // subscription that nobody unsubscribed would start streaming the new room to
+  // whoever was watching the old one.
+  test("drops subscriptions to a room that was removed", async () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    let subscriber: ((event: RoomEvent) => void) | null = null;
+    let announceRemoval: ((roomId: string) => void) | null = null;
+    const session = createSessionForTest({
+      targetedMessages: targeted,
+      chatService: {
+        // Subscribed by name; the subscription is keyed by the resolved id.
+        resolveRoomId: vi.fn(async () => "room-uuid-1"),
+        readRoomPage: vi.fn(async () => ({
+          roomId: "room-uuid-1",
+          messages: [],
+          cursor: 0,
+          hasMore: false,
+        })),
+        onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
+          subscriber = next;
+          return () => {
+            subscriber = null;
+          };
+        }),
+        onRoomRemoved: vi.fn((next: (roomId: string) => void) => {
+          announceRemoval = next;
+          return () => {
+            announceRemoval = null;
+          };
+        }),
+      },
+    });
+    const socket = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true }, socket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "general" },
+      socket,
+    );
+    announceRemoval?.("room-uuid-1");
+    subscriber?.({ roomId: "room-uuid-1", message: { id: "m1" }, cursor: 1 });
+
+    expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(0);
+  });
+
   test("reports the failure to the caller instead of leaving the request open", async () => {
     const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
     const session = createSessionForTest({
@@ -5700,6 +5783,7 @@ describe("chat room subscriptions", () => {
         readRoomPage: vi.fn(async () => {
           throw new Error("room file is unreadable");
         }),
+        onRoomRemoved: vi.fn(() => () => {}),
         onRoomMessage: vi.fn(() => () => {}),
       },
     });

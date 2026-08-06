@@ -305,4 +305,45 @@ describe("chat store migration", () => {
     expect(await exists("rooms.json")).toBe(true);
     expect(await exists("rooms.json.bak")).toBe(false);
   });
+
+  // Coming up empty is only safe if it also stays read-only. A room created
+  // now would be overwritten the moment the legacy file is repaired and the
+  // migration finally runs, because that migration rewrites every room from it.
+  test("refuses to write while an unreadable legacy store is still unmigrated", async () => {
+    await mkdir(chatDir, { recursive: true });
+    await writeFile(join(chatDir, "rooms.json"), "{ not json at all", "utf8");
+
+    const service = createService();
+    await service.initialize();
+
+    await expect(service.createRoom({ name: "new-room" })).rejects.toMatchObject({
+      code: "chat_store_unavailable",
+    });
+    expect(await listRoomFiles()).toEqual([]);
+  });
+
+  // The legacy file is the whole truth while it is in place, not just an
+  // upper bound on it: a room deleted while downgraded must stay deleted.
+  test("removes a room file the legacy store no longer has", async () => {
+    await writeLegacy({
+      rooms: [legacyPayload.rooms[0]],
+      messages: legacyPayload.messages.slice(0, 2),
+    });
+    await mkdir(join(chatDir, "rooms"), { recursive: true });
+    // A previous attempt wrote room-2; the legacy file has since lost it.
+    await writeFile(
+      join(chatDir, "rooms", "room-2.json"),
+      JSON.stringify({
+        room: legacyPayload.rooms[1],
+        messages: [legacyPayload.messages[2]],
+      }),
+      "utf8",
+    );
+
+    const service = createService();
+    await service.initialize();
+
+    expect(await listRoomFiles()).toEqual(["room-1.json"]);
+    expect((await service.listRooms()).map((room) => room.name)).toEqual(["team-1"]);
+  });
 });

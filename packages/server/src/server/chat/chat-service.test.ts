@@ -242,8 +242,12 @@ describe("FileBackedChatService", () => {
       expect(message.author).toEqual({ kind: "human", id: "client-42" });
     });
 
-    // Messages on disk from before the author model have no `author` at all.
-    test("treats a message written before the author model as an agent", async () => {
+    // Messages stored before the author model have no `author`, and nothing can
+    // recover it: a human posting back then had their client id written to
+    // `authorAgentId`, which reads exactly like an agent id. Guessing "agent"
+    // would turn a client id into an agent that mention fanout goes looking for,
+    // and the guess becomes permanent the next time the room is written.
+    test("leaves the author unknown on a message written before the author model", async () => {
       const room = await service.createRoom({ name: "legacy-author" });
       await writeFile(
         path.join(paseoHome, "chat", "rooms", `${room.id}.json`),
@@ -253,7 +257,7 @@ describe("FileBackedChatService", () => {
             {
               id: "msg-legacy",
               roomId: room.id,
-              authorAgentId: "agent-a",
+              authorAgentId: "client-42",
               body: "posted the old way",
               replyToMessageId: null,
               mentionAgentIds: [],
@@ -271,7 +275,13 @@ describe("FileBackedChatService", () => {
       await reloaded.initialize();
 
       const [message] = await reloaded.readMessages({ room: room.id });
-      expect(message?.author).toEqual({ kind: "agent", id: "agent-a" });
+      expect(message?.body).toBe("posted the old way");
+      expect(message?.authorAgentId).toBe("client-42");
+      expect(message?.author).toBeUndefined();
+
+      // Reading does not rewrite the guess into the file either.
+      const raw = await readFile(path.join(paseoHome, "chat", "rooms", `${room.id}.json`), "utf8");
+      expect(raw).not.toContain('"author"');
     });
   });
 
@@ -458,6 +468,42 @@ describe("FileBackedChatService", () => {
       await expect(
         service.discardOwnedRoom({ roomId: "never-existed", ...owner }),
       ).resolves.toBeUndefined();
+    });
+
+    // The post appends in memory, then awaits. If the room goes away in that
+    // window, its persist finds nothing to write and treats that as the room
+    // having been deleted — so the post reports success and broadcasts a
+    // message that is on no disk anywhere.
+    test("a post that loses the race with a discard fails instead of vanishing", async () => {
+      const room = await service.createRoom({
+        roomId: "room-team-1",
+        name: "team-team-1",
+        ...owner,
+      });
+      const delivered: string[] = [];
+      function recordDelivery(event: ChatRoomMessageEvent): void {
+        delivered.push(event.message.id);
+      }
+      service.onRoomMessage(recordDelivery);
+
+      const posted = service.post({
+        actor: { kind: "agent", id: "agent-a" },
+        room: room.id,
+        body: "into the void",
+      });
+      // Let the post get past its own append and onto the persist queue, which
+      // is the window where the room can still disappear underneath it.
+      for (let step = 0; step < 4; step += 1) {
+        await Promise.resolve();
+      }
+      const discarded = service.discardOwnedRoom({ roomId: room.id, ...owner });
+
+      await expect(posted).rejects.toMatchObject<Partial<ChatServiceError>>({
+        code: "chat_room_not_found",
+      });
+      await expect(discarded).resolves.toBeUndefined();
+      expect(delivered).toEqual([]);
+      expect(await service.listRooms()).toEqual([]);
     });
   });
 

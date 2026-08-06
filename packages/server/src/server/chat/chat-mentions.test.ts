@@ -83,7 +83,10 @@ describe("chat mentions", () => {
     expect([...prepared.targetMentionAgentIds].sort()).toEqual(["agent-a", "agent-b", "agent-c"]);
   });
 
-  test("@everyone excludes archived and error-state agents", async () => {
+  // DEC-10 lists `error` as wakeable: it means the last turn failed, not that
+  // the agent is unusable — the wake goes through `ensureAgentLoaded`, which is
+  // how it recovers. Archived is the one that is genuinely out.
+  test("@everyone excludes archived agents but still reaches error-state ones", async () => {
     const prepared = await prepare({
       authorAgentId: "author-agent",
       mentionAgentIds: ["everyone"],
@@ -101,13 +104,40 @@ describe("chat mentions", () => {
       ],
     });
 
-    expect(prepared.targetMentionAgentIds).toEqual(["active-agent"]);
+    expect(prepared.targetMentionAgentIds.sort()).toEqual([
+      "active-agent",
+      "live-error-agent",
+      "stored-error-agent",
+    ]);
   });
 
-  // `archivedAt` is a durable fact and the stored record owns it. `lastStatus`
-  // is a snapshot taken at a turn boundary, so a recovered agent still reads as
-  // `error` there until it next writes — and would never be mentioned again.
-  test("lets a live agent overrule a stored status that has gone stale", async () => {
+  test("wakes an error-state agent that was mentioned by name", async () => {
+    const woken: string[] = [];
+    await notifyChatMentions({
+      room: "coord-room",
+      authorAgentId: "author-agent",
+      body: "@agent-error can you retry?",
+      mentionAgentIds: ["agent-error"],
+      logger: { warn: vi.fn() } as unknown as pino.Logger,
+      storedAgents: [storedAgent({ id: "agent-error", lastStatus: "error" })],
+      liveAgents: [liveAgent({ id: "agent-error", lifecycle: "error" })],
+      prepared: { targetMentionAgentIds: ["agent-error"], roomPosterAgentIds: [] },
+      resolveAgentIdentifier: async (identifier: string) => ({
+        ok: true as const,
+        agentId: identifier,
+      }),
+      sendAgentMessage: async (agentId: string) => {
+        woken.push(agentId);
+      },
+    });
+
+    expect(woken).toEqual(["agent-error"]);
+  });
+
+  // `archivedAt` is a durable fact and the stored record owns it. Nothing else
+  // in that record decides eligibility, so an agent that is merely between
+  // states cannot fall out of the room's reach.
+  test("keeps an agent reachable whatever transient state the records disagree on", async () => {
     const prepared = await prepare({
       authorAgentId: "author-agent",
       mentionAgentIds: ["recovered-agent"],

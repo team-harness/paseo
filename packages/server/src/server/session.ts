@@ -642,6 +642,7 @@ export class Session {
    */
   private readonly retiredSources = new WeakSet<object>();
   private unsubscribeChatRoomMessages: (() => void) | null = null;
+  private unsubscribeChatRoomRemovals: (() => void) | null = null;
   private readonly chatService: FileBackedChatService;
   private readonly clientCapabilitiesBySource = new Map<object, ReadonlySet<ClientCapability>>();
   private readonly defaultTimelineSubscriptionSource = {};
@@ -1099,6 +1100,7 @@ export class Session {
     msg: Extract<SessionInboundMessage, { type: "chat.room.subscribe.request" }>,
     source: object | undefined,
   ): Promise<void> {
+    let registeredRoomId: string | null = null;
     try {
       // Listening starts before the first read, with nothing awaited in
       // between. The other order drops anything posted in the gap, and the
@@ -1108,6 +1110,7 @@ export class Session {
       if (!this.rememberChatRoomSubscription(source, roomId)) {
         return;
       }
+      registeredRoomId = roomId;
       const page = await this.chatService.readRoomPage({
         room: roomId,
         ...(typeof msg.afterCursor === "number" ? { afterCursor: msg.afterCursor } : {}),
@@ -1125,6 +1128,11 @@ export class Session {
         },
       });
     } catch (error) {
+      // Listening started before the read, so a read that failed would leave a
+      // subscription the client has just been told it does not have.
+      if (registeredRoomId) {
+        this.forgetChatRoomSubscription(source, registeredRoomId);
+      }
       this.sendToSource(source, {
         type: "chat.room.subscribe.response",
         payload: {
@@ -1148,15 +1156,14 @@ export class Session {
     msg: Extract<SessionInboundMessage, { type: "chat.room.unsubscribe.request" }>,
     source: object | undefined,
   ): Promise<void> {
-    const key = source ?? this.defaultTimelineSubscriptionSource;
     let roomId = msg.room;
     try {
       roomId = await this.chatService.resolveRoomId(msg.room);
     } catch {
-      // A room that no longer resolves cannot be streaming either; fall back to
-      // the raw selector so a subscription keyed by id is still removed.
+      // The room is gone, so its removal already took every subscription to it
+      // down. Answering with the selector the client sent is all that is left.
     }
-    this.chatRoomSubscriptionsBySource.get(key)?.delete(roomId);
+    this.forgetChatRoomSubscription(source, roomId);
     this.sendToSource(source, {
       type: "chat.room.unsubscribe.response",
       payload: { requestId: msg.requestId, roomId, error: null },
@@ -1180,6 +1187,11 @@ export class Session {
     return true;
   }
 
+  private forgetChatRoomSubscription(source: object | undefined, roomId: string): void {
+    const key = source ?? this.defaultTimelineSubscriptionSource;
+    this.chatRoomSubscriptionsBySource.get(key)?.delete(roomId);
+  }
+
   private ensureChatRoomForwarding(): void {
     if (this.unsubscribeChatRoomMessages) {
       return;
@@ -1194,6 +1206,14 @@ export class Session {
           type: "chat.room.message_posted",
           payload: { roomId: event.roomId, message: event.message, cursor: event.cursor },
         });
+      }
+    });
+    // Room ids are reusable — a team room is named after its team — so a
+    // subscription left over from a removed room would start streaming whatever
+    // is created under that id next.
+    this.unsubscribeChatRoomRemovals = this.chatService.onRoomRemoved((roomId) => {
+      for (const rooms of this.chatRoomSubscriptionsBySource.values()) {
+        rooms.delete(roomId);
       }
     });
   }
@@ -7043,6 +7063,11 @@ export class Session {
       this.unsubscribeStatusSummary();
       this.unsubscribeStatusSummary = null;
     }
+    this.unsubscribeChatRoomMessages?.();
+    this.unsubscribeChatRoomMessages = null;
+    this.unsubscribeChatRoomRemovals?.();
+    this.unsubscribeChatRoomRemovals = null;
+    this.chatRoomSubscriptionsBySource.clear();
     this.providerCatalogSession.dispose();
 
     await this.voiceSession.cleanup();
