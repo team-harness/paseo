@@ -194,6 +194,49 @@ test("sendPromptToAgent forwards the client message id as run options", async ()
   });
 });
 
+// DEC-10: the caller decides whether a prompt may cancel work in flight. A
+// mention that loses the race against a turn starting must still queue rather
+// than replace, so eligibility checked a moment earlier cannot become an
+// interrupt.
+test("sendPromptToAgent leaves a run in flight alone when replaceRunning is false", async () => {
+  const agent: ManagedAgent = Object.create(null);
+  Reflect.set(agent, "id", "agent-1");
+  Reflect.set(agent, "provider", "codex");
+
+  const streamAgentSpy = vi.fn(() => (async function* noop() {})());
+  const replaceAgentRunSpy = vi.fn(async () => (async function* noop() {})());
+  const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  Reflect.set(
+    agentManager,
+    "getAgent",
+    vi.fn(() => agent),
+  );
+  Reflect.set(agentManager, "tryRunOutOfBand", vi.fn().mockReturnValue(false));
+  // The race: the turn started between the eligibility check and this call.
+  Reflect.set(agentManager, "hasInFlightRun", vi.fn().mockReturnValue(true));
+  Reflect.set(agentManager, "streamAgent", streamAgentSpy);
+  Reflect.set(agentManager, "replaceAgentRun", replaceAgentRunSpy);
+
+  const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
+  Reflect.set(
+    agentStorage,
+    "get",
+    vi.fn(async () => null),
+  );
+
+  await sendPromptToAgent({
+    agentManager,
+    agentStorage,
+    agentId: "agent-1",
+    prompt: "hello",
+    replaceRunning: false,
+    logger: createTestLogger(),
+  });
+
+  expect(replaceAgentRunSpy).not.toHaveBeenCalled();
+  expect(streamAgentSpy).toHaveBeenCalledTimes(1);
+});
+
 test("finish notifications tell the parent the child's last assistant message", async () => {
   const scenario = createFinishNotificationScenario({
     childLastAssistantMessage: "Implemented the cleanup and all checks pass.",

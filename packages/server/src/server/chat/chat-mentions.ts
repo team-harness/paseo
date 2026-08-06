@@ -103,6 +103,19 @@ export async function notifyChatMentions(input: NotifyChatMentionsInput): Promis
         return;
       }
 
+      // DEC-10: a mention nudges, it never interrupts. An agent mid-turn
+      // already has the message in the room and will read it when it looks;
+      // waking it would cancel work someone else is waiting on.
+      if (
+        !isChatMentionTargetWakeable({
+          agentId: resolved.agentId,
+          storedAgents: input.storedAgents,
+          liveAgents: input.liveAgents,
+        })
+      ) {
+        return;
+      }
+
       try {
         await input.sendAgentMessage(resolved.agentId, notification);
       } catch (error) {
@@ -168,6 +181,29 @@ function expandChatMentionTargets(input: {
     }
   }
   return targets;
+}
+
+/**
+ * Whether a mention should start a turn for this agent, as opposed to only
+ * landing the message in the room.
+ *
+ * Live state wins where it exists: the stored record is a snapshot written at
+ * turn boundaries, so it can say "running" for an agent that has since gone
+ * idle, or "idle" for one that just started. An agent with no live entry has no
+ * session in memory at all, which is precisely the one that needs waking.
+ */
+function isChatMentionTargetWakeable(input: {
+  agentId: string;
+  storedAgents: StoredAgentRecord[];
+  liveAgents: ManagedAgent[];
+}): boolean {
+  const live = input.liveAgents.find((agent) => agent.id === input.agentId);
+  if (live) {
+    return live.lifecycle !== "running";
+  }
+
+  const stored = input.storedAgents.find((record) => record.id === input.agentId);
+  return stored?.lastStatus !== "running";
 }
 
 function isChatMentionTargetEligible(input: {

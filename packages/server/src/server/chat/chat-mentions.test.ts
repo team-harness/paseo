@@ -202,4 +202,88 @@ describe("chat mentions", () => {
       expect.stringContaining("Check status"),
     );
   });
+
+  // DEC-10. A mention is a nudge, not an interrupt. An agent mid-turn has the
+  // message in the room already and will read it when it looks; waking it would
+  // cancel the work someone else is waiting on.
+  describe("waking a mentioned agent", () => {
+    async function notifyOne(input: {
+      agentId: string;
+      storedAgents?: StoredAgentRecord[];
+      liveAgents?: ManagedAgent[];
+    }): Promise<string[]> {
+      const woken: string[] = [];
+      await notifyChatMentions({
+        room: "coord-room",
+        authorAgentId: "author-agent",
+        body: `@${input.agentId} status?`,
+        mentionAgentIds: [input.agentId],
+        logger: { warn: vi.fn() } as unknown as pino.Logger,
+        storedAgents: input.storedAgents ?? [],
+        liveAgents: input.liveAgents ?? [],
+        prepared: {
+          targetMentionAgentIds: [input.agentId],
+          roomPosterAgentIds: [],
+        },
+        resolveAgentIdentifier: async (identifier: string) => ({
+          ok: true as const,
+          agentId: identifier,
+        }),
+        sendAgentMessage: async (agentId: string) => {
+          woken.push(agentId);
+        },
+      });
+      return woken;
+    }
+
+    test("wakes an agent that is live and idle", async () => {
+      const woken = await notifyOne({
+        agentId: "agent-a",
+        storedAgents: [storedAgent({ id: "agent-a" })],
+        liveAgents: [liveAgent({ id: "agent-a", lifecycle: "idle" })],
+      });
+
+      expect(woken).toEqual(["agent-a"]);
+    });
+
+    // No live entry means no session in memory, which is exactly the agent that
+    // needs waking rather than the one that must be left alone.
+    test("wakes an agent that only exists in storage", async () => {
+      const woken = await notifyOne({
+        agentId: "agent-a",
+        storedAgents: [storedAgent({ id: "agent-a", lastStatus: "closed" })],
+        liveAgents: [],
+      });
+
+      expect(woken).toEqual(["agent-a"]);
+    });
+
+    test("leaves a running agent alone", async () => {
+      const woken = await notifyOne({
+        agentId: "agent-a",
+        storedAgents: [storedAgent({ id: "agent-a", lastStatus: "running" })],
+        liveAgents: [liveAgent({ id: "agent-a", lifecycle: "running" })],
+      });
+
+      expect(woken).toEqual([]);
+    });
+
+    // Live state is the truth. A stale stored record saying "running" must not
+    // veto a wake, and a stale one saying "idle" must not cause an interrupt.
+    test("believes the live agent over a stale stored record", async () => {
+      const wokenDespiteStaleRunning = await notifyOne({
+        agentId: "agent-a",
+        storedAgents: [storedAgent({ id: "agent-a", lastStatus: "running" })],
+        liveAgents: [liveAgent({ id: "agent-a", lifecycle: "idle" })],
+      });
+      expect(wokenDespiteStaleRunning).toEqual(["agent-a"]);
+
+      const skippedDespiteStaleIdle = await notifyOne({
+        agentId: "agent-a",
+        storedAgents: [storedAgent({ id: "agent-a", lastStatus: "idle" })],
+        liveAgents: [liveAgent({ id: "agent-a", lifecycle: "running" })],
+      });
+      expect(skippedDespiteStaleIdle).toEqual([]);
+    });
+  });
 });

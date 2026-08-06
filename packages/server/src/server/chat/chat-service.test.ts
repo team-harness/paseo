@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
@@ -252,6 +252,62 @@ describe("FileBackedChatService", () => {
   // A team's room follows the team's lifecycle, so it cannot be a room anyone
   // may delete, and replaying a team's creation must find the room it made
   // rather than make a second one.
+  // One file per room buys blast-radius containment, which only holds if a
+  // damaged file is skipped rather than allowed to fail the whole load.
+  describe("damaged room files", () => {
+    async function reload(): Promise<FileBackedChatService> {
+      const reloaded = new FileBackedChatService({
+        paseoHome,
+        logger: pino({ level: "silent" }),
+      });
+      await reloaded.initialize();
+      return reloaded;
+    }
+
+    function roomName(room: { name: string }): string {
+      return room.name;
+    }
+
+    async function damage(roomId: string, contents: string): Promise<void> {
+      await writeFile(path.join(paseoHome, "chat", "rooms", `${roomId}.json`), contents, "utf8");
+    }
+
+    test("skips a room whose file is not valid JSON and keeps the rest", async () => {
+      const healthy = await service.createRoom({ name: "healthy", purpose: "keeps working" });
+      const damaged = await service.createRoom({ name: "damaged", purpose: "gets corrupted" });
+      await sendChatMessage({ room: healthy.id, authorAgentId: "agent-a", body: "still here" });
+      await damage(damaged.id, "{ this is not json");
+
+      const reloaded = await reload();
+
+      expect((await reloaded.listRooms()).map(roomName)).toEqual(["healthy"]);
+      expect((await reloaded.readRoomPage({ room: healthy.id })).messages).toHaveLength(1);
+    });
+
+    test("skips a room whose file is JSON but not a room and keeps the rest", async () => {
+      await service.createRoom({ name: "healthy", purpose: "keeps working" });
+      const damaged = await service.createRoom({ name: "damaged", purpose: "gets truncated" });
+      await damage(damaged.id, JSON.stringify({ room: { id: damaged.id } }));
+
+      const reloaded = await reload();
+
+      expect((await reloaded.listRooms()).map(roomName)).toEqual(["healthy"]);
+    });
+
+    // A skipped room is gone, not half-present: its name has to be free again,
+    // or the room is unusable and unrecreatable.
+    test("frees the name of a room that was skipped", async () => {
+      const damaged = await service.createRoom({ name: "damaged", purpose: "gets corrupted" });
+      await damage(damaged.id, "{ this is not json");
+
+      const reloaded = await reload();
+      const recreated = await reloaded.createRoom({ name: "damaged", purpose: "fresh start" });
+
+      expect(recreated.name).toBe("damaged");
+      expect(await reloaded.listRooms()).toHaveLength(1);
+    });
+  });
+
   describe("owned rooms", () => {
     const owner = { ownerKind: "team" as const, ownerId: "team-1" };
 

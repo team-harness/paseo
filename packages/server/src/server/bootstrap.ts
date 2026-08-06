@@ -906,6 +906,9 @@ export async function createPaseoDaemon(
             agentId,
             prompt: formatSystemNotificationPrompt(text),
             unarchive: false,
+            // DEC-10: the eligibility check happened a moment ago, so a turn may
+            // have started since. Queue behind it rather than cancel it.
+            replaceRunning: false,
             logger,
           });
         },
