@@ -63,6 +63,11 @@ export interface TeamRuntime extends TeamRuntimeSessionDeps {
   /** Per-agent tool registration, called when a catalog is built for that agent. */
   registerToolsFor(options: Pick<RegisterTeamToolsOptions, "registerTool" | "callerAgentId">): void;
   recruitmentHookFor(callerAgentId: string | undefined): TeamRecruitmentHook;
+  /**
+   * Runs one pump pass and waits for it. `kickPump` schedules; this is for a
+   * caller that needs the pass to have happened before it looks at the ledger.
+   */
+  pumpOnce(teamId: string): Promise<void>;
   start(): Promise<void>;
   stop(): void;
 }
@@ -453,6 +458,11 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
         kickPump: kickTeam,
         logger: teamLogger,
       });
+    },
+    async pumpOnce(teamId) {
+      const team = await store.get(teamId);
+      if (!team) return;
+      await pump.run({ teamId, leadAgentId: team.leadAgentId });
     },
     async start() {
       try {
