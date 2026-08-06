@@ -60,7 +60,8 @@ $PASEO_HOME/
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
 ├── teams/
-│   └── {teamId}.json                    # One file per team; roster is the membership authority
+│   ├── {teamId}.json                    # One file per team; roster is the membership authority
+│   └── inbox/{teamId}.json              # That team's task ledger and undelivered completions
 ├── chat/
 │   ├── rooms/{room-id}.json             # One room and its messages
 │   └── .migrated                        # Single-file store has been dealt with
@@ -518,7 +519,75 @@ like an agent id, so there is nothing to recover it from.
 
 ---
 
-## 7. Loop
+## 7. Team
+
+**Path:** `$PASEO_HOME/teams/{teamId}.json`
+
+The roster is the membership authority. Labels on the agents are an index into
+it — `AgentManager.listAgents()` returns only loaded agents, so a label scan
+after a restart would miss most of a team.
+
+A team file is written before anything it describes exists. Creation produces a
+chat room and one agent per member, none of which the store can roll back, so
+the record carries the whole plan and a stage marker; every later step replays a
+decision already on disk rather than making a fresh one. That is what lets the
+reconciler pick up from any crash point.
+
+Six fields never reach a client, and the projection that keeps them off the wire
+is explicit rather than an omission list: `idempotencyKey`,
+`requestFingerprint`, `creationPlan`, `creationStage`, `failedCleanupAt`,
+`pendingRecruitments`. Use `toTeamSnapshot`; a field added to the record does
+not leak by default.
+
+A damaged team file costs that team and nothing else — teams are independent,
+and refusing to load any of them because one is unreadable would strand every
+other team's reconciliation. Unreadable is not the same as absent: nothing may
+read a skipped file as "this team has no members".
+
+`revision` increments on every write. Clients order `team.update` broadcasts by
+it.
+
+### Nested: TeamMemberEntry
+
+| Field           | Type                            | Description                                         |
+| --------------- | ------------------------------- | --------------------------------------------------- |
+| `agentId`       | `string`                        | Allocated before the agent exists                   |
+| `role`          | `string`                        | Display and prompt text; not unique, not an address |
+| `joinedAt`      | `string` (ISO 8601)             |                                                     |
+| `leftAt`        | `string \| null`                |                                                     |
+| `state`         | `active \| removed \| archived` | `removed` is terminal                               |
+| `removalReason` | see below                       | Set with `removed`                                  |
+
+`removalReason` is one of `removed_by_user`, `hard_deleted`,
+`unarchive_evicted`, `recruitment_failed`, `recruitment_canceled`. An
+`archived` member can come back; a `removed` one cannot, and nothing on the
+event path may resurrect it.
+
+### Nested: RecruitmentIntent
+
+Server-only, keyed by the reserved agent id under `pendingRecruitments`.
+Complete enough to replay a recruitment after a crash at any step: provider,
+settings, title, role, briefing, a deterministic `clientMessageId`, the
+recruiter, the workspace, and a `stage` of `reserved | created`.
+
+Cancellation is a separate optional `cancelling` boolean rather than another
+`stage` value. This is a storage format: widening the enum would make a daemon
+that predates it reject the whole team file, drop the team from its idempotency
+index, and let a retry of the original request build a second one.
+
+**Path:** `$PASEO_HOME/teams/inbox/{teamId}.json`
+
+The task ledger: assignments, settled work the lead has not been told about,
+and the batch currently out for delivery. An assignment carries its own prompt,
+so a crash between recording and sending can resend it.
+
+Every read throws when the file cannot be parsed. An unreadable ledger that
+reported "no assignments" would be indistinguishable from an empty one, and the
+write that followed would make it true.
+
+---
+
+## 8. Loop
 
 **Path:** `$PASEO_HOME/loops/loops.json`
 
@@ -607,7 +676,7 @@ Single file containing an array of all loop records. Writes are direct (not atom
 
 ---
 
-## 8. Project Registry
+## 9. Project Registry
 
 **Path:** `$PASEO_HOME/projects/projects.json`
 
@@ -642,7 +711,7 @@ workspace together with its owning project.
 
 ---
 
-## 9. Workspace Registry
+## 10. Workspace Registry
 
 **Path:** `$PASEO_HOME/projects/workspaces.json`
 
@@ -676,7 +745,7 @@ than treating it as valid.
 
 ---
 
-## 10. Push Token Store
+## 11. Push Token Store
 
 **Path:** `$PASEO_HOME/push-tokens.json`
 
@@ -690,7 +759,7 @@ Simple set of Expo push notification tokens. Loaded with permissive parsing (fil
 
 ---
 
-## 11. Daemon meta files
+## 12. Daemon meta files
 
 These small files are not validated as full Zod schemas but are persisted under `$PASEO_HOME` for daemon identity and runtime coordination.
 
