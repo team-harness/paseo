@@ -74,7 +74,13 @@ export const RecruitmentIntentSchema = z.object({
   clientMessageId: z.string(),
   recruiterAgentId: z.string(),
   workspaceId: z.string(),
-  stage: z.enum(["reserved", "created"]),
+  /**
+   * `reserved` and `created` are how far the recruit got. `cancelling` says the
+   * decision to undo it has been taken and the agent has not been archived yet
+   * — the intent has to outlive that decision, or a crash in between leaves an
+   * agent running with team labels that nothing will ever come back for.
+   */
+  stage: z.enum(["reserved", "created", "cancelling"]),
 });
 
 export type RecruitmentIntent = z.infer<typeof RecruitmentIntentSchema>;

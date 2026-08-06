@@ -190,6 +190,7 @@ describe("recovering from a crash mid-assignment", () => {
 
   class RecordingGateway implements TeamPumpGateway {
     readonly dispatched: string[] = [];
+    /** Every attempt, in order — a resend is a second entry, not a no-op. */
     readonly delivered: string[] = [];
     outcomes = new Map<string, "completed" | "failed" | "canceled">();
     /** Turn to hand back, or null to refuse. */
@@ -209,9 +210,7 @@ describe("recovering from a crash mid-assignment", () => {
     }
 
     async deliverCompletions(input: { deliveryId: string }): Promise<boolean> {
-      if (!this.delivered.includes(input.deliveryId)) {
-        this.delivered.push(input.deliveryId);
-      }
+      this.delivered.push(input.deliveryId);
       return true;
     }
 
@@ -307,8 +306,9 @@ describe("recovering from a crash mid-assignment", () => {
     const restarted = new TeamInbox(home, logger);
     await pumpOver(restarted).run({ teamId: "team-1", leadAgentId: "lead" });
 
-    // Sent again under the same id, which is what lets the lead recognise it
-    // rather than read it as more news.
-    expect(gateway.delivered).toEqual([delivery?.deliveryId]);
+    // Two attempts, one id: the resend is real, and it carries what the lead
+    // has already seen so it can recognise the repeat rather than read it as
+    // more news.
+    expect(gateway.delivered).toEqual([delivery?.deliveryId, delivery?.deliveryId]);
   });
 });

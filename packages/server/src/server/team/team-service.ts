@@ -370,7 +370,9 @@ export class TeamService {
       if (!team || team.lifecycle !== "active") return null;
       const entry = team.members.find((member) => member.agentId === agentId);
       if (!entry || entry.state !== "active") return null;
-      return team.pendingRecruitments?.[agentId] ?? null;
+      const intent = team.pendingRecruitments?.[agentId] ?? null;
+      // A recruit already being undone is not one to carry on with.
+      return intent?.stage === "cancelling" ? null : intent;
     };
 
     const cancel = async (): Promise<never> => {
@@ -390,13 +392,21 @@ export class TeamService {
         settings: intent!.settings,
         labels: { [TEAM_ID_LABEL]: teamId, [TEAM_ROLE_LABEL]: intent!.teamRole },
       });
-      await this.store.update(teamId, (current) => ({
-        ...current,
-        pendingRecruitments: {
-          ...current.pendingRecruitments,
-          [agentId]: { ...intent!, stage: "created" as const },
-        },
-      }));
+      // Conditional, because another pass may have finished this recruit while
+      // the agent was being created. Writing the stage unconditionally would
+      // put the intent back, and whatever this pass did next would act on a
+      // claim that belongs to nobody.
+      await this.store.update(teamId, (current) =>
+        current.pendingRecruitments?.[agentId]
+          ? {
+              ...current,
+              pendingRecruitments: {
+                ...current.pendingRecruitments,
+                [agentId]: { ...current.pendingRecruitments[agentId], stage: "created" as const },
+              },
+            }
+          : current,
+      );
     }
 
     intent = await intentOf();
@@ -451,14 +461,39 @@ export class TeamService {
    * not exist yet, which is why archiving it is allowed to find nothing.
    */
   private async cancelRecruitment(teamId: string, agentId: string): Promise<void> {
-    // Claimed the same way a failure is: the intent still being there is what
-    // says this recruit is still ours to cancel.
+    await this.retireRecruit(teamId, agentId, "recruitment_canceled");
+  }
+
+  /**
+   * Undoes a recruit, in an order a crash cannot break.
+   *
+   * The claim marks the intent `cancelling` rather than removing it, because
+   * the intent is the only durable record that this agent still needs
+   * archiving. Clearing it first — as this did — meant a crash or a failing
+   * archive left an agent running with team labels that reconciliation would
+   * never come back for: no pending intent, no active member, nothing to see.
+   *
+   * The reason is chosen from the state inside the lock rather than from which
+   * caller got here. A recruit invalidated by a removal or an archive converges
+   * on `recruitment_canceled` whatever it was that noticed.
+   */
+  private async retireRecruit(
+    teamId: string,
+    agentId: string,
+    preferred: "recruitment_canceled" | "recruitment_failed",
+  ): Promise<void> {
     let claimed = false;
     await this.store.update(teamId, (current) => {
-      if (!current.pendingRecruitments?.[agentId]) {
+      const intent = current.pendingRecruitments?.[agentId];
+      if (!intent) {
         return current;
       }
       claimed = true;
+      const entry = current.members.find((member) => member.agentId === agentId);
+      // DEC-13: a recruit the team no longer has room for was cancelled, not
+      // failed, however the daemon came to notice.
+      const invalidated = current.lifecycle !== "active" || entry?.state !== "active";
+      const reason = invalidated ? ("recruitment_canceled" as const) : preferred;
       return {
         ...current,
         members: current.members.map((member) =>
@@ -466,18 +501,33 @@ export class TeamService {
             ? {
                 ...member,
                 state: "removed" as const,
-                leftAt: new Date().toISOString(),
-                removalReason: "recruitment_canceled" as const,
+                leftAt: member.leftAt ?? new Date().toISOString(),
+                removalReason: member.removalReason ?? reason,
               }
             : member,
         ),
-        pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
+        pendingRecruitments: {
+          ...current.pendingRecruitments,
+          [agentId]: { ...intent, stage: "cancelling" as const },
+        },
       };
     });
 
-    if (claimed) {
-      await this.archiveAgentIdempotently(agentId);
+    if (!claimed) {
+      this.logger.info(
+        { teamId, agentId },
+        "Leaving a recruit alone: another pass had already finished it",
+      );
+      return;
     }
+
+    // Only now, and only if this succeeds. A throw here leaves the intent
+    // `cancelling` for the reconciler to pick up.
+    await this.archiveAgentIdempotently(agentId);
+    await this.store.update(teamId, (current) => ({
+      ...current,
+      pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
+    }));
   }
 
   /**
@@ -646,7 +696,13 @@ export class TeamService {
    * through releases the seat instead of holding it forever.
    */
   private async finishInterruptedRecruits(team: StoredTeam): Promise<void> {
-    for (const agentId of Object.keys(team.pendingRecruitments ?? {})) {
+    for (const [agentId, intent] of Object.entries(team.pendingRecruitments ?? {})) {
+      // Someone decided to undo this one and did not get to finish. The intent
+      // is what says so; picking it up here is the only thing that will.
+      if (intent.stage === "cancelling") {
+        await this.retireRecruit(team.id, agentId, "recruitment_canceled");
+        continue;
+      }
       try {
         await this.landRecruit(team.id, agentId);
       } catch (error) {
@@ -681,36 +737,7 @@ export class TeamService {
    * The claim is taken in the same write that records the failure.
    */
   private async failRecruitment(teamId: string, agentId: string): Promise<void> {
-    let claimed = false;
-    await this.store.update(teamId, (current) => {
-      if (!current.pendingRecruitments?.[agentId]) {
-        return current;
-      }
-      claimed = true;
-      return {
-        ...current,
-        members: current.members.map((member) =>
-          member.agentId === agentId
-            ? {
-                ...member,
-                state: "removed" as const,
-                leftAt: new Date().toISOString(),
-                removalReason: "recruitment_failed" as const,
-              }
-            : member,
-        ),
-        pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
-      };
-    });
-
-    if (!claimed) {
-      this.logger.info(
-        { teamId, agentId },
-        "Leaving a recruit alone: another pass had already finished it",
-      );
-      return;
-    }
-    await this.archiveAgentIdempotently(agentId);
+    await this.retireRecruit(teamId, agentId, "recruitment_failed");
   }
 
   /**
@@ -1148,6 +1175,13 @@ function assertJsonValue(value: unknown, path: string, seen = new Set<object>())
   if (value === null) return;
   if (Array.isArray(value)) {
     guardAgainstCycle(value, path, seen);
+    // An array can carry named and symbol properties that JSON drops, so two
+    // arrays that differ only in those serialize the same — and one request
+    // would be taken for a retry of the other.
+    const named = Object.keys(value).filter((key) => !/^\d+$/.test(key));
+    if (named.length > 0 || Object.getOwnPropertySymbols(value).length > 0) {
+      throw new TeamCreateValidationError(`${path} must not have properties besides its items`);
+    }
     for (let index = 0; index < value.length; index += 1) {
       // A hole is not `undefined` you can see — `forEach` skips it and JSON
       // writes `null` — so the length is walked rather than the entries.

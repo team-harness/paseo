@@ -224,6 +224,8 @@ describe("TeamService creation", () => {
     cyclic.self = cyclic;
     const sparse: unknown[] = [];
     sparse[2] = "third";
+    const decorated: unknown[] = ["a"];
+    (decorated as unknown as Record<string, unknown>).extra = 1;
 
     for (const settings of [
       { modeId: undefined },
@@ -236,6 +238,9 @@ describe("TeamService creation", () => {
       { limit: Number.POSITIVE_INFINITY },
       { items: sparse },
       { [Symbol("hidden")]: 1 },
+      // JSON drops both of these, so an array carrying them looks identical to
+      // one that does not.
+      { items: decorated },
       cyclic,
     ]) {
       await expect(

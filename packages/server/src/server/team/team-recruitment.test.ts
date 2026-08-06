@@ -48,8 +48,12 @@ describe("TeamService recruitment", () => {
       await this.afterPrompt?.();
     }
 
+    /** Agent ids whose archive fails for a reason that is not "gone". */
+    failing = new Set<string>();
+
     async archiveAgent(agentId: string): Promise<{ kind: "archived" } | { kind: "not_found" }> {
       if (this.missing.has(agentId)) return { kind: "not_found" };
+      if (this.failing.has(agentId)) throw new Error(`Storage is unavailable for ${agentId}`);
       this.archived.push(agentId);
       return { kind: "archived" };
     }
@@ -443,6 +447,56 @@ describe("TeamService recruitment", () => {
       expect(forRecruit.map(clientMessageIdOf)).toEqual([clientMessageId, clientMessageId]);
       expect((await store.get(team.id))?.pendingRecruitments).toBeNull();
       expect(entryFor(await store.get(team.id), "recruit-1")?.state).toBe("active");
+    });
+
+    // Undoing a recruit means archiving the agent. If the store is cleared
+    // first and that archive then fails, nothing is left saying the agent needs
+    // archiving: no pending intent, no active member, nothing to come back to.
+    test("keeps something to retry when the archive fails during a cancel", async () => {
+      const team = await seedTeam();
+      await leaveReserved(team, "recruit-1");
+      await service.archive(team.id);
+      agents.archived.length = 0;
+      agents.failing.add("recruit-1");
+
+      await service.reconcile();
+
+      // Still recorded as needing the archive it did not get.
+      const stored = await store.get(team.id);
+      expect(stored?.pendingRecruitments?.["recruit-1"]?.stage).toBe("cancelling");
+
+      agents.failing.delete("recruit-1");
+      await service.reconcile();
+
+      expect(agents.archived).toContain("recruit-1");
+      expect((await store.get(team.id))?.pendingRecruitments).toBeNull();
+    });
+
+    // Pass B is stuck creating the agent while pass A finishes the whole
+    // recruit. B must not put the intent back on its way out, or a later
+    // failure in B would claim a recruit that is no longer its business.
+    test("does not put back an intent another pass has finished", async () => {
+      const team = await seedTeam();
+      await leaveReserved(team, "recruit-1");
+      let releaseB: (() => void) | null = null;
+      const bIsCreating = new Promise<void>((resolve) => {
+        releaseB = resolve;
+      });
+      let creates = 0;
+      agents.beforeCreate = async () => {
+        creates += 1;
+        if (creates === 1) await bIsCreating;
+      };
+
+      const passB = service.reconcile();
+      await service.reconcile();
+      releaseB?.();
+      await passB;
+
+      const stored = await store.get(team.id);
+      expect(stored?.pendingRecruitments).toBeNull();
+      expect(entryFor(stored, "recruit-1")?.state).toBe("active");
+      expect(agents.archived).toEqual([]);
     });
 
     test("cancels an intent left behind by a team that is no longer active", async () => {
