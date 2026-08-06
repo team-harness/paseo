@@ -25,6 +25,15 @@ export const CLIENT_CAPS = {
   // Remove the legacy snapshot encoding after 2027-02-04.
   compactProviderSnapshots: "compact_provider_snapshots",
   browserHost: "browser_host",
+  // COMPAT(teams): added in v0.3.0, remove after 2027-02-06 once the client floor
+  // is >= v0.3.0. One logical session can hold several physical sockets, so team
+  // broadcasts are gated per socket with supportsForSource; an older socket on
+  // the same session must not receive `team.update`.
+  teams: "teams",
+  // COMPAT(chatRoomSubscriptions): added in v0.3.0, remove after 2027-02-06 once
+  // the client floor is >= v0.3.0. Gated per socket like teams; separate because
+  // live room streaming is useful without teams.
+  chatRoomSubscriptions: "chat_room_subscriptions",
 } as const;
 
 export type ClientCapability = (typeof CLIENT_CAPS)[keyof typeof CLIENT_CAPS];

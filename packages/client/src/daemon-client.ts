@@ -296,6 +296,16 @@ export type DaemonEvent =
       type: "providers_snapshot_update";
       payload: Extract<SessionOutboundMessage, { type: "providers_snapshot_update" }>["payload"];
     }
+  | {
+      type: "team.update";
+      teamId: string;
+      payload: Extract<SessionOutboundMessage, { type: "team.update" }>["payload"];
+    }
+  | {
+      type: "chat.room.message_posted";
+      roomId: string;
+      payload: Extract<SessionOutboundMessage, { type: "chat.room.message_posted" }>["payload"];
+    }
   | { type: "error"; message: string };
 
 export type DaemonEventHandler = (event: DaemonEvent) => void;
@@ -525,6 +535,31 @@ type ChatDeletePayload = Extract<
 type ChatPostPayload = Extract<SessionOutboundMessage, { type: "chat/post/response" }>["payload"];
 type ChatReadPayload = Extract<SessionOutboundMessage, { type: "chat/read/response" }>["payload"];
 type ChatWaitPayload = Extract<SessionOutboundMessage, { type: "chat/wait/response" }>["payload"];
+type ChatRoomSubscribePayload = Extract<
+  SessionOutboundMessage,
+  { type: "chat.room.subscribe.response" }
+>["payload"];
+type ChatRoomUnsubscribePayload = Extract<
+  SessionOutboundMessage,
+  { type: "chat.room.unsubscribe.response" }
+>["payload"];
+type TeamCreatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.create.response" }
+>["payload"];
+type TeamListPayload = Extract<SessionOutboundMessage, { type: "team.list.response" }>["payload"];
+type TeamInspectPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.inspect.response" }
+>["payload"];
+type TeamArchivePayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.archive.response" }
+>["payload"];
+type TeamMemberRemovePayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.member.remove.response" }
+>["payload"];
 type LoopRunPayload = Extract<SessionOutboundMessage, { type: "loop/run/response" }>["payload"];
 type LoopListPayload = Extract<SessionOutboundMessage, { type: "loop/list/response" }>["payload"];
 type LoopInspectPayload = Extract<
@@ -746,6 +781,60 @@ export interface WaitForChatMessagesOptions {
   room: string;
   afterMessageId?: string | null;
   timeoutMs?: number;
+  requestId?: string;
+}
+export interface SubscribeChatRoomOptions {
+  room: string;
+  /** Resume after this cursor instead of jumping to the newest page. */
+  afterCursor?: number;
+  limit?: number;
+  requestId?: string;
+}
+export interface UnsubscribeChatRoomOptions {
+  room: string;
+  requestId?: string;
+}
+export interface CreateTeamMemberSpec {
+  role: string;
+  provider: string;
+  title?: string;
+  settings?: {
+    modeId?: string;
+    thinkingOptionId?: string;
+    features?: Record<string, unknown>;
+  };
+  briefing?: string;
+}
+export interface CreateTeamOptions {
+  /**
+   * Reuse the same key only while the outcome is unknown (disconnect, timeout).
+   * After a definite failure a fresh user-initiated create needs a new key, or
+   * the daemon keeps returning the failed team.
+   */
+  idempotencyKey: string;
+  name: string;
+  workspaceId: string;
+  task: string;
+  lead: CreateTeamMemberSpec;
+  members: CreateTeamMemberSpec[];
+  templateId?: string;
+  requestId?: string;
+}
+export interface ListTeamsOptions {
+  includeArchived?: boolean;
+  requestId?: string;
+}
+export interface InspectTeamOptions {
+  teamId: string;
+  requestId?: string;
+}
+export interface ArchiveTeamOptions {
+  teamId: string;
+  requestId?: string;
+}
+export interface RemoveTeamMemberOptions {
+  teamId: string;
+  agentId: string;
   requestId?: string;
 }
 export interface RunLoopOptions {
@@ -5239,6 +5328,89 @@ export class DaemonClient {
     });
   }
 
+  async subscribeChatRoom(options: SubscribeChatRoomOptions): Promise<ChatRoomSubscribePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "chat.room.subscribe.request",
+        room: options.room,
+        ...(typeof options.afterCursor === "number" ? { afterCursor: options.afterCursor } : {}),
+        ...(typeof options.limit === "number" ? { limit: options.limit } : {}),
+      },
+    });
+  }
+
+  async unsubscribeChatRoom(
+    options: UnsubscribeChatRoomOptions,
+  ): Promise<ChatRoomUnsubscribePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "chat.room.unsubscribe.request",
+        room: options.room,
+      },
+    });
+  }
+
+  async createTeam(options: CreateTeamOptions): Promise<TeamCreatePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "team.create.request",
+        idempotencyKey: options.idempotencyKey,
+        name: options.name,
+        workspaceId: options.workspaceId,
+        task: options.task,
+        lead: options.lead,
+        members: options.members,
+        ...(options.templateId ? { templateId: options.templateId } : {}),
+      },
+    });
+  }
+
+  async listTeams(options: ListTeamsOptions = {}): Promise<TeamListPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "team.list.request",
+        ...(typeof options.includeArchived === "boolean"
+          ? { includeArchived: options.includeArchived }
+          : {}),
+      },
+    });
+  }
+
+  async inspectTeam(options: InspectTeamOptions): Promise<TeamInspectPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "team.inspect.request",
+        teamId: options.teamId,
+      },
+    });
+  }
+
+  async archiveTeam(options: ArchiveTeamOptions): Promise<TeamArchivePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "team.archive.request",
+        teamId: options.teamId,
+      },
+    });
+  }
+
+  async removeTeamMember(options: RemoveTeamMemberOptions): Promise<TeamMemberRemovePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "team.member.remove.request",
+        teamId: options.teamId,
+        agentId: options.agentId,
+      },
+    });
+  }
+
   async scheduleCreate(options: CreateScheduleOptions): Promise<ScheduleCreatePayload> {
     return this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
@@ -5495,6 +5667,8 @@ export class DaemonClient {
           [CLIENT_CAPS.providerSubagents]: true,
           [CLIENT_CAPS.projectUpdates]: true,
           [CLIENT_CAPS.compactProviderSnapshots]: true,
+          [CLIENT_CAPS.teams]: true,
+          [CLIENT_CAPS.chatRoomSubscriptions]: true,
           ...this.config.capabilities,
         },
         ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
@@ -6006,6 +6180,14 @@ export class DaemonClient {
         };
       case "project.update":
         return { type: "project.update", payload: msg.payload };
+      case "team.update":
+        return { type: "team.update", teamId: msg.payload.team.id, payload: msg.payload };
+      case "chat.room.message_posted":
+        return {
+          type: "chat.room.message_posted",
+          roomId: msg.payload.roomId,
+          payload: msg.payload,
+        };
       case "workspace_setup_progress":
         return {
           type: "workspace_setup_progress",

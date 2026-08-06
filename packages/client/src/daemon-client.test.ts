@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   DaemonClient,
   type DaemonClientTrace,
+  type DaemonEvent,
   type DaemonTransport,
   type Logger,
 } from "./daemon-client";
@@ -764,11 +765,13 @@ test("advertises client capabilities in hello", async () => {
     clientType: "cli",
     protocolVersion: 1,
     capabilities: {
+      chat_room_subscriptions: true,
       compact_provider_snapshots: true,
       custom_mode_icons: true,
       project_updates: true,
       provider_subagents: true,
       reasoning_merge_enum: true,
+      teams: true,
       terminal_reflowable_snapshot: true,
       browser_host: {
         supportedCommands: ["list_tabs"],
@@ -5845,4 +5848,152 @@ test("waitForFinish with timeout=0 omits timeoutMs and has no client deadline", 
   } finally {
     vi.useRealTimers();
   }
+});
+
+const teamSnapshotFixture = {
+  id: "team-1",
+  name: "Disk usage",
+  workspaceId: "wks_1",
+  chatRoomId: "room-1",
+  leadAgentId: "agent-lead",
+  members: [
+    {
+      agentId: "agent-lead",
+      role: "lead",
+      joinedAt: "2026-08-06T10:00:00.000Z",
+      leftAt: null,
+      state: "active",
+      removalReason: null,
+    },
+  ],
+  lifecycle: "active",
+  revision: 2,
+  templateId: null,
+  createdAt: "2026-08-06T10:00:00.000Z",
+  updatedAt: "2026-08-06T10:05:00.000Z",
+  archivedAt: null,
+};
+
+test("advertises team and chat room subscription capabilities in the hello handshake", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "team_hello_test",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen({ preserveSent: true });
+  await connectPromise;
+
+  const hello = JSON.parse(mock.sent[0] as string) as {
+    capabilities?: Record<string, unknown>;
+  };
+  // The daemon gates team broadcasts per socket, so a client that never claims
+  // these capabilities silently receives nothing.
+  expect(hello.capabilities?.[CLIENT_CAPS.teams]).toBe(true);
+  expect(hello.capabilities?.[CLIENT_CAPS.chatRoomSubscriptions]).toBe(true);
+});
+
+test("createTeam sends a dotted request and resolves the matching response payload", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "team_create_test",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const createPromise = client.createTeam({
+    idempotencyKey: "idem-1",
+    name: "Disk usage",
+    workspaceId: "wks_1",
+    task: "Add a disk usage indicator",
+    lead: { role: "lead", provider: "claude/claude-fable-5" },
+    members: [{ role: "implementer", provider: "codex/gpt-5.6-sol" }],
+  });
+
+  const request = JSON.parse(mock.sent.at(-1) as string).message as Record<string, unknown>;
+  expect(request.type).toBe("team.create.request");
+  expect(request.idempotencyKey).toBe("idem-1");
+  expect(request.members).toEqual([{ role: "implementer", provider: "codex/gpt-5.6-sol" }]);
+  expect(request).not.toHaveProperty("templateId");
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "team.create.response",
+      payload: {
+        requestId: request.requestId,
+        team: teamSnapshotFixture,
+        error: null,
+        errorCode: null,
+      },
+    }),
+  );
+
+  await expect(createPromise).resolves.toEqual({
+    requestId: request.requestId,
+    team: teamSnapshotFixture,
+    error: null,
+    errorCode: null,
+  });
+});
+
+test("team and chat room broadcasts surface as addressable daemon events", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "team_event_test",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const events: DaemonEvent[] = [];
+  client.on((event) => events.push(event));
+
+  mock.triggerMessage(
+    wrapSessionMessage({ type: "team.update", payload: { team: teamSnapshotFixture } }),
+  );
+
+  const roomMessage = {
+    id: "msg-1",
+    roomId: "room-1",
+    authorAgentId: "agent-lead",
+    body: "Assigned the server work.",
+    replyToMessageId: null,
+    mentionAgentIds: [],
+    createdAt: "2026-08-06T10:06:00.000Z",
+    author: { kind: "agent", id: "agent-lead" },
+  };
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "chat.room.message_posted",
+      payload: { roomId: "room-1", message: roomMessage, cursor: 9 },
+    }),
+  );
+
+  expect(events).toEqual([
+    {
+      type: "team.update",
+      teamId: "team-1",
+      payload: { team: teamSnapshotFixture },
+    },
+    {
+      type: "chat.room.message_posted",
+      roomId: "room-1",
+      payload: { roomId: "room-1", message: roomMessage, cursor: 9 },
+    },
+  ]);
 });

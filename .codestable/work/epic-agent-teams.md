@@ -2,8 +2,8 @@
 epic: ../epics/agent-teams.md
 phase: executing
 approved_revision: 74667ea6e2b559834cbf8f6f7ec717d415917df36e718391620e39fae3935a79
-current_item: ITEM-1
-next_action: 执行 ITEM-1（protocol + client schema），owning skill = codestable:cs-feat
+current_item: ITEM-2
+next_action: 执行 ITEM-2（server 基础改造：记录变更事件流、turnOutcomes、deletion guard、指定 id 幂等创建、team-store），owning skill = codestable:cs-feat
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -12,7 +12,7 @@ remote_publish: final
 
 ## 子项进度
 
-- [ ] ITEM-1 protocol + client schema
+- [x] ITEM-1 protocol + client schema
 - [ ] ITEM-2 server 基础改造
 - [ ] ITEM-3 chat 改造
 - [ ] ITEM-4 TeamService
@@ -44,3 +44,24 @@ remote_publish: final
 - owner 终裁（2026-08-06）：**接受 v2.6，确认拆解，进入 executing**。Epic 置 active，批准 hash `74667ea6e2b559834cbf8f6f7ec717d415917df36e718391620e39fae3935a79`（置 active 后的完整文件）。
 - 落地位置：paseo 托管 worktree `/Users/wyattfang/.paseo/worktrees/3rvhzvvc/agent-teams`，分支 `feat/agent-teams`（branch-off from main @ ab3291fe2），workspace `wks_7b47678f73195706`。Epic/设计/游标三份文件已复制入 worktree，内容 hash 与主 checkout 冻结值一致。
 - 残余风险（owner 接受）：at-least-once 重复、unknown 结算、事件丢失后至多约 60s 延迟；R3-I1/R3-I2 两项 important 为"实现中解决"，已写入 ITEM-1/ITEM-4 验收。
+
+## ITEM-1 · protocol + client schema（完成 2026-08-06）
+
+交付：`packages/protocol/src/team/{types,rpc-schemas}.ts`（实体 + 显式 wire 投影 `toTeamSnapshot` + 5 组 dotted RPC + `team.update` 广播）、`agent-labels.ts` 的 `TEAM_ID_LABEL`/`TEAM_ROLE_LABEL` 与 getter、`chat/types.ts` 的 author 模型与房间所有权、`chat/rpc-schemas.ts` 的订阅协议、`messages.ts` 五处 union 接入 + 两个 feature gate、`client-capabilities.ts` 两个能力、`packages/client` 的 7 个方法与 2 条 DaemonEvent。
+
+证据：protocol 相关 54 passed、client 113 passed（含 4 个新测试）、protocol 全量 559 passed（1 failed 为基线预存项 `messages.server-info.test.ts > agentWorkspaceInheritance`，已用 stash 在干净基线复现）、`generate:validators` 编译新出站 schema 成功、`build:client` + 全 workspace `typecheck` exit 0 / 0 error、lint + format 干净。
+
+change review：1 个阶段 2 轮，reviewer = Paseo agent `dfa8546a`（codex/gpt-5.6-sol · max，异构最强，受管理结构化委派，无回退）。轮 1（指纹 `7a7f3bd0…`）2 blocking + 2 important；轮 2（指纹 `77ac819b…`）全部 resolved，结论**可合**，无新发现。
+
+### 实现决策（设计文档在 active 期间不改，决策记录在此）
+
+- **广播命名改用 dotted**：设计 §4.2/§4.3 写的是 `team_update` / `chat_room_message`，实现为 **`team.update`** / **`chat.room.message_posted`**。依据：`docs/rpc-namespacing.md` 明令不再新增 flat 名，且仓库最新广播已是 dotted（`agent.provider_subagents.update`、`project.update`）。DEC-8 的 revision / authoritative replacement 语义不变。ITEM-6 消费这两个名字。
+- **订阅协议细化（ITEM-3 必须遵守）**：设计 §4.3.2 只说"cursor 增量补齐"，未给入口。实现冻结为——请求 optional `afterCursor`、响应必填 `hasMore`；不带 `afterCursor` 返回最新 `limit` 条，带则返回该 cursor 之后的升序增量；`hasMore` 为真表示 gap 长于一页，客户端用刚得到的 cursor 继续拉，期间实时广播按 cursor 合并。缺这个入口会在"断线期间新增消息数 > 首屏页大小"时永久丢消息（review 轮 1 blocking 2）。
+- **COMPAT 标签只打在真 shim 上**：`features.teams`、`features.chatRoomSubscriptions`、两个 `CLIENT_CAPS` 是可删除的 gate，标 `v0.3.0` + 2027-02-06。`ChatRoom` 所有权字段与 `ChatMessage.author` 的 optional 是**永久** wire 形态（协议既禁止 optional 翻 required 也禁止删字段），不打标签；将来要删的是 daemon 的 `authorAgentId`/`author` 双写逻辑，标签归 ITEM-3 的那段代码。
+- **`create_agent` 的 `teamRole`（DEC-13）留给 ITEM-4**：它是 agent 工具目录的入参，不在 protocol 的 team/chat schema 范围内。
+
+### 环境事实（后续子项复用）
+
+- worktree 首次 `npm install` 会因 electron 二进制直连官方源超时而整体回滚；用 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` + 本机代理 `127.0.0.1:7890` 可装成。
+- 新 worktree 未构建时，pre-commit 的全量 typecheck 会因跨包 dist 缺失而报大量 TS2307；先跑 `npm run build:server`（含 highlight/server/cli）与 `npm run build:client`。
+- 跑测试用 `./node_modules/.bin/vitest`；`npx vitest` 会解析到 npx 缓存的版本并因根 `vitest.config.ts` 的依赖而失败。

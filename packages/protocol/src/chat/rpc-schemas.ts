@@ -1,6 +1,68 @@
 import { z } from "zod";
 import { ChatMessageSchema, ChatRoomDetailSchema } from "./types.js";
 
+/**
+ * Live room subscription. `chat/read` + `chat/wait` cannot express "start
+ * following this room" without a gap or a duplicate between the two calls, so
+ * subscribe returns the first page and its cursor atomically and every later
+ * message arrives on `chat.room.message_posted` with the next cursor.
+ *
+ * A subscription belongs to one physical socket and dies with it.
+ *
+ * Without `afterCursor` the response holds the newest `limit` messages, which is
+ * what a freshly opened room wants. A client that was disconnected passes the
+ * cursor it last saw and gets that gap in ascending order instead; when the gap
+ * is longer than one page the response sets `hasMore` and the client repeats
+ * with the cursor it just received. Dropping `afterCursor` would silently lose
+ * every message between the last seen cursor and the newest page.
+ */
+export const ChatRoomSubscribeRequestSchema = z.object({
+  type: z.literal("chat.room.subscribe.request"),
+  requestId: z.string(),
+  room: z.string(),
+  afterCursor: z.number().int().nonnegative().optional(),
+  limit: z.number().int().nonnegative().optional(),
+});
+
+export const ChatRoomUnsubscribeRequestSchema = z.object({
+  type: z.literal("chat.room.unsubscribe.request"),
+  requestId: z.string(),
+  room: z.string(),
+});
+
+export const ChatRoomSubscribeResponseSchema = z.object({
+  type: z.literal("chat.room.subscribe.response"),
+  payload: z.object({
+    requestId: z.string(),
+    roomId: z.string(),
+    messages: z.array(ChatMessageSchema),
+    /** Cursor of the last message in `messages`; the subscription starts here. */
+    cursor: z.number().int().nonnegative(),
+    /** More history sits between `cursor` and the newest message. */
+    hasMore: z.boolean(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const ChatRoomUnsubscribeResponseSchema = z.object({
+  type: z.literal("chat.room.unsubscribe.response"),
+  payload: z.object({
+    requestId: z.string(),
+    roomId: z.string(),
+    error: z.string().nullable(),
+  }),
+});
+
+/** Broadcast to every socket subscribed to the room. */
+export const ChatRoomMessagePostedSchema = z.object({
+  type: z.literal("chat.room.message_posted"),
+  payload: z.object({
+    roomId: z.string(),
+    message: ChatMessageSchema,
+    cursor: z.number().int().nonnegative(),
+  }),
+});
+
 export const ChatCreateRequestSchema = z.object({
   type: z.literal("chat/create"),
   requestId: z.string(),
