@@ -10,6 +10,7 @@ function openFilledForm(): TeamFormModel {
   let keys = 0;
   let idempotency = 0;
   const form = openTeamForm({
+    serverId: "srv-1",
     workspaceId: "ws-1",
     workspaceDisplay: "paseo",
     template: null,
@@ -131,6 +132,7 @@ describe("sending a team to the daemon", () => {
 
   it("does nothing for a form that is not ready", async () => {
     const form = openTeamForm({
+      serverId: "srv-1",
       workspaceId: null,
       workspaceDisplay: null,
       template: null,

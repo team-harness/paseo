@@ -8,6 +8,7 @@ function snapshot(overrides: Partial<TeamFormSnapshot> = {}): TeamFormSnapshot {
   let keys = 0;
   let idempotency = 0;
   return {
+    serverId: "srv-1",
     workspaceId: "ws-1",
     workspaceDisplay: "paseo",
     template: null,
@@ -62,6 +63,22 @@ describe("composing a team", () => {
     expect(form.getState().members.map((member) => member.role)).toEqual(["app"]);
   });
 
+  it("refuses a role the daemon's schema would reject", () => {
+    const form = openTeamForm(snapshot());
+    fill(form);
+    form.addMember();
+    const [row] = form.getState().members;
+    form.setMemberProvider(row!.key, "codex", "Codex");
+
+    form.setMemberRole(row!.key, "x".repeat(41));
+
+    // Sending it fails the wire schema, which surfaces as a network error
+    // rather than a field the user can see is wrong.
+    expect(form.getState().canSubmit).toBe(false);
+    form.setMemberRole(row!.key, "x".repeat(40));
+    expect(form.getState().canSubmit).toBe(true);
+  });
+
   it("stops at the cap the daemon enforces", () => {
     const form = openTeamForm(snapshot());
     for (let index = 0; index < TEAM_MAX_NON_LEAD_MEMBERS; index += 1) form.addMember();
@@ -105,6 +122,62 @@ describe("starting from a template", () => {
     expect(state.canSubmit).toBe(true);
     // Carried through so the team records what it was built from.
     expect(state.templateId).toBe("triage");
+  });
+});
+
+describe("waiting for the providers the daemon offers", () => {
+  it("starts out not knowing", () => {
+    expect(openTeamForm(snapshot()).getState().providerResolution).toBe("idle");
+  });
+
+  it("says it is waiting, then what it found", () => {
+    const form = openTeamForm(snapshot());
+
+    form.providerSnapshotRequested("srv-1");
+    expect(form.getState().providerResolution).toBe("pending");
+
+    form.applyProviderSnapshot("srv-1", [
+      { provider: "claude", status: "ready", enabled: true, label: "Claude" },
+      {
+        provider: "codex",
+        status: "ready",
+        enabled: true,
+        models: [{ id: "gpt-5.4", isDefault: true }],
+      },
+      // Neither of these can take work, so neither belongs in a picker.
+      { provider: "broken", status: "error", enabled: true },
+      { provider: "off", status: "ready", enabled: false },
+    ] as never);
+
+    const state = form.getState();
+    expect(state.providerResolution).toBe("complete");
+    expect(state.providerOptions.map((option) => option.provider)).toEqual(["claude", "codex"]);
+    expect(state.providerOptions[0]?.label).toBe("Claude");
+    expect(state.providerOptions[1]?.defaultModelId).toBe("gpt-5.4");
+  });
+
+  it("ignores an answer about a different daemon", () => {
+    const form = openTeamForm(snapshot());
+
+    form.applyProviderSnapshot("srv-2", [
+      { provider: "claude", status: "ready", enabled: true },
+    ] as never);
+
+    // Providers are per host. Taking another one's answer would offer the user
+    // a provider this daemon does not have.
+    expect(form.getState().providerResolution).toBe("idle");
+    expect(form.getState().providerOptions).toEqual([]);
+  });
+
+  it("does not rebuild the form when the answer lands", () => {
+    const form = openTeamForm(snapshot());
+    fill(form);
+
+    form.applyProviderSnapshot("srv-1", [] as never);
+
+    // Late data is an input, not a reason to reconstruct — reconstruction is
+    // how a background refresh wipes what the user has typed.
+    expect(form.getState().name).toBe("Disk usage");
   });
 });
 

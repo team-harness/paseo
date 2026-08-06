@@ -1,6 +1,8 @@
+import type { ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
 import {
   TEAM_MAX_NON_LEAD_MEMBERS,
   TEAM_NAME_MAX_LENGTH,
+  TEAM_ROLE_MAX_LENGTH,
 } from "@getpaseo/protocol/team/rpc-schemas";
 
 /** A member row the user is editing. Keyed so reordering or removing one cannot move another's input. */
@@ -18,6 +20,15 @@ export type TeamFormSubmission =
   | { status: "pending" }
   | { status: "success"; teamId: string }
   | { status: "failure"; message: string; retryable: boolean };
+
+/**
+ * Whether this form knows what providers the daemon offers.
+ *
+ * Explicit state rather than an effect: waiting for data is something a form
+ * can render, and a picker that has to guess whether an empty list means "none"
+ * or "not yet" ends up flickering or blanking a selection.
+ */
+export type ProviderResolution = "idle" | "pending" | "complete";
 
 export interface TeamFormState {
   name: string;
@@ -40,6 +51,18 @@ export interface TeamFormState {
   agentCount: number;
   /** The template this was opened from, carried through to the request. */
   templateId: string | null;
+  /** The daemon this team would be built on. Providers are resolved per host. */
+  serverId: string | null;
+  providerResolution: ProviderResolution;
+  /** Providers that can actually take work, in the order the daemon gave them. */
+  providerOptions: TeamFormProviderOption[];
+}
+
+export interface TeamFormProviderOption {
+  provider: string;
+  label: string;
+  /** The default model, when the daemon named one. Part of the provider string. */
+  defaultModelId: string | null;
 }
 
 export interface TeamFormTemplate {
@@ -56,6 +79,7 @@ export interface TeamFormTemplate {
 }
 
 export interface TeamFormSnapshot {
+  serverId: string | null;
   workspaceId: string | null;
   workspaceDisplay: string | null;
   template: TeamFormTemplate | null;
@@ -82,6 +106,27 @@ export interface TeamFormModel {
   submitStarted: () => void;
   submitSucceeded: (teamId: string) => void;
   submitFailed: (failure: { message: string; retryable: boolean }) => void;
+  /**
+   * Late data, as an input rather than a reason to rebuild.
+   *
+   * Reconstructing the model when the provider list lands would wipe whatever
+   * the user had typed, and the list arrives well after the form opens.
+   */
+  providerSnapshotRequested: (serverId: string) => void;
+  applyProviderSnapshot: (serverId: string, entries: readonly ProviderSnapshotEntry[]) => void;
+}
+
+/** Providers a team can be built from: enabled, ready, and offering a model. */
+export function toProviderOptions(
+  entries: readonly ProviderSnapshotEntry[],
+): TeamFormProviderOption[] {
+  return entries
+    .filter((entry) => entry.enabled !== false && entry.status === "ready")
+    .map((entry) => ({
+      provider: entry.provider,
+      label: entry.label ?? entry.provider,
+      defaultModelId: entry.models?.find((model) => model.isDefault)?.id ?? null,
+    }));
 }
 
 function trimmedLength(value: string): number {
@@ -97,8 +142,13 @@ function isComplete(state: TeamFormState): boolean {
   if (trimmedLength(state.leadProvider) === 0) return false;
   // A member row that is half filled in is not a member the daemon can build,
   // and silently dropping it would build a smaller team than the user drew.
+  // The role bound is the daemon's: letting a longer one through fails the wire
+  // schema, which surfaces as a network error rather than a field to fix.
   return state.members.every(
-    (member) => trimmedLength(member.role) > 0 && trimmedLength(member.provider) > 0,
+    (member) =>
+      trimmedLength(member.role) > 0 &&
+      trimmedLength(member.role) <= TEAM_ROLE_MAX_LENGTH &&
+      trimmedLength(member.provider) > 0,
   );
 }
 
@@ -146,6 +196,9 @@ export function openTeamForm(snapshot: TeamFormSnapshot): TeamFormModel {
     memberCount: 0,
     agentCount: 1,
     templateId: template?.id ?? null,
+    serverId: snapshot.serverId,
+    providerResolution: "idle",
+    providerOptions: [],
   });
 
   function publish(next: TeamFormState): void {
@@ -226,6 +279,20 @@ export function openTeamForm(snapshot: TeamFormSnapshot): TeamFormModel {
     },
     submitSucceeded(teamId) {
       publish({ ...state, submission: { status: "success", teamId } });
+    },
+    providerSnapshotRequested(serverId) {
+      // Keyed to the host that was asked. An answer for a different one says
+      // nothing about this form's daemon.
+      if (serverId !== state.serverId) return;
+      publish({ ...state, providerResolution: "pending" });
+    },
+    applyProviderSnapshot(serverId, entries) {
+      if (serverId !== state.serverId) return;
+      publish({
+        ...state,
+        providerResolution: "complete",
+        providerOptions: toProviderOptions(entries),
+      });
     },
     submitFailed(failure) {
       publish({
