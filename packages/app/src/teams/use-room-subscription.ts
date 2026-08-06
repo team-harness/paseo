@@ -1,11 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
-import {
-  RoomSubscription,
-  type RoomSubscriptionClient,
-  type RoomSubscriptionState,
-} from "./room-subscription";
+import { RoomSubscription, type RoomSubscriptionState } from "./room-subscription";
 import { emptyRoomTimeline } from "./room-timeline";
 
 const WAITING: RoomSubscriptionState = {
@@ -13,6 +10,10 @@ const WAITING: RoomSubscriptionState = {
   error: null,
   loading: true,
 };
+
+export interface RoomSubscriptionHandle extends RoomSubscriptionState {
+  retry(): void;
+}
 
 /**
  * Follows a room for as long as this component is mounted.
@@ -24,26 +25,31 @@ const WAITING: RoomSubscriptionState = {
 export function useRoomSubscription(
   serverId: string,
   roomId: string | null,
-): RoomSubscriptionState {
+): RoomSubscriptionHandle {
+  const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
   const [state, setState] = useState<RoomSubscriptionState>(WAITING);
+  const subscriptionRef = useRef<RoomSubscription | null>(null);
 
   useEffect(() => {
     if (!client || !roomId) {
+      subscriptionRef.current = null;
       setState(WAITING);
       return;
     }
     // Resubscribing starts from the newest page. State from the previous socket
     // describes a room this client is no longer following.
     setState(WAITING);
-    const subscription = new RoomSubscription(
-      roomId,
-      client as unknown as RoomSubscriptionClient,
-      setState,
-    );
+    const subscription = new RoomSubscription(roomId, client, setState, t("teams.room.unopenable"));
+    subscriptionRef.current = subscription;
     subscription.start();
-    return () => subscription.dispose();
-  }, [client, roomId]);
+    return () => {
+      subscriptionRef.current = null;
+      subscription.dispose();
+    };
+  }, [client, roomId, t]);
 
-  return state;
+  const retry = useCallback(() => subscriptionRef.current?.retry(), []);
+
+  return { ...state, retry };
 }

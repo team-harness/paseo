@@ -1146,6 +1146,11 @@ export const ptBR: TranslationResources = {
     },
     teams: {
       room: {
+        placeholder: "Diga algo ao time…",
+        send: "Enviar",
+        notPosted: "Essa mensagem não foi publicada.",
+        unopenable: "Não foi possível abrir esta sala.",
+        person: "Uma pessoa",
         you: "Você",
         empty: "Ninguém disse nada ainda.",
         showMore: "Mostrar mais",
@@ -1156,6 +1161,8 @@ export const ptBR: TranslationResources = {
         unsupported: "{{hostName}} é antigo demais para times. Atualize para abrir este link.",
       },
       panel: {
+        archiveRefused: "Não foi possível arquivar o time.",
+        removeRefused: "Não foi possível remover esse membro.",
         leadTabClosed: "Aba fechada. {{teamName}} continua rodando — arquive pelo painel do time.",
         archiveRunning: "{{count}} deles estão trabalhando agora e vão perder esse trabalho.",
         creating: "Formando",

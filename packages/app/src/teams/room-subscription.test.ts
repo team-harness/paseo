@@ -184,6 +184,42 @@ describe("following one room over a socket", () => {
     expect(client.unsubscribeChatRoom).toHaveBeenCalledWith({ room: "room-1" });
   });
 
+  it("can be opened again after it failed", async () => {
+    // The effect that built this only re-runs on a new socket, so without a
+    // retry a transient failure costs the room until the tab is closed.
+    const client = fakeClient();
+    const sink = collect();
+    const subscription = new RoomSubscription("room-1", client, sink.onState);
+
+    subscription.start();
+    client.fail("Room is loading");
+    await vi.waitFor(() => expect(sink.states.at(-1)?.error).toBe("Room is loading"));
+
+    subscription.retry();
+    client.answer({ messages: [message("a")], cursor: 4 });
+    await vi.waitFor(() => expect(sink.states.at(-1)?.loading).toBe(false));
+
+    expect(sink.states.at(-1)).toMatchObject({ error: null });
+    expect(sink.states.at(-1)?.timeline.messages.map((m) => m.id)).toEqual(["a"]);
+  });
+
+  it("still holds what arrives during a retry", async () => {
+    const client = fakeClient();
+    const sink = collect();
+    const subscription = new RoomSubscription("room-1", client, sink.onState);
+
+    subscription.start();
+    client.fail("Room is loading");
+    await vi.waitFor(() => expect(sink.states.at(-1)?.error).toBe("Room is loading"));
+
+    subscription.retry();
+    client.emit("b", 5);
+    client.answer({ messages: [message("a")], cursor: 4 });
+    await vi.waitFor(() => expect(sink.states.at(-1)?.loading).toBe(false));
+
+    expect(sink.states.at(-1)?.timeline.messages.map((m) => m.id)).toEqual(["a", "b"]);
+  });
+
   it("does not answer for a subscription that was disposed mid-flight", async () => {
     // The panel closed while the page was in the air. Committing it writes to
     // a screen that is gone and leaves the room subscribed on the daemon.

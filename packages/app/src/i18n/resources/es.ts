@@ -1157,6 +1157,11 @@ export const es: TranslationResources = {
     },
     teams: {
       room: {
+        placeholder: "Dile algo al equipo…",
+        send: "Enviar",
+        notPosted: "Ese mensaje no se publicó.",
+        unopenable: "No se pudo abrir esta sala.",
+        person: "Una persona",
         you: "Tú",
         empty: "Todavía no se ha dicho nada.",
         showMore: "Mostrar más",
@@ -1168,6 +1173,8 @@ export const es: TranslationResources = {
           "{{hostName}} es demasiado antiguo para equipos. Actualízalo para abrir este enlace.",
       },
       panel: {
+        archiveRefused: "No se pudo archivar el equipo.",
+        removeRefused: "No se pudo quitar a ese miembro.",
         leadTabClosed: "Pestaña cerrada. {{teamName}} sigue en marcha: archívalo desde su panel.",
         archiveRunning: "{{count}} de ellos están trabajando ahora y perderán ese trabajo.",
         creating: "Formándose",

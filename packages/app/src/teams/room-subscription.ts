@@ -51,6 +51,8 @@ export class RoomSubscription {
     private readonly roomId: string,
     private readonly client: RoomSubscriptionClient,
     private readonly onState: (state: RoomSubscriptionState) => void,
+    /** What to say when the daemon fails without saying why. */
+    private readonly unopenableLabel = "The room could not be opened.",
   ) {}
 
   start(): void {
@@ -94,10 +96,26 @@ export class RoomSubscription {
     } catch (cause) {
       if (this.disposed) return;
       this.held = null;
-      this.error = cause instanceof Error ? cause.message : "The room could not be opened.";
+      this.error = cause instanceof Error ? cause.message : this.unopenableLabel;
       this.loading = false;
       this.emit();
     }
+  }
+
+  /**
+   * Tries again after a failed open.
+   *
+   * A room that failed once stays failed forever otherwise — the effect that
+   * built this only re-runs on a new socket, so a transient failure costs the
+   * user the room until they close the tab and come back.
+   */
+  retry(): void {
+    if (this.disposed || this.loading) return;
+    this.held = [];
+    this.error = null;
+    this.loading = true;
+    this.emit();
+    void this.load();
   }
 
   private apply(streamed: StreamedMessage): void {

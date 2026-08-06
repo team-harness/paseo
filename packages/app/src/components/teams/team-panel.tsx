@@ -9,6 +9,7 @@ import type {
 } from "@getpaseo/protocol/agent-types";
 import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 
+import { resolvePermissionActions } from "@/agent-stream/permission-actions";
 import { Button } from "@/components/ui/button";
 import { TeamRoom } from "@/components/teams/team-room";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -77,13 +78,30 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
 
   const run = useCallback(
     (action: TeamActionKey) => {
-      if (!client) return;
       const key = teamActionKeyOf(action);
-      void runTeamAction(action, teamId, client, (state) => {
-        setActions((current) => ({ ...current, [key]: state }));
-      });
+      if (!client) {
+        // A confirmed destructive action that does nothing, silently, is read
+        // as one that worked.
+        setActions((current) => ({
+          ...current,
+          [key]: { status: "failure", message: t("common.errors.daemonClientUnavailable") },
+        }));
+        return;
+      }
+      void runTeamAction(
+        action,
+        teamId,
+        client,
+        {
+          archiveRefused: t("teams.panel.archiveRefused"),
+          removeRefused: t("teams.panel.removeRefused"),
+        },
+        (state) => {
+          setActions((current) => ({ ...current, [key]: state }));
+        },
+      );
     },
-    [client, teamId],
+    [client, t, teamId],
   );
 
   const archive = useCallback(() => {
@@ -96,7 +114,7 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
         title: t("teams.panel.archiveTitle"),
         message: `${t("teams.panel.archiveMessage", { count: activeCount })}${warning}`,
         confirmLabel: t("teams.panel.archiveConfirm"),
-        cancelLabel: t("common.cancel"),
+        cancelLabel: t("common.actions.cancel"),
         destructive: true,
       });
       if (confirmed) run({ kind: "archive" });
@@ -177,7 +195,12 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
           the room's width and leave a stripe. */}
       <View style={isCompact ? styles.columnsCompact : styles.columns}>
         <View style={styles.roomColumn}>
-          <TeamRoom serverId={serverId} roomId={team.chatRoomId} roster={roster} />
+          <TeamRoom
+            serverId={serverId}
+            roomId={team.chatRoomId}
+            roster={roster}
+            readOnly={!actionable}
+          />
         </View>
         {side}
       </View>
@@ -236,9 +259,26 @@ function PermissionRow({
   const [error, setError] = useState<string | null>(null);
   const request = row.permission.request;
 
+  // Most providers send no `actions` at all — rendering only what the request
+  // carries would draw an ordinary tool permission with no way to answer it.
+  const actions = useMemo(
+    () =>
+      resolvePermissionActions(request, {
+        deny: t("agentStream.permission.deny"),
+        accept: t("agentStream.permission.accept"),
+        implement: t("agentStream.permission.implement"),
+      }),
+    [request, t],
+  );
+
   const answer = useCallback(
     (action: AgentPermissionAction) => {
-      if (!client) return;
+      if (!client) {
+        // Silence here reads as "answered". The daemon is gone, and the agent
+        // is still sitting on this request.
+        setError(t("common.errors.daemonClientUnavailable"));
+        return;
+      }
       setAnswering(action.id);
       setError(null);
       // The request's own action, by id. An invented Allow and Deny answers an
@@ -267,7 +307,7 @@ function PermissionRow({
   return (
     <View style={styles.permission} testID={`team-permission-${row.agentId}`}>
       <Text style={styles.muted}>{`${row.role}: ${request.title ?? request.name}`}</Text>
-      {(request.actions ?? []).map((action) => (
+      {actions.map((action) => (
         <PermissionAction
           key={action.id}
           action={action}
@@ -330,7 +370,7 @@ function MemberRow({
         title: t("teams.panel.removeTitle"),
         message: t("teams.panel.removeMessage", { role: row.entry.role }),
         confirmLabel: t("teams.panel.removeConfirm"),
-        cancelLabel: t("common.cancel"),
+        cancelLabel: t("common.actions.cancel"),
         destructive: true,
       });
       if (confirmed) onRemove({ kind: "remove", agentId: row.entry.agentId });

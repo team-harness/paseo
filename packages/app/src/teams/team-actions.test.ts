@@ -9,6 +9,11 @@ import {
   type TeamActionState,
 } from "./team-actions";
 
+const LABELS = {
+  archiveRefused: "The team could not be archived.",
+  removeRefused: "That member could not be removed.",
+};
+
 function team(): TeamSnapshot {
   return {
     id: "team-1",
@@ -55,6 +60,7 @@ describe("running one team action", () => {
       { kind: "archive" },
       "team-1",
       gateway({ team: team(), error: null }).gateway,
+      LABELS,
       (s) => seen.push(s),
     );
 
@@ -71,6 +77,7 @@ describe("running one team action", () => {
       { kind: "remove", agentId: "lead-1" },
       "team-1",
       gateway({ team: null, error: "The lead cannot be removed from its team" }).gateway,
+      LABELS,
       (state) => seen.push(state),
     );
 
@@ -87,6 +94,7 @@ describe("running one team action", () => {
       { kind: "archive" },
       "team-1",
       gateway({ team: null, error: null }).gateway,
+      LABELS,
       (s) => seen.push(s),
     );
 
@@ -100,6 +108,7 @@ describe("running one team action", () => {
       { kind: "remove", agentId: "member-1" },
       "team-1",
       gateway(new Error("The connection dropped")).gateway,
+      LABELS,
       (state) => seen.push(state),
     );
 
@@ -113,6 +122,7 @@ describe("running one team action", () => {
       { kind: "remove", agentId: "member-1" },
       "team-1",
       client.gateway,
+      LABELS,
       () => {},
     );
 
@@ -126,7 +136,7 @@ describe("running one team action", () => {
   it("archives the team without touching any member", async () => {
     const client = gateway({ team: team(), error: null });
 
-    await runTeamAction({ kind: "archive" }, "team-1", client.gateway, () => {});
+    await runTeamAction({ kind: "archive" }, "team-1", client.gateway, LABELS, () => {});
 
     expect(client.archiveTeam).toHaveBeenCalledWith({ teamId: "team-1" });
     expect(client.removeTeamMember).not.toHaveBeenCalled();

@@ -1109,6 +1109,11 @@ export const zhCN: TranslationResources = {
     },
     teams: {
       room: {
+        placeholder: "对团队说点什么…",
+        send: "发送",
+        notPosted: "这条消息没有发出去。",
+        unopenable: "打不开这个房间。",
+        person: "某人",
         you: "你",
         empty: "还没有人发言。",
         showMore: "展开",
@@ -1119,6 +1124,8 @@ export const zhCN: TranslationResources = {
         unsupported: "{{hostName}} 版本过旧，不支持团队。升级后才能打开此链接。",
       },
       panel: {
+        archiveRefused: "团队归档失败。",
+        removeRefused: "移出成员失败。",
         leadTabClosed: "标签页已关闭。{{teamName}} 仍在运行，需要归档请到团队面板。",
         archiveRunning: "其中 {{count}} 个正在工作，未完成的工作会丢失。",
         creating: "组建中",

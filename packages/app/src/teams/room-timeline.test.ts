@@ -2,12 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ChatMessage } from "@getpaseo/protocol/chat/types";
 
-import {
-  applyStreamedRoomMessage,
-  emptyRoomTimeline,
-  prependOlderRoomPage,
-  seedRoomTimeline,
-} from "./room-timeline";
+import { applyStreamedRoomMessage, emptyRoomTimeline, seedRoomTimeline } from "./room-timeline";
 
 function message(id: string, overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -71,27 +66,6 @@ describe("following a team's room", () => {
 
     expect(timeline.messages.map((m) => m.id)).toEqual(["a"]);
     expect(timeline.cursor).toBe(9);
-  });
-
-  it("puts an older page in front, without repeating what is already here", () => {
-    const seeded = seedRoomTimeline({ messages: [message("c")], cursor: 9, hasMore: true });
-    const timeline = prependOlderRoomPage(seeded, {
-      messages: [message("a"), message("b"), message("c")],
-      hasMore: false,
-    });
-
-    expect(timeline.messages.map((m) => m.id)).toEqual(["a", "b", "c"]);
-    expect(timeline).toMatchObject({ cursor: 9, hasMore: false });
-  });
-
-  it("keeps the live cursor when older history lands", () => {
-    // Older pages carry older cursors. Taking one would re-admit every message
-    // the timeline already holds on the next streamed update.
-    const seeded = seedRoomTimeline({ messages: [message("c")], cursor: 9, hasMore: true });
-
-    expect(prependOlderRoomPage(seeded, { messages: [message("a")], hasMore: true }).cursor).toBe(
-      9,
-    );
   });
 
   it("has an empty state that is not a loaded empty room", () => {

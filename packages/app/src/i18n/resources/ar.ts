@@ -1121,6 +1121,11 @@ export const ar: TranslationResources = {
     },
     teams: {
       room: {
+        placeholder: "قل شيئًا للفريق…",
+        send: "إرسال",
+        notPosted: "لم يُنشر هذا الرسالة.",
+        unopenable: "تعذّر فتح هذه الغرفة.",
+        person: "شخص",
         you: "أنت",
         empty: "لم يُقل شيء بعد.",
         showMore: "عرض المزيد",
@@ -1131,6 +1136,8 @@ export const ar: TranslationResources = {
         unsupported: "{{hostName}} قديم جدًا ولا يدعم الفرق. حدّثه لفتح هذا الرابط.",
       },
       panel: {
+        archiveRefused: "تعذّرت أرشفة الفريق.",
+        removeRefused: "تعذّرت إزالة هذا العضو.",
         leadTabClosed: "أُغلق التبويب. {{teamName}} ما زال يعمل — أرشِفه من لوحة الفريق.",
         archiveRunning: "منها {{count}} تعمل الآن وسيضيع عملها.",
         creating: "قيد التكوين",

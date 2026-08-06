@@ -1130,6 +1130,11 @@ export const ko: TranslationResources = {
     },
     teams: {
       room: {
+        placeholder: "팀에게 말하기…",
+        send: "보내기",
+        notPosted: "이 메시지는 전송되지 않았습니다.",
+        unopenable: "이 방을 열 수 없습니다.",
+        person: "사람",
         you: "나",
         empty: "아직 아무 말도 없습니다.",
         showMore: "더 보기",
@@ -1140,6 +1145,8 @@ export const ko: TranslationResources = {
         unsupported: "{{hostName}}이(가) 너무 오래되어 팀을 지원하지 않습니다. 업데이트해 주세요.",
       },
       panel: {
+        archiveRefused: "팀을 보관하지 못했습니다.",
+        removeRefused: "멤버를 제외하지 못했습니다.",
         leadTabClosed:
           "탭을 닫았습니다. {{teamName}}은(는) 계속 실행됩니다 — 팀 패널에서 보관하세요.",
         archiveRunning: "그중 {{count}}개는 작업 중이며 해당 작업은 사라집니다.",

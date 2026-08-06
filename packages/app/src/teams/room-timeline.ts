@@ -5,7 +5,13 @@ export interface RoomTimeline {
   messages: ChatMessage[];
   /** The newest cursor this timeline has applied. */
   cursor: number;
-  /** Older history sits before `messages[0]`. */
+  /**
+   * The daemon says more history exists before `messages[0]`.
+   *
+   * Nothing reads it yet: paging backwards needs `afterCursor`, and the panel
+   * always opens on the newest page. It is here because the subscribe response
+   * carries it, and dropping it would make the gap invisible when that is built.
+   */
   hasMore: boolean;
 }
 
@@ -47,24 +53,4 @@ export function applyStreamedRoomMessage(
   }
 
   return { ...timeline, messages: [...timeline.messages, message], cursor };
-}
-
-/**
- * Puts a page of older history in front of what is here.
- *
- * The cursor does not move: older pages carry older cursors, and taking one
- * would re-admit every message the timeline already holds the next time a
- * streamed update arrived.
- */
-export function prependOlderRoomPage(
-  timeline: RoomTimeline,
-  page: { messages: readonly ChatMessage[]; hasMore: boolean },
-): RoomTimeline {
-  const seen = new Set(timeline.messages.map((message) => message.id));
-  const older = page.messages.filter((message) => !seen.has(message.id));
-  return {
-    messages: [...older, ...timeline.messages],
-    cursor: timeline.cursor,
-    hasMore: page.hasMore,
-  };
 }

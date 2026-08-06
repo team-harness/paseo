@@ -1,3 +1,4 @@
+import { deriveAgentStateBucket } from "@getpaseo/protocol/agent-state-bucket";
 import { TEAM_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import type { TeamMemberEntry, TeamSnapshot } from "@getpaseo/protocol/team/types";
 
@@ -7,9 +8,10 @@ import { isLiveTeam } from "./team-replica";
 export interface TeamMemberAgent {
   id: string;
   title: string | null;
-  status: string;
+  status: "idle" | "running" | "initializing" | "error" | "closed";
   requiresAttention?: boolean;
   attentionReason?: "finished" | "error" | "permission" | null;
+  pendingPermissionCount?: number;
   archivedAt?: Date | null;
   labels: Record<string, string>;
 }
@@ -83,11 +85,27 @@ export function teamStageAcceptsActions(stage: TeamStage): boolean {
   return stage === "creating" || stage === "active";
 }
 
-/** What one member is doing. */
+/**
+ * What one member is doing.
+ *
+ * `needs_input` means a person has to answer something, which is what
+ * `deriveAgentStateBucket` means by it too. `requiresAttention` alone does not:
+ * a member that finished its turn sets it, and reading that as "waiting on you"
+ * puts a permanent badge on the team over a panel with nothing to press.
+ */
 export function selectMemberActivity(agent: TeamMemberAgent | null): TeamActivity {
   if (!agent) return "idle";
-  if (agent.requiresAttention) return "needs_input";
-  return agent.status === "running" || agent.status === "initializing" ? "running" : "idle";
+  const bucket = deriveAgentStateBucket({
+    status: agent.status,
+    requiresAttention: agent.requiresAttention,
+    attentionReason: agent.attentionReason ?? null,
+    pendingPermissionCount: agent.pendingPermissionCount ?? 0,
+  });
+  if (bucket === "needs_input") return "needs_input";
+  // `initializing` is not `running` to the shared rule, but a member still
+  // starting up is a team that is working rather than one that is idle.
+  if (bucket === "running" || agent.status === "initializing") return "running";
+  return "idle";
 }
 
 /**

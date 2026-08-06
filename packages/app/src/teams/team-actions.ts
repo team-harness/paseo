@@ -18,6 +18,17 @@ export interface TeamActionGateway {
 
 export type TeamActionKey = { kind: "archive" } | { kind: "remove"; agentId: string };
 
+/**
+ * What to say when the daemon refuses without saying why.
+ *
+ * Injected rather than written here: this module has no language, and a
+ * hard-coded English sentence reaches a Japanese user's screen unchanged.
+ */
+export interface TeamActionLabels {
+  archiveRefused: string;
+  removeRefused: string;
+}
+
 export function teamActionKeyOf(action: TeamActionKey): string {
   return action.kind === "archive" ? "archive" : `remove:${action.agentId}`;
 }
@@ -34,6 +45,7 @@ export async function runTeamAction(
   action: TeamActionKey,
   teamId: string,
   gateway: TeamActionGateway,
+  labels: TeamActionLabels,
   onState: (state: TeamActionState) => void,
 ): Promise<void> {
   onState({ status: "pending" });
@@ -44,20 +56,18 @@ export async function runTeamAction(
         : await gateway.removeTeamMember({ teamId, agentId: action.agentId });
 
     if (!payload.team) {
-      onState({ status: "failure", message: payload.error ?? describeRefusal(action) });
+      onState({ status: "failure", message: payload.error ?? describeRefusal(action, labels) });
       return;
     }
     onState({ status: "idle" });
   } catch (error) {
     onState({
       status: "failure",
-      message: error instanceof Error ? error.message : describeRefusal(action),
+      message: error instanceof Error ? error.message : describeRefusal(action, labels),
     });
   }
 }
 
-function describeRefusal(action: TeamActionKey): string {
-  return action.kind === "archive"
-    ? "The team could not be archived."
-    : "That member could not be removed.";
+function describeRefusal(action: TeamActionKey, labels: TeamActionLabels): string {
+  return action.kind === "archive" ? labels.archiveRefused : labels.removeRefused;
 }

@@ -184,6 +184,17 @@ function shouldEmitPlanApprovalPrompt(prompt: AgentPromptInput): boolean {
   return /emit\s+(?:a\s+)?synthetic\s+plan\s+approval/i.test(promptToText(prompt));
 }
 
+/**
+ * A permission request with no `actions`, which is what most providers send.
+ *
+ * Claude attaches actions to plan requests and to nothing else, so a surface
+ * that renders only `request.actions` looks fine against the plan prompt above
+ * and offers no buttons at all for an ordinary tool call.
+ */
+function shouldEmitToolApprovalPrompt(prompt: AgentPromptInput): boolean {
+  return /emit\s+(?:a\s+)?synthetic\s+tool\s+approval/i.test(promptToText(prompt));
+}
+
 function shouldEmitTurnFailure(prompt: AgentPromptInput): boolean {
   return /emit\s+(?:a\s+)?synthetic\s+turn\s+failure/i.test(promptToText(prompt));
 }
@@ -729,6 +740,8 @@ export class MockLoadTestAgentSession implements AgentSession {
         this.scheduleSettledAssistantTurn(turn, settledAssistantImageMarkdown);
       } else if (shouldEmitPlanApprovalPrompt(prompt)) {
         this.schedulePlanApprovalTurn(turn);
+      } else if (shouldEmitToolApprovalPrompt(prompt)) {
+        this.scheduleToolApprovalTurn(turn);
       } else if (questionPrompt) {
         this.scheduleQuestionPromptTurn(turn, questionPrompt);
       } else if (largePayload) {
@@ -1016,6 +1029,13 @@ export class MockLoadTestAgentSession implements AgentSession {
     turn.timer.unref?.();
   }
 
+  private scheduleToolApprovalTurn(turn: ActiveTurn): void {
+    turn.timer = setTimeout(() => {
+      this.emitToolApprovalTurn(turn);
+    }, 0);
+    turn.timer.unref?.();
+  }
+
   private schedulePlanApprovalTurn(turn: ActiveTurn): void {
     turn.timer = setTimeout(() => {
       this.emitPlanApprovalTurn(turn);
@@ -1070,6 +1090,34 @@ export class MockLoadTestAgentSession implements AgentSession {
         },
       ],
       canceled: false,
+    });
+  }
+
+  private emitToolApprovalTurn(turn: ActiveTurn): void {
+    if (this.activeTurn !== turn) {
+      return;
+    }
+
+    this.clearTurnTimer(turn);
+    this.emitTurnStarted(turn);
+
+    const request: AgentPermissionRequest = {
+      id: `mock-tool-${turn.turnId}`,
+      provider: this.provider,
+      name: "MockTool",
+      kind: "tool",
+      title: "Run MockTool",
+      description: "A tool permission with no actions, the way most adapters send them.",
+      input: { command: "mock --run" },
+      metadata: { source: "mock_tool_approval" },
+    };
+
+    this.pendingPermissions.set(request.id, request);
+    this.emit({
+      type: "permission_requested",
+      provider: this.provider,
+      request,
+      turnId: turn.turnId,
     });
   }
 

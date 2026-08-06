@@ -1135,6 +1135,11 @@ export const ja: TranslationResources = {
     },
     teams: {
       room: {
+        placeholder: "チームに話しかける…",
+        send: "送信",
+        notPosted: "このメッセージは投稿されませんでした。",
+        unopenable: "この部屋を開けませんでした。",
+        person: "人",
         you: "あなた",
         empty: "まだ発言はありません。",
         showMore: "続きを表示",
@@ -1145,6 +1150,8 @@ export const ja: TranslationResources = {
         unsupported: "{{hostName}} が古いためチームを扱えません。更新してから開いてください。",
       },
       panel: {
+        archiveRefused: "チームをアーカイブできませんでした。",
+        removeRefused: "メンバーを外せませんでした。",
         leadTabClosed: "タブを閉じました。{{teamName}} は動いたままです。終了はチームパネルから。",
         archiveRunning: "うち {{count}} 個は作業中で、その作業は失われます。",
         creating: "編成中",

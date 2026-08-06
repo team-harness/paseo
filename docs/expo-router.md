@@ -17,7 +17,8 @@ Each layout owns only the routes directly inside its directory.
   `h/[serverId]/index`.
 - `packages/app/src/app/h/[serverId]/_layout.tsx` owns the host leaves with
   relative screen names: `index`, `workspace/[workspaceId]/index`,
-  `agent/[agentId]`, `sessions`, `open-project`, and `settings`.
+  `agent/[agentId]`, `team/[teamId]`, `sessions`, `open-project`, and
+  `settings`.
 
 Expo Router warns with `[Layout children]: No route named ...` when a layout
 registers grandchildren. Treat that warning as a route-tree bug. On native, that
@@ -83,6 +84,11 @@ targets.
 - Agent URLs carry only `serverId` and `agentId`. Route them through
   `/h/[serverId]/agent/[agentId]`; that route waits for the named host, resolves
   the agent's workspace from the host, and then opens the agent there.
+- Team URLs work the same way through `/h/[serverId]/team/[teamId]`. Check the
+  host before the feature: whether a daemon has teams comes from a handshake
+  that lands after the connection, so before then it reads as false for every
+  daemon — answering "too old to have teams" there is wrong while it connects
+  and permanently wrong for a host that never does.
 
 Both paths converge on `navigateToAgent()`. Do not make notification routing
 guess a workspace, and do not add a workspace to the stable agent URL format.

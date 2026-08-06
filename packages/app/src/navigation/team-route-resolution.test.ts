@@ -46,6 +46,22 @@ describe("resolving a team URL to the workspace that holds it", () => {
     expect(resolveTeamRoute({ ...BASE, workspaceId: null })).toEqual({ kind: "notFound" });
   });
 
+  it("waits for a host that has not answered yet instead of calling it too old", () => {
+    // `supported` comes from the handshake, which lands after the connection.
+    // Before then it is false for every daemon, including one that has teams —
+    // so this combination is what a cold deep link actually looks like, and
+    // "too old, update it" is both wrong and unretryable.
+    expect(
+      resolveTeamRoute({
+        ...BASE,
+        supported: false,
+        connectionStatus: "connecting",
+        hydrated: false,
+        workspaceId: null,
+      }),
+    ).toEqual({ kind: "waitingForHost", connectionStatus: "connecting" });
+  });
+
   it("says the host is too old rather than looking for a team it cannot have", () => {
     // A daemon without the teams feature never sends a list, so waiting for
     // hydration would wait forever.

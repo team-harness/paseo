@@ -2,6 +2,10 @@ import { useEffect, useMemo } from "react";
 import { usePendingArchiveAgentIds } from "@/hooks/use-archive-agent";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
+import {
+  selectLiveTeamIds,
+  selectSubagentsWithoutTeamMembers,
+} from "@/runtime/team-sync/selectors";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import { refreshProviderSubagents, useProviderSubagentStore } from "./provider-store";
 import type { ProviderSubagentDescriptorPayload } from "@getpaseo/protocol/messages";
@@ -47,6 +51,7 @@ interface SelectSubagentsParams {
 }
 
 const EMPTY_SUBAGENT_ROWS: SubagentRow[] = [];
+const EMPTY_TEAMS = new Map<string, never>();
 const EMPTY_PROVIDER_SUBAGENT_ROWS: ProviderSubagentRow[] = [];
 
 function toSubagentRow(agent: Agent): SubagentRow {
@@ -73,7 +78,7 @@ export function selectSubagentsForParent(
     return EMPTY_SUBAGENT_ROWS;
   }
 
-  const rows: SubagentRow[] = [];
+  const children: Agent[] = [];
   for (const agent of agents.values()) {
     if (
       agent.archivedAt ||
@@ -82,8 +87,14 @@ export function selectSubagentsForParent(
     ) {
       continue;
     }
-    rows.push(toSubagentRow(agent));
+    children.push(agent);
   }
+
+  // A recruit is stamped with its recruiter as parent, so it is a subagent and
+  // a team member at once. The team panel is the more specific surface and
+  // owns the lifecycle actions, so the track gives way while the team is live.
+  const liveTeamIds = selectLiveTeamIds(state.sessions[params.serverId]?.teams ?? EMPTY_TEAMS);
+  const rows = selectSubagentsWithoutTeamMembers(children, liveTeamIds).map(toSubagentRow);
 
   if (rows.length === 0) {
     return EMPTY_SUBAGENT_ROWS;

@@ -95,9 +95,27 @@ describe("what a member is doing", () => {
   it("puts a request for input above everything else", () => {
     // A member blocked on a permission is running, as far as its status goes.
     // What matters is that somebody has to answer it.
-    expect(selectMemberActivity(agent({ status: "running", requiresAttention: true }))).toBe(
-      "needs_input",
-    );
+    expect(
+      selectMemberActivity(
+        agent({ status: "running", requiresAttention: true, pendingPermissionCount: 1 }),
+      ),
+    ).toBe("needs_input");
+    expect(
+      selectMemberActivity(
+        agent({ status: "running", requiresAttention: true, attentionReason: "permission" }),
+      ),
+    ).toBe("needs_input");
+  });
+
+  it("does not read a finished member as one waiting on you", () => {
+    // Finishing sets `requiresAttention` too. Reading that as "waiting on you"
+    // puts a permanent badge on the team over a panel with nothing to press:
+    // the permissions section has no rows, because there are no requests.
+    expect(
+      selectMemberActivity(
+        agent({ status: "idle", requiresAttention: true, attentionReason: "finished" }),
+      ),
+    ).toBe("idle");
   });
 
   it("counts initializing as working", () => {
@@ -116,7 +134,7 @@ describe("what a team is doing", () => {
       new Map([
         ["a", agent({ id: "a", status: "idle" })],
         ["b", agent({ id: "b", status: "running" })],
-        ["c", agent({ id: "c", status: "idle", requiresAttention: true })],
+        ["c", agent({ id: "c", status: "idle", pendingPermissionCount: 1 })],
       ]),
     );
 

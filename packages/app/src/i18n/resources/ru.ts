@@ -1146,6 +1146,11 @@ export const ru: TranslationResources = {
     },
     teams: {
       room: {
+        placeholder: "Сказать что-то команде…",
+        send: "Отправить",
+        notPosted: "Это сообщение не отправлено.",
+        unopenable: "Не удалось открыть эту комнату.",
+        person: "Человек",
         you: "Вы",
         empty: "Пока ничего не сказано.",
         showMore: "Показать ещё",
@@ -1156,6 +1161,8 @@ export const ru: TranslationResources = {
         unsupported: "{{hostName}} слишком старый для команд. Обновите его, чтобы открыть ссылку.",
       },
       panel: {
+        archiveRefused: "Не удалось заархивировать команду.",
+        removeRefused: "Не удалось убрать участника.",
         leadTabClosed:
           "Вкладка закрыта. {{teamName}} продолжает работу — архивируйте её из панели команды.",
         archiveRunning: "Из них {{count}} сейчас работают, и эта работа будет потеряна.",

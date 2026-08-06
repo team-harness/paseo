@@ -37,14 +37,18 @@ export function resolveTeamRoute(input: {
     return { kind: "resolved", workspaceId };
   }
 
+  // Host first. `supported` comes from a handshake that lands after the
+  // connection does, so before then it is false for every daemon — including
+  // one that has teams. Answering "too old" there is wrong for the moment it
+  // takes to connect, and permanently wrong for a host that never does.
+  if (input.connectionStatus !== "online") {
+    return { kind: "waitingForHost", connectionStatus: input.connectionStatus };
+  }
+
   // A daemon without the feature never sends a list, so "not hydrated yet" is
   // permanent there and waiting on it never ends.
   if (!input.supported) {
     return { kind: "unsupported" };
-  }
-
-  if (input.connectionStatus !== "online") {
-    return { kind: "waitingForHost", connectionStatus: input.connectionStatus };
   }
 
   // Before the list lands the client holds no teams, and every team looks

@@ -112,6 +112,11 @@ export interface SeedDaemonClient {
     initialPrompt?: string;
     labels?: Record<string, string>;
   }): Promise<{ id: string; status: string }>;
+  sendMessage(agentId: string, message: string, options?: { requestId?: string }): Promise<unknown>;
+  readChatMessages(options: { room: string; limit?: number }): Promise<{
+    messages: Array<{ id: string; body: string; authorAgentId: string }>;
+    error: string | null;
+  }>;
   createTeam(options: {
     idempotencyKey: string;
     name: string;

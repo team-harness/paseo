@@ -1,4 +1,6 @@
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import { TEAM_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { selectProviderSubagentsForParent, selectSubagentsForParent } from "./select";
 import { useProviderSubagentStore } from "./provider-store";
@@ -64,6 +66,81 @@ afterEach(() => {
     descriptors: new Map(),
     timelines: new Map(),
     hiddenFromTrack: new Set(),
+  });
+});
+
+function setTeams(teams: TeamSnapshot[]): void {
+  useSessionStore.getState().replaceTeams(SERVER_ID, new Map(teams.map((team) => [team.id, team])));
+}
+
+function makeTeam(overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
+  return {
+    id: "team-1",
+    name: "Disk usage",
+    workspaceId: "ws-1",
+    chatRoomId: "room-1",
+    leadAgentId: "parent",
+    members: [],
+    lifecycle: "active",
+    revision: 1,
+    templateId: null,
+    createdAt: "2026-03-08T10:00:00.000Z",
+    updatedAt: "2026-03-08T10:00:00.000Z",
+    archivedAt: null,
+    ...overrides,
+  };
+}
+
+describe("a team member is not also a subagent of its recruiter", () => {
+  it("keeps a team member out of its recruiter's track", () => {
+    // A recruit is stamped with its recruiter as parent, so it is a subagent
+    // and a team member at once. Both surfaces would draw it, and the track
+    // carries lifecycle actions the team panel is supposed to own.
+    setAgents([
+      makeAgent({ id: "member", parentAgentId: "parent", labels: { [TEAM_ID_LABEL]: "team-1" } }),
+      makeAgent({ id: "plain", parentAgentId: "parent" }),
+    ]);
+    setTeams([makeTeam()]);
+
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      { serverId: SERVER_ID, parentAgentId: "parent" },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(["plain"]);
+  });
+
+  it("gives a member back to the track once its team is over", () => {
+    // An archived team has no panel drawing its members, so hiding them from
+    // the track as well would hide them everywhere.
+    setAgents([
+      makeAgent({ id: "member", parentAgentId: "parent", labels: { [TEAM_ID_LABEL]: "team-1" } }),
+    ]);
+    setTeams([makeTeam({ lifecycle: "archived" })]);
+
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      { serverId: SERVER_ID, parentAgentId: "parent" },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(["member"]);
+  });
+
+  it("keeps an agent labelled with a team this client has never heard of", () => {
+    setAgents([
+      makeAgent({ id: "member", parentAgentId: "parent", labels: { [TEAM_ID_LABEL]: "team-9" } }),
+    ]);
+    setTeams([makeTeam()]);
+
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      { serverId: SERVER_ID, parentAgentId: "parent" },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(["member"]);
   });
 });
 

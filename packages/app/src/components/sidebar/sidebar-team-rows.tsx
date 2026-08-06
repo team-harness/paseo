@@ -5,6 +5,8 @@ import { Users } from "lucide-react-native";
 
 import type { SidebarWorkspaceEntry } from "@/hooks/sidebar-workspaces-view-model";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
+import { getStatusDotColor } from "@/utils/status-dot-color";
+import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { useSessionStore } from "@/stores/session-store";
 import { selectWorkspaceTeamRows, type WorkspaceTeamRow } from "@/teams/workspace-team-rows";
 import type { Theme } from "@/styles/theme";
@@ -76,13 +78,42 @@ function TeamRow({
         {row.name}
       </Text>
       {row.statusBucket && row.statusBucket !== "done" ? (
-        <View
-          style={row.statusBucket === "needs_input" ? styles.dotAttention : styles.dotBusy}
-          testID={`sidebar-team-row-${row.teamId}-${row.statusBucket}`}
-        />
+        <TeamStatusDot bucket={row.statusBucket} teamId={row.teamId} />
       ) : null}
     </Pressable>
   );
+}
+
+/**
+ * The dot goes through `getStatusDotColor` like every other status dot.
+ *
+ * The statusDot band is its own color family, louder than the status family it
+ * shadows; restating the mapping here would put this row a shade off from the
+ * workspace row above it.
+ */
+function TeamStatusDot({
+  bucket,
+  teamId,
+}: {
+  bucket: SidebarStateBucket;
+  teamId: string;
+}): ReactElement {
+  return <ThemedDot bucket={bucket} testID={`sidebar-team-row-${teamId}-${bucket}`} />;
+}
+
+const ThemedDot = withUnistyles(Dot, (theme, _rt) => ({ theme }));
+
+function Dot({
+  bucket,
+  theme,
+  testID,
+}: {
+  bucket: SidebarStateBucket;
+  theme: Theme;
+  testID: string;
+}): ReactElement {
+  const color = getStatusDotColor({ theme, bucket });
+  return <View style={[styles.dot, color ? { backgroundColor: color } : null]} testID={testID} />;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -105,16 +136,9 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
   },
-  dotBusy: {
+  dot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: theme.colors.palette.blue[400],
-  },
-  dotAttention: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.colors.palette.amber[500],
   },
 }));

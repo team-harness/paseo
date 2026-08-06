@@ -1132,6 +1132,11 @@ export const en = {
     },
     teams: {
       room: {
+        placeholder: "Say something to the team…",
+        send: "Send",
+        notPosted: "That message was not posted.",
+        unopenable: "This room could not be opened.",
+        person: "A person",
         you: "You",
         empty: "Nothing said yet.",
         showMore: "Show more",
@@ -1142,6 +1147,8 @@ export const en = {
         unsupported: "{{hostName}} is too old to have teams. Update it to open this link.",
       },
       panel: {
+        archiveRefused: "The team could not be archived.",
+        removeRefused: "That member could not be removed.",
         leadTabClosed: "Tab closed. {{teamName}} keeps running — archive it from the team panel.",
         archiveRunning: "{{count}} of them are working right now and will lose that work.",
         creating: "Forming",
