@@ -52,6 +52,15 @@ vi.mock("react-native", () => ({
   Platform: { OS: "web" },
   Text: ({ children, testID }: { children?: React.ReactNode; testID?: string }) =>
     React.createElement("span", { "data-testid": testID }, children),
+  ScrollView: (props: { children?: React.ReactNode; horizontal?: boolean; testID?: string }) =>
+    React.createElement(
+      "div",
+      {
+        "data-horizontal": props.horizontal ? "true" : "false",
+        "data-testid": props.testID,
+      },
+      props.children,
+    ),
   Pressable: ({
     children,
     onPress,
@@ -506,6 +515,20 @@ describe("GlobalStatusBar", () => {
     expect(container?.querySelector('[data-testid="global-status-bar-row-running"]')).toBeNull();
     expect(container?.querySelector('[data-testid="global-status-bar-row-attention"]')).toBeNull();
     expect(container?.querySelector('[data-testid="status-bar-sessions-static"]')).not.toBeNull();
+  });
+
+  it("lets compact users horizontally browse every status item", () => {
+    runtimeState.view = readyView();
+    runtimeState.compact = true;
+
+    act(() => {
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
+    });
+
+    const scroller = container?.querySelector('[data-testid="global-status-bar-scroll"]');
+    expect(scroller?.getAttribute("data-horizontal")).toBe("true");
+    expect(scroller?.querySelector('[data-testid="status-bar-history-trigger"]')).not.toBeNull();
+    expect(scroller?.querySelector('[data-testid="status-bar-pins-trigger"]')).not.toBeNull();
   });
 
   it("opens compact cost details in a sheet", () => {

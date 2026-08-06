@@ -69,6 +69,15 @@ vi.mock("react-native", () => ({
   Platform: { OS: "web" },
   Text: ({ children, testID }: { children?: React.ReactNode; testID?: string }) =>
     React.createElement("span", { "data-testid": testID }, children),
+  ScrollView: (props: { children?: React.ReactNode; horizontal?: boolean; testID?: string }) =>
+    React.createElement(
+      "div",
+      {
+        "data-horizontal": props.horizontal ? "true" : "false",
+        "data-testid": props.testID,
+      },
+      props.children,
+    ),
   View: ({ children, testID }: { children?: React.ReactNode; style?: unknown; testID?: string }) =>
     React.createElement("div", { "data-testid": testID }, children),
   Pressable: ({

@@ -223,7 +223,9 @@ async function openStatusBar(
   await expect(bar).toBeVisible({ timeout: 30_000 });
   await expect(async () => {
     statusSummary.pushSummary();
-    const ready = page.getByTestId("global-status-bar-ready");
+    const ready = page.locator(
+      '[data-testid="global-status-bar-ready"], [data-testid="global-status-bar-scroll"]',
+    );
     if (!(await ready.isVisible().catch(() => false))) {
       throw new Error(
         `status summary did not become ready; requests=${statusSummary.requestCount()} pushes=${statusSummary.pushCount()}`,
@@ -231,6 +233,17 @@ async function openStatusBar(
     }
   }).toPass({ timeout: 30_000 });
   const trigger = page.getByTestId("status-bar-sessions-trigger");
+  const compactScroller = page.getByTestId("global-status-bar-scroll");
+  if (await compactScroller.isVisible().catch(() => false)) {
+    const metrics = await compactScroller.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth);
+    await trigger.evaluate((element) =>
+      element.scrollIntoView({ behavior: "auto", block: "nearest", inline: "center" }),
+    );
+  }
   await expect(trigger).toBeVisible({ timeout: 30_000 });
   await expect(trigger).toContainText("Sessions", { timeout: 30_000 });
   return { serverId, bar, trigger };

@@ -151,6 +151,7 @@
 - 按 host 获取 `status.summary`；客户端可合并多个已连接 host 的信息，并在会话/历史项显示 host。状态栏的 Pin 直接复用侧边栏 workspace 的 `pinnedAt`、列表投影、完整 workspace entry 和 `setWorkspacePinned` API，因此两处展示信息及置顶/取消置顶行为一致。
 - 会话以一级 Agent 聚合；子 Agent 的运行或等待状态汇总到根 Agent，避免大量子 Agent 淹没列表。
 - 历史只显示当前已加载集合中的一级、非 `closed` Agent；支持刷新、workspace Pin 和紧凑/桌面布局。
+- 手机端状态项保持单行并可横向滚动，Android 以末端渐隐提示后续内容；窄屏不能再用 `overflow: hidden` 截掉会话、历史、Pin 或工作区入口。
 - 空闲与运行中使用同一状态栏结构；错误目前只显示计数，不新增错误会话面板或旧 RPC fallback。
 
 **关键边界与冲突热点**：
@@ -367,7 +368,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 
 **状态**：fork 功能。提交：`044802203`。
 
-**行为**：对话中的用户或 Assistant 文本可以按原 Markdown 引用到 Composer，替换当前选区、恢复焦点且不自动发送。文件 Markdown 预览、代码预览和 Source 视图支持对选区留评论；代码与 Source 使用精确行号，Markdown 预览在没有可靠源码映射时只记录选中文字。评论按 workspace 隔离并持久化，File 与 Changes 共用 Review summary，汇总选区评论和 diff 行评论，支持一键复制、逐条删除，以及确认后删除当前汇总中的全部评论。
+**行为**：对话中的用户或 Assistant 文本可以按原 Markdown 引用到 Composer，替换当前选区、恢复焦点且不自动发送。文件 Markdown 预览、代码预览和 Source 视图支持对选区留评论；代码与 Source 使用精确行号，Markdown 预览在没有可靠源码映射时只记录选中文字。评论按 workspace 隔离并持久化，File 与 Changes 共用 Review summary，汇总选区评论和 diff 行评论，支持一键复制、逐条删除，以及确认后删除当前汇总中的全部评论。Android 原生选择保留系统复制/翻译菜单，并在选区末字下方显示 fork 的引用或评论按钮；下方空间被键盘压缩时自动翻到上方。
 
 **关键文件**：
 
@@ -375,6 +376,8 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - `packages/app/src/composer/index.tsx`
 - `packages/app/src/review/workspace-comments.ts`
 - `packages/app/src/review/workspace-comments-store.ts`
+- `packages/app/src/native-text-selection/`
+- `packages/app/modules/paseo-text-selection/`
 - `packages/app/src/review/selection-surface.web.tsx`
 - `packages/app/src/review/summary-trigger.tsx`
 - `packages/app/src/file-pane/`
@@ -386,11 +389,13 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - 评论必须按 `workspaceId` 隔离；同一 workspace 的 File、Changes、preview/source/diff 需要汇总到同一 Review summary。
 - 删除全部必须同时清理 selection 和 diff 两类 store，取消确认时不能改变数据；清空后关闭 summary，并确保刷新后评论不会恢复。
 - 没有 AST 级源码映射时，Markdown 预览不得猜测行号；代码预览和 Source 选区继续保留精确范围。
-- 自定义选区操作只在 Web/Electron 提供；Native 保留系统复制菜单，不显示不可用入口。
+- Web/Electron 与 Android 的操作按钮都锚定选区最后一个可见字符，优先放在下方；可视区域不足时翻到上方并限制在屏幕横向边界内。
+- Android 必须保留系统复制/翻译 ActionMode；打开评论编辑器前结束当前系统选区，避免 ActionMode、软键盘和评论面板同时争抢空间。原生无法可靠映射源码时仍只保存选中文字，不猜测行号。
+- iOS 在没有等价原生选区桥接前继续保留系统复制菜单，不显示不可用入口。
 
 **验证**：`quote.test.ts`、`workspace-comments.test.ts`、`store.test.ts`、`resources.test.ts`、`assistant-selection-copy.spec.ts`、`file-review-comments.spec.ts`、`npm run typecheck`、`npm run lint`。
 
-**最近同步判断**：2026-08-05 的上游 `0b624b558` 仍只有基础选区复制，没有直接引用到 Composer、文件选区 Review Comments 或跨预览与 diff 的 Review summary，保留 fork 实现。
+**最近同步判断**：2026-08-06 的上游 `fb5cfb9fb` 仍只有基础选区复制，没有直接引用到 Composer、文件选区 Review Comments、Android 原生选区操作或跨预览与 diff 的 Review summary，保留 fork 实现。
 
 ### 11. 工作区内聊天标签切回跟随最新消息
 

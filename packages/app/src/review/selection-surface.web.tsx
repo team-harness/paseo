@@ -19,7 +19,7 @@ import type { ReviewSelectionSurfaceProps } from "./selection-surface";
 const DISPLAY_CONTENTS: CSSProperties = { display: "contents" };
 const VIEWPORT_MARGIN = 8;
 const ACTION_GAP = 8;
-const MIN_SPACE_ABOVE_ACTION = 44;
+const ACTION_HEIGHT = 36;
 
 interface SelectionAction extends ReviewTextSelection {
   left: number;
@@ -58,22 +58,25 @@ export function ReviewSelectionSurface({
       return;
     }
     const quote = selection.toString().trim();
-    const rect = range.getBoundingClientRect();
+    const rect = getTerminalSelectionRect(range);
     if (!quote || (rect.width === 0 && rect.height === 0)) {
       setSelectionAction(null);
       return;
     }
 
     const locatedRange = selectionLineRange(range);
-    const placement = rect.top >= MIN_SPACE_ABOVE_ACTION ? "above" : "below";
+    const visualViewportBottom = window.visualViewport
+      ? window.visualViewport.offsetTop + window.visualViewport.height
+      : window.innerHeight;
+    const placement =
+      rect.bottom + ACTION_GAP + ACTION_HEIGHT <= visualViewportBottom - VIEWPORT_MARGIN
+        ? "below"
+        : "above";
     setSelectionAction({
       quote,
       lineStart: locatedRange?.lineStart ?? null,
       lineEnd: locatedRange?.lineEnd ?? null,
-      left: Math.min(
-        window.innerWidth - VIEWPORT_MARGIN,
-        Math.max(VIEWPORT_MARGIN, rect.left + rect.width / 2),
-      ),
+      left: Math.min(window.innerWidth - VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, rect.right)),
       top: placement === "above" ? rect.top - ACTION_GAP : rect.bottom + ACTION_GAP,
       placement,
     });
@@ -177,6 +180,13 @@ export function ReviewSelectionSurface({
       />
     </div>
   );
+}
+
+function getTerminalSelectionRect(range: Range): DOMRect {
+  const rects = Array.from(range.getClientRects()).filter(
+    (rect) => rect.width > 0 || rect.height > 0,
+  );
+  return rects.at(-1) ?? range.getBoundingClientRect();
 }
 
 function selectionLineRange(range: Range): { lineStart: number; lineEnd: number } | null {

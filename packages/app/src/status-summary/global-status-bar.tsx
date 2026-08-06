@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { FolderGit2, GitBranch } from "lucide-react-native";
@@ -138,8 +138,8 @@ function StatusBarReadyContent({
     rows = rows.filter((row) => COMPACT_ROW_IDS.has(row.id));
   }
 
-  return (
-    <View style={styles.rowGroup} testID="global-status-bar-ready">
+  const content = (
+    <>
       {rows.map((row) =>
         row.id === "cost" && row.details ? (
           <StatusBarCostChip key={row.id} row={row} isCompact={isCompact} t={t} />
@@ -163,6 +163,28 @@ function StatusBarReadyContent({
       />
       <StatusBarSessionPinsTrigger serverId={serverId} />
       <StatusBarWorkspaceInfo serverId={serverId} />
+    </>
+  );
+
+  if (isCompact) {
+    return (
+      <ScrollView
+        horizontal
+        bounces={false}
+        fadingEdgeLength={Platform.OS === "android" ? 24 : undefined}
+        showsHorizontalScrollIndicator={false}
+        style={styles.compactScroll}
+        contentContainerStyle={styles.rowGroup}
+        testID="global-status-bar-scroll"
+      >
+        {content}
+      </ScrollView>
+    );
+  }
+
+  return (
+    <View style={[styles.rowGroup, styles.desktopRowGroup]} testID="global-status-bar-ready">
+      {content}
     </View>
   );
 }
@@ -390,7 +412,15 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+  },
+  desktopRowGroup: {
     overflow: "hidden",
+  },
+  compactScroll: {
+    minWidth: 0,
+    flexShrink: 1,
+    alignSelf: "stretch",
+    maxHeight: 32,
   },
   stateRow: {
     minWidth: 0,
