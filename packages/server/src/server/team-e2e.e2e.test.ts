@@ -181,6 +181,55 @@ describe("a team, end to end", () => {
     expect(payload.error).toMatch(/not found/i);
   });
 
+  test("a human posting in the room wakes the member it named", async () => {
+    const created = await createTeam();
+    const member = created.team!.members.find((entry) => entry.role === "server")!;
+    // Its briefing has to finish first — a mention does not interrupt a turn.
+    await client.waitForAgentUpsert(member.agentId, (agent) => agent.status !== "running");
+
+    await client.postChatMessage({
+      room: created.team!.chatRoomId,
+      body: `@${member.agentId} what did you find?`,
+    });
+
+    // The wake goes through the same path as any other prompt, so the member
+    // runs.
+    const woken = await client.waitForAgentUpsert(
+      member.agentId,
+      (agent) => agent.status === "running",
+      15_000,
+    );
+    expect(woken.id).toBe(member.agentId);
+
+    const messages = await client.readChatMessages({ room: created.team!.chatRoomId });
+    expect(messages.messages.at(-1)?.mentionAgentIds).toEqual([member.agentId]);
+  });
+
+  test("answers a member's permission request over the wire", async () => {
+    const created = await createTeam();
+    const member = created.team!.members.find((entry) => entry.role === "app")!;
+    await client.waitForAgentUpsert(member.agentId, (agent) => agent.status !== "running");
+
+    // The fake provider asks before running this one, the way a real one does.
+    await client.sendMessage(member.agentId, "rm -f permission.txt");
+    const waiting = await client.waitForAgentUpsert(
+      member.agentId,
+      (agent) => agent.pendingPermissions.length > 0,
+      15_000,
+    );
+
+    const resolved = await client.respondToPermissionAndWait(
+      member.agentId,
+      waiting.pendingPermissions[0]!.id,
+      { behavior: "deny", message: "not this time" },
+    );
+
+    // A team member's permission is the ordinary agent permission flow; a team
+    // does not get its own, and denying one does not touch the team.
+    expect(resolved.requestId).toBe(waiting.pendingPermissions[0]!.id);
+    expect((await client.listTeams()).teams[0]?.lifecycle).toBe("active");
+  });
+
   test("keeps the daemon's own notes off the wire", async () => {
     const created = await createTeam();
 
