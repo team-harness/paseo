@@ -337,6 +337,20 @@ should-fix 里两条同一形状：路由把"handshake 还没到"读成"daemon �
 
 还有一条隐蔽的：给 sheet 补文案时，插入脚本的 marker 匹配到了 `sidebar.workspace`，**整个 `teams` 命名空间落进了 `sidebar` 里**。面板与房间此前渲染的一直是键名本身，而没有一条断言看过那些文字——E2E 只断言了团队名（数据）和 testID。
 
+## 验收评审第二轮：我自己的修复引入了一个 blocker
+
+改 `selectMemberActivity` 去对齐 `deriveAgentStateBucket` 时，我给 `TeamMemberAgent` 加了 `pendingPermissionCount`，而 store 持有的是 `pendingPermissions` 列表——**没有任何调用点赋值过它**。selector 的入参是结构化的，缺的可选字段一路 `undefined`，typecheck 全程沉默；单测手工构造了那个 count 所以是绿的。结果：两个成员挂在权限上时，面板写"Working"，侧栏点是蓝的，tab 徽标从不变琥珀——聚合这个东西存在的唯一理由失效了。评审用真浏览器复现了它。
+
+改法是让 selector 直接吃列表，并把测试的 fixture 建在 store 自己的 `Agent` 类型上：字段名对不上就是编译错误，不再是静默的 0。浏览器测试也加了一条"两成员被挡住时面板说什么"。
+
+同轮还修了：`failed` 对账把要 evict 的成员先归档了（`archiving` 分支的顺序才是对的，且 `cleanUpFailed` 读的是这一趟开始时的快照）；建 team 的失败文案是硬编码英文；无 client 时提交静默无反应。
+
+## 验收评审第三轮：可以验收
+
+无 blocker。剩两条一行修复也带上了：lifecycle 分支的英文串（现在有自己的文案键，"key 指向一个没跑起来的 team"和"被拒绝"是两句话），以及我删 openCount 时连带删掉的 `serverId` key——计数器确实不改变行为，host 会。
+
+**三轮验收评审的共同形状**：每一轮的 blocker 都不是"写错了"，而是"接线少了一环，而现有测试恰好绕过了那一环"。入口没挂载、门控没测同 session、聚合的输入名字对不上——三件事都在全绿的测试套件下活了很久。
+
 ### 待办
 
-最终验收评审第二轮 + owner 验收。QA 证据（docs/qa.md 的平台矩阵）随 PR 提交。
+owner 验收 + QA 证据（docs/qa.md 六行平台矩阵，owner 已认领，模板在 epic 的「整体验收」节）。
