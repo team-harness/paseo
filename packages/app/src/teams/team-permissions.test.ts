@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { AgentPermissionAction, AgentPermissionRequest } from "@getpaseo/protocol/agent-types";
 import type { TeamMemberEntry, TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import type { PendingPermission } from "@/types/shared";
@@ -35,12 +36,20 @@ function team(members: TeamMemberEntry[]): TeamSnapshot {
   };
 }
 
-function permission(agentId: string, id: string): PendingPermission {
-  return {
-    key: `${agentId}:${id}`,
-    agentId,
-    request: { id, provider: "claude", name: "Bash", kind: "tool", input: {} } as never,
+function permission(
+  agentId: string,
+  id: string,
+  actions?: AgentPermissionAction[],
+): PendingPermission {
+  const request: AgentPermissionRequest = {
+    id,
+    provider: "claude",
+    name: "Bash",
+    kind: "tool",
+    input: {},
+    ...(actions ? { actions } : {}),
   };
+  return { key: `${agentId}:${id}`, agentId, request };
 }
 
 describe("the requests a team is waiting on", () => {
@@ -102,6 +111,23 @@ describe("the requests a team is waiting on", () => {
     );
 
     expect(rows).toEqual([]);
+  });
+
+  it("carries the request's own actions through to the row", () => {
+    // The panel answers with one of these by id. A row that dropped them would
+    // leave the panel inventing an Allow/Deny pair, which answers an N-way
+    // question with option one and resolves a bespoke request as cancelled.
+    const actions: AgentPermissionAction[] = [
+      { id: "act-yes", label: "Allow once", behavior: "allow" },
+      { id: "act-always", label: "Allow always", behavior: "allow" },
+      { id: "act-no", label: "Stop", behavior: "deny" },
+    ];
+    const rows = selectTeamPermissions(
+      team([entry({ agentId: "member-1" })]),
+      new Map([["a", permission("member-1", "req-a", actions)]]),
+    );
+
+    expect(rows[0]?.permission.request.actions).toEqual(actions);
   });
 
   it("is empty when nobody is waiting", () => {

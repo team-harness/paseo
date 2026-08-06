@@ -373,6 +373,33 @@ describe("a team, end to end", () => {
     expect((await client.listTeams()).teams[0]?.lifecycle).toBe("active");
   });
 
+  test("answers a member's three-way request with the option that was pressed", async () => {
+    const created = await createTeam();
+    const lead = created.team!.leadAgentId;
+    await settledTurns(lead, 1);
+
+    // The panel renders `request.actions` and answers by id. An invented
+    // Allow/Deny pair answers a three-way question with option one, and the
+    // adapter is told something the user never chose.
+    await client.sendMessage(lead, "choose a branch");
+    const request = await pendingPermission(lead);
+    expect(request.actions?.map((action) => action.id)).toEqual([
+      "allow-once",
+      "allow-always",
+      "stop",
+    ]);
+
+    const answered = await client.respondToPermissionAndWait(lead, request.id, {
+      behavior: "allow",
+      selectedActionId: "allow-always",
+    });
+
+    expect(answered.resolution).toMatchObject({
+      behavior: "allow",
+      selectedActionId: "allow-always",
+    });
+  });
+
   test("carries the lead's assignment through to a result it is told about", async () => {
     const created = await createTeam();
     const team = created.team!;
