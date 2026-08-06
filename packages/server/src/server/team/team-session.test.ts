@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
+import { TEAM_ERROR_CODES } from "@getpaseo/protocol/team/rpc-schemas";
 import type { StoredTeam } from "@getpaseo/protocol/team/types";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
@@ -142,7 +143,7 @@ describe("team session handlers", () => {
       await handlers.handle(createRequest({ task: "something else" }));
 
       const payload = payloadOf("team.create.response");
-      expect(payload.errorCode).toBe("idempotency_key_conflict");
+      expect(payload.errorCode).toBe(TEAM_ERROR_CODES.idempotencyConflict);
     });
 
     test("broadcasts the new team", async () => {

@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 
+import { TEAM_ERROR_CODES } from "@getpaseo/protocol/team/rpc-schemas";
 import { toTeamSnapshot, type StoredTeam, type TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import {
@@ -147,7 +148,8 @@ export class TeamSessionHandlers {
           error: describe(error),
           // A client retrying with a key needs to tell "your retry worked" from
           // "that key now means something else".
-          errorCode: error instanceof TeamCreateConflictError ? "idempotency_key_conflict" : null,
+          errorCode:
+            error instanceof TeamCreateConflictError ? TEAM_ERROR_CODES.idempotencyConflict : null,
         },
       });
       this.logFailure("create", error);

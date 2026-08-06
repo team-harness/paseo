@@ -13,6 +13,8 @@ export const TEAM_ERROR_CODES = {
 
 export const TEAM_MAX_NON_LEAD_MEMBERS = 8;
 export const TEAM_NAME_MAX_LENGTH = 60;
+/** A role is a handle the lead types when assigning work, not a description. */
+export const TEAM_ROLE_MAX_LENGTH = 40;
 
 export const TeamMemberSettingsSchema = z.object({
   modeId: z.string().optional(),
@@ -21,7 +23,7 @@ export const TeamMemberSettingsSchema = z.object({
 });
 
 export const TeamMemberSpecSchema = z.object({
-  role: z.string().min(1),
+  role: z.string().min(1).max(TEAM_ROLE_MAX_LENGTH),
   title: z.string().optional(),
   provider: z.string().min(1),
   settings: TeamMemberSettingsSchema.optional(),
