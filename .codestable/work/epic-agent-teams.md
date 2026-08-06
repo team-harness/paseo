@@ -146,6 +146,31 @@ change review：1 个阶段 3 轮（上限），reviewer = Paseo agent `dddac5db
 
 **评审未发现、自查发现的**：旧格式消息读回时 `author` 为 undefined——原测试只覆盖了写入侧兜底，读取路径无兜底。加 `withAuthor` 在加载时补齐（带 COMPAT 标签）。
 
+### 第二、三轮复核
+
+同一 reviewer 又跑了两轮，每轮都找到真 blocker。全部接受并修复（`28da9837a`、`d823059c1`）。
+
+**第二轮**（5 条）：unreadable legacy 只是不写 marker 但仍允许写入，新房间会被后续迁移抹掉 → 加只读状态；legacy 是全集不是上界，其未列出的 room 文件要删（降级期间删的房间会复活）；post 排队期间房间被删，其 persist 删文件反被当成写成功 → 检查房间仍在；订阅失败不回滚、按名 unsubscribe 无效 → 回滚 + 房间移除广播；`withAuthor` 伪造 agent 身份 → 删除。
+
+**DEC-10 我判断错了**：我主张 eligibility 与 wakeability 分层、error 不该被通知。reviewer 给出 `docs/refactors/agent-teams-design.md:222` 与 epic:44，两处都明确列出 live `idle/error`、stored `closed/idle/error` 为可唤醒。契约写死了状态集合，我的分层论证不成立。已按契约改，并撤掉锁死错误行为的测试。
+
+**第三轮**（5 条）：**roomId 未校验导致路径穿越**（`../../teams/victim` 可写/删 chat 目录外文件）→ 限定单路径段 + 文件名与 id 必须一致；id 复用时"存在"≠"同一个房间" → 引入 incarnation（创建与删除都递增）；removal 事件在 await 后才发，期间重建会误伤新订阅 → 与删除同步发布；迁移清理的 readdir 失败被吞 → 只忽略 ENOENT，否则中止在 rename 前；`listRoomPosterAgentIds` 把无 author 的旧消息当 agent → 只认明确标记为 agent 的。
+
+**一处诚实标注**：id 复用竞态靠不变式论证而非测试——检查点落在重建前还是后由微任务顺序决定，没有可注入的延迟点。保留的测试覆盖可观察规则（复用 id 的房间从空开始）。
+
+### 后续执行约束：保持 upstream 可持续同步
+
+本仓库是 `team-harness/paseo` fork，upstream `getpaseo/paseo`。冲突成本 ≈ 删改的既有行数 × 该文件在 upstream 的变更频率。实测近三月 upstream 提交数：`session.ts` 136、`messages.ts` 81、`agent-manager.ts` 61、`bootstrap.ts` 60；而 `chat-service.ts` 仅 3、`chat-schedule-loop-session.ts` 1。
+
+ITEM-4 起遵守：
+
+1. **核心文件只加不改**。新增 case/方法/字段可以；重命名既有 API、搬走既有逻辑不行。已违反两处（`agent-manager.ts` 的 `setAgentArchivedCallback` 被替换、`session.ts` 的 `resolveAgentIdentifier` 被搬走），用户认可后续再补薄壳。
+2. **逻辑进 `server/team/`，`session.ts` 里只留 dispatch 转发**。
+3. **必须改既有函数时留一行 delegate**，把冲突面从几十行压到一行。
+4. **不动既有持久化格式**。chat 存储改造是这轮唯一的存量数据改造，侥幸落在 upstream 低频文件上。
+5. **新功能测试写新文件**（`session.team.test.ts` 之类），不要往 `session.test.ts` 塞——它是 upstream 最热的文件。
+6. **通用性修复推回 upstream**：路径穿越、cursor 重复、mention 打断 running agent 都是 upstream 自身的 bug，推回去才能永久消除冲突源。
+
 ### 待办
 
-修复复核进行中（同一 reviewer，带完整攻击面清单）。通过后做 ITEM-3 里程碑提交并转 ITEM-4。
+ITEM-3 已达成契约（三轮复核的 finding 全部关闭）。下一步：ITEM-3 里程碑提交 → ITEM-4（TeamService），按上述约束实施。
