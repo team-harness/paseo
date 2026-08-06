@@ -45,7 +45,8 @@ describe("FileBackedChatService", () => {
       code: "chat_room_name_taken",
     });
 
-    const raw = await readFile(path.join(paseoHome, "chat", "rooms.json"), "utf8");
+    // One file per room, so a busy room no longer rewrites every other one.
+    const raw = await readFile(path.join(paseoHome, "chat", "rooms", `${created.id}.json`), "utf8");
     expect(raw).toContain("cli-features-epic");
     expect(created.name).toBe("cli-features-epic");
     expect(created.purpose).toBe("Coordination room");

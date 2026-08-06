@@ -13,12 +13,18 @@ import {
   type ChatRoomDetail,
 } from "@getpaseo/protocol/chat/types";
 
-const ChatStorePayloadSchema = z.object({
+/** The pre-0.3.0 layout: every room and every message in one file. */
+const LegacyChatStorePayloadSchema = z.object({
   rooms: z.array(ChatRoomSchema),
+  messages: z.array(z.unknown()),
+});
+
+const ChatRoomFileSchema = z.object({
+  room: ChatRoomSchema,
   messages: z.array(ChatMessageSchema),
 });
 
-type ChatStorePayload = z.infer<typeof ChatStorePayloadSchema>;
+type ChatRoomFile = z.infer<typeof ChatRoomFileSchema>;
 
 function normalizeRoomName(name: string): string {
   return name.trim().toLocaleLowerCase();
@@ -109,16 +115,23 @@ export interface InspectChatRoomResult {
 }
 
 export class FileBackedChatService {
-  private readonly filePath: string;
+  private readonly chatDir: string;
+  private readonly roomsDir: string;
+  private readonly legacyFilePath: string;
+  private readonly migratedMarkerPath: string;
   private readonly logger: pino.Logger;
   private loaded = false;
   private readonly rooms = new Map<string, ChatRoom>();
   private readonly messagesByRoomId = new Map<string, ChatMessage[]>();
-  private persistQueue: Promise<void> = Promise.resolve();
+  /** Serialized per room: one busy room no longer rewrites every other room. */
+  private readonly persistQueues = new Map<string, Promise<void>>();
   private readonly waitersByRoomId = new Map<string, Set<Waiter>>();
 
   constructor(options: { paseoHome: string; logger: pino.Logger }) {
-    this.filePath = path.join(options.paseoHome, "chat", "rooms.json");
+    this.chatDir = path.join(options.paseoHome, "chat");
+    this.roomsDir = path.join(this.chatDir, "rooms");
+    this.legacyFilePath = path.join(this.chatDir, "rooms.json");
+    this.migratedMarkerPath = path.join(this.chatDir, ".migrated");
     this.logger = options.logger.child({ component: "chat-service" });
   }
 
@@ -148,7 +161,7 @@ export class FileBackedChatService {
       updatedAt: now,
     });
     this.rooms.set(room.id, room);
-    await this.enqueuePersist();
+    await this.enqueuePersist(room.id);
     return this.toRoomDetail(room);
   }
 
@@ -173,7 +186,7 @@ export class FileBackedChatService {
     const detail = this.toRoomDetail(room);
     this.rooms.delete(room.id);
     this.messagesByRoomId.delete(room.id);
-    await this.enqueuePersist();
+    await this.enqueuePersist(room.id);
     this.rejectWaiters(
       room.id,
       new ChatServiceError("chat_room_deleted", `Chat room deleted: ${room.name}`),
@@ -225,7 +238,7 @@ export class FileBackedChatService {
         updatedAt: createdAt,
       }),
     );
-    await this.enqueuePersist();
+    await this.enqueuePersist(room.id);
     this.notifyWaiters(room.id);
     return message;
   }
@@ -329,43 +342,172 @@ export class FileBackedChatService {
     this.rooms.clear();
     this.messagesByRoomId.clear();
 
-    try {
-      const raw = await fs.readFile(this.filePath, "utf8");
-      const parsed = ChatStorePayloadSchema.parse(JSON.parse(raw));
-      for (const room of parsed.rooms) {
-        this.rooms.set(room.id, room);
-      }
-      for (const message of parsed.messages) {
-        const messages = this.messagesByRoomId.get(message.roomId) ?? [];
-        messages.push(message);
-        this.messagesByRoomId.set(message.roomId, messages);
-      }
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "ENOENT") {
-        this.logger.error({ err: error, filePath: this.filePath }, "Failed to load chat store");
-      }
-    }
+    await this.migrateIfNeeded();
+    await this.loadRoomFiles();
 
     this.loaded = true;
   }
 
-  private async enqueuePersist(): Promise<void> {
-    const nextPersist = this.persistQueue.then(() => this.persist());
-    this.persistQueue = nextPersist.catch(() => {});
-    await nextPersist;
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
-  private async persist(): Promise<void> {
-    const payload: ChatStorePayload = {
-      rooms: Array.from(this.rooms.values()).sort((left, right) =>
-        left.createdAt.localeCompare(right.createdAt),
-      ),
-      messages: Array.from(this.messagesByRoomId.values())
-        .flat()
-        .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
-    };
-    await writeJsonFileAtomic(this.filePath, payload);
+  /**
+   * Moves a legacy single-file store to one file per room, once.
+   *
+   * Ordering is load-bearing: every room file is written first, then the legacy
+   * file is renamed aside, then the marker lands. Because nothing writes the new
+   * layout until the marker exists, any per-room file found before then can only
+   * be this migration's own earlier attempt over the same data — so "already
+   * there, skip it" is exact rather than a guess about which copy is newer.
+   *
+   * A missing legacy file with a `.bak` present means the rename already
+   * happened, which by the same ordering means the room files are complete.
+   */
+  private async migrateIfNeeded(): Promise<void> {
+    if (await this.fileExists(this.migratedMarkerPath)) {
+      return;
+    }
+
+    await fs.mkdir(this.roomsDir, { recursive: true });
+    const legacy = await this.readLegacyStore();
+    if (legacy) {
+      for (const room of legacy.rooms) {
+        const roomPath = this.roomFilePath(room.id);
+        if (await this.fileExists(roomPath)) {
+          continue;
+        }
+        await writeJsonFileAtomic(roomPath, {
+          room,
+          messages: legacy.messagesByRoomId.get(room.id) ?? [],
+        } satisfies ChatRoomFile);
+      }
+      await fs.rename(this.legacyFilePath, `${this.legacyFilePath}.bak`).catch((error) => {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "ENOENT") {
+          throw error;
+        }
+      });
+    }
+
+    await writeJsonFileAtomic(this.migratedMarkerPath, {
+      migratedAt: new Date().toISOString(),
+    });
+  }
+
+  /** Returns null when there is nothing to migrate. */
+  private async readLegacyStore(): Promise<{
+    rooms: ChatRoom[];
+    messagesByRoomId: Map<string, ChatMessage[]>;
+  } | null> {
+    let raw: string;
+    try {
+      raw = await fs.readFile(this.legacyFilePath, "utf8");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") {
+        this.logger.error(
+          { err: error, filePath: this.legacyFilePath },
+          "Failed to read legacy chat store",
+        );
+      }
+      return null;
+    }
+
+    const parsed = LegacyChatStorePayloadSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) {
+      this.logger.error(
+        { issues: parsed.error.issues, filePath: this.legacyFilePath },
+        "Legacy chat store is unreadable; leaving it in place",
+      );
+      return null;
+    }
+
+    // Messages are validated one by one: a single damaged entry should cost that
+    // entry, not every conversation in the file. The original is never edited.
+    const messagesByRoomId = new Map<string, ChatMessage[]>();
+    for (const candidate of parsed.data.messages) {
+      const message = ChatMessageSchema.safeParse(candidate);
+      if (!message.success) {
+        this.logger.warn(
+          { issues: message.error.issues },
+          "Skipping unreadable message while migrating chat store",
+        );
+        continue;
+      }
+      const bucket = messagesByRoomId.get(message.data.roomId) ?? [];
+      bucket.push(message.data);
+      messagesByRoomId.set(message.data.roomId, bucket);
+    }
+    return { rooms: parsed.data.rooms, messagesByRoomId };
+  }
+
+  private async loadRoomFiles(): Promise<void> {
+    let entries: string[];
+    try {
+      entries = await fs.readdir(this.roomsDir);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") {
+        this.logger.error({ err: error, dir: this.roomsDir }, "Failed to list chat rooms");
+      }
+      return;
+    }
+
+    for (const entry of entries) {
+      if (!entry.endsWith(".json")) continue;
+      const filePath = path.join(this.roomsDir, entry);
+      try {
+        const parsed = ChatRoomFileSchema.safeParse(
+          JSON.parse(await fs.readFile(filePath, "utf8")),
+        );
+        if (!parsed.success) {
+          // One damaged room must not strand the others.
+          this.logger.error(
+            { issues: parsed.error.issues, filePath },
+            "Skipping unreadable chat room file",
+          );
+          continue;
+        }
+        this.rooms.set(parsed.data.room.id, parsed.data.room);
+        this.messagesByRoomId.set(parsed.data.room.id, parsed.data.messages);
+      } catch (error) {
+        this.logger.error({ err: error, filePath }, "Skipping unreadable chat room file");
+      }
+    }
+  }
+
+  private roomFilePath(roomId: string): string {
+    return path.join(this.roomsDir, `${roomId}.json`);
+  }
+
+  /** Serialized per room: a busy room no longer rewrites every other room. */
+  private async enqueuePersist(roomId: string): Promise<void> {
+    const previous = this.persistQueues.get(roomId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => this.persistRoom(roomId));
+    this.persistQueues.set(
+      roomId,
+      next.catch(() => undefined),
+    );
+    await next;
+  }
+
+  private async persistRoom(roomId: string): Promise<void> {
+    const room = this.rooms.get(roomId);
+    if (!room) {
+      await fs.rm(this.roomFilePath(roomId), { force: true });
+      return;
+    }
+    await fs.mkdir(this.roomsDir, { recursive: true });
+    await writeJsonFileAtomic(this.roomFilePath(roomId), {
+      room,
+      messages: this.messagesByRoomId.get(roomId) ?? [],
+    } satisfies ChatRoomFile);
   }
 
   private findRoomByName(name: string): ChatRoom | null {

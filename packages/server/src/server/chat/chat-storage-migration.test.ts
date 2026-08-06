@@ -1,0 +1,234 @@
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
+
+import { createTestLogger } from "../../test-utils/test-logger.js";
+import { FileBackedChatService } from "./chat-service.js";
+
+const logger = createTestLogger();
+
+/**
+ * DEC-9. The invariant that makes this safe: nothing writes the new layout
+ * before the marker lands, so a per-room file found beforehand can only have
+ * come from an interrupted migration of the very same data. "Already there,
+ * skip it" is therefore exact, and no newer-wins comparison is needed.
+ */
+describe("chat store migration", () => {
+  let home: string;
+  let chatDir: string;
+
+  const legacyPayload = {
+    rooms: [
+      {
+        id: "room-1",
+        name: "team-1",
+        purpose: "Coordination",
+        createdAt: "2026-08-06T10:00:00.000Z",
+        updatedAt: "2026-08-06T10:05:00.000Z",
+      },
+      {
+        id: "room-2",
+        name: "standup",
+        purpose: null,
+        createdAt: "2026-08-06T09:00:00.000Z",
+        updatedAt: "2026-08-06T09:30:00.000Z",
+      },
+    ],
+    messages: [
+      {
+        id: "msg-1",
+        roomId: "room-1",
+        authorAgentId: "agent-lead",
+        body: "first",
+        replyToMessageId: null,
+        mentionAgentIds: [],
+        createdAt: "2026-08-06T10:01:00.000Z",
+      },
+      {
+        id: "msg-2",
+        roomId: "room-1",
+        authorAgentId: "agent-impl",
+        body: "second",
+        replyToMessageId: "msg-1",
+        mentionAgentIds: [],
+        createdAt: "2026-08-06T10:02:00.000Z",
+      },
+      {
+        id: "msg-3",
+        roomId: "room-2",
+        authorAgentId: "agent-lead",
+        body: "standup note",
+        replyToMessageId: null,
+        mentionAgentIds: [],
+        createdAt: "2026-08-06T09:10:00.000Z",
+      },
+    ],
+  };
+
+  async function writeLegacy(payload: unknown = legacyPayload): Promise<void> {
+    await mkdir(chatDir, { recursive: true });
+    await writeFile(join(chatDir, "rooms.json"), JSON.stringify(payload), "utf8");
+  }
+
+  async function listRoomFiles(): Promise<string[]> {
+    try {
+      return (await readdir(join(chatDir, "rooms"))).sort();
+    } catch {
+      return [];
+    }
+  }
+
+  async function exists(relative: string): Promise<boolean> {
+    try {
+      await readFile(join(chatDir, relative));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function createService(): FileBackedChatService {
+    return new FileBackedChatService({ paseoHome: home, logger });
+  }
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), "chat-migration-"));
+    chatDir = join(home, "chat");
+  });
+
+  afterEach(async () => {
+    await rm(home, { recursive: true, force: true });
+  });
+
+  test("moves an existing store to per-room files, preserving ids, order and timestamps", async () => {
+    await writeLegacy();
+
+    const service = createService();
+    await service.initialize();
+
+    expect(await listRoomFiles()).toEqual(["room-1.json", "room-2.json"]);
+    expect(await exists(".migrated")).toBe(true);
+    // The original is kept, renamed, and never read again.
+    expect(await exists("rooms.json.bak")).toBe(true);
+    expect(await exists("rooms.json")).toBe(false);
+
+    const messages = await service.readMessages({ room: "room-1" });
+    expect(messages.map((message) => message.id)).toEqual(["msg-1", "msg-2"]);
+    expect(messages[0].createdAt).toBe("2026-08-06T10:01:00.000Z");
+    expect(messages[1].replyToMessageId).toBe("msg-1");
+
+    const rooms = await service.listRooms();
+    expect(rooms.map((room) => room.id).sort()).toEqual(["room-1", "room-2"]);
+    expect(rooms.find((room) => room.id === "room-1")?.createdAt).toBe("2026-08-06T10:00:00.000Z");
+  });
+
+  test("starts clean when there is nothing to migrate", async () => {
+    const service = createService();
+    await service.initialize();
+
+    expect(await service.listRooms()).toEqual([]);
+    expect(await exists(".migrated")).toBe(true);
+  });
+
+  test("finishes a migration interrupted after some room files were written", async () => {
+    await writeLegacy();
+    await mkdir(join(chatDir, "rooms"), { recursive: true });
+    // room-1 already landed; the process died before room-2.
+    await writeFile(
+      join(chatDir, "rooms", "room-1.json"),
+      JSON.stringify({
+        room: legacyPayload.rooms[0],
+        messages: legacyPayload.messages.slice(0, 2),
+      }),
+      "utf8",
+    );
+
+    const service = createService();
+    await service.initialize();
+
+    expect(await listRoomFiles()).toEqual(["room-1.json", "room-2.json"]);
+    expect(await exists(".migrated")).toBe(true);
+    expect((await service.readMessages({ room: "room-1" })).map((m) => m.id)).toEqual([
+      "msg-1",
+      "msg-2",
+    ]);
+    expect((await service.readMessages({ room: "room-2" })).map((m) => m.id)).toEqual(["msg-3"]);
+  });
+
+  test("finishes a migration interrupted after the rename but before the marker", async () => {
+    await mkdir(join(chatDir, "rooms"), { recursive: true });
+    await writeFile(
+      join(chatDir, "rooms", "room-1.json"),
+      JSON.stringify({
+        room: legacyPayload.rooms[0],
+        messages: legacyPayload.messages.slice(0, 2),
+      }),
+      "utf8",
+    );
+    await writeFile(join(chatDir, "rooms.json.bak"), JSON.stringify(legacyPayload), "utf8");
+
+    const service = createService();
+    await service.initialize();
+
+    // The rename already happened, so the per-room files are complete by
+    // definition; only the marker is missing.
+    expect(await exists(".migrated")).toBe(true);
+    expect((await service.readMessages({ room: "room-1" })).map((m) => m.id)).toEqual([
+      "msg-1",
+      "msg-2",
+    ]);
+  });
+
+  test("is a no-op once the marker exists, even if a legacy file reappears", async () => {
+    await writeLegacy();
+    await (await Promise.resolve(createService())).initialize();
+
+    // Something drops an old file back in; the marker means it is not ours.
+    await writeFile(
+      join(chatDir, "rooms.json"),
+      JSON.stringify({ rooms: [], messages: [] }),
+      "utf8",
+    );
+
+    const second = createService();
+    await second.initialize();
+
+    expect((await second.listRooms()).map((room) => room.id).sort()).toEqual(["room-1", "room-2"]);
+    expect(await exists("rooms.json")).toBe(true);
+  });
+
+  test("repeated starts leave the store unchanged", async () => {
+    await writeLegacy();
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const service = createService();
+      await service.initialize();
+      expect((await service.listRooms()).map((room) => room.id).sort()).toEqual([
+        "room-1",
+        "room-2",
+      ]);
+    }
+    expect(await listRoomFiles()).toEqual(["room-1.json", "room-2.json"]);
+  });
+
+  test("carries over what it can when the legacy file is damaged", async () => {
+    await writeLegacy({
+      rooms: legacyPayload.rooms,
+      messages: [
+        legacyPayload.messages[0],
+        { id: "broken", roomId: "room-1" },
+        legacyPayload.messages[2],
+      ],
+    });
+
+    const service = createService();
+    await service.initialize();
+
+    // The unreadable entry is dropped; everything else still migrates, and the
+    // original file is never edited.
+    expect((await service.readMessages({ room: "room-1" })).map((m) => m.id)).toEqual(["msg-1"]);
+    expect((await service.readMessages({ room: "room-2" })).map((m) => m.id)).toEqual(["msg-3"]);
+    expect(await exists("rooms.json.bak")).toBe(true);
+  });
+});
