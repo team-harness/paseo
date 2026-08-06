@@ -65,6 +65,13 @@ export interface TeamAgentGateway {
   /** Detaches an agent from its team without ending it. */
   clearTeamLabels(agentId: string): Promise<void>;
   restoreTeamLabels(input: { agentId: string; teamId: string; role: string }): Promise<void>;
+  /**
+   * What the daemon currently has for this agent. The reconciler needs it
+   * because the events that would have told the team may never have arrived.
+   */
+  getAgentState(
+    agentId: string,
+  ): Promise<{ kind: "active" } | { kind: "archived" } | { kind: "missing" }>;
 }
 
 export interface TeamServiceOptions {
@@ -235,6 +242,132 @@ export class TeamService {
    * A failed creation keeps its plan and stage. The reconciler needs both to
    * tell what was built before deciding what to clean up.
    */
+  /**
+   * Brings every team back in line with what the daemon actually has.
+   *
+   * This is not a second implementation of the rules — it applies the same ones
+   * the event path applies, to state that was left mid-change. A crash
+   * therefore cannot produce an outcome the normal path would not have
+   * produced, which is the property the two paths are tested for together.
+   */
+  async reconcile(): Promise<void> {
+    for (const team of await this.store.list()) {
+      try {
+        await this.reconcileTeam(team.id);
+      } catch (error) {
+        // One team's mess is not a reason to leave the rest unreconciled.
+        this.logger.error({ err: error, teamId: team.id }, "Failed to reconcile a team");
+      }
+    }
+  }
+
+  private async reconcileTeam(teamId: string): Promise<void> {
+    const team = await this.store.get(teamId);
+    if (!team) return;
+
+    switch (team.lifecycle) {
+      case "creating":
+        await this.resumeCreation(team);
+        return;
+      case "archiving":
+        // Eviction first: an agent that came back while the archive was
+        // stopped leaves the team rather than being archived on its way out.
+        await this.evictAgentsThatCameBack(team);
+        await this.archive(team.id);
+        return;
+      case "failed":
+        await this.cleanUpFailed(team);
+        return;
+      case "active":
+        await this.reconcileActive(team);
+        return;
+      case "archived":
+        await this.evictAgentsThatCameBack(team);
+        return;
+    }
+  }
+
+  private async resumeCreation(team: StoredTeam): Promise<void> {
+    if (!team.creationPlan) {
+      await this.markFailed(team.id);
+      return;
+    }
+    // The plan says this agent exists. If it does not, the daemon cannot tell
+    // "deleted" from "never created", and rebuilding could duplicate work that
+    // already happened — so the team fails rather than guesses.
+    if (isStageComplete(team.creationStage, "agents_created")) {
+      const lead = await this.agents.getAgentState(team.leadAgentId);
+      if (lead.kind === "missing") {
+        this.logger.error(
+          { teamId: team.id, leadAgentId: team.leadAgentId },
+          "Failing a half-created team: its lead is gone and cannot be safely rebuilt",
+        );
+        await this.markFailed(team.id);
+        return;
+      }
+    }
+    await this.runCreationPlan(team);
+  }
+
+  /**
+   * Cleans up after a creation that gave up: the agents it managed to build are
+   * archived, and the room goes, since it belonged to a team that never ran.
+   */
+  private async cleanUpFailed(team: StoredTeam): Promise<void> {
+    if (team.failedCleanupAt) return;
+
+    for (const member of team.members) {
+      if (member.state === "removed") continue;
+      await this.archiveAgentIdempotently(member.agentId);
+    }
+    await this.rooms.discardRoom({ roomId: team.chatRoomId, ownerId: team.id });
+    await this.store.update(team.id, (current) => ({
+      ...current,
+      failedCleanupAt: new Date().toISOString(),
+    }));
+  }
+
+  private async reconcileActive(team: StoredTeam): Promise<void> {
+    const lead = await this.agents.getAgentState(team.leadAgentId);
+    if (lead.kind === "missing") {
+      await this.markRemoved(team.id, team.leadAgentId, "hard_deleted");
+      await this.archive(team.id);
+      return;
+    }
+
+    for (const member of team.members) {
+      if (member.agentId === team.leadAgentId) continue;
+      const state = await this.agents.getAgentState(member.agentId);
+      if (state.kind === "missing" && member.state !== "removed") {
+        await this.markRemoved(team.id, member.agentId, "hard_deleted");
+        continue;
+      }
+      if (state.kind === "archived" && member.state === "active") {
+        await this.onAgentArchived(member.agentId);
+        continue;
+      }
+      if (state.kind === "active" && member.state === "archived") {
+        await this.onAgentUnarchived(member.agentId);
+      }
+    }
+  }
+
+  /**
+   * DEC-11 applied to entries the event never reached: an agent that is active
+   * again while its entry says otherwise gets the same question, and the same
+   * answer, as it would have on the event path.
+   */
+  private async evictAgentsThatCameBack(team: StoredTeam): Promise<void> {
+    for (const member of team.members) {
+      if (member.state === "removed") continue;
+      const state = await this.agents.getAgentState(member.agentId);
+      if (state.kind !== "active") continue;
+      if (member.state === "archived") {
+        await this.onAgentUnarchived(member.agentId);
+      }
+    }
+  }
+
   /**
    * Ends the team: every member that is still active gets archived, then the
    * record does.
