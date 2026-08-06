@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -322,6 +322,16 @@ describe("TeamPump", () => {
 
       expect(await pump.run({ teamId: "team-1", leadAgentId: "lead" })).toBe(false);
       expect(await joined).toBe(true);
+    });
+
+    // A ledger that cannot be read looks empty, and empty means "nothing to
+    // do". Reporting that would retire the team, and repairing the file would
+    // not bring it back.
+    test("keeps watching a team whose ledger cannot be read", async () => {
+      await assign("agent-a", "work");
+      await writeFile(join(home, "team-1.inbox.json"), "{ not json", "utf8");
+
+      expect(await pump.run({ teamId: "team-1", leadAgentId: "lead" })).toBe(true);
     });
 
     // Losing the event that says an agent went idle must not strand the work:

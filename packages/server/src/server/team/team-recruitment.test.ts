@@ -34,6 +34,8 @@ describe("TeamService recruitment", () => {
     beforeCreate: (() => Promise<void>) | null = null;
     /** The same, for the briefing — the widest window in a recruit. */
     beforePrompt: (() => Promise<void>) | null = null;
+    /** Runs once the briefing has landed, before the intent is committed. */
+    afterPrompt: (() => Promise<void>) | null = null;
 
     async createAgent(input: { agentId: string; labels: Record<string, string> }): Promise<void> {
       await this.beforeCreate?.();
@@ -43,6 +45,7 @@ describe("TeamService recruitment", () => {
     async sendPrompt(input: { agentId: string; clientMessageId: string }): Promise<void> {
       await this.beforePrompt?.();
       this.prompts.push(input);
+      await this.afterPrompt?.();
     }
 
     async archiveAgent(agentId: string): Promise<{ kind: "archived" } | { kind: "not_found" }> {
@@ -58,7 +61,9 @@ describe("TeamService recruitment", () => {
     async restoreTeamLabels(): Promise<void> {}
 
     async getAgentState(agentId: string) {
-      return this.missing.has(agentId) ? { kind: "missing" as const } : { kind: "active" as const };
+      return this.missing.has(agentId)
+        ? { kind: "missing" as const }
+        : { kind: "active" as const, teamLabel: null };
     }
   }
 
@@ -303,6 +308,26 @@ describe("TeamService recruitment", () => {
       expect(agents.archived).toContain(reservedId);
       expect((await store.get(team.id))?.pendingRecruitments).toBeNull();
     });
+  });
+
+  // Checking that the recruit is still a member and then clearing its intent
+  // would be two operations, and a removal arriving between them would be
+  // cleared away as if it had not happened. They are one locked step.
+  test("cancels a recruit removed after its briefing was delivered", async () => {
+    const team = await seedTeam();
+    let reservedId = "";
+    agents.afterPrompt = async () => {
+      const current = await store.get(team.id);
+      reservedId = entryWithRole(current, "database")!.agentId;
+      await service.removeMember({ teamId: team.id, agentId: reservedId });
+    };
+
+    await expect(service.recruit({ teamId: team.id, ...recruitRequest(team) })).rejects.toThrow(
+      /cancelled/i,
+    );
+
+    expect(agents.archived).toContain(reservedId);
+    expect((await store.get(team.id))?.pendingRecruitments).toBeNull();
   });
 
   // The intent is what makes a crash recoverable: it holds everything needed to

@@ -24,7 +24,7 @@ const agents: TeamAgentGateway = {
   archiveAgent: async () => ({ kind: "archived" as const }),
   clearTeamLabels: async () => {},
   restoreTeamLabels: async () => {},
-  getAgentState: async () => ({ kind: "active" as const }),
+  getAgentState: async () => ({ kind: "active" as const, teamLabel: null }),
 };
 
 /**

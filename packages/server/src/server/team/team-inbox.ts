@@ -255,6 +255,18 @@ export class TeamInbox {
     return file.inFlightDelivery !== null || file.pendingCompletions.length > 0;
   }
 
+  /**
+   * Whether this team's ledger can be read at all.
+   *
+   * A ledger that cannot be read looks exactly like an empty one to every read
+   * here, and an empty one means "nothing to do". A caller deciding whether to
+   * keep watching this team has to be able to tell those apart, or a damaged
+   * file quietly retires the team and repairing it changes nothing.
+   */
+  async isReadable(teamId: string): Promise<boolean> {
+    return (await this.readFileState(teamId)).kind !== "unreadable";
+  }
+
   /** Acknowledging a batch that is already gone is a replay, not an error. */
   async acknowledgeDelivery(input: { teamId: string; deliveryId: string }): Promise<void> {
     await this.mutate(input.teamId, (file) =>

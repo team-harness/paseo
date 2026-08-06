@@ -86,6 +86,18 @@ export class TeamPump {
   }
 
   private async runPass(input: { teamId: string; leadAgentId: string }): Promise<boolean> {
+    // A ledger that cannot be read reads as an empty one, so a pass over it
+    // would do nothing and report nothing left to do — quietly retiring a team
+    // that may still have work, with repairing the file changing nothing. Do
+    // no work, and say the team still needs watching.
+    if (!(await this.inbox.isReadable(input.teamId))) {
+      this.logger.error(
+        { teamId: input.teamId },
+        "Team ledger is unreadable; keeping the team in the sweep until it can be read",
+      );
+      return true;
+    }
+
     await this.settleDispatched(input.teamId);
     await this.dispatchQueued(input.teamId);
     await this.deliverToLead(input);

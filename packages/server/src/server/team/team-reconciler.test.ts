@@ -69,11 +69,21 @@ describe("TeamService reconciliation", () => {
       this.labelsRestored.push(input.agentId);
     }
 
+    /** Agents whose team labels have gone, however that happened. */
+    unlabelled = new Set<string>();
+    /** What the daemon would report as this agent's team labels. */
+    labelFor: (agentId: string) => { teamId: string; role: string } | null = () => ({
+      teamId: "any",
+      role: "any",
+    });
+
     async getAgentState(agentId: string) {
       if (this.missing.has(agentId)) return { kind: "missing" as const };
-      return this.archivedOutside.has(agentId)
-        ? { kind: "archived" as const }
-        : { kind: "active" as const };
+      if (this.archivedOutside.has(agentId)) return { kind: "archived" as const };
+      return {
+        kind: "active" as const,
+        teamLabel: this.unlabelled.has(agentId) ? null : this.labelFor(agentId),
+      };
     }
   }
 
@@ -279,6 +289,19 @@ describe("TeamService reconciliation", () => {
       expect(entryFor(await store.get(team.id), memberId)?.state).toBe("archived");
     });
 
+    // The event that archives a lead is supposed to take the team with it. If
+    // the daemon dies between the two, nothing else notices: the team is still
+    // active and its lead is not. Reconciliation has to finish the job, or the
+    // team stays that way forever.
+    test("finishes archiving a team whose lead was archived", async () => {
+      const team = await seedTeam();
+      agents.archivedOutside.add(team.leadAgentId);
+
+      await service.reconcile();
+
+      expect((await store.get(team.id))?.lifecycle).toBe("archived");
+    });
+
     test("converges the team when its lead turns out to be gone", async () => {
       const team = await seedTeam();
       agents.missing.add(team.leadAgentId);
@@ -286,6 +309,19 @@ describe("TeamService reconciliation", () => {
       await service.reconcile();
 
       expect((await store.get(team.id))?.lifecycle).toBe("archived");
+    });
+
+    // Removing a member clears its labels and then records the removal. A crash
+    // between the two leaves an agent the roster calls a member with nothing
+    // marking it as one, and no event will ever mention it again.
+    test("puts back the labels of a member that lost them", async () => {
+      const team = await seedTeam();
+      const memberId = nonLeadIdOf(team);
+      agents.unlabelled.add(memberId);
+
+      await service.reconcile();
+
+      expect(agents.labelsRestored).toEqual([memberId]);
     });
 
     test("leaves a healthy team alone", async () => {

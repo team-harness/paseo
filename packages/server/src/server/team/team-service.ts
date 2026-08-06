@@ -74,10 +74,20 @@ export interface TeamAgentGateway {
   /**
    * What the daemon currently has for this agent. The reconciler needs it
    * because the events that would have told the team may never have arrived.
+   *
+   * The team labels come with it because §5.7 has to check them too: a crash
+   * between clearing an agent's labels and recording its removal leaves an
+   * agent the roster still calls a member with nothing marking it as one, and
+   * an answer of only active/archived/missing cannot show that.
    */
-  getAgentState(
-    agentId: string,
-  ): Promise<{ kind: "active" } | { kind: "archived" } | { kind: "missing" }>;
+  getAgentState(agentId: string): Promise<
+    | {
+        kind: "active";
+        teamLabel: { teamId: string; role: string } | null;
+      }
+    | { kind: "archived" }
+    | { kind: "missing" }
+  >;
 }
 
 export interface TeamServiceOptions {
@@ -378,11 +388,36 @@ export class TeamService {
       clientMessageId: intent!.clientMessageId,
     });
 
-    // Once more: the send is the slowest step, and a removal or an archive
-    // during it would otherwise be papered over by clearing the intent and
-    // reporting success.
-    if (!(await intentOf())) await cancel();
-    await this.clearRecruitmentIntent(teamId, agentId);
+    // Checking and then clearing would be two operations, and a removal
+    // arriving between them would be cleared away as if it had not happened.
+    // The store's update runs inside the record's own lock, so deciding there
+    // makes the last check and the commit one step.
+    const committed = await this.commitRecruitment(teamId, agentId);
+    if (!committed) await cancel();
+  }
+
+  /**
+   * Clears the intent only if this recruit is still one, and says whether it
+   * did. The decision and the write are the same locked read-modify-write.
+   */
+  private async commitRecruitment(teamId: string, agentId: string): Promise<boolean> {
+    let committed = false;
+    await this.store.update(teamId, (current) => {
+      const entry = current.members.find((member) => member.agentId === agentId);
+      if (
+        current.lifecycle !== "active" ||
+        entry?.state !== "active" ||
+        !current.pendingRecruitments?.[agentId]
+      ) {
+        return current;
+      }
+      committed = true;
+      return {
+        ...current,
+        pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
+      };
+    });
+    return committed;
   }
 
   /**
@@ -403,13 +438,6 @@ export class TeamService {
             }
           : member,
       ),
-      pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
-    }));
-  }
-
-  private async clearRecruitmentIntent(teamId: string, agentId: string): Promise<void> {
-    await this.store.update(teamId, (current) => ({
-      ...current,
       pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
     }));
   }
@@ -481,7 +509,17 @@ export class TeamService {
         return;
       }
     }
-    await this.runCreationPlan(team);
+    // Under the team's lock, like the create path. Without it an archive could
+    // land during the checks above and this stale plan would go on briefing
+    // agents it had just archived — and a failure part-way could turn an
+    // archived team into a failed one.
+    await this.serializePerTeam(team.id, async () => {
+      const current = await this.store.get(team.id);
+      if (current?.lifecycle !== "creating") {
+        return;
+      }
+      await this.runCreationPlan(current);
+    });
   }
 
   /**
@@ -509,6 +547,13 @@ export class TeamService {
       await this.archive(team.id);
       return;
     }
+    // An archived lead means the team is over, whether the event that should
+    // have said so ever ran. The daemon can die between marking the entry and
+    // archiving the team, and nothing else would ever notice.
+    if (lead.kind === "archived") {
+      await this.archive(team.id);
+      return;
+    }
 
     await this.finishInterruptedRecruits(team);
 
@@ -525,6 +570,25 @@ export class TeamService {
       }
       if (state.kind === "active" && member.state === "archived") {
         await this.onAgentUnarchived(member.agentId);
+        continue;
+      }
+      // The roster says this agent is a member and the agent does not know it.
+      // A crash between clearing labels and recording a removal leaves exactly
+      // this, and nothing else would ever put it right.
+      if (
+        state.kind === "active" &&
+        member.state === "active" &&
+        !labelsMatch(state.teamLabel, team.id, member.role)
+      ) {
+        this.logger.info(
+          { teamId: team.id, agentId: member.agentId },
+          "Restoring team labels on a member that had lost them",
+        );
+        await this.agents.restoreTeamLabels({
+          agentId: member.agentId,
+          teamId: team.id,
+          role: member.role,
+        });
       }
     }
   }
@@ -853,6 +917,14 @@ function hasRoomFor(team: StoredTeam, agentId: string): boolean {
     (member) => member.state === "active" && member.agentId !== team.leadAgentId,
   ).length;
   return occupied < TEAM_MAX_NON_LEAD_MEMBERS;
+}
+
+function labelsMatch(
+  label: { teamId: string; role: string } | null,
+  teamId: string,
+  role: string,
+): boolean {
+  return label?.teamId === teamId && label.role === role;
 }
 
 /** Removes one intent, collapsing an empty table back to null. */
