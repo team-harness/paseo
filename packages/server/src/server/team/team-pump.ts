@@ -25,6 +25,14 @@ export interface TeamPumpGateway {
    */
   isWakeable(agentId: string): Promise<boolean>;
   /**
+   * Whether this agent is still an active member of the team.
+   *
+   * Work for someone who has left has to end somewhere. Leaving it queued
+   * keeps the team sweeping forever and never tells the lead what became of a
+   * task it assigned.
+   */
+  isActiveMember(input: { teamId: string; agentId: string }): Promise<boolean>;
+  /**
    * Submits an assignment without replacing anything in flight. Returns the
    * turn it was accepted as, or null when the provider would not take it.
    */
@@ -132,6 +140,10 @@ export class TeamPump {
 
   private async dispatchQueued(teamId: string): Promise<void> {
     for (const assigneeAgentId of await this.inbox.assigneesWithWork(teamId)) {
+      if (!(await this.gateway.isActiveMember({ teamId, agentId: assigneeAgentId }))) {
+        await this.cancelWorkFor(teamId, assigneeAgentId);
+        continue;
+      }
       if (!(await this.gateway.isWakeable(assigneeAgentId))) continue;
 
       const next = await this.inbox.nextDispatchable(teamId, assigneeAgentId);
@@ -152,6 +164,25 @@ export class TeamPump {
         continue;
       }
       await this.inbox.markDispatched({ teamId, taskId: next.taskId, turnId });
+    }
+  }
+
+  /**
+   * Settles everything still queued for someone who has left the team.
+   *
+   * A `dispatched` assignment is left alone — its turn is running or has
+   * already ended, and the three-state rule is what closes it. This is only for
+   * work that was never sent and now never will be.
+   */
+  private async cancelWorkFor(teamId: string, assigneeAgentId: string): Promise<void> {
+    for (const assignment of await this.inbox.listAssignments(teamId)) {
+      if (assignment.assigneeAgentId !== assigneeAgentId) continue;
+      if (assignment.state !== "queued") continue;
+      this.logger.info(
+        { teamId, taskId: assignment.taskId, assigneeAgentId },
+        "Cancelling an assignment for an agent that left the team",
+      );
+      await this.inbox.settle({ teamId, taskId: assignment.taskId, outcome: "canceled" });
     }
   }
 

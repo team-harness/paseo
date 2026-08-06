@@ -200,6 +200,10 @@ describe("recovering from a crash mid-assignment", () => {
       return true;
     }
 
+    async isActiveMember(): Promise<boolean> {
+      return true;
+    }
+
     async dispatchAssignment(input: { clientMessageId: string }): Promise<string | null> {
       // The prompt layer deduplicates, so a resend of the same assignment is
       // one delivery however many times the pump tries.

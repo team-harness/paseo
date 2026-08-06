@@ -263,17 +263,19 @@ describe("TeamService creation", () => {
     }
   });
 
-  test("refuses two members that would share a role", async () => {
-    await expect(
-      service.create(
-        createRequest({
-          members: [
-            { role: "server", provider: "codex", title: null, briefing: null, settings: null },
-            { role: "server", provider: "claude", title: null, briefing: null, settings: null },
-          ],
-        }),
-      ),
-    ).rejects.toThrow(/unique/i);
+  test("builds two members that share a role", async () => {
+    const team = await service.create(
+      createRequest({
+        members: [
+          { role: "server", provider: "codex", title: null, briefing: null, settings: null },
+          { role: "server", provider: "claude", title: null, briefing: null, settings: null },
+        ],
+      }),
+    );
+
+    // A role is display and prompt text, not an address — the lead assigns work
+    // by agent id. Two members with the same role is a team, not an error.
+    expect(team.members.filter((member) => member.role === "server")).toHaveLength(2);
   });
 
   // A failure leaves the record behind saying what it was doing, because the

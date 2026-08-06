@@ -12,8 +12,7 @@ import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
 import type { FileBackedChatService } from "./chat/chat-service.js";
-import type { TeamService } from "./team/team-service.js";
-import type { TeamStore } from "./team/team-store.js";
+import type { TeamRuntimeSessionDeps } from "./team/team-runtime.js";
 import type { LoopService } from "./loop-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
@@ -561,7 +560,7 @@ export class VoiceAssistantWebSocketServer {
   private unsubscribeTerminalActivity: (() => void) | null = null;
   private readonly browserToolsBroker: BrowserToolsBroker | null;
   private readonly hubRelationships: HubRelationshipManagement | null;
-  private readonly teamRuntime: { service: TeamService; store: TeamStore } | null;
+  private readonly teamRuntime: TeamRuntimeSessionDeps | null;
   private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
   private acceptingConnections = true;
   private readonly advertiseDaemonStatusRpc: boolean;
@@ -613,7 +612,7 @@ export class VoiceAssistantWebSocketServer {
     browserToolsBroker?: BrowserToolsBroker | null,
     hubRelationships?: HubRelationshipManagement | null,
     promptLibraryStore?: PromptLibraryStore,
-    teamRuntime?: { service: TeamService; store: TeamStore } | null,
+    teamRuntime?: TeamRuntimeSessionDeps | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.advertiseDaemonStatusRpc = wsConfig.daemonStatusRpc !== false;
@@ -1587,6 +1586,12 @@ export class VoiceAssistantWebSocketServer {
         statusSummary: true,
         // COMPAT(promptLibrary): added in v0.2.6, remove gate after 2027-02-04.
         promptLibrary: true,
+        // COMPAT(teams): added in v0.3.0, remove gate after 2027-02-06. Only
+        // advertised when the daemon actually has a team runtime — the RPCs
+        // parse either way, but without one they can only answer "not here".
+        ...(this.teamRuntime ? { teams: true } : {}),
+        // COMPAT(chatRoomSubscriptions): added in v0.3.0, remove gate after 2027-02-06.
+        chatRoomSubscriptions: true,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
         // COMPAT(agentThinkingUpdate): added in v0.2.4, remove gate after 2027-01-28.

@@ -123,7 +123,10 @@ export type TeamOutboundMessage =
 export interface TeamSessionHandlersOptions {
   service: TeamService;
   store: TeamStore;
+  /** Answers the client that asked. Correlated by `requestId`. */
   send: (message: TeamOutboundMessage) => void;
+  /** Tells every subscribed client. Not correlated with any request. */
+  publish: (team: TeamSnapshot) => void;
   logger: Logger;
 }
 
@@ -144,12 +147,14 @@ export class TeamSessionHandlers {
   private readonly service: TeamService;
   private readonly store: TeamStore;
   private readonly send: (message: TeamOutboundMessage) => void;
+  private readonly publish: (team: TeamSnapshot) => void;
   private readonly logger: Logger;
 
   constructor(options: TeamSessionHandlersOptions) {
     this.service = options.service;
     this.store = options.store;
     this.send = options.send;
+    this.publish = options.publish;
     this.logger = options.logger.child({ module: "team", component: "team-session" });
   }
 
@@ -300,8 +305,15 @@ export class TeamSessionHandlers {
     }
   }
 
+  /**
+   * Tells every connected client, not just the one that asked.
+   *
+   * A `team.update` describes the team, not the request — a second client
+   * watching the list has to learn about a team the first one created, and
+   * about a member it removed.
+   */
   private broadcast(team: StoredTeam): void {
-    this.send({ type: "team.update", payload: { team: toTeamSnapshot(team) } });
+    this.publish(toTeamSnapshot(team));
   }
 
   /**

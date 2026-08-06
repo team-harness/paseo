@@ -1,16 +1,9 @@
 import type pino from "pino";
 import type { StoredAgentRecord } from "../agent/agent-storage.js";
 import type { ManagedAgent } from "../agent/agent-manager.js";
+import { isAgentWakeable } from "../agent/agent-wakeability.js";
 
 export const CHAT_MENTION_FANOUT_LIMIT = 25;
-
-/**
- * DEC-10's wakeable states, listed rather than derived from "not running".
- * `initializing` is busy too — AgentManager counts it as such — and an agent
- * woken there either races its own first turn or is refused outright.
- */
-const WAKEABLE_LIVE_LIFECYCLES: ReadonlySet<string> = new Set(["idle", "error", "closed"]);
-const WAKEABLE_STORED_STATUSES: ReadonlySet<string> = new Set(["closed", "idle", "error"]);
 
 export interface ChatMentionNotificationInput {
   room: string;
@@ -205,13 +198,10 @@ function isChatMentionTargetWakeable(input: {
   storedAgents: StoredAgentRecord[];
   liveAgents: ManagedAgent[];
 }): boolean {
-  const live = input.liveAgents.find((agent) => agent.id === input.agentId);
-  if (live) {
-    return WAKEABLE_LIVE_LIFECYCLES.has(live.lifecycle);
-  }
-
-  const stored = input.storedAgents.find((record) => record.id === input.agentId);
-  return stored === undefined || WAKEABLE_STORED_STATUSES.has(stored.lastStatus);
+  return isAgentWakeable({
+    live: input.liveAgents.find((agent) => agent.id === input.agentId),
+    record: input.storedAgents.find((record) => record.id === input.agentId),
+  });
 }
 
 function isChatMentionTargetEligible(input: {

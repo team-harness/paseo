@@ -9,6 +9,7 @@ import { TEAM_ID_LABEL, TEAM_ROLE_LABEL } from "@getpaseo/protocol/agent-labels"
 import { resolveRequiredProviderModel } from "../agent/mcp-shared.js";
 import { sendPromptToAgent, waitForAgentRunStartWithTimeout } from "../agent/agent-prompt.js";
 import { archiveAgentCommand } from "../agent/lifecycle-command.js";
+import { isAgentWakeable } from "../agent/agent-wakeability.js";
 import { AgentAlreadyExistsError } from "../agent/agent-manager.js";
 import type { AgentLabelPatch, AgentManager, AgentRecordChange } from "../agent/agent-manager.js";
 import type { AgentStorage } from "../agent/agent-storage.js";
@@ -27,15 +28,6 @@ import {
   type TeamToolsRoster,
 } from "./team-tools.js";
 
-/**
- * Lifecycles a member can be woken from (DEC-10).
- *
- * A whitelist rather than "anything but running": `initializing` is busy too,
- * and a prompt sent into it is a prompt sent into a session that does not exist
- * yet.
- */
-const WAKEABLE_LIFECYCLES: ReadonlySet<string> = new Set(["idle", "error", "closed"]);
-
 export interface TeamRuntimeOptions {
   paseoHome: string;
   agentManager: AgentManager;
@@ -49,15 +41,23 @@ export interface TeamRuntimeOptions {
 }
 
 /**
+ * What a session needs from the runtime: the two services the RPCs act on, and
+ * the way to tell every other client what changed.
+ */
+export interface TeamRuntimeSessionDeps {
+  service: TeamService;
+  store: TeamStore;
+  publishTeamUpdate: (team: TeamSnapshot) => void;
+}
+
+/**
  * Everything teams need, assembled and attached to the daemon.
  *
  * The composition lives here rather than in `bootstrap.ts` so the feature is
  * one call there: the daemon's own wiring keeps its shape, and this file is
  * where anyone looking for how a team reaches the agent runtime should start.
  */
-export interface TeamRuntime {
-  service: TeamService;
-  store: TeamStore;
+export interface TeamRuntime extends TeamRuntimeSessionDeps {
   inbox: TeamInbox;
   recruitmentHook: TeamRecruitmentHook;
   /** Per-agent tool registration, called when a catalog is built for that agent. */
@@ -261,12 +261,12 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
   const service = new TeamService({ store, rooms, agents, logger: teamLogger });
 
   const pumpGateway: TeamPumpGateway = {
-    isWakeable: async (agentId) => {
-      const { live, record } = await agentState(agentId);
-      if (record?.archivedAt) return false;
-      if (live) return WAKEABLE_LIFECYCLES.has(live.lifecycle);
-      // Not loaded is not busy. A stored-only member is woken by loading it.
-      return record !== null;
+    isWakeable: async (agentId) => isAgentWakeable(await agentState(agentId)),
+
+    isActiveMember: async ({ teamId, agentId }) => {
+      const team = await store.get(teamId);
+      const entry = team?.members.find((member) => member.agentId === agentId);
+      return entry?.state === "active";
     },
 
     dispatchAssignment: (input) =>
@@ -437,6 +437,7 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
     service,
     store,
     inbox,
+    publishTeamUpdate: options.publishTeamUpdate,
     recruitmentHook: recruitmentHookFor(undefined),
     recruitmentHookFor,
     registerToolsFor(toolOptions) {

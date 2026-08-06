@@ -215,8 +215,7 @@ import {
   teamUnavailableResponse,
   TeamSessionHandlers,
 } from "./team/team-session.js";
-import type { TeamService } from "./team/team-service.js";
-import type { TeamStore } from "./team/team-store.js";
+import type { TeamRuntimeSessionDeps } from "./team/team-runtime.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import {
@@ -416,7 +415,7 @@ class SessionRequestError extends Error {
  * to whoever happens to be connected when it lands.
  */
 function buildTeamHandlers(
-  teamRuntime: { service: TeamService; store: TeamStore } | null | undefined,
+  teamRuntime: TeamRuntimeSessionDeps | null | undefined,
   send: (message: SessionOutboundMessage) => void,
   logger: pino.Logger,
 ): TeamSessionHandlers | null {
@@ -425,6 +424,7 @@ function buildTeamHandlers(
     service: teamRuntime.service,
     store: teamRuntime.store,
     send: (message) => send(message as SessionOutboundMessage),
+    publish: teamRuntime.publishTeamUpdate,
     logger,
   });
 }
@@ -467,7 +467,7 @@ export interface SessionOptions {
   filesystem?: SessionFileSystem;
   chatService: FileBackedChatService;
   /** Absent when the daemon runs without teams; the RPCs then answer "not available". */
-  teamRuntime?: { service: TeamService; store: TeamStore } | null;
+  teamRuntime?: TeamRuntimeSessionDeps | null;
   scheduleService: ScheduleService;
   loopService: LoopService;
   checkoutDiffManager: CheckoutDiffManager;

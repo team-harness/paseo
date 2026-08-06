@@ -9,6 +9,14 @@ import { TeamPump, type TeamPumpGateway } from "./team-pump.js";
 
 const logger = createTestLogger();
 
+const agentIdOf = (entry: { agentId: string }): string => entry.agentId;
+const stateOf = (entry: { state: string }): string => entry.state;
+const outcomeOf = (entry: { outcome: string | null }): string | null => entry.outcome;
+const assignedTo =
+  (agentId: string) =>
+  (entry: { assigneeAgentId: string }): boolean =>
+    entry.assigneeAgentId === agentId;
+
 /**
  * DEC-3's dispatch contract, frozen: no preemption. An assignment goes out only
  * when its assignee can be woken, and never replaces a turn in flight. A busy
@@ -35,8 +43,15 @@ describe("TeamPump", () => {
     /** Turns that are still running. */
     activeTurns = new Set<string>();
 
+    /** Agents that have left the team. */
+    departed = new Set<string>();
+
     async isWakeable(agentId: string): Promise<boolean> {
       return !this.busy.has(agentId) && !this.unwakeable.has(agentId);
+    }
+
+    async isActiveMember(input: { teamId: string; agentId: string }): Promise<boolean> {
+      return !this.departed.has(input.agentId);
     }
 
     async dispatchAssignment(input: {
@@ -95,6 +110,25 @@ describe("TeamPump", () => {
       expect(gateway.dispatched[0]?.clientMessageId).toBe(assignment.clientMessageId);
       const [stored] = await inbox.listAssignments("team-1");
       expect(stored?.state).toBe("dispatched");
+    });
+
+    test("cancels queued work for an assignee that has left the team", async () => {
+      await assign("agent-a", "measure the cache");
+      await assign("agent-b", "check the logs");
+      gateway.departed.add("agent-a");
+
+      const outstanding = await pump.run({ teamId: "team-1", leadAgentId: "lead" });
+
+      // Left queued it would never be sent and never settled: the team would
+      // sweep every minute forever, and the lead would never learn what became
+      // of a task it assigned.
+      const assignments = await inbox.listAssignments("team-1");
+      const cancelled = assignments.filter(assignedTo("agent-a"));
+      expect(cancelled.map(stateOf)).toEqual(["settled"]);
+      expect(cancelled.map(outcomeOf)).toEqual(["canceled"]);
+      expect(gateway.dispatched.map(agentIdOf)).toEqual(["agent-b"]);
+      // The cancellation is news for the lead, so there is still work to do.
+      expect(outstanding).toBe(true);
     });
 
     // The whole point of the contract: a busy member is left to finish.

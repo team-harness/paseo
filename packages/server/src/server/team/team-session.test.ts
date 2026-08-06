@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { TEAM_ERROR_CODES } from "@getpaseo/protocol/team/rpc-schemas";
-import type { StoredTeam } from "@getpaseo/protocol/team/types";
+import type { StoredTeam, TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { TeamStore } from "./team-store.js";
@@ -12,6 +12,9 @@ import { TeamService, type TeamAgentGateway, type TeamRoomGateway } from "./team
 import { TeamSessionHandlers, type TeamOutboundMessage } from "./team-session.js";
 
 const logger = createTestLogger();
+
+const lifecycleOf = (team: TeamSnapshot): string => team.lifecycle;
+const isTeamUpdate = (message: TeamOutboundMessage): boolean => message.type === "team.update";
 
 const rooms: TeamRoomGateway = {
   createRoom: async () => {},
@@ -37,6 +40,7 @@ describe("team session handlers", () => {
   let store: TeamStore;
   let service: TeamService;
   let sent: TeamOutboundMessage[];
+  let published: TeamSnapshot[];
   let handlers: TeamSessionHandlers;
 
   function createRequest(overrides: Record<string, unknown> = {}) {
@@ -90,10 +94,12 @@ describe("team session handlers", () => {
     await store.initialize();
     service = new TeamService({ store, rooms, agents, logger });
     sent = [];
+    published = [];
     handlers = new TeamSessionHandlers({
       service,
       store,
       send: (message) => sent.push(message),
+      publish: (team) => published.push(team),
       logger,
     });
   });
@@ -146,10 +152,14 @@ describe("team session handlers", () => {
       expect(payload.errorCode).toBe(TEAM_ERROR_CODES.idempotencyConflict);
     });
 
-    test("broadcasts the new team", async () => {
+    test("broadcasts the new team to every client, not just the one that asked", async () => {
       await handlers.handle(createRequest());
 
-      expect(payloadOf("team.update").team.lifecycle).toBe("active");
+      // A second client watching the team list has to learn about a team the
+      // first one created; answering only the requester leaves it stale until
+      // it happens to reload.
+      expect(published.map(lifecycleOf)).toEqual(["active"]);
+      expect(sent.filter(isTeamUpdate)).toEqual([]);
     });
   });
 
@@ -200,7 +210,7 @@ describe("team session handlers", () => {
       await handlers.handle({ type: "team.archive.request", requestId: "req-1", teamId: team.id });
 
       expect(payloadOf("team.archive.response").team?.lifecycle).toBe("archived");
-      expect(payloadOf("team.update").team.lifecycle).toBe("archived");
+      expect(published.at(-1)?.lifecycle).toBe("archived");
     });
   });
 
@@ -218,6 +228,9 @@ describe("team session handlers", () => {
 
       const payload = payloadOf("team.member.remove.response");
       expect(entryFor(payload.team, memberId)?.state).toBe("removed");
+      // Roster changes are broadcast too — another client's view of who is on
+      // the team is otherwise wrong until it reloads.
+      expect(entryFor(published.at(-1) ?? null, memberId)?.state).toBe("removed");
     });
 
     test("reports the refusal when asked to remove the lead", async () => {

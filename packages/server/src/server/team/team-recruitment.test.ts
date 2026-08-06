@@ -199,12 +199,28 @@ describe("TeamService recruitment", () => {
       ).rejects.toThrow(/reserved/i);
     });
 
-    test("refuses a role someone already holds", async () => {
+    test("lets two members hold the same role", async () => {
       const team = await seedTeam(["server"]);
 
-      await expect(
-        service.recruit({ teamId: team.id, ...recruitRequest(team, { teamRole: "server" }) }),
-      ).rejects.toThrow(/unique/i);
+      // A role is display and prompt text; work is assigned by agent id. Two
+      // reviewers on one team is a reasonable thing to want.
+      const second = await service.recruit({
+        teamId: team.id,
+        ...recruitRequest(team, { teamRole: "server" }),
+      });
+
+      expect(entryFor(await store.get(team.id), second.agentId)?.role).toBe("server");
+    });
+
+    test("labels a recruit with the agent that recruited it", async () => {
+      const team = await seedTeam();
+
+      const recruited = await service.recruit({ teamId: team.id, ...recruitRequest(team) });
+
+      // The same delegation edge any other spawned agent gets. Without it the
+      // recruit does not appear under the agent that asked for it.
+      expect(agents.created[0]?.labels["paseo.parent-agent-id"]).toBe(team.leadAgentId);
+      expect(agents.created[0]?.agentId).toBe(recruited.agentId);
     });
 
     test("refuses a recruiter that is not on the team", async () => {

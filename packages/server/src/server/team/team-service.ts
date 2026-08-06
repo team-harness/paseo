@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Logger } from "pino";
 
-import { TEAM_ID_LABEL, TEAM_ROLE_LABEL } from "@getpaseo/protocol/agent-labels";
+import {
+  PARENT_AGENT_ID_LABEL,
+  TEAM_ID_LABEL,
+  TEAM_ROLE_LABEL,
+} from "@getpaseo/protocol/agent-labels";
 import { TEAM_MAX_NON_LEAD_MEMBERS } from "@getpaseo/protocol/team/rpc-schemas";
 import type {
   RecruitmentIntent,
@@ -390,7 +394,7 @@ export class TeamService {
         workspaceId: intent!.workspaceId,
         title: intent!.title,
         settings: intent!.settings,
-        labels: { [TEAM_ID_LABEL]: teamId, [TEAM_ROLE_LABEL]: intent!.teamRole },
+        labels: recruitLabels(teamId, intent!),
       });
       // Conditional, because another pass may have finished this recruit while
       // the agent was being created. Writing the stage unconditionally would
@@ -544,7 +548,7 @@ export class TeamService {
         workspaceId: claimed.workspaceId,
         title: claimed.title,
         settings: claimed.settings,
-        labels: { [TEAM_ID_LABEL]: teamId, [TEAM_ROLE_LABEL]: claimed.teamRole },
+        labels: recruitLabels(teamId, claimed),
       });
     }
 
@@ -1068,6 +1072,21 @@ function pickRetirementReason(input: {
   return input.invalidated ? "recruitment_canceled" : input.preferred;
 }
 
+/**
+ * What a recruited agent is labelled with.
+ *
+ * The parent label points at the recruiter, the same as any other agent that
+ * spawns one. Without it the delegation edge is lost — the recruit does not
+ * appear under the agent that asked for it.
+ */
+function recruitLabels(teamId: string, intent: RecruitmentIntent): Record<string, string> {
+  return {
+    [TEAM_ID_LABEL]: teamId,
+    [TEAM_ROLE_LABEL]: intent.teamRole,
+    [PARENT_AGENT_ID_LABEL]: intent.recruiterAgentId,
+  };
+}
+
 function labelsMatch(
   label: { teamId: string; role: string } | null,
   teamId: string,
@@ -1115,10 +1134,6 @@ function assertRecruitable(
   if (role === TEAM_LEAD_ROLE) {
     throw new TeamCreateValidationError(`"${TEAM_LEAD_ROLE}" is a reserved role`);
   }
-  if (team.members.some((member) => member.state === "active" && member.role === role)) {
-    throw new TeamCreateValidationError(`Team member roles must be unique: ${role}`);
-  }
-
   const occupied = team.members.filter(
     (member) => member.state === "active" && member.agentId !== team.leadAgentId,
   ).length;
@@ -1141,7 +1156,9 @@ function assertMemberSpecsValid(request: CreateTeamRequest): void {
     );
   }
 
-  const seen = new Set<string>();
+  // Roles are not unique. They are display and prompt text, and work is
+  // assigned by agent id — two reviewers on one team is a reasonable thing to
+  // want, and nothing downstream resolves a member by role.
   for (const member of request.members) {
     const role = member.role.trim();
     if (role.length === 0) {
@@ -1150,10 +1167,6 @@ function assertMemberSpecsValid(request: CreateTeamRequest): void {
     if (role === TEAM_LEAD_ROLE) {
       throw new TeamCreateValidationError(`"${TEAM_LEAD_ROLE}" is a reserved role`);
     }
-    if (seen.has(role)) {
-      throw new TeamCreateValidationError(`Team member roles must be unique: ${role}`);
-    }
-    seen.add(role);
   }
 }
 
