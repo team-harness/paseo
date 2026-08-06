@@ -140,16 +140,21 @@ export class TeamService {
     }
     this.onTeamAllocated?.(allocated.id);
 
-    // One plan per team at a time. Every step is idempotent on the resource it
-    // creates — it has to be, for the reconciler — but two callers racing here
-    // would still ask for the same agent twice and rely on that to sort it out.
+    // Two guards, doing different jobs. This one joins a plan already running
+    // for the same team, so two callers do not both walk it and rely on each
+    // step's idempotence to sort out the duplicate.
     const running = this.creationRuns.get(allocated.id);
     if (running) {
       return await running;
     }
-    const run = this.runCreationPlan(allocated).finally(() => {
-      this.creationRuns.delete(allocated.id);
-    });
+    // And the plan itself takes the team's lock, the same one archive and the
+    // rest take. Without that, an archive landing mid-creation would be undone
+    // by the creation finishing and declaring the team active.
+    const run = this.serializePerTeam(allocated.id, () => this.runCreationPlan(allocated)).finally(
+      () => {
+        this.creationRuns.delete(allocated.id);
+      },
+    );
     this.creationRuns.set(allocated.id, run);
     return await run;
   }
@@ -227,7 +232,10 @@ export class TeamService {
   private async finishCreation(team: StoredTeam): Promise<StoredTeam> {
     const updated = await this.store.update(team.id, (current) => ({
       ...current,
-      lifecycle: "active" as const,
+      // Only a team that is still being created becomes active. One that was
+      // archived while the lock was held elsewhere stays archived; declaring it
+      // active here would resurrect a team someone has already ended.
+      lifecycle: current.lifecycle === "creating" ? ("active" as const) : current.lifecycle,
       // The plan has done its job; the fingerprint stays, because it is what
       // tells a later retry of this key apart from a different request.
       creationPlan: null,

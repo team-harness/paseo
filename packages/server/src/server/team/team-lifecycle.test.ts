@@ -163,6 +163,41 @@ describe("TeamService lifecycle", () => {
       expect(agents.archived).not.toContain(left);
     });
 
+    // Creation and the lifecycle operations have to take the same lock. An
+    // archive that lands while a team is still being built would otherwise be
+    // undone by the creation finishing and declaring the team active.
+    test("does not come back to life when archived mid-creation", async () => {
+      let archiveDuringCreation: Promise<unknown> = Promise.resolve();
+      let teamId = "";
+      const racing = new TeamService({
+        store,
+        rooms: {
+          createRoom: async () => {
+            archiveDuringCreation = service.archive(teamId);
+          },
+          discardRoom: async () => {},
+        },
+        agents,
+        logger,
+        onTeamAllocated: (id) => {
+          teamId = id;
+        },
+      });
+
+      await racing.create({
+        idempotencyKey: "raced",
+        name: "Raced",
+        workspaceId: "ws-1",
+        task: "task",
+        lead: { role: "lead", provider: "claude", title: null, briefing: null, settings: null },
+        members: [],
+        templateId: null,
+      });
+      await archiveDuringCreation;
+
+      expect((await store.get(teamId))?.lifecycle).toBe("archived");
+    });
+
     test("archiving a team that is already archived changes nothing", async () => {
       const team = await seedActiveTeam();
       await service.archive(team.id);
