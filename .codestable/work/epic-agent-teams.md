@@ -15,7 +15,7 @@ remote_publish: final
 - [x] ITEM-1 protocol + client schema
 - [x] ITEM-2 server 基础改造
 - [ ] ITEM-3 chat 改造
-- [ ] ITEM-4 TeamService
+- [x] ITEM-4 TeamService
 - [ ] ITEM-5 CLI
 - [ ] ITEM-6 app 运行时 + 新建表单
 - [ ] ITEM-7 app team 面板
@@ -171,7 +171,7 @@ ITEM-4 起遵守：
 5. **新功能测试写新文件**（`session.team.test.ts` 之类），不要往 `session.test.ts` 塞——它是 upstream 最热的文件。
 6. **通用性修复推回 upstream**：路径穿越、cursor 重复、mention 打断 running agent 都是 upstream 自身的 bug，推回去才能永久消除冲突源。
 
-## ITEM-4 · TeamService（实现完成，待第九轮复核）
+## ITEM-4 · TeamService（完成）
 
 十二个切片，200 个测试在 `packages/server/src/server/team/` 下。
 
@@ -243,6 +243,17 @@ ITEM-4 起遵守：
 
 创建的七个副作用点各一条（room、三个 agent、三条简报），重启用全新 store+service，断言世界里每样恰好一份。ledger 四个窗口：落账未发、provider 已接受未记账、turn 已终态未结算、已通报未确认。
 
+### 第九轮复核：4 条 blocker，全是"用不回答该问题的东西做判断"
+
+1. **归档靠错误消息判定 not-found**——`Unknown agent` 也是"live 查不到"说的话，teardown 与 team archive 交错就会把还在跑的成员记成已归档。改为问记录。
+2. **唤醒只看 `activeTurn`**——关闭一个跑到一半的 agent 只清内存不清盘，于是 `kill_agent` 之后该 agent 在本次 daemon 运行内永远唤不醒。回到 DEC-10 的 `lastStatus`，`activeTurn` 只用来救"崩溃留下的 running"。
+3. **team 记录读不出被当成"人都走了"**——store 对损坏文件是跳过策略，把这份沉默读成离队会把排队的真实工作全部取消。且 `archived` 成员按 DEC-11 可以回座，只有 `removed` 是终态。
+4. **搭车的 pass 回答的是它可能没读到的账本**——这正是 runtime 测试不稳的原因。合并逻辑收进拥有账本的 pump：pass 期间到达的触发让它再走一圈，于是每个调用方返回时都知道有一趟 pass 可能看见了它的工作。
+
+同批：单个 dispatch 抛错不再带走整趟 pass；out-of-band 接受成为第三种答案（结算 `unknown`，而非永远重发）；`assign_task` 不再等泵；事件处理进串行队列（`serial-queue.ts`）并且两处泵唤醒改为不等待——否则一个 handler 会把它后面的所有事件都堵住。
+
+**这一轮最贵的教训**：`team-runtime.test.ts` 的"事件保序"用例反复失败，追下去发现的不是测试问题，而是"handler 里等泵、泵等首次对账"这条真实的阻塞链。测试写不稳的地方，往往是产品里有条等待链没想清楚。
+
 ### 待办
 
-第九轮复核（针对第八轮修复）。通过后 → ITEM-4 里程碑 → ITEM-5（CLI + daemon E2E）。
+ITEM-4 完成（208 测试）。下一步 ITEM-5：CLI（`paseo team create/ls/inspect/archive/remove`）+ 确定性 daemon E2E。
