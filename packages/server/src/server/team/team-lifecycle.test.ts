@@ -225,6 +225,38 @@ describe("TeamService lifecycle", () => {
       expect(finished?.archivedAt).not.toBeNull();
     });
 
+    // Creation reads the record before it takes the lock, so an archive can get
+    // there first and creation resumes holding a snapshot that says `creating`.
+    // The lock cannot help with that; only re-reading at the end can.
+    test("does not activate a team that was archived before creation took the lock", async () => {
+      let archiveFirst: Promise<unknown> = Promise.resolve();
+      let teamId = "";
+      const raced: TeamService = new TeamService({
+        store,
+        rooms,
+        agents,
+        logger,
+        onTeamAllocated: (id) => {
+          // The record exists and creation has not taken the lock yet.
+          teamId = id;
+          archiveFirst = raced.archive(id);
+        },
+      });
+
+      await raced.create({
+        idempotencyKey: "archived-first",
+        name: "Raced",
+        workspaceId: "ws-1",
+        task: "task",
+        lead: { role: "lead", provider: "claude", title: null, briefing: null, settings: null },
+        members: [],
+        templateId: null,
+      });
+      await archiveFirst;
+
+      expect((await store.get(teamId))?.lifecycle).toBe("archived");
+    });
+
     // An external event carries the same weight as the RPC. A lead archived by
     // whatever means during creation must not leave an active team behind it.
     test("does not activate a team whose lead was archived mid-creation", async () => {

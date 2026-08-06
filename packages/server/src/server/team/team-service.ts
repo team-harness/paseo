@@ -1009,7 +1009,10 @@ function fingerprintCreateRequest(request: CreateTeamRequest): string {
     workspaceId: request.workspaceId,
     task: request.task,
     templateId: request.templateId,
-    lead: canonicalMember(request.lead),
+    // The lead's role is fixed when the plan is built, whatever the request
+    // called it, so the fingerprint has to use the same fixed value — two
+    // requests that produce an identical team must not look different here.
+    lead: canonicalMember({ ...request.lead, role: TEAM_LEAD_ROLE }),
     members: request.members.map(canonicalMember),
   };
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
