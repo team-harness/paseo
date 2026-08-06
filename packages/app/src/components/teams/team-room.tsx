@@ -230,6 +230,11 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   listContent: {
+    // Fills from the bottom, the way every other chat surface in the app does.
+    // Without this a room with three messages in it pins them to the top of an
+    // empty column and reads as a rendering fault.
+    flexGrow: 1,
+    justifyContent: "flex-end",
     gap: theme.spacing[3],
     padding: theme.spacing[4],
   },

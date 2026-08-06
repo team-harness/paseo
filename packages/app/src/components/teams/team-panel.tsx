@@ -162,14 +162,17 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
         </Text>
       ) : null}
       {actionable ? (
-        <Button
-          variant="destructive"
-          loading={archiveState.status === "pending"}
-          onPress={archive}
-          testID="team-panel-archive"
-        >
-          {t("teams.panel.archiveAction")}
-        </Button>
+        <View style={styles.archiveRow}>
+          <Button
+            size="sm"
+            variant="outline"
+            loading={archiveState.status === "pending"}
+            onPress={archive}
+            testID="team-panel-archive"
+          >
+            {t("teams.panel.archiveAction")}
+          </Button>
+        </View>
       ) : null}
     </View>
   );
@@ -179,9 +182,11 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
       <View style={styles.head}>
         <Header team={team} activity={activity} stage={stage} />
 
+        {/* No heading: the header already says the team is waiting on you, and
+            repeating the same words six pixels below reads as a duplicated
+            element rather than as a section. */}
         {permissions.length > 0 ? (
           <View style={styles.section} testID="team-panel-permissions">
-            <Text style={styles.sectionTitle}>{t("teams.panel.waitingOnYou")}</Text>
             {permissions.map((row) => (
               <PermissionRow key={row.permission.key} row={row} client={client} />
             ))}
@@ -381,7 +386,9 @@ function MemberRow({
   return (
     <View style={styles.member} testID={`team-member-${row.entry.agentId}`}>
       <Text style={styles.memberRole}>
-        {row.isLead ? `${row.entry.role} (${t("teams.panel.lead")})` : row.entry.role}
+        {row.isLead && row.entry.role !== "lead"
+          ? `${row.entry.role} (${t("teams.panel.lead")})`
+          : row.entry.role}
       </Text>
       <Text style={styles.muted}>{label}</Text>
       {row.entry.state === "removed" ? (
@@ -455,12 +462,7 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: "600",
   },
   section: {
-    gap: theme.spacing[2],
-  },
-  sectionTitle: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    fontWeight: "600",
+    gap: theme.spacing[1],
   },
   permission: {
     flexDirection: "row",
@@ -471,6 +473,13 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  archiveRow: {
+    flexDirection: "row",
+    paddingTop: theme.spacing[2],
   },
   memberRole: {
     color: theme.colors.foreground,

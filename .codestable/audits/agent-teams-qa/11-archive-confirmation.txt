@@ -1,0 +1,3 @@
+Archive team?
+
+This archives the team and all 2 of its agents. It cannot be undone.

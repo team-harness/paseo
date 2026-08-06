@@ -113,6 +113,10 @@ export interface SeedDaemonClient {
     labels?: Record<string, string>;
   }): Promise<{ id: string; status: string }>;
   sendMessage(agentId: string, message: string, options?: { requestId?: string }): Promise<unknown>;
+  postChatMessage(options: { room: string; body: string; authorAgentId?: string }): Promise<{
+    message: { id: string; body: string } | null;
+    error: string | null;
+  }>;
   readChatMessages(options: { room: string; limit?: number }): Promise<{
     messages: Array<{ id: string; body: string; authorAgentId: string }>;
     error: string | null;
