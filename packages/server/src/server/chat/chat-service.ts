@@ -12,6 +12,7 @@ import {
   type ChatMessage,
   type ChatRoom,
   type ChatRoomDetail,
+  type ChatRoomOwnerKind,
 } from "@getpaseo/protocol/chat/types";
 
 /** The pre-0.3.0 layout: every room and every message in one file. */
@@ -73,6 +74,22 @@ interface Waiter {
 export interface CreateChatRoomInput {
   name: string;
   purpose?: string | null;
+  /**
+   * Lets a caller that pre-allocated the id create the room under it. Asking
+   * twice with the same owner returns what is already there, so replaying a
+   * creation plan after a crash finds its room instead of making a second one.
+   */
+  roomId?: string;
+  ownerKind?: ChatRoomOwnerKind;
+  ownerId?: string;
+  /** What a human reads. `name` stays the unique internal handle. */
+  displayName?: string;
+}
+
+export interface DiscardOwnedRoomInput {
+  roomId: string;
+  ownerKind: ChatRoomOwnerKind;
+  ownerId: string;
 }
 
 export interface InspectChatRoomInput {
@@ -194,6 +211,26 @@ export class FileBackedChatService {
     if (name.length === 0) {
       throw new ChatServiceError("invalid_chat_room_name", "Chat room name is required");
     }
+
+    if (input.roomId) {
+      const existing = this.rooms.get(input.roomId);
+      if (existing) {
+        // Same owner asking again is a replay, not a collision. Anything else
+        // under this id belongs to someone who did not expect to share it.
+        if (
+          input.ownerKind &&
+          existing.ownerKind === input.ownerKind &&
+          existing.ownerId === input.ownerId
+        ) {
+          return this.toRoomDetail(existing);
+        }
+        throw new ChatServiceError(
+          "chat_room_owner_conflict",
+          `Chat room ${input.roomId} already exists and belongs to someone else`,
+        );
+      }
+    }
+
     if (this.findRoomByName(name)) {
       throw new ChatServiceError(
         "chat_room_name_taken",
@@ -203,11 +240,13 @@ export class FileBackedChatService {
 
     const now = new Date().toISOString();
     const room = ChatRoomSchema.parse({
-      id: randomUUID(),
+      id: input.roomId ?? randomUUID(),
       name,
       purpose: trimToNull(input.purpose),
       createdAt: now,
       updatedAt: now,
+      ...(input.ownerKind ? { ownerKind: input.ownerKind, ownerId: input.ownerId } : {}),
+      ...(input.displayName ? { displayName: input.displayName } : {}),
     });
     this.rooms.set(room.id, room);
     await this.enqueuePersist(room.id);
@@ -232,6 +271,14 @@ export class FileBackedChatService {
   async deleteRoom(input: DeleteChatRoomInput): Promise<DeleteChatRoomResult> {
     await this.load();
     const room = this.resolveRoom(input.room);
+    if (room.ownerKind) {
+      // An owned room lives and dies with its owner. Deleting it from here would
+      // leave the owner pointing at a room that no longer exists.
+      throw new ChatServiceError(
+        "chat_room_owned",
+        `Chat room ${room.name} belongs to ${room.ownerKind} ${room.ownerId} and cannot be deleted directly`,
+      );
+    }
     const detail = this.toRoomDetail(room);
     this.rooms.delete(room.id);
     this.messagesByRoomId.delete(room.id);
@@ -241,6 +288,33 @@ export class FileBackedChatService {
       new ChatServiceError("chat_room_deleted", `Chat room deleted: ${room.name}`),
     );
     return { room: detail };
+  }
+
+  /**
+   * The owner's way to remove its own room, which generic delete refuses.
+   *
+   * Missing is success: a reconciler reruns cleanup after a crash, and a second
+   * pass should not fail because the first one finished.
+   */
+  async discardOwnedRoom(input: DiscardOwnedRoomInput): Promise<void> {
+    await this.load();
+    const room = this.rooms.get(input.roomId);
+    if (!room) {
+      return;
+    }
+    if (room.ownerKind !== input.ownerKind || room.ownerId !== input.ownerId) {
+      throw new ChatServiceError(
+        "chat_room_owner_conflict",
+        `Chat room ${input.roomId} does not belong to ${input.ownerKind} ${input.ownerId}`,
+      );
+    }
+    this.rooms.delete(room.id);
+    this.messagesByRoomId.delete(room.id);
+    await this.enqueuePersist(room.id);
+    this.rejectWaiters(
+      room.id,
+      new ChatServiceError("chat_room_deleted", `Chat room deleted: ${room.name}`),
+    );
   }
 
   /**

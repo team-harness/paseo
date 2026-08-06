@@ -248,6 +248,113 @@ describe("FileBackedChatService", () => {
     });
   });
 
+  // A team's room follows the team's lifecycle, so it cannot be a room anyone
+  // may delete, and replaying a team's creation must find the room it made
+  // rather than make a second one.
+  describe("owned rooms", () => {
+    const owner = { ownerKind: "team" as const, ownerId: "team-1" };
+
+    test("creates a room under a caller-supplied id and owner", async () => {
+      const room = await service.createRoom({
+        roomId: "room-team-1",
+        name: "team-team-1",
+        displayName: "Disk usage",
+        ...owner,
+      });
+
+      expect(room.id).toBe("room-team-1");
+      expect(room.ownerKind).toBe("team");
+      expect(room.ownerId).toBe("team-1");
+      // The internal name stays unique; the display name is what a human reads.
+      expect(room.name).toBe("team-team-1");
+      expect(room.displayName).toBe("Disk usage");
+    });
+
+    test("returns the existing room when the same owner asks again", async () => {
+      const first = await service.createRoom({
+        roomId: "room-team-1",
+        name: "team-team-1",
+        ...owner,
+      });
+      const second = await service.createRoom({
+        roomId: "room-team-1",
+        name: "team-team-1",
+        ...owner,
+      });
+
+      expect(second.id).toBe(first.id);
+      expect(await service.listRooms()).toHaveLength(1);
+    });
+
+    test("refuses an id that belongs to a different owner", async () => {
+      await service.createRoom({ roomId: "room-team-1", name: "team-team-1", ...owner });
+
+      await expect(
+        service.createRoom({
+          roomId: "room-team-1",
+          name: "team-team-1",
+          ownerKind: "team",
+          ownerId: "team-2",
+        }),
+      ).rejects.toMatchObject<Partial<ChatServiceError>>({ code: "chat_room_owner_conflict" });
+    });
+
+    test("refuses a taken id that has no owner at all", async () => {
+      const plain = await service.createRoom({ name: "free-for-all" });
+
+      await expect(
+        service.createRoom({ roomId: plain.id, name: "team-team-1", ...owner }),
+      ).rejects.toMatchObject<Partial<ChatServiceError>>({ code: "chat_room_owner_conflict" });
+    });
+
+    test("refuses a generic delete of an owned room", async () => {
+      const room = await service.createRoom({
+        roomId: "room-team-1",
+        name: "team-team-1",
+        ...owner,
+      });
+
+      await expect(service.deleteRoom({ room: room.id })).rejects.toMatchObject<
+        Partial<ChatServiceError>
+      >({ code: "chat_room_owned" });
+      await expect(service.inspectRoom({ room: room.id })).resolves.toBeTruthy();
+    });
+
+    test("lets the owner discard its own room", async () => {
+      const room = await service.createRoom({
+        roomId: "room-team-1",
+        name: "team-team-1",
+        ...owner,
+      });
+
+      await service.discardOwnedRoom({ roomId: room.id, ...owner });
+
+      await expect(service.inspectRoom({ room: room.id })).rejects.toMatchObject<
+        Partial<ChatServiceError>
+      >({ code: "chat_room_not_found" });
+    });
+
+    test("refuses to discard a room owned by someone else", async () => {
+      const room = await service.createRoom({
+        roomId: "room-team-1",
+        name: "team-team-1",
+        ...owner,
+      });
+
+      await expect(
+        service.discardOwnedRoom({ roomId: room.id, ownerKind: "team", ownerId: "team-2" }),
+      ).rejects.toMatchObject<Partial<ChatServiceError>>({ code: "chat_room_owner_conflict" });
+    });
+
+    test("discarding a room that is already gone is not an error", async () => {
+      // The team reconciler reruns cleanup after a crash; a second pass must not
+      // fail just because the first one finished.
+      await expect(
+        service.discardOwnedRoom({ roomId: "never-existed", ...owner }),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   describe("mention fanout", () => {
     test("notifies mentioned agents through the service, not the caller", async () => {
       const notified: Array<{ room: string; mentionAgentIds: string[]; authorId: string }> = [];
