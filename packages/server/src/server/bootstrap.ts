@@ -147,6 +147,9 @@ import {
   type WorkspaceArchiveContext,
 } from "./workspace-registry.js";
 import { FileBackedChatService } from "./chat/chat-service.js";
+import { notifyChatMentions, prepareChatMentionFanout } from "./chat/chat-mentions.js";
+import { resolveAgentIdentifier } from "./agent/resolve-agent-identifier.js";
+import { formatSystemNotificationPrompt, sendPromptToAgent } from "./agent/agent-prompt.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
@@ -848,6 +851,66 @@ export async function createPaseoDaemon(
     mcpAuthToken: agentMcpAuthToken,
     usageLedger,
     logger,
+  });
+
+  // Mention fanout lives behind the chat store, not in the WebSocket handler,
+  // so a message posted through an agent tool wakes the same people as one
+  // posted by a human. Wired here because waking an agent needs the runtime,
+  // which does not exist yet when the store is built.
+  async function prepareChatFanout(roomId: string, authorAgentId: string, mentions: string[]) {
+    const storedAgents = await agentStorage.list();
+    const liveAgents = agentManager.listAgents();
+    const fanout = await prepareChatMentionFanout({
+      authorAgentId,
+      mentionAgentIds: mentions,
+      storedAgents,
+      liveAgents,
+      listRoomPosterAgentIds: () => chatService.listRoomPosterAgentIds({ room: roomId }),
+    });
+    return { storedAgents, liveAgents, fanout };
+  }
+
+  chatService.setMentionHandler({
+    validate: async ({ roomId, actor, mentionAgentIds }) => {
+      const { fanout } = await prepareChatFanout(roomId, actor.id, mentionAgentIds);
+      return fanout.ok ? { ok: true } : { ok: false, error: fanout.error };
+    },
+    notify: async ({ roomId, actor, body, mentionAgentIds }) => {
+      const { storedAgents, liveAgents, fanout } = await prepareChatFanout(
+        roomId,
+        actor.id,
+        mentionAgentIds,
+      );
+      if (!fanout.ok) {
+        return;
+      }
+      await notifyChatMentions({
+        room: roomId,
+        authorAgentId: actor.id,
+        body,
+        mentionAgentIds,
+        logger,
+        storedAgents,
+        liveAgents,
+        prepared: fanout.prepared,
+        resolveAgentIdentifier: async (identifier) =>
+          resolveAgentIdentifier({
+            identifier,
+            storedAgents: await agentStorage.list(),
+            liveAgents: agentManager.listAgents(),
+          }),
+        sendAgentMessage: async (agentId, text) => {
+          await sendPromptToAgent({
+            agentManager,
+            agentStorage,
+            agentId,
+            prompt: formatSystemNotificationPrompt(text),
+            unarchive: false,
+            logger,
+          });
+        },
+      });
+    },
   });
 
   const detachAgentStoragePersistence = attachAgentStoragePersistence(

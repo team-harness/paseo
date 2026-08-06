@@ -108,11 +108,20 @@ export interface ChatMentionNotification {
 }
 
 /**
- * Wakes mentioned agents. Injected rather than imported so the service stays
- * independent of the agent runtime, and so a test can watch the fanout without
- * one.
+ * Resolves mentions against the agent runtime. Injected rather than imported so
+ * the service stays independent of that runtime, and so a test can watch the
+ * fanout without one.
+ *
+ * Two phases because they answer different questions at different times.
+ * `validate` runs before the message is written and can refuse it — a mention
+ * storm is rejected outright rather than stored and silently ignored. `notify`
+ * runs after, when the message is already in the room and failing would tell
+ * the author it never landed.
  */
-export type ChatMentionNotifier = (input: ChatMentionNotification) => Promise<void>;
+export interface ChatMentionHandler {
+  validate?(input: ChatMentionNotification): Promise<{ ok: true } | { ok: false; error: string }>;
+  notify(input: ChatMentionNotification): Promise<void>;
+}
 
 export interface ReadChatMessagesInput {
   room: string;
@@ -152,14 +161,14 @@ export class FileBackedChatService {
   private readonly persistQueues = new Map<string, Promise<void>>();
   private readonly waitersByRoomId = new Map<string, Set<Waiter>>();
 
-  private readonly notifyMentions: ChatMentionNotifier | null;
+  private mentionHandler: ChatMentionHandler | null;
 
   constructor(options: {
     paseoHome: string;
     logger: pino.Logger;
-    notifyMentions?: ChatMentionNotifier;
+    mentionHandler?: ChatMentionHandler;
   }) {
-    this.notifyMentions = options.notifyMentions ?? null;
+    this.mentionHandler = options.mentionHandler ?? null;
     this.chatDir = path.join(options.paseoHome, "chat");
     this.roomsDir = path.join(this.chatDir, "rooms");
     this.legacyFilePath = path.join(this.chatDir, "rooms.json");
@@ -169,6 +178,14 @@ export class FileBackedChatService {
 
   async initialize(): Promise<void> {
     await this.load();
+  }
+
+  /**
+   * Set after construction because waking an agent needs the agent runtime, and
+   * the chat store is built before it during daemon startup.
+   */
+  setMentionHandler(handler: ChatMentionHandler): void {
+    this.mentionHandler = handler;
   }
 
   async createRoom(input: CreateChatRoomInput): Promise<ChatRoomDetail> {
@@ -233,6 +250,23 @@ export class FileBackedChatService {
    * WebSocket — previously only the latter woke anyone.
    */
   async post(input: PostMessageInput): Promise<ChatMessage> {
+    await this.load();
+    const mentionAgentIds = parseMentionAgentIds(input.body);
+
+    // Checked before the write: a message whose mentions cannot be delivered is
+    // refused outright rather than stored with nobody told about it.
+    if (this.mentionHandler?.validate && mentionAgentIds.length > 0) {
+      const verdict = await this.mentionHandler.validate({
+        roomId: this.resolveRoom(input.room).id,
+        actor: input.actor,
+        body: input.body,
+        mentionAgentIds,
+      });
+      if (!verdict.ok) {
+        throw new ChatServiceError("chat_mention_fanout_limit_exceeded", verdict.error);
+      }
+    }
+
     const message = await this.dispatchMessage({
       room: input.room,
       authorAgentId: input.actor.id,
@@ -241,17 +275,17 @@ export class FileBackedChatService {
       actor: input.actor,
     });
 
-    if (this.notifyMentions && message.mentionAgentIds.length > 0) {
+    if (this.mentionHandler && message.mentionAgentIds.length > 0) {
       try {
-        await this.notifyMentions({
+        await this.mentionHandler.notify({
           roomId: message.roomId,
           actor: input.actor,
           body: message.body,
           mentionAgentIds: message.mentionAgentIds,
         });
       } catch (error) {
-        // The message is already in the room. Failing the post would tell the
-        // author it never landed, which is worse than a missed notification.
+        // The message is already in the room. Failing the post now would tell
+        // the author it never landed, which is worse than a missed wake-up.
         this.logger.error(
           { err: error, roomId: message.roomId },
           "Failed to notify mentioned agents",

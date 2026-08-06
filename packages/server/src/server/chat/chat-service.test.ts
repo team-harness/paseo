@@ -254,12 +254,14 @@ describe("FileBackedChatService", () => {
       const withNotifier = new FileBackedChatService({
         paseoHome,
         logger: pino({ level: "silent" }),
-        notifyMentions: async (input) => {
-          notified.push({
-            room: input.roomId,
-            mentionAgentIds: input.mentionAgentIds,
-            authorId: input.actor.id,
-          });
+        mentionHandler: {
+          notify: async (input) => {
+            notified.push({
+              room: input.roomId,
+              mentionAgentIds: input.mentionAgentIds,
+              authorId: input.actor.id,
+            });
+          },
         },
       });
       const room = await withNotifier.createRoom({ name: "fanout" });
@@ -279,8 +281,10 @@ describe("FileBackedChatService", () => {
       const withNotifier = new FileBackedChatService({
         paseoHome,
         logger: pino({ level: "silent" }),
-        notifyMentions: async () => {
-          throw new Error("waking the agent blew up");
+        mentionHandler: {
+          notify: async () => {
+            throw new Error("waking the agent blew up");
+          },
         },
       });
       const room = await withNotifier.createRoom({ name: "fanout-failure" });
