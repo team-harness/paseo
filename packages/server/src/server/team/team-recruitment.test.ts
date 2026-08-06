@@ -121,6 +121,10 @@ describe("TeamService recruitment", () => {
     return prompt.clientMessageId;
   }
 
+  function promptsFor(agentId: string) {
+    return agents.prompts.filter((prompt) => prompt.agentId === agentId);
+  }
+
   function isFulfilled(result: { status: string }): boolean {
     return result.status === "fulfilled";
   }
@@ -399,6 +403,46 @@ describe("TeamService recruitment", () => {
       const entry = entryFor(await store.get(team.id), "recruit-1");
       expect(entry?.state).toBe("active");
       expect(agents.archived).toEqual([]);
+    });
+
+    // One pass succeeds, the other hits a transient send failure. The failure
+    // must not undo the success: archiving the agent the other pass just
+    // recruited is far worse than a logged failure.
+    test("does not undo a successful recruit when a duplicate pass fails", async () => {
+      const team = await seedTeam();
+      await leaveReserved(team, "recruit-1");
+      let sends = 0;
+      agents.beforePrompt = async () => {
+        sends += 1;
+        if (sends === 2) throw new Error("provider is briefly unavailable");
+      };
+
+      await Promise.all([service.reconcile(), service.reconcile()]);
+
+      const entry = entryFor(await store.get(team.id), "recruit-1");
+      expect(entry?.state).toBe("active");
+      expect(agents.archived).toEqual([]);
+    });
+
+    // The briefing landed and the intent was never cleared. Recovery finishes
+    // the bookkeeping and resends — under the id the recruit has already seen,
+    // which is what lets the prompt layer recognise it as the same instruction
+    // rather than a second one. That deduplication is not this service's to do;
+    // sending the same id is.
+    test("resends an already-delivered briefing under the id it used", async () => {
+      const team = await seedTeam();
+      await leaveReserved(team, "recruit-1");
+      await markIntentCreated(team.id, "recruit-1");
+      // The crash: the prompt went out, the intent stayed.
+      const clientMessageId = `team-${team.id}-recruit-recruit-1`;
+      agents.prompts.push({ agentId: "recruit-1", clientMessageId });
+
+      await service.reconcile();
+
+      const forRecruit = promptsFor("recruit-1");
+      expect(forRecruit.map(clientMessageIdOf)).toEqual([clientMessageId, clientMessageId]);
+      expect((await store.get(team.id))?.pendingRecruitments).toBeNull();
+      expect(entryFor(await store.get(team.id), "recruit-1")?.state).toBe("active");
     });
 
     test("cancels an intent left behind by a team that is no longer active", async () => {

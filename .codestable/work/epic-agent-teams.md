@@ -199,6 +199,26 @@ ITEM-4 起遵守：
 - 60s 兜底扫描未调度；`TeamPump.run` 返回的就是它要挂的信号。
 - 契约列出的崩溃窗口未全覆盖。
 
+### 独立变更评审（codex，同一 reviewer，四轮）
+
+三轮共 13 条 blocking，全部修复。每轮都挖出上一轮修复留下的更深一层问题——这块状态机的交错面确实大。
+
+**第一轮**（5 条）：ledger 读失败用空态覆盖导致永久丢失；pump joiner 拿到陈旧的"无工作"；归档把所有失败当"已消失"；removed 成员会被复活；创建与生命周期事件不共用锁。另：指纹只排序顶层 key；招募只 fence team lifecycle 不 fence 自己的 entry。
+
+**第二轮**（4 条 + 1）：lead 归档未持久转 archiving（事件后半段崩溃则 team 永久 active）；创建重放不持锁；招募的最终校验与清意图是两步；损坏 ledger 静默报告"无工作"；对账看不见 labels。另：lead role 指纹与 plan 不一致。
+
+**第三轮**（4 条 + 1）：创建仍会为已归档 team 建资源（守卫只护住记录不护住资源）；对账跳过 lead 导致少一态；重放把"已被别的 pass 提交"当成"已失效"从而归档刚招募成功的 agent；readability 是 TOCTOU；settings 非 JSON 值会让指纹不可判定。
+
+**我犯的三个错，都是 reviewer 抓到的**：
+
+1. DEC-10 的 error 状态——我用产品直觉推翻了契约白纸黑字的状态集合。
+2. 锁测试用了两个 TeamService 实例＝两把锁，测了个寂寞。
+3. 崩溃测试用抛异常模拟崩溃——异常被 catch 转成 `failed`，七个崩溃点没有一个走到恢复路径；删掉整个 `creating` 恢复分支测试仍全绿。改成"把记录放回 kill 会留下的样子"后才真正生效。
+
+### 崩溃窗口覆盖（`team-crash-recovery.test.ts`）
+
+创建的七个副作用点各一条（room、三个 agent、三条简报），重启用全新 store+service，断言世界里每样恰好一份。ledger 四个窗口：落账未发、provider 已接受未记账、turn 已终态未结算、已通报未确认。
+
 ### 待办
 
-ITEM-4 核心评审进行中。通过后：agent 工具 + bootstrap 接线 → ITEM-4 里程碑 → ITEM-5。
+第四轮复核进行中。通过后：agent 工具（`assign_task`/`team_status`/chat 工具）+ bootstrap 接线 → ITEM-4 里程碑 → ITEM-5。

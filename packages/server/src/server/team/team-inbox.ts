@@ -62,6 +62,21 @@ export interface Delivery {
 const EMPTY: InboxFile = { assignments: [], pendingCompletions: [], inFlightDelivery: null };
 
 /**
+ * A ledger that is there and could not be understood.
+ *
+ * Every read throws this rather than reporting an empty ledger, because empty
+ * is a real answer meaning "nothing to do", and a caller cannot tell the two
+ * apart afterwards. Probing first does not help: the read after the probe can
+ * fail on its own.
+ */
+export class TeamLedgerUnreadableError extends Error {
+  constructor(readonly teamId: string) {
+    super(`Team ${teamId} has an unreadable ledger`);
+    this.name = "TeamLedgerUnreadableError";
+  }
+}
+
+/**
  * A team's task ledger: an outbox of assignments and of the news about them.
  *
  * It does not understand what a task is. What it guarantees is that nothing
@@ -255,18 +270,6 @@ export class TeamInbox {
     return file.inFlightDelivery !== null || file.pendingCompletions.length > 0;
   }
 
-  /**
-   * Whether this team's ledger can be read at all.
-   *
-   * A ledger that cannot be read looks exactly like an empty one to every read
-   * here, and an empty one means "nothing to do". A caller deciding whether to
-   * keep watching this team has to be able to tell those apart, or a damaged
-   * file quietly retires the team and repairing it changes nothing.
-   */
-  async isReadable(teamId: string): Promise<boolean> {
-    return (await this.readFileState(teamId)).kind !== "unreadable";
-  }
-
   /** Acknowledging a batch that is already gone is a replay, not an error. */
   async acknowledgeDelivery(input: { teamId: string; deliveryId: string }): Promise<void> {
     await this.mutate(input.teamId, (file) =>
@@ -316,10 +319,12 @@ export class TeamInbox {
     return { kind: "ok", file: parsed.data };
   }
 
-  /** Reads what it can. An unreadable ledger reports empty; it never writes. */
   private async read(teamId: string): Promise<InboxFile> {
     const state = await this.readFileState(teamId);
-    return state.kind === "unreadable" ? EMPTY : state.file;
+    if (state.kind === "unreadable") {
+      throw new TeamLedgerUnreadableError(teamId);
+    }
+    return state.file;
   }
 
   /** Read-modify-write inside the team's own lock. */
@@ -328,16 +333,9 @@ export class TeamInbox {
     const next = previous
       .catch(() => undefined)
       .then(async () => {
-        const state = await this.readFileState(teamId);
-        if (state.kind === "unreadable") {
-          // Fail closed. A write built from having read nothing would replace a
-          // ledger that still holds work, and no-loss is the guarantee here.
-          throw new Error(
-            `Team ${teamId} has an unreadable ledger; refusing to write over it. ` +
-              "Repair or remove the file.",
-          );
-        }
-        const current = state.file;
+        // Fail closed by construction: an unreadable ledger throws here, so a
+        // write is never built from having read nothing.
+        const current = await this.read(teamId);
         const updated = change(current);
         if (updated !== current) {
           await mkdir(this.dir, { recursive: true });

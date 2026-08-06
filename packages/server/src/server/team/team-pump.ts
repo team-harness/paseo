@@ -89,28 +89,16 @@ export class TeamPump {
     try {
       return await this.attemptPass(input);
     } catch (error) {
-      // A ledger that turned unreadable mid-pass makes its own writes throw,
-      // which is the store refusing to overwrite work it could not read. The
-      // pass is over either way; what matters is that the team is not reported
-      // as quiet and dropped from the sweep.
+      // Any read of an unreadable ledger throws, wherever in the pass it
+      // happens, and so does a write that would have overwritten one. The pass
+      // is over either way; what matters is that the team is not reported as
+      // quiet and dropped from the sweep.
       this.logger.error({ err: error, teamId: input.teamId }, "A team pump pass failed");
       return true;
     }
   }
 
   private async attemptPass(input: { teamId: string; leadAgentId: string }): Promise<boolean> {
-    // A ledger that cannot be read reads as an empty one, so a pass over it
-    // would do nothing and report nothing left to do — quietly retiring a team
-    // that may still have work, with repairing the file changing nothing. Do
-    // no work, and say the team still needs watching.
-    if (!(await this.inbox.isReadable(input.teamId))) {
-      this.logger.error(
-        { teamId: input.teamId },
-        "Team ledger is unreadable; keeping the team in the sweep until it can be read",
-      );
-      return true;
-    }
-
     await this.settleDispatched(input.teamId);
     await this.dispatchQueued(input.teamId);
     await this.deliverToLead(input);
@@ -188,18 +176,6 @@ export class TeamPump {
   private async hasOutstandingWork(teamId: string): Promise<boolean> {
     const assignments = await this.inbox.listAssignments(teamId);
     if (assignments.some((assignment) => assignment.state !== "settled")) {
-      return true;
-    }
-
-    // Asked again, because the check at the top of the pass is not a promise
-    // about the rest of it: a file can go bad, or a read can fail, at any point
-    // in between. Every read collapses to empty when that happens, and empty
-    // here would mean "retire this team". Fail closed instead.
-    if (!(await this.inbox.isReadable(teamId))) {
-      this.logger.error(
-        { teamId },
-        "Team ledger became unreadable mid-pass; keeping the team in the sweep",
-      );
       return true;
     }
     // Read-only on purpose: asking `prepareDelivery` would close a batch around

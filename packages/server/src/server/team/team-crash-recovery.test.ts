@@ -35,14 +35,18 @@ describe("recovering from a crash mid-creation", () => {
     readonly rooms = new Set<string>();
     readonly agents = new Map<string, { archived: boolean }>();
     readonly prompts: string[] = [];
-    /** Runs before each side effect; throwing here is the crash. */
-    beforeEffect: (effect: string) => void = () => {};
+    /**
+     * Runs once a side effect has really happened, before whatever records it.
+     * Throwing here is the crash — and it has to be after, because the window
+     * that matters is "the world moved and the record did not".
+     */
+    afterEffect: (effect: string) => void = () => {};
 
     roomGateway(): TeamRoomGateway {
       return {
         createRoom: async (input) => {
-          this.beforeEffect(`room:${input.roomId}`);
           this.rooms.add(input.roomId);
+          this.afterEffect(`room:${input.roomId}`);
         },
         discardRoom: async (input) => {
           this.rooms.delete(input.roomId);
@@ -53,16 +57,16 @@ describe("recovering from a crash mid-creation", () => {
     agentGateway(): TeamAgentGateway {
       return {
         createAgent: async (input) => {
-          this.beforeEffect(`agent:${input.agentId}`);
           this.agents.set(input.agentId, { archived: false });
+          this.afterEffect(`agent:${input.agentId}`);
         },
         sendPrompt: async (input) => {
-          this.beforeEffect(`prompt:${input.clientMessageId}`);
           // Deduplicated the way the prompt layer deduplicates: the same
           // client message id twice is one delivery.
           if (!this.prompts.includes(input.clientMessageId)) {
             this.prompts.push(input.clientMessageId);
           }
+          this.afterEffect(`prompt:${input.clientMessageId}`);
         },
         archiveAgent: async (agentId) => {
           const agent = this.agents.get(agentId);
@@ -124,7 +128,7 @@ describe("recovering from a crash mid-creation", () => {
    */
   async function crashAtEffect(index: number): Promise<void> {
     let seen = 0;
-    world.beforeEffect = () => {
+    world.afterEffect = () => {
       seen += 1;
       if (seen === index) throw new SimulatedCrash();
     };
@@ -139,7 +143,7 @@ describe("recovering from a crash mid-creation", () => {
       lifecycle: "creating" as const,
     }));
 
-    world.beforeEffect = () => {};
+    world.afterEffect = () => {};
     const second = await restart();
     await second.service.reconcile();
   }
@@ -153,8 +157,10 @@ describe("recovering from a crash mid-creation", () => {
     await rm(home, { recursive: true, force: true });
   });
 
-  // Six side effects: the room, three agents, three briefings. Crashing before
-  // each one covers every point where the record and the world can disagree.
+  // Seven side effects: the room, three agents, three briefings. Crashing just
+  // after each one covers every point where the world has moved and the record
+  // has not — including the three that matter most, where the last effect of a
+  // stage happened and the stage was never written.
   for (let effect = 1; effect <= 7; effect += 1) {
     test(`ends with exactly one of everything after a crash at effect ${effect}`, async () => {
       await crashAtEffect(effect);
@@ -294,10 +300,15 @@ describe("recovering from a crash mid-assignment", () => {
     await inbox.markDispatched({ teamId: "team-1", taskId: assignment.taskId, turnId: "turn-1" });
     await inbox.settle({ teamId: "team-1", taskId: assignment.taskId, outcome: "completed" });
     const delivery = await inbox.prepareDelivery("team-1");
+    // Actually delivered, then the crash: the lead has it, and nothing on disk
+    // says so. Otherwise this would only test prepared-but-never-sent.
+    await gateway.deliverCompletions({ deliveryId: delivery!.deliveryId });
 
     const restarted = new TeamInbox(home, logger);
     await pumpOver(restarted).run({ teamId: "team-1", leadAgentId: "lead" });
 
+    // Sent again under the same id, which is what lets the lead recognise it
+    // rather than read it as more news.
     expect(gateway.delivered).toEqual([delivery?.deliveryId]);
   });
 });

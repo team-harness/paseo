@@ -7,7 +7,12 @@ import { TEAM_ID_LABEL, TEAM_ROLE_LABEL } from "@getpaseo/protocol/agent-labels"
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { TeamStore } from "./team-store.js";
-import { TeamService, type TeamAgentGateway, type TeamRoomGateway } from "./team-service.js";
+import {
+  TeamCreateValidationError,
+  TeamService,
+  type TeamAgentGateway,
+  type TeamRoomGateway,
+} from "./team-service.js";
 
 const logger = createTestLogger();
 
@@ -215,11 +220,23 @@ describe("TeamService creation", () => {
   // collide with an absent key, a Date would flatten to `{}`, a BigInt would
   // throw. Each of those turns a retry into a conflict or two requests into one.
   test("refuses settings that are not JSON", async () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const sparse: unknown[] = [];
+    sparse[2] = "third";
+
     for (const settings of [
       { modeId: undefined },
       { when: new Date() },
       { size: 1n },
       { seen: new Map() },
+      // Each of these survives validation as some other value and would make
+      // two different requests fingerprint the same.
+      { limit: Number.NaN },
+      { limit: Number.POSITIVE_INFINITY },
+      { items: sparse },
+      { [Symbol("hidden")]: 1 },
+      cyclic,
     ]) {
       await expect(
         service.create(
@@ -233,7 +250,7 @@ describe("TeamService creation", () => {
             },
           }),
         ),
-      ).rejects.toThrow(/JSON/i);
+      ).rejects.toThrow(TeamCreateValidationError);
     }
   });
 

@@ -347,10 +347,12 @@ describe("TeamInbox", () => {
   // would replace whatever is actually in the file, and no-loss is the one
   // guarantee this thing makes.
   describe("a damaged inbox file", () => {
-    test("reads as empty rather than refusing to run the team", async () => {
+    // Not "empty": empty is a real answer meaning nothing to do, and a caller
+    // that got it from a failed read would act on it.
+    test("refuses to answer rather than reporting an empty ledger", async () => {
       await writeFile(inboxPath("team-1"), "{ not json", "utf8");
 
-      await expect(inbox.listAssignments("team-1")).resolves.toEqual([]);
+      await expect(inbox.listAssignments("team-1")).rejects.toThrow(/unreadable/i);
     });
 
     test("refuses to write over a ledger it could not read", async () => {
@@ -388,7 +390,7 @@ describe("TeamInbox", () => {
       await writeFile(inboxPath("team-1"), "{ not json", "utf8");
 
       const reloaded = new TeamInbox(home, logger);
-      expect(await reloaded.listAssignments("team-1")).toEqual([]);
+      await expect(reloaded.listAssignments("team-1")).rejects.toThrow(/unreadable/i);
       expect(await reloaded.listAssignments("team-2")).toHaveLength(1);
       await expect(
         reloaded.enqueueAssignment({

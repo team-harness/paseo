@@ -451,21 +451,33 @@ export class TeamService {
    * not exist yet, which is why archiving it is allowed to find nothing.
    */
   private async cancelRecruitment(teamId: string, agentId: string): Promise<void> {
-    await this.archiveAgentIdempotently(agentId);
-    await this.store.update(teamId, (current) => ({
-      ...current,
-      members: current.members.map((member) =>
-        member.agentId === agentId
-          ? {
-              ...member,
-              state: "removed" as const,
-              leftAt: new Date().toISOString(),
-              removalReason: "recruitment_canceled" as const,
-            }
-          : member,
-      ),
-      pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
-    }));
+    // Claimed the same way a failure is: the intent still being there is what
+    // says this recruit is still ours to cancel.
+    let claimed = false;
+    await this.store.update(teamId, (current) => {
+      if (!current.pendingRecruitments?.[agentId]) {
+        return current;
+      }
+      claimed = true;
+      return {
+        ...current,
+        members: current.members.map((member) =>
+          member.agentId === agentId
+            ? {
+                ...member,
+                state: "removed" as const,
+                leftAt: new Date().toISOString(),
+                removalReason: "recruitment_canceled" as const,
+              }
+            : member,
+        ),
+        pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
+      };
+    });
+
+    if (claimed) {
+      await this.archiveAgentIdempotently(agentId);
+    }
   }
 
   /**
@@ -582,10 +594,15 @@ export class TeamService {
 
     await this.finishInterruptedRecruits(team);
 
+    // Re-read: finishing the recruits above changes the roster, and deciding
+    // the rest of this pass from the snapshot it started with would overwrite
+    // what those steps just recorded.
+    const current = (await this.store.get(team.id)) ?? team;
+
     // The lead goes through the same checks as everyone else. Skipping it left
     // one state unreachable: an entry that says `archived` while the agent has
     // since come back — which the event path would have restored.
-    for (const member of team.members) {
+    for (const member of current.members) {
       const state =
         member.agentId === team.leadAgentId
           ? lead
@@ -655,22 +672,45 @@ export class TeamService {
     }
   }
 
+  /**
+   * Gives up on a recruit, but only if it is still one.
+   *
+   * The intent is the claim. A pass that failed while another was succeeding
+   * finds it already gone, and stops there — archiving the agent that other
+   * pass just recruited would be a far worse outcome than a logged failure.
+   * The claim is taken in the same write that records the failure.
+   */
   private async failRecruitment(teamId: string, agentId: string): Promise<void> {
+    let claimed = false;
+    await this.store.update(teamId, (current) => {
+      if (!current.pendingRecruitments?.[agentId]) {
+        return current;
+      }
+      claimed = true;
+      return {
+        ...current,
+        members: current.members.map((member) =>
+          member.agentId === agentId
+            ? {
+                ...member,
+                state: "removed" as const,
+                leftAt: new Date().toISOString(),
+                removalReason: "recruitment_failed" as const,
+              }
+            : member,
+        ),
+        pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
+      };
+    });
+
+    if (!claimed) {
+      this.logger.info(
+        { teamId, agentId },
+        "Leaving a recruit alone: another pass had already finished it",
+      );
+      return;
+    }
     await this.archiveAgentIdempotently(agentId);
-    await this.store.update(teamId, (current) => ({
-      ...current,
-      members: current.members.map((member) =>
-        member.agentId === agentId
-          ? {
-              ...member,
-              state: "removed" as const,
-              leftAt: new Date().toISOString(),
-              removalReason: "recruitment_failed" as const,
-            }
-          : member,
-      ),
-      pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
-    }));
   }
 
   /**
@@ -1104,29 +1144,58 @@ function canonicalValue(value: unknown): unknown {
  * which turn a retry into a conflict, or worse, two different requests into
  * one. Anything that is not JSON is refused where it enters.
  */
-function assertJsonValue(value: unknown, path: string): void {
+function assertJsonValue(value: unknown, path: string, seen = new Set<object>()): void {
   if (value === null) return;
   if (Array.isArray(value)) {
-    value.forEach((item, index) => assertJsonValue(item, `${path}[${index}]`));
+    guardAgainstCycle(value, path, seen);
+    for (let index = 0; index < value.length; index += 1) {
+      // A hole is not `undefined` you can see — `forEach` skips it and JSON
+      // writes `null` — so the length is walked rather than the entries.
+      if (!(index in value)) {
+        throw new TeamCreateValidationError(`${path}[${index}] must not be a hole`);
+      }
+      assertJsonValue(value[index], `${path}[${index}]`, seen);
+    }
+    seen.delete(value);
     return;
   }
   switch (typeof value) {
     case "string":
-    case "number":
     case "boolean":
+      return;
+    case "number":
+      // Both serialize as `null`, which would make `{x: NaN}` and `{x: null}`
+      // the same request as far as the fingerprint can tell.
+      if (!Number.isFinite(value)) {
+        throw new TeamCreateValidationError(`${path} must be a finite number`);
+      }
       return;
     case "object": {
       if (Object.getPrototypeOf(value) !== Object.prototype) {
         throw new TeamCreateValidationError(`${path} must be a plain JSON object`);
       }
-      for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-        assertJsonValue(nested, `${path}.${key}`);
+      guardAgainstCycle(value, path, seen);
+      // Symbol keys are invisible to `Object.entries` and to JSON, so a value
+      // carrying one would be silently different from what gets stored.
+      if (Object.getOwnPropertySymbols(value).length > 0) {
+        throw new TeamCreateValidationError(`${path} must not have symbol keys`);
       }
+      for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+        assertJsonValue(nested, `${path}.${key}`, seen);
+      }
+      seen.delete(value);
       return;
     }
     default:
       throw new TeamCreateValidationError(`${path} must be a JSON value`);
   }
+}
+
+function guardAgainstCycle(value: object, path: string, seen: Set<object>): void {
+  if (seen.has(value)) {
+    throw new TeamCreateValidationError(`${path} must not contain a cycle`);
+  }
+  seen.add(value);
 }
 
 function buildAllocatedTeam(
