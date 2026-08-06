@@ -1052,6 +1052,8 @@ export const ru: TranslationResources = {
       unreadable: "Не удалось прочитать команды.",
     },
     form: {
+      keyReused: "Этот запрос уже использован для другой команды. Попробуйте ещё раз.",
+      refused: "Не удалось создать команду.",
       title: "Новая команда",
       name: "Название",
       namePlaceholder: "Для чего эта команда",

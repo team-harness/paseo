@@ -1060,6 +1060,8 @@ export const fr: TranslationResources = {
       unreadable: "Impossible de lire les équipes.",
     },
     form: {
+      keyReused: "Cette requête a déjà servi à une autre équipe. Réessayez.",
+      refused: "L’équipe n’a pas pu être créée.",
       title: "Nouvelle équipe",
       name: "Nom",
       namePlaceholder: "À quoi sert cette équipe",

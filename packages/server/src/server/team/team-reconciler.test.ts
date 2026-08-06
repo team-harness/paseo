@@ -286,6 +286,10 @@ describe("TeamService reconciliation", () => {
       // Its labels go too, or `create_agent` keeps finding a team that failed
       // and refusing to recruit for it — this agent could never recruit again.
       expect(agents.labelsCleared).toContain(memberId);
+      // And the cleanup does not archive it on the way past. Cleanup runs over
+      // every member that is not `removed`, so ordering it before the eviction
+      // puts this agent straight back where the user took it out of.
+      expect(agents.archived).not.toContain(memberId);
     });
 
     test("still evicts after the cleanup already ran once", async () => {

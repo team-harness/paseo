@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { TEAM_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import type { TeamMemberEntry, TeamSnapshot } from "@getpaseo/protocol/team/types";
 
+import type { Agent } from "@/stores/session-store";
+
 import {
   selectLiveTeamIds,
   selectMemberActivity,
@@ -46,6 +48,55 @@ function team(members: TeamMemberEntry[], overrides: Partial<TeamSnapshot> = {})
 
 function agent(overrides: Partial<TeamMemberAgent> = {}): TeamMemberAgent {
   return { id: "member-1", title: null, status: "idle", labels: {}, ...overrides };
+}
+
+/**
+ * What the session store actually holds, narrowed to what this file reads.
+ *
+ * The selector's input is structural, so a field the store spells differently
+ * arrives `undefined` and typecheck says nothing. Building the fixture from
+ * `Agent` is what turns that into a test failure instead of a silent one.
+ */
+function storeAgent(overrides: Partial<Agent> = {}): Agent {
+  return {
+    serverId: "host-1",
+    id: "member-1",
+    provider: "claude",
+    status: "idle",
+    activeTurn: null,
+    createdAt: new Date("2026-08-06T10:00:00.000Z"),
+    updatedAt: new Date("2026-08-06T10:00:00.000Z"),
+    lastUserMessageAt: null,
+    lastActivityAt: new Date("2026-08-06T10:00:00.000Z"),
+    capabilities: {
+      supportsStreaming: true,
+      supportsSessionPersistence: true,
+      supportsDynamicModes: true,
+      supportsMcpServers: true,
+      supportsReasoningStream: true,
+      supportsToolInvocations: true,
+    },
+    currentModeId: null,
+    availableModes: [],
+    pendingPermissions: [],
+    persistence: null,
+    runtimeInfo: undefined,
+    lastUsage: undefined,
+    lastError: null,
+    title: null,
+    cwd: "/tmp/project",
+    model: null,
+    features: undefined,
+    thinkingOptionId: undefined,
+    requiresAttention: false,
+    attentionReason: null,
+    attentionTimestamp: null,
+    archivedAt: null,
+    parentAgentId: null,
+    labels: {},
+    projectPlacement: null,
+    ...overrides,
+  };
 }
 
 describe("joining a roster to the agents the client holds", () => {
@@ -96,7 +147,7 @@ describe("what a member is doing", () => {
     // What matters is that somebody has to answer it.
     expect(
       selectMemberActivity(
-        agent({ status: "running", requiresAttention: true, pendingPermissionCount: 1 }),
+        agent({ status: "running", requiresAttention: true, pendingPermissions: [{}] }),
       ),
     ).toBe("needs_input");
     expect(
@@ -121,6 +172,21 @@ describe("what a member is doing", () => {
     expect(selectMemberActivity(agent({ status: "initializing" }))).toBe("running");
   });
 
+  it("reads a blocked member off the record the store actually holds", () => {
+    // The panel passes the store's agents straight in. Anything this selector
+    // wants under a different name arrives undefined, and a team blocked on a
+    // permission then reads as one that is merely working.
+    const blocked = storeAgent({
+      status: "running",
+      requiresAttention: true,
+      pendingPermissions: [
+        { id: "req-1", provider: "claude", name: "Bash", kind: "tool" },
+      ] as Agent["pendingPermissions"],
+    });
+
+    expect(selectMemberActivity(blocked)).toBe("needs_input");
+  });
+
   it("treats an agent it has not loaded as quiet", () => {
     expect(selectMemberActivity(null)).toBe("idle");
   });
@@ -133,7 +199,7 @@ describe("what a team is doing", () => {
       new Map([
         ["a", agent({ id: "a", status: "idle" })],
         ["b", agent({ id: "b", status: "running" })],
-        ["c", agent({ id: "c", status: "idle", pendingPermissionCount: 1 })],
+        ["c", agent({ id: "c", status: "idle", pendingPermissions: [{}] })],
       ]),
     );
 

@@ -597,14 +597,14 @@ export class TeamService {
         return;
       case "failed":
         await this.cancelOutstandingRecruits(team);
-        await this.cleanUpFailed(team);
-        // Same rule as `archived`, and for the same reason: an agent unarchived
-        // while the daemon was down leaves an entry that says archived over an
-        // agent that is running, which DEC-11 says does not exist. Ordered after
-        // the cleanup so the agents it archives are not evicted on the way in,
-        // and outside its `failedCleanupAt` short-circuit so a later unarchive
+        // Eviction first, exactly as `archiving` does it: the cleanup archives
+        // every member that is not `removed`, so running it first would archive
+        // the agent that came back and leave its entry saying archived over an
+        // agent someone deliberately restored. Outside `cleanUpFailed`'s
+        // `failedCleanupAt` short-circuit, so an unarchive after the first pass
         // is still seen.
         await this.evictAgentsThatCameBack(team);
+        await this.cleanUpFailed(team);
         return;
       case "active":
         await this.reconcileActive(team);
@@ -652,9 +652,13 @@ export class TeamService {
    * archived, and the room goes, since it belonged to a team that never ran.
    */
   private async cleanUpFailed(team: StoredTeam): Promise<void> {
-    if (team.failedCleanupAt) return;
+    // Re-read: the eviction that runs first can take a member off the roster,
+    // and archiving from the snapshot this pass started with would put that
+    // agent straight back where the user just took it out of.
+    const latest = (await this.store.get(team.id)) ?? team;
+    if (latest.failedCleanupAt) return;
 
-    for (const member of team.members) {
+    for (const member of latest.members) {
       if (member.state === "removed") continue;
       await this.archiveAgentIdempotently(member.agentId);
     }

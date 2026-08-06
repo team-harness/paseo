@@ -1027,6 +1027,8 @@ export const ar: TranslationResources = {
       unreadable: "تعذّرت قراءة الفرق.",
     },
     form: {
+      keyReused: "استُخدم هذا الطلب لفريق آخر بالفعل. حاول مرة أخرى.",
+      refused: "تعذّر إنشاء الفريق.",
       title: "فريق جديد",
       name: "الاسم",
       namePlaceholder: "ما الغرض من هذا الفريق",

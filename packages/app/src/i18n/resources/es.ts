@@ -1063,6 +1063,8 @@ export const es: TranslationResources = {
       unreadable: "No se pudieron leer los equipos.",
     },
     form: {
+      keyReused: "Esa solicitud ya se usó para otro equipo. Inténtalo de nuevo.",
+      refused: "No se pudo crear el equipo.",
       title: "Nuevo equipo",
       name: "Nombre",
       namePlaceholder: "Para qué es este equipo",

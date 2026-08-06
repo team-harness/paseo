@@ -1017,6 +1017,8 @@ export const zhCN: TranslationResources = {
       unreadable: "读不到团队列表。",
     },
     form: {
+      keyReused: "这次请求已经用于另一个团队了，请重试。",
+      refused: "创建团队失败。",
       title: "新建团队",
       name: "名称",
       namePlaceholder: "这个团队做什么",

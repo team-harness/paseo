@@ -1038,6 +1038,8 @@ export const en = {
       unreadable: "Teams could not be read.",
     },
     form: {
+      keyReused: "That request was already used for a different team. Try again.",
+      refused: "The team could not be created.",
       title: "New Team",
       name: "Name",
       namePlaceholder: "What is this team for",

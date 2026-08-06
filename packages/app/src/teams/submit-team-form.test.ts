@@ -6,6 +6,11 @@ import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 import { openTeamForm, type TeamFormModel } from "./team-form-model";
 import { submitTeamForm, type TeamCreateGateway } from "./submit-team-form";
 
+const LABELS = {
+  keyReused: "That request was already used for a different team. Try again.",
+  refused: "The team could not be created.",
+};
+
 function openFilledForm(): TeamFormModel {
   let keys = 0;
   let idempotency = 0;
@@ -61,7 +66,7 @@ describe("sending a team to the daemon", () => {
     const form = openFilledForm();
     const client = gateway({ team: builtTeam(), error: null });
 
-    await submitTeamForm(form, client);
+    await submitTeamForm(form, client, LABELS);
 
     expect(client.createTeam).toHaveBeenCalledWith({
       idempotencyKey: "key-1",
@@ -82,7 +87,7 @@ describe("sending a team to the daemon", () => {
     const form = openFilledForm();
     const client = gateway({ team: builtTeam(), error: null });
 
-    await submitTeamForm(form, client);
+    await submitTeamForm(form, client, LABELS);
 
     expect(client.createTeam.mock.calls[0]?.[0].members[0]).not.toHaveProperty("briefing");
   });
@@ -91,7 +96,7 @@ describe("sending a team to the daemon", () => {
     const form = openFilledForm();
     const key = form.getState().idempotencyKey;
 
-    await submitTeamForm(form, gateway({ team: null, error: "That workspace is gone" }));
+    await submitTeamForm(form, gateway({ team: null, error: "That workspace is gone" }), LABELS);
 
     // The daemon answered and built nothing. Reusing the key would keep asking
     // about the attempt that failed.
@@ -107,7 +112,7 @@ describe("sending a team to the daemon", () => {
     const form = openFilledForm();
     const key = form.getState().idempotencyKey;
 
-    await submitTeamForm(form, gateway(new Error("The connection dropped")));
+    await submitTeamForm(form, gateway(new Error("The connection dropped")), LABELS);
 
     // The daemon may already have built the team. The same key is what gets
     // that one back instead of a second.
@@ -125,6 +130,7 @@ describe("sending a team to the daemon", () => {
         error: "Idempotency key key-1 was already used for a different team request",
         errorCode: TEAM_ERROR_CODES.idempotencyConflict,
       }),
+      LABELS,
     );
 
     expect(form.getState().submission).toMatchObject({ message: expect.stringMatching(/again/i) });
@@ -141,7 +147,7 @@ describe("sending a team to the daemon", () => {
     });
     const client = gateway({ team: builtTeam(), error: null });
 
-    await submitTeamForm(form, client);
+    await submitTeamForm(form, client, LABELS);
 
     expect(client.createTeam).not.toHaveBeenCalled();
     expect(form.getState().submission).toEqual({ status: "idle" });
@@ -154,7 +160,11 @@ describe("sending a team to the daemon", () => {
     // What a retry under the same key gets back after the first attempt died
     // mid-creation. Reporting it as success hands the caller a dead id, and
     // never rotating the key points every later retry at the same corpse.
-    await submitTeamForm(form, gateway({ team: builtTeam({ lifecycle: "failed" }), error: null }));
+    await submitTeamForm(
+      form,
+      gateway({ team: builtTeam({ lifecycle: "failed" }), error: null }),
+      LABELS,
+    );
 
     expect(form.getState().submission).toMatchObject({ status: "failure", retryable: false });
     expect(form.getState().idempotencyKey).not.toBe(key);
@@ -168,6 +178,7 @@ describe("sending a team to the daemon", () => {
     await submitTeamForm(
       form,
       gateway({ team: builtTeam({ lifecycle: "creating" }), error: null }),
+      LABELS,
     );
 
     expect(form.getState().submission).toEqual({ status: "success", teamId: "team-1" });
@@ -178,7 +189,7 @@ describe("sending a team to the daemon", () => {
     const seen: string[] = [];
     form.subscribe(() => seen.push(form.getState().submission.status));
 
-    await submitTeamForm(form, gateway({ team: builtTeam(), error: null }));
+    await submitTeamForm(form, gateway({ team: builtTeam(), error: null }), LABELS);
 
     expect(seen).toEqual(["pending", "success"]);
   });

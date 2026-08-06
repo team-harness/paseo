@@ -27,14 +27,27 @@ function toMemberSpec(member: { role: string; provider: string; briefing: string
     : { role: member.role.trim(), provider: member.provider };
 }
 
-export function describeFailure(payload: {
-  error: string | null;
-  errorCode?: string | null;
-}): string {
+/**
+ * What to say when the daemon refuses without saying why.
+ *
+ * Injected, like the team panel's: this module has no language, and an English
+ * sentence written here reaches a Japanese user's screen unchanged.
+ */
+export interface TeamFormLabels {
+  /** The key was already spent on different work. */
+  keyReused: string;
+  /** Anything else that went wrong with no message attached. */
+  refused: string;
+}
+
+export function describeFailure(
+  payload: { error: string | null; errorCode?: string | null },
+  labels: TeamFormLabels,
+): string {
   if (payload.errorCode === TEAM_ERROR_CODES.idempotencyConflict) {
-    return "That request was already used for a different team. Try again.";
+    return labels.keyReused;
   }
-  return payload.error ?? "The team could not be created.";
+  return payload.error ?? labels.refused;
 }
 
 /**
@@ -49,6 +62,7 @@ export function describeFailure(payload: {
 export async function submitTeamForm(
   form: TeamFormModel,
   gateway: TeamCreateGateway,
+  labels: TeamFormLabels,
 ): Promise<void> {
   const state = form.getState();
   if (!state.canSubmit) return;
@@ -68,7 +82,7 @@ export async function submitTeamForm(
     });
 
     if (!payload.team) {
-      form.submitFailed({ message: describeFailure(payload), retryable: false });
+      form.submitFailed({ message: describeFailure(payload, labels), retryable: false });
       return;
     }
     // A team is only built when it says so. Retrying under the same key gets
@@ -85,7 +99,7 @@ export async function submitTeamForm(
     form.submitSucceeded(payload.team.id);
   } catch (error) {
     form.submitFailed({
-      message: error instanceof Error ? error.message : "The team could not be created.",
+      message: error instanceof Error ? error.message : labels.refused,
       retryable: true,
     });
   }

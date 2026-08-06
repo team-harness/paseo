@@ -214,6 +214,11 @@ test("the panel aggregates two members' requests and answers each on its own", a
     await expect(leadRow).toBeVisible({ timeout: 60_000 });
     await expect(reviewerRow).toBeVisible({ timeout: 60_000 });
 
+    // The team as a whole says it is blocked, not that it is working. This is
+    // the aggregate the sidebar dot and the tab badge read, and it depends on
+    // the panel handing the selector the field the store actually holds.
+    await expect(page.getByTestId("team-panel-activity")).toHaveText("Waiting on you");
+
     // The lead's request keeps its own options; the reviewer's falls back to
     // the standard pair rather than to nothing.
     await expect(page.getByTestId(`team-permission-${team.leadAgentId}-implement`)).toBeVisible();

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useSyncExternalStore, type ReactElement } from "react";
+import { useCallback, useMemo, useSyncExternalStore, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -35,27 +35,13 @@ export interface NewTeamSheetProps {
 /**
  * Mounts a fresh form per open.
  *
- * Returning null while closed is what makes the `key` mean something: one
- * component instance living across opens is how a previous attempt's input, and
- * its idempotency key, leak into the next one.
+ * Returning null while closed unmounts the subtree, and that is what makes each
+ * open a new form. One instance living across opens is how a previous attempt's
+ * input — and its idempotency key — leak into the next one.
  */
 export function NewTeamSheet(props: NewTeamSheetProps): ReactElement | null {
-  const [openCount, setOpenCount] = useState(0);
-  const wasVisible = useRefLike(props.visible);
-  if (props.visible && !wasVisible.current) {
-    wasVisible.current = true;
-    setOpenCount((count) => count + 1);
-  } else if (!props.visible && wasVisible.current) {
-    wasVisible.current = false;
-  }
-
   if (!props.visible) return null;
-  return <OpenNewTeamSheet key={`${props.serverId}:${openCount}`} {...props} />;
-}
-
-function useRefLike(initial: boolean): { current: boolean } {
-  const [ref] = useState(() => ({ current: initial }));
-  return ref;
+  return <OpenNewTeamSheet {...props} />;
 }
 
 function OpenNewTeamSheet({
@@ -90,13 +76,23 @@ function OpenNewTeamSheet({
   useTeamFormProviderSnapshot(model, state, cwd);
 
   const submit = useCallback(() => {
-    if (!client) return;
+    if (!client) {
+      // The menu entry is gated on the daemon's feature, not on the connection,
+      // so this is reachable — and a confirmed create that does nothing at all
+      // reads as one that worked.
+      model.submitFailed({ message: t("common.errors.daemonClientUnavailable"), retryable: true });
+      return;
+    }
     void (async () => {
-      await submitTeamForm(model, { createTeam: (input) => client.createTeam(input) });
+      await submitTeamForm(
+        model,
+        { createTeam: (input) => client.createTeam(input) },
+        { keyReused: t("teams.form.keyReused"), refused: t("teams.form.refused") },
+      );
       const result = model.getState().submission;
       if (result.status === "success") onCreated?.(result.teamId);
     })();
-  }, [client, model, onCreated]);
+  }, [client, model, onCreated, t]);
 
   const header = useMemo<SheetHeader>(() => ({ title: t("teams.form.title") }), [t]);
 

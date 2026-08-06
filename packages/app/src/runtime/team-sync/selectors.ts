@@ -11,7 +11,15 @@ export interface TeamMemberAgent {
   status: "idle" | "running" | "initializing" | "error" | "closed";
   requiresAttention?: boolean;
   attentionReason?: "finished" | "error" | "permission" | null;
-  pendingPermissionCount?: number;
+  /**
+   * The requests this agent is blocked on.
+   *
+   * Taken as a list rather than a count because that is the shape the store
+   * holds. Asking callers for a count is how this arrived `undefined` at every
+   * call site while typecheck stayed quiet — the field is optional, and a
+   * structural match does not notice a missing one.
+   */
+  pendingPermissions?: readonly unknown[];
   archivedAt?: Date | null;
   labels: Record<string, string>;
 }
@@ -99,7 +107,7 @@ export function selectMemberActivity(agent: TeamMemberAgent | null): TeamActivit
     status: agent.status,
     requiresAttention: agent.requiresAttention,
     attentionReason: agent.attentionReason ?? null,
-    pendingPermissionCount: agent.pendingPermissionCount ?? 0,
+    pendingPermissionCount: agent.pendingPermissions?.length ?? 0,
   });
   if (bucket === "needs_input") return "needs_input";
   // `initializing` is not `running` to the shared rule, but a member still
