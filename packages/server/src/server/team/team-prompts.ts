@@ -56,6 +56,29 @@ export function buildMemberBriefing(input: BriefingInput): string {
   return appendCallerBriefing(lines, input.member.briefing);
 }
 
+/**
+ * What the lead is told when work it assigned finishes.
+ *
+ * `unknown` is spelled out rather than smoothed over: the daemon genuinely does
+ * not know how that turn ended, and the lead's move is to ask, not to assume.
+ * A delivery can be resent after a crash, so it also says that seeing one twice
+ * means nothing new happened.
+ */
+export function buildCompletionDelivery(
+  completions: Array<{ assigneeAgentId: string; prompt: string; outcome: string }>,
+): string {
+  const lines = ["Work you assigned has finished.", ""];
+  for (const completion of completions) {
+    lines.push(
+      completion.outcome === "unknown"
+        ? `- ${completion.assigneeAgentId}: "${completion.prompt}" — outcome unknown. Ask it what happened.`
+        : `- ${completion.assigneeAgentId}: "${completion.prompt}" — ${completion.outcome}.`,
+    );
+  }
+  lines.push("", "If you have seen this before, nothing new has happened since.");
+  return lines.join("\n");
+}
+
 function appendCallerBriefing(lines: string[], briefing: string | null): string {
   if (!briefing || briefing.trim().length === 0) {
     return lines.join("\n");
