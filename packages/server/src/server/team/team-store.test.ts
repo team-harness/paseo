@@ -37,6 +37,23 @@ function buildTeam(overrides: Partial<Parameters<TeamStore["create"]>[0]> = {}) 
   };
 }
 
+const markActive: TeamUpdater = (current) => ({ ...current, lifecycle: "active" as const });
+
+const addSecondMember: TeamUpdater = (current) => ({
+  ...current,
+  members: [
+    ...current.members,
+    {
+      agentId: "agent-2",
+      role: "server",
+      joinedAt: "2026-08-06T10:01:00.000Z",
+      leftAt: null,
+      state: "active" as const,
+      removalReason: null,
+    },
+  ],
+});
+
 describe("TeamStore", () => {
   let dir: string;
   let store: TeamStore;
@@ -176,5 +193,53 @@ describe("TeamStore", () => {
 
     expect(await store.get(created.id)).toBeNull();
     expect(await new TeamStore(dir, logger).list()).toEqual([]);
+  });
+
+  /**
+   * The deletion guard has to answer without awaiting: hard delete keeps no
+   * tombstone, so a decision taken a moment too late cannot be corrected.
+   */
+  describe("the synchronous view of who is mid-creation", () => {
+    test("names the team a member is still being created for", async () => {
+      await store.create(buildTeam());
+
+      expect(store.creatingTeamNameOf("agent-lead")).toBe("Disk usage");
+      expect(store.creatingTeamNameOf("someone-else")).toBeNull();
+    });
+
+    test("lets go once the team is created", async () => {
+      const created = await store.create(buildTeam());
+
+      await store.update(created.id, markActive);
+
+      expect(store.creatingTeamNameOf("agent-lead")).toBeNull();
+    });
+
+    test("lets go when the team is deleted", async () => {
+      const created = await store.create(buildTeam());
+
+      await store.delete(created.id);
+
+      expect(store.creatingTeamNameOf("agent-lead")).toBeNull();
+    });
+
+    test("follows a roster that grows mid-creation", async () => {
+      const created = await store.create(buildTeam());
+
+      await store.update(created.id, addSecondMember);
+
+      expect(store.creatingTeamNameOf("agent-2")).toBe("Disk usage");
+    });
+
+    test("is rebuilt from disk on a restart", async () => {
+      await store.create(buildTeam());
+
+      const restarted = new TeamStore(dir, logger);
+      await restarted.initialize();
+
+      // A daemon that died mid-creation comes back still refusing to delete
+      // the agents it cannot yet tell apart from ones it never built.
+      expect(restarted.creatingTeamNameOf("agent-lead")).toBe("Disk usage");
+    });
   });
 });

@@ -196,7 +196,7 @@ describe("recovering from a crash mid-assignment", () => {
     /** Turn to hand back, or null to refuse. */
     nextTurnId: string | null = "turn-1";
 
-    isWakeable(): boolean {
+    async isWakeable(): Promise<boolean> {
       return true;
     }
 
@@ -214,7 +214,7 @@ describe("recovering from a crash mid-assignment", () => {
       return true;
     }
 
-    lookUpTurnOutcome(input: { turnId: string }) {
+    async lookUpTurnOutcome(input: { turnId: string }) {
       const outcome = this.outcomes.get(input.turnId);
       return outcome ? { kind: "settled" as const, outcome } : { kind: "unknown" as const };
     }

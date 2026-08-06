@@ -147,6 +147,7 @@ import {
   type WorkspaceArchiveContext,
 } from "./workspace-registry.js";
 import { FileBackedChatService } from "./chat/chat-service.js";
+import { createTeamRuntime } from "./team/team-runtime.js";
 import { notifyChatMentions, prepareChatMentionFanout } from "./chat/chat-mentions.js";
 import { resolveAgentIdentifier } from "./agent/resolve-agent-identifier.js";
 import { formatSystemNotificationPrompt, sendPromptToAgent } from "./agent/agent-prompt.js";
@@ -970,6 +971,27 @@ export async function createPaseoDaemon(
   });
   await chatService.initialize();
   logger.info({ elapsed: elapsed() }, "Chat service initialized");
+  const teamRuntime = await createTeamRuntime({
+    paseoHome: config.paseoHome,
+    agentManager,
+    agentStorage,
+    chatService,
+    resolveWorkspaceCwd: async (workspaceId) =>
+      (await workspaceRegistry.get(workspaceId))?.cwd ?? null,
+    publishTeamUpdate: (team) => {
+      for (const session of wsServer?.listTrustedSessions() ?? []) {
+        session.emitTeamUpdate(team);
+      }
+    },
+    logger,
+  });
+  logger.info({ elapsed: elapsed() }, "Team runtime initialized");
+  // Not awaited: reconciling every team reads each one's agents, and a daemon
+  // that cannot answer until that finishes is a daemon that looks hung.
+  void teamRuntime.start().catch((error) => {
+    logger.warn({ err: error }, "Initial team reconciliation failed");
+  });
+
   const checkoutDiffManager = new CheckoutDiffManager({
     logger,
     paseoHome: config.paseoHome,
@@ -1388,6 +1410,13 @@ export async function createPaseoDaemon(
     voiceOnly: runtime.voiceOnly,
     resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
     resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
+    teamRecruitment: teamRuntime.recruitmentHookFor(runtime.callerAgentId),
+    registerExtraTools: (registerTool) => {
+      teamRuntime.registerToolsFor({
+        registerTool,
+        ...(runtime.callerAgentId ? { callerAgentId: runtime.callerAgentId } : {}),
+      });
+    },
     logger,
   });
   const createAgentToolCatalog = (runtime: PaseoToolRuntimeContext) =>
@@ -1661,6 +1690,7 @@ export async function createPaseoDaemon(
               browserToolsBroker,
               hubRelationships,
               promptLibraryStore,
+              teamRuntime,
             );
             relayRuntime = createRelayRuntime({
               config: {
@@ -1714,6 +1744,7 @@ export async function createPaseoDaemon(
   };
 
   const stop = async () => {
+    teamRuntime.stop();
     await hubRelationships.stop();
     workspaceReconciliation.dispose();
     scriptHealthMonitor.stop();

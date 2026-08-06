@@ -16,8 +16,14 @@ export type TurnLookup =
   | { kind: "unknown" };
 
 export interface TeamPumpGateway {
-  /** DEC-10's rule: not archived and not mid-turn, live state first. */
-  isWakeable(agentId: string): boolean;
+  /**
+   * DEC-10's rule: not archived and not mid-turn, live state first.
+   *
+   * Async because the fallback is storage: an agent the daemon has not loaded
+   * is still a member, and answering "not wakeable" for it would strand its
+   * work until something happened to load it.
+   */
+  isWakeable(agentId: string): Promise<boolean>;
   /**
    * Submits an assignment without replacing anything in flight. Returns the
    * turn it was accepted as, or null when the provider would not take it.
@@ -33,7 +39,7 @@ export interface TeamPumpGateway {
     deliveryId: string;
     body: string;
   }): Promise<boolean>;
-  lookUpTurnOutcome(input: { agentId: string; turnId: string }): TurnLookup;
+  lookUpTurnOutcome(input: { agentId: string; turnId: string }): Promise<TurnLookup>;
 }
 
 export interface TeamPumpOptions {
@@ -110,7 +116,7 @@ export class TeamPump {
     for (const assignment of await this.inbox.listAssignments(teamId)) {
       if (assignment.state !== "dispatched" || !assignment.acceptedTurnId) continue;
 
-      const lookup = this.gateway.lookUpTurnOutcome({
+      const lookup = await this.gateway.lookUpTurnOutcome({
         agentId: assignment.assigneeAgentId,
         turnId: assignment.acceptedTurnId,
       });
@@ -126,7 +132,7 @@ export class TeamPump {
 
   private async dispatchQueued(teamId: string): Promise<void> {
     for (const assigneeAgentId of await this.inbox.assigneesWithWork(teamId)) {
-      if (!this.gateway.isWakeable(assigneeAgentId)) continue;
+      if (!(await this.gateway.isWakeable(assigneeAgentId))) continue;
 
       const next = await this.inbox.nextDispatchable(teamId, assigneeAgentId);
       if (!next) continue;
@@ -150,7 +156,7 @@ export class TeamPump {
   }
 
   private async deliverToLead(input: { teamId: string; leadAgentId: string }): Promise<void> {
-    if (!this.gateway.isWakeable(input.leadAgentId)) {
+    if (!(await this.gateway.isWakeable(input.leadAgentId))) {
       // Whatever piled up in the meantime joins the next delivery.
       return;
     }

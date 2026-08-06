@@ -35,6 +35,14 @@ export class TeamStore {
   private readonly logger: Logger;
   private readonly mutations = new Map<string, Promise<unknown>>();
   private idempotencyIndex = new Map<string, string>();
+  /**
+   * Members of teams that are still being created, by agent id.
+   *
+   * Synchronous on purpose: the deletion guard has to refuse before the delete
+   * happens, and hard delete leaves no tombstone to correct the decision with
+   * afterwards.
+   */
+  private creatingMembers = new Map<string, { teamId: string; teamName: string }>();
   private indexLoaded = false;
 
   constructor(dir: string, logger: Logger) {
@@ -103,7 +111,32 @@ export class TeamStore {
   private async rebuildIdempotencyIndex(): Promise<void> {
     const teams = await this.list();
     this.idempotencyIndex = new Map(teams.map((team) => [team.idempotencyKey, team.id]));
+    this.creatingMembers = new Map();
+    for (const team of teams) {
+      this.indexCreatingMembers(team);
+    }
     this.indexLoaded = true;
+  }
+
+  /**
+   * Rewrites this team's contribution to the creating-member index.
+   *
+   * Dropping the team's old entries first is what makes a member that left, or
+   * a team that finished, actually disappear — merging would only ever add.
+   */
+  private indexCreatingMembers(team: StoredTeam): void {
+    for (const [agentId, entry] of this.creatingMembers) {
+      if (entry.teamId === team.id) this.creatingMembers.delete(agentId);
+    }
+    if (team.lifecycle !== "creating") return;
+    for (const member of team.members) {
+      this.creatingMembers.set(member.agentId, { teamId: team.id, teamName: team.name });
+    }
+  }
+
+  /** The name of the team this agent is mid-creation for, or null. */
+  creatingTeamNameOf(agentId: string): string | null {
+    return this.creatingMembers.get(agentId)?.teamName ?? null;
   }
 
   /**
@@ -129,6 +162,7 @@ export class TeamStore {
     };
     await this.write(created);
     this.idempotencyIndex.set(created.idempotencyKey, created.id);
+    this.indexCreatingMembers(created);
     return created;
   }
 
@@ -181,6 +215,7 @@ export class TeamStore {
       };
       await this.write(stamped);
       this.idempotencyIndex.set(stamped.idempotencyKey, stamped.id);
+      this.indexCreatingMembers(stamped);
       return stamped;
     });
   }
@@ -191,6 +226,7 @@ export class TeamStore {
       await rm(this.filePath(id), { force: true });
       if (current) {
         this.idempotencyIndex.delete(current.idempotencyKey);
+        this.indexCreatingMembers({ ...current, lifecycle: "archived" });
       }
     });
   }

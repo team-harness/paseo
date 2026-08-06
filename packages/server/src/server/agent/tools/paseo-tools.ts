@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ensureValidJson } from "../../json-utils.js";
+import { CREATE_AGENT_TEAM_EXTENSION, type TeamRecruitmentHook } from "../../team/team-tools.js";
 import type { Logger } from "pino";
 
 import type { AgentMode, AgentProvider } from "../agent-sdk-types.js";
@@ -91,6 +92,14 @@ import type {
   PaseoToolResult,
 } from "./types.js";
 
+/** How a feature module adds a tool to the catalog. */
+export type RegisterPaseoTool = (
+  name: string,
+  config: PaseoToolConfig,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool handlers are schema-validated at registration boundaries.
+  handler: (input: any, context: PaseoToolExecutionContext) => Promise<PaseoToolResult>,
+) => void;
+
 export interface PaseoToolHostDependencies {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
@@ -140,6 +149,13 @@ export interface PaseoToolHostDependencies {
   resolveCallerContext?: (callerAgentId: string) => VoiceCallerContext | null;
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
+  /** Present when the daemon runs teams; diverts `create_agent` for a caller inside one. */
+  teamRecruitment?: TeamRecruitmentHook | null;
+  /**
+   * Lets a feature add its own tools without editing this file for each one.
+   * Called last, so an extra tool can replace a built-in of the same name.
+   */
+  registerExtraTools?: (registerTool: RegisterPaseoTool) => void;
   logger: Logger;
 }
 
@@ -1396,7 +1412,9 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       title: "Create agent",
       description:
         "Create an agent. Agent-scoped creation defaults to your workspace and creates your subagent. Top-level creation without workspaceId creates a new local workspace. Requires provider/model (for example codex/gpt-5.4) and an initial prompt. Do not guess; call list_providers and list_models first if uncertain.",
-      inputSchema: createAgentInputSchema,
+      inputSchema: options.teamRecruitment
+        ? createAgentInputSchema.extend(CREATE_AGENT_TEAM_EXTENSION)
+        : createAgentInputSchema,
       outputSchema: {
         agentId: z.string(),
         type: AgentProviderEnum,
@@ -1411,6 +1429,11 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       },
     },
     async (args: unknown) => {
+      // A caller already in a team recruits into it instead of creating a loose
+      // agent; null means this call is not that.
+      const recruited = await options.teamRecruitment?.handleCreateAgent(args);
+      if (recruited) return recruited;
+
       const resolvedArgs = await resolveCreateAgentToolArgs(args);
       const { parsedArgs, worktree } = resolvedArgs;
       let requestedBackground: boolean;
@@ -3118,6 +3141,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       };
     },
   );
+
+  options.registerExtraTools?.(registerTool);
 
   return toCatalog();
 }

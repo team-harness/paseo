@@ -35,7 +35,7 @@ describe("TeamPump", () => {
     /** Turns that are still running. */
     activeTurns = new Set<string>();
 
-    isWakeable(agentId: string): boolean {
+    async isWakeable(agentId: string): Promise<boolean> {
       return !this.busy.has(agentId) && !this.unwakeable.has(agentId);
     }
 
@@ -58,7 +58,7 @@ describe("TeamPump", () => {
       return true;
     }
 
-    lookUpTurnOutcome(input: { agentId: string; turnId: string }) {
+    async lookUpTurnOutcome(input: { agentId: string; turnId: string }) {
       const outcome = this.outcomes.get(input.turnId);
       if (outcome) return { kind: "settled" as const, outcome };
       if (this.activeTurns.has(input.turnId)) return { kind: "running" as const };

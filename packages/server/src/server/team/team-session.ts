@@ -40,6 +40,58 @@ interface TeamMemberSpecInput {
   briefing?: string;
 }
 
+const TEAM_REQUEST_TYPES: ReadonlySet<string> = new Set([
+  "team.create.request",
+  "team.list.request",
+  "team.inspect.request",
+  "team.archive.request",
+  "team.member.remove.request",
+]);
+
+/** Narrows a session message to one this module owns. */
+export function isTeamInboundMessage(message: { type: string }): message is TeamInboundMessage {
+  return TEAM_REQUEST_TYPES.has(message.type);
+}
+
+/**
+ * The reply shape for a request the daemon parsed but cannot serve.
+ *
+ * Every team request is correlated by `requestId`, so dropping one leaves the
+ * client waiting on a promise that never settles.
+ */
+export function teamUnavailableResponse(
+  message: TeamInboundMessage,
+  reason: string,
+): TeamOutboundMessage {
+  switch (message.type) {
+    case "team.create.request":
+      return {
+        type: "team.create.response",
+        payload: { requestId: message.requestId, team: null, error: reason, errorCode: null },
+      };
+    case "team.list.request":
+      return {
+        type: "team.list.response",
+        payload: { requestId: message.requestId, teams: [], error: reason },
+      };
+    case "team.inspect.request":
+      return {
+        type: "team.inspect.response",
+        payload: { requestId: message.requestId, team: null, error: reason },
+      };
+    case "team.archive.request":
+      return {
+        type: "team.archive.response",
+        payload: { requestId: message.requestId, team: null, error: reason },
+      };
+    case "team.member.remove.request":
+      return {
+        type: "team.member.remove.response",
+        payload: { requestId: message.requestId, team: null, error: reason },
+      };
+  }
+}
+
 export type TeamOutboundMessage =
   | {
       type: "team.create.response";

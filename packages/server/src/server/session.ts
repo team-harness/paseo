@@ -209,6 +209,14 @@ import type { Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type pino from "pino";
 import { FileBackedChatService } from "./chat/chat-service.js";
+import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
+import {
+  isTeamInboundMessage,
+  teamUnavailableResponse,
+  TeamSessionHandlers,
+} from "./team/team-session.js";
+import type { TeamService } from "./team/team-service.js";
+import type { TeamStore } from "./team/team-store.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import {
@@ -403,6 +411,24 @@ class SessionRequestError extends Error {
   }
 }
 
+/**
+ * Built per session so a reply goes back to the client that asked, rather than
+ * to whoever happens to be connected when it lands.
+ */
+function buildTeamHandlers(
+  teamRuntime: { service: TeamService; store: TeamStore } | null | undefined,
+  send: (message: SessionOutboundMessage) => void,
+  logger: pino.Logger,
+): TeamSessionHandlers | null {
+  if (!teamRuntime) return null;
+  return new TeamSessionHandlers({
+    service: teamRuntime.service,
+    store: teamRuntime.store,
+    send: (message) => send(message as SessionOutboundMessage),
+    logger,
+  });
+}
+
 export interface SessionFileSystem {
   isDirectory(path: string): Promise<boolean>;
 }
@@ -440,6 +466,8 @@ export interface SessionOptions {
   workspaceRegistry: WorkspaceRegistry;
   filesystem?: SessionFileSystem;
   chatService: FileBackedChatService;
+  /** Absent when the daemon runs without teams; the RPCs then answer "not available". */
+  teamRuntime?: { service: TeamService; store: TeamStore } | null;
   scheduleService: ScheduleService;
   loopService: LoopService;
   checkoutDiffManager: CheckoutDiffManager;
@@ -644,6 +672,7 @@ export class Session {
   private unsubscribeChatRoomMessages: (() => void) | null = null;
   private unsubscribeChatRoomRemovals: (() => void) | null = null;
   private readonly chatService: FileBackedChatService;
+  private readonly teamHandlers: TeamSessionHandlers | null;
   private readonly clientCapabilitiesBySource = new Map<object, ReadonlySet<ClientCapability>>();
   private readonly defaultTimelineSubscriptionSource = {};
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
@@ -711,6 +740,7 @@ export class Session {
       workspaceRegistry,
       filesystem,
       chatService,
+      teamRuntime,
       scheduleService,
       loopService,
       checkoutDiffManager,
@@ -744,6 +774,11 @@ export class Session {
       getWebSocketRuntimeMetrics,
     } = options;
     this.chatService = chatService;
+    this.teamHandlers = buildTeamHandlers(
+      teamRuntime,
+      (message) => this.emit(message),
+      options.logger,
+    );
     this.clientId = clientId;
     this.scopes = [...scopes];
     this.appVersion = appVersion ?? null;
@@ -1328,6 +1363,26 @@ export class Session {
     }
     for (const [source, capabilities] of this.clientCapabilitiesBySource) {
       if (capabilities.has(CLIENT_CAPS.projectUpdates)) {
+        this.onMessageToSource(source, message);
+      }
+    }
+  }
+
+  /**
+   * Broadcasts a team snapshot, per socket.
+   *
+   * One logical session can hold several physical sockets of different ages, so
+   * the gate is per source: an older socket on the same session must not be
+   * sent a message it cannot parse.
+   */
+  emitTeamUpdate(team: TeamSnapshot): void {
+    const message = { type: "team.update", payload: { team } } as SessionOutboundMessage;
+    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
+      if (this.supports(CLIENT_CAPS.teams)) this.emit(message);
+      return;
+    }
+    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
+      if (capabilities.has(CLIENT_CAPS.teams)) {
         this.onMessageToSource(source, message);
       }
     }
@@ -2006,10 +2061,23 @@ export class Session {
       this.dispatchProviderMessage(msg) ??
       this.dispatchStatusSummaryMessage(msg) ??
       this.promptLibrarySession.dispatch(msg) ??
+      this.dispatchTeamMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
       this.dispatchChatScheduleLoopMessage(msg) ??
       this.dispatchMiscMessage(msg);
     if (promise) await promise;
+  }
+
+  private dispatchTeamMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    if (!isTeamInboundMessage(msg)) return undefined;
+    const handlers = this.teamHandlers;
+    if (!handlers) {
+      // Parsed but unhandled: a client talking to a daemon without teams gets
+      // an answer rather than silence it would wait on forever.
+      this.emit(teamUnavailableResponse(msg, "This daemon does not have teams enabled."));
+      return Promise.resolve();
+    }
+    return handlers.handle(msg);
   }
 
   private dispatchVoiceAndControlMessage(msg: SessionInboundMessage): Promise<void> | undefined {
