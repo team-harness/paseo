@@ -288,6 +288,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - 2026-07-31：Paseo 在生成 `threadshare-history@v1` 时脱敏会话标题、普通消息、thought、todo、activity 以及递归工具输入、输出和错误中的凭据，包括敏感字段、Basic/Bearer/Token Auth、URL 密码及常见 token。字符串化 JSON 通过语法树定位敏感值，不直接用正则改写 JSON 结构，因此不会破坏嵌套 JSON 或改变大整数、高精度数值字面量；token 计数、鉴权状态和说明性认证文本保持原样。脱敏发生在客户端上传前，不依赖 Threadshare 服务端清洗。
 - 2026-08-02：上传体不超过 Threadshare 的 5 MiB 限制时保持原样；超过限制时，完整保留用户、assistant 及其他非工具记录，将同一工具调用的状态更新合并为最终状态，只保留工具名称、首次调用时间、请求参数和最终状态，删除已识别工具类型的返回值与错误详情。未来未知 detail 类型无法可靠区分请求和返回，保持原样并交给最终大小检查。压缩后仍超限时在发起网络请求前中止，并提示选择更靠后的用户消息；其他上传失败会显示服务端原因，不再被通用错误吞掉。
 - 2026-08-06：Android Metro 将 `jsonc-parser` 定向到可静态分析的 ESM 入口。该包的 UMD 工厂会遮蔽 `require`，导致 release bundle 漏掉 `impl/*` 并在恢复工作区时原生崩溃；本地 APK 构建在 Gradle 前验证实际 Android Metro 图，禁止 UMD 入口并要求完整 ESM 依赖。
+- 2026-08-06：Review Comments 与 Host 项目匹配排序不使用 Hermes 尚未实现的 `Array.prototype.toSorted()`；复制数组后使用 `sort()`，保留非变异语义并避免 Android 工作区恢复进入错误边界。
 
 **关键文件**：
 
@@ -307,6 +308,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - 分享导出的所有可见文本和工具数据必须在 producer 侧完成凭据脱敏；不能假设 Threadshare API 会清洗正文。字符串化 JSON 必须结构化处理，不能用正则直接改写；同时不能误删 token usage、鉴权状态等非凭据元数据或说明性认证文本。
 - 5 MiB 压缩只能损失工具返回与错误详情；用户和 assistant 消息不得截断或改写。若上游或 Threadshare 调整请求大小限制，应以服务端协议常量为准同步 producer 测试，不得通过静默丢弃消息规避限制。
 - `jsonc-parser` 在 Metro 中必须使用 ESM 入口；不得恢复默认 UMD 入口或移除 Android Metro 图检查。
+- 移动端共享路径不得依赖当前 Hermes 未实现的 `Array.prototype.toSorted()`；排序只读输入时先复制数组。
 - 必跑：聊天分享导出/上传目标测试、时间线分页测试、`npm run typecheck`。
 
 ### 8. 脱离项目分组的侧边栏行保留项目名

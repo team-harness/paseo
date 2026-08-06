@@ -168,7 +168,7 @@ export function collectWorkspaceReviewSummaryEntries(input: {
     kind: "selection" as const,
     comment,
   }));
-  return [...selectionEntries, ...diffEntries].toSorted((left, right) =>
+  return [...selectionEntries, ...diffEntries].sort((left, right) =>
     left.comment.createdAt.localeCompare(right.comment.createdAt),
   );
 }
@@ -184,7 +184,7 @@ export function formatWorkspaceReviewSummary(input: {
   const entries: SummaryEntry[] = [
     ...input.selectionComments.map((comment) => ({ kind: "selection" as const, comment })),
     ...input.diffComments.map((comment) => ({ kind: "diff" as const, comment })),
-  ].toSorted((left, right) => left.comment.createdAt.localeCompare(right.comment.createdAt));
+  ].sort((left, right) => left.comment.createdAt.localeCompare(right.comment.createdAt));
   if (entries.length === 0) {
     return "";
   }
