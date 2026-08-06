@@ -32,7 +32,6 @@ import {
   SidebarWorkspaceTrailingActionOverlay,
   SidebarWorkspaceTrailingActionSlot,
 } from "@/components/sidebar/sidebar-workspace-row-content";
-import { SidebarWorkspaceTeamRows } from "@/components/sidebar/sidebar-team-rows";
 import { useOpenKebabMenuVisibility } from "@/components/sidebar/use-open-kebab-menu-visibility";
 import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop";
 import { selectWorkspaceServiceSummary } from "@/components/sidebar/workspace-meta-row";
@@ -364,7 +363,6 @@ function WorkspaceRowBody({
                 />
               </SidebarWorkspaceRowContent>
             </SidebarWorkspaceContextMenu>
-            <SidebarWorkspaceTeamRows workspace={workspace} />
           </View>
         );
       }}
