@@ -710,6 +710,9 @@ export const fr: TranslationResources = {
         archiveRunningAgentTitle: "Archiver l'agent en cours d'exécution?",
         archiveRunningAgentMessage:
           "Cet agent est toujours en cours d'exécution. L'archiver arrêtera l'agent et fermera l'onglet.",
+        archiveTeamLeadTitle: "Archiver l’équipe ?",
+        archiveTeamLeadMessage:
+          "Archiver le lead de {{team}} met fin à l’équipe et archive ses {{count}} agents.",
         closeTabsLeftTitle: "Fermer les onglets à gauche?",
         closeTabsRightTitle: "Fermer les onglets à droite?",
         closeOtherTabsTitle: "Fermer les autres onglets?",

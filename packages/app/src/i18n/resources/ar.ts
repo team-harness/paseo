@@ -701,6 +701,9 @@ export const ar: TranslationResources = {
         archiveRunningAgentTitle: "وكيل تشغيل الأرشيف؟",
         archiveRunningAgentMessage:
           "هذا الوكيل لا يزال قيد التشغيل. ستؤدي أرشفته إلى إيقاف الوكيل وإغلاق علامة التبويب.",
+        archiveTeamLeadTitle: "أرشفة الفريق؟",
+        archiveTeamLeadMessage:
+          "أرشفة قائد {{team}} تنهي الفريق وتؤرشف جميع وكلائه البالغ عددهم {{count}}.",
         closeTabsLeftTitle: "هل تريد إغلاق علامات التبويب على اليسار؟",
         closeTabsRightTitle: "هل تريد إغلاق علامات التبويب على اليمين؟",
         closeOtherTabsTitle: "هل تريد إغلاق علامات التبويب الأخرى؟",

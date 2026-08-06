@@ -712,6 +712,9 @@ export const es: TranslationResources = {
         archiveRunningAgentTitle: "¿Agente de ejecución de archivos?",
         archiveRunningAgentMessage:
           "Este agente todavía está ejecutándose. Archivarlo detendrá al agente y cerrará la pestaña.",
+        archiveTeamLeadTitle: "¿Archivar el equipo?",
+        archiveTeamLeadMessage:
+          "Archivar el lead de {{team}} termina el equipo y archiva sus {{count}} agentes.",
         closeTabsLeftTitle: "¿Cerrar pestañas a la izquierda?",
         closeTabsRightTitle: "¿Cerrar pestañas a la derecha?",
         closeOtherTabsTitle: "¿Cerrar otras pestañas?",

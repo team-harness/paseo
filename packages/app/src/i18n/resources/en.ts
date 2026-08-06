@@ -700,6 +700,9 @@ export const en = {
         archiveRunningAgentTitle: "Archive running agent?",
         archiveRunningAgentMessage:
           "This agent is still running. Archiving it will stop the agent and close the tab.",
+        archiveTeamLeadTitle: "Archive team?",
+        archiveTeamLeadMessage:
+          "Archiving {{team}}'s lead ends the team and archives all {{count}} of its agents.",
         closeTabsLeftTitle: "Close tabs to the left?",
         closeTabsRightTitle: "Close tabs to the right?",
         closeOtherTabsTitle: "Close other tabs?",

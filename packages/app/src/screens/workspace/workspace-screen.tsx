@@ -2747,8 +2747,27 @@ function WorkspaceScreenContent({
 
         const agent =
           useSessionStore.getState().sessions[normalizedServerId]?.agents?.get(agentId) ?? null;
-        const closePolicy = resolveCloseAgentTabPolicy(agent);
+        const teams = useSessionStore.getState().sessions[normalizedServerId]?.teams;
+        const closePolicy = resolveCloseAgentTabPolicy(agent, teams);
         const isRunning = agent?.status === "running";
+
+        // Archiving a lead ends its whole team. Naming the team and the number
+        // of agents is the difference between a decision and a surprise.
+        if (closePolicy.kind === "confirm-team-lead") {
+          const confirmed = await confirmDialog({
+            title: t("workspace.tabs.confirmations.archiveTeamLeadTitle"),
+            message: t("workspace.tabs.confirmations.archiveTeamLeadMessage", {
+              team: closePolicy.teamName,
+              count: closePolicy.agentCount,
+            }),
+            confirmLabel: t("workspace.tabs.confirmations.archive"),
+            cancelLabel: t("workspace.tabs.confirmations.cancel"),
+            destructive: true,
+          });
+          if (!confirmed) {
+            return;
+          }
+        }
 
         if (isRunning && closePolicy.kind === "archive-on-close") {
           const confirmed = await confirmDialog({

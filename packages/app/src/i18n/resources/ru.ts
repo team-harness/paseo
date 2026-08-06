@@ -709,6 +709,9 @@ export const ru: TranslationResources = {
         archiveRunningAgentTitle: "Агент запуска архива?",
         archiveRunningAgentMessage:
           "Этот агент все еще работает. Архивирование остановит агент и закроет вкладку.",
+        archiveTeamLeadTitle: "Архивировать команду?",
+        archiveTeamLeadMessage:
+          "Архивирование лида {{team}} завершит команду и заархивирует все её агенты ({{count}}).",
         closeTabsLeftTitle: "Закрыть вкладки слева?",
         closeTabsRightTitle: "Закрыть вкладки справа?",
         closeOtherTabsTitle: "Закрыть другие вкладки?",

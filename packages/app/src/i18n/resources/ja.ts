@@ -707,6 +707,9 @@ export const ja: TranslationResources = {
         archiveRunningAgentTitle: "実行中のエージェントをアーカイブしますか？",
         archiveRunningAgentMessage:
           "このエージェントはまだ実行中です。アーカイブするとエージェントが停止してタブが閉じられます。",
+        archiveTeamLeadTitle: "チームをアーカイブしますか？",
+        archiveTeamLeadMessage:
+          "{{team}} のリードをアーカイブするとチームが終了し、{{count}} 個のエージェントすべてがアーカイブされます。",
         closeTabsLeftTitle: "左のタブを閉じますか？",
         closeTabsRightTitle: "右のタブを閉じますか？",
         closeOtherTabsTitle: "他のタブを閉じますか？",

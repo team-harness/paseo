@@ -708,6 +708,9 @@ export const ptBR: TranslationResources = {
         archiveRunningAgentTitle: "Arquivar agente em execução?",
         archiveRunningAgentMessage:
           "Este agente ainda está em execução. Arquivá-lo interromperá o agente e fechará a aba.",
+        archiveTeamLeadTitle: "Arquivar o time?",
+        archiveTeamLeadMessage:
+          "Arquivar o lead de {{team}} encerra o time e arquiva todos os seus {{count}} agentes.",
         closeTabsLeftTitle: "Fechar abas à esquerda?",
         closeTabsRightTitle: "Fechar abas à direita?",
         closeOtherTabsTitle: "Fechar outras abas?",
