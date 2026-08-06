@@ -56,6 +56,8 @@ import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
 import { encodeImages } from "@/utils/encode-images";
 import { DirectorySync, type RefreshAgentDirectoryResult } from "@/runtime/directory-sync";
+import { TeamSync } from "@/runtime/team-sync";
+import { hostSupportsFeature } from "@/runtime/host-features";
 import { ReplicaCache } from "@/runtime/replica-cache";
 import { nativePerformanceTrace } from "@/performance/native-trace";
 
@@ -1362,6 +1364,7 @@ export class HostRuntimeStore {
   private directoryBootstrapInFlight = new Map<string, Promise<void>>();
   private queuedAgentDrainInFlight = new Set<string>();
   private directorySyncByServer = new Map<string, DirectorySync>();
+  private teamSyncByServer = new Map<string, TeamSync>();
   private configuredOverrideBootstrapInFlight: Promise<void> | null = null;
   private bootPromise: Promise<void> | null = null;
   private storage: HostRuntimeStorage;
@@ -1599,6 +1602,8 @@ export class HostRuntimeStore {
     this.replicaCache.reconcileServerId(oldServerId, newServerId);
     this.directorySyncByServer.get(oldServerId)?.dispose();
     this.directorySyncByServer.delete(oldServerId);
+    this.teamSyncByServer.get(oldServerId)?.dispose();
+    this.teamSyncByServer.delete(oldServerId);
     const directory = new DirectorySync(newServerId, {
       onAgentStoppedRunning: (agentId) => this.drainQueuedAgentMessage(newServerId, agentId),
       markAgentLoading: () => controller.markAgentDirectorySyncLoading(),
@@ -1962,6 +1967,8 @@ export class HostRuntimeStore {
       this.directoryBootstrapInFlight.delete(serverId);
       this.directorySyncByServer.get(serverId)?.dispose();
       this.directorySyncByServer.delete(serverId);
+      this.teamSyncByServer.get(serverId)?.dispose();
+      this.teamSyncByServer.delete(serverId);
       this.clearHostReplica(serverId);
       void controller.stop();
       this.emit(serverId);
@@ -1992,6 +1999,14 @@ export class HostRuntimeStore {
           markAgentLoading: () => controller.markAgentDirectorySyncLoading(),
           markAgentReady: () => controller.markAgentDirectorySyncReady(),
           markAgentError: (error) => controller.markAgentDirectorySyncError(error),
+        }),
+      );
+      this.teamSyncByServer.set(
+        host.serverId,
+        new TeamSync({
+          commit: (teams) => useSessionStore.getState().replaceTeams(host.serverId, teams),
+          setHydrated: (hydrated) =>
+            useSessionStore.getState().setHasHydratedTeams(host.serverId, hydrated),
         }),
       );
       const initialSnapshot = controller.getSnapshot();
@@ -2051,6 +2066,21 @@ export class HostRuntimeStore {
           connectionEpoch: snapshot.connectionEpoch,
         },
       }) ?? false;
+    // Its own call, deliberately not folded into the directory's: teams are
+    // gated on a daemon feature the directory knows nothing about, and an older
+    // daemon should be asked for nothing at all.
+    this.teamSyncByServer.get(serverId)?.connectionChanged({
+      client: snapshot.client,
+      status: snapshot.connectionStatus === "online" ? "online" : "offline",
+      source: {
+        clientGeneration: snapshot.clientGeneration,
+        connectionEpoch: snapshot.connectionEpoch,
+      },
+      supportsTeams: hostSupportsFeature(
+        useSessionStore.getState().sessions[serverId]?.serverInfo,
+        "teams",
+      ),
+    });
     const previousStatus = this.lastConnectionStatusByServer.get(serverId);
     const statusChanged = previousStatus !== snapshot.connectionStatus;
     const isUnavailable =

@@ -2,6 +2,7 @@ import equal from "fast-deep-equal";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 import type { ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import {
@@ -412,6 +413,7 @@ export interface SessionState {
   // Hydration status
   hasHydratedAgents: boolean;
   hasHydratedWorkspaces: boolean;
+  hasHydratedTeams: boolean;
 
   // Audio state
   isPlayingAudio: boolean;
@@ -445,6 +447,9 @@ export interface SessionState {
   workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
   agentDetails: Map<string, Agent>;
   workspaces: Map<string, WorkspaceDescriptor>;
+  // Teams on this daemon, keyed by team id. Replaced wholesale by the sync —
+  // a team missing from a list is a team that is over, not one to keep.
+  teams: Map<string, TeamSnapshot>;
   // All active project descriptors, keyed by host-local projectId.
   projects: Map<string, ProjectDescriptor>;
   // Transient restore state for archived workspaces, keyed by normalized
@@ -663,6 +668,8 @@ interface SessionStoreActions {
   // Hydration
   setHasHydratedAgents: (serverId: string, hydrated: boolean) => void;
   setHasHydratedWorkspaces: (serverId: string, hydrated: boolean) => void;
+  replaceTeams: (serverId: string, teams: Map<string, TeamSnapshot>) => void;
+  setHasHydratedTeams: (serverId: string, hydrated: boolean) => void;
 
   // Agent directory (derived from agents)
   getAgentDirectory: (serverId: string) => AgentDirectoryEntry[] | undefined;
@@ -686,6 +693,7 @@ function createInitialSessionState(
     serverInfo: null,
     hasHydratedAgents: false,
     hasHydratedWorkspaces: false,
+    hasHydratedTeams: false,
     isPlayingAudio: false,
     focusedAgentId: null,
     focusedTerminalId: null,
@@ -707,6 +715,7 @@ function createInitialSessionState(
     workspaceAgentActivity: new Map(),
     agentDetails: new Map(),
     workspaces: new Map(),
+    teams: new Map(),
     projects: new Map(),
     restoringWorkspaces: new Map(),
     pendingPermissions: new Map(),
@@ -1993,6 +2002,31 @@ export const useSessionStore = create<SessionStore>()(
             sessions: {
               ...prev.sessions,
               [serverId]: { ...session, hasHydratedAgents: hydrated },
+            },
+          };
+        });
+      },
+
+      replaceTeams: (serverId, teams) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) return prev;
+          return {
+            ...prev,
+            sessions: { ...prev.sessions, [serverId]: { ...session, teams } },
+          };
+        });
+      },
+
+      setHasHydratedTeams: (serverId, hydrated) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session || session.hasHydratedTeams === hydrated) return prev;
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, hasHydratedTeams: hydrated },
             },
           };
         });
