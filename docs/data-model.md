@@ -59,6 +59,8 @@ $PASEO_HOME/
 │   └── session-pins.json                 # Host-owned pinned agent/session shortcuts
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
+├── teams/
+│   └── {teamId}.json                    # One file per team; roster is the membership authority
 ├── chat/
 │   └── rooms.json                       # All rooms + messages
 ├── loops/
@@ -107,6 +109,26 @@ Each agent is stored as a separate JSON file, grouped by project directory.
 | `attentionTimestamp` | `string?` (ISO 8601)                     | When attention was flagged                                                                                                                                                                                                                                                                                                                                                          |
 | `internal`           | `boolean?`                               | Whether this is a system-internal agent (loop workers, etc.)                                                                                                                                                                                                                                                                                                                        |
 | `archivedAt`         | `string?` (ISO 8601)                     | Soft-delete timestamp                                                                                                                                                                                                                                                                                                                                                               |
+| `turnOutcomes`       | `TurnOutcome[]?`                         | How recent turns ended, newest last, capped at 100. Lets a caller ask "how did turn X end" long after the stream event is gone; `lastStatus` cannot answer that.                                                                                                                                                                                                                    |
+| `activeTurn`         | `ActiveTurn?` (nullable)                 | The turn in flight, stamped with the daemon run that started it. A turn cannot outlive its daemon, so an entry from an earlier run is dropped on load — otherwise a reader waits forever on a turn that died with its process.                                                                                                                                                      |
+
+`turnOutcomes` and `activeTurn` live only on the record: a `ManagedAgent` snapshot knows nothing about them, so `AgentStorage` carries them forward inside its write queue rather than at each call site. Writes go through that queue as read-modify-write, because two turns settling back to back would otherwise both read the record before either write lands.
+
+### Nested: TurnOutcome
+
+| Field     | Type                                    | Description                     |
+| --------- | --------------------------------------- | ------------------------------- |
+| `turnId`  | `string`                                | Daemon-owned turn identity      |
+| `outcome` | `"completed" \| "failed" \| "canceled"` | How the turn ended              |
+| `endedAt` | `string` (ISO 8601)                     | When the terminal event arrived |
+
+### Nested: ActiveTurn
+
+| Field         | Type                | Description                                         |
+| ------------- | ------------------- | --------------------------------------------------- |
+| `turnId`      | `string`            | Daemon-owned turn identity                          |
+| `startedAt`   | `string` (ISO 8601) | When the provider accepted the turn                 |
+| `daemonRunId` | `string`            | The daemon run that owns it; stale runs are cleared |
 
 ### Nested: SerializableConfig
 

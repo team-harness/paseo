@@ -1239,11 +1239,17 @@ export async function createPaseoDaemon(
     archiveWorkspace: archiveScheduleWorkspaceExternal,
   });
   await scheduleService.start();
-  agentManager.setAgentArchivedCallback(async (agentId) => {
+  agentManager.onAgentRecordChange(async (change) => {
+    if (change.kind !== "archived") {
+      return;
+    }
     try {
-      await scheduleService.completeForAgent(agentId);
+      await scheduleService.completeForAgent(change.agentId);
     } catch (error) {
-      logger.warn({ err: error, agentId }, "Failed to complete schedules for archived agent");
+      logger.warn(
+        { err: error, agentId: change.agentId },
+        "Failed to complete schedules for archived agent",
+      );
     }
   });
   logger.info({ elapsed: elapsed() }, "Schedule service initialized");

@@ -2,8 +2,8 @@
 epic: ../epics/agent-teams.md
 phase: executing
 approved_revision: 74667ea6e2b559834cbf8f6f7ec717d415917df36e718391620e39fae3935a79
-current_item: ITEM-2
-next_action: 执行 ITEM-2（server 基础改造：记录变更事件流、turnOutcomes、deletion guard、指定 id 幂等创建、team-store），owning skill = codestable:cs-feat
+current_item: ITEM-3
+next_action: 执行 ITEM-3（chat 改造：postMessage(actor) 边界、author 模型、订阅协议、房间所有权与幂等创建、分文件存储与 DEC-9 迁移），owning skill = codestable:cs-feat
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -13,7 +13,7 @@ remote_publish: final
 ## 子项进度
 
 - [x] ITEM-1 protocol + client schema
-- [ ] ITEM-2 server 基础改造
+- [x] ITEM-2 server 基础改造
 - [ ] ITEM-3 chat 改造
 - [ ] ITEM-4 TeamService
 - [ ] ITEM-5 CLI
@@ -65,3 +65,25 @@ change review：1 个阶段 2 轮，reviewer = Paseo agent `dfa8546a`（codex/gp
 - worktree 首次 `npm install` 会因 electron 二进制直连官方源超时而整体回滚；用 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` + 本机代理 `127.0.0.1:7890` 可装成。
 - 新 worktree 未构建时，pre-commit 的全量 typecheck 会因跨包 dist 缺失而报大量 TS2307；先跑 `npm run build:server`（含 highlight/server/cli）与 `npm run build:client`。
 - 跑测试用 `./node_modules/.bin/vitest`；`npx vitest` 会解析到 npx 缓存的版本并因根 `vitest.config.ts` 的依赖而失败。
+
+## ITEM-2 · server 基础改造（完成 2026-08-06）
+
+交付：AgentManager 多订阅者记录变更事件流（`AgentRecordChange`：archived/unarchived/labels_changed/deleted/turn_settled + `onAgentRecordChange` 返回 unsubscribe，替换原单槽 `setAgentArchivedCallback`，ScheduleService 迁移）；`turnOutcomes`（optional capped 100）与 `activeTurn`（带 daemon run 标识、startup 陈旧清除）持久化 + `whenTurnStateSettled` 屏障；`AgentStorage.mutate` 队列内读-改-写；deletion guard（`registerAgentDeletionGuard`/`assertAgentDeletable`/`AgentDeletionRefusedError`，挂在删除 RPC 首个副作用前）；指定 id 创建的冲突保护与 `reuseIfOwnedBy` 复用判定 + per-id 串行；`team/team-store.ts`（原子写、per-id 与 per-key 串行、损坏容忍、idempotency 索引）。
+
+证据：`vitest run packages/server/src/server/{agent,team,schedule}/ session.test.ts --exclude "**/*.e2e.test.ts"` → **1936 passed / 0 failed**（21 skipped）；`npm run typecheck`（全 workspace）exit 0；lint + format 干净。基线核验：改动前 agent-manager.test.ts 为 153 passed / 0 failed（stash 验证）。
+
+change review：1 个阶段 3 轮（上限），reviewer = Paseo agent `dddac5db`（codex/gpt-5.6-sol · max，异构最强，受管理结构化委派，无回退）。轮 1（`4e1af3c5…`）3 blocking + 2 important；轮 2（`2189e4da…`）B3/I2 resolved，其余未闭合 + 1 new important + 1 nit；轮 3（`cdcb8283…`）I4/N5 resolved，B1/B2/B3 仍 unresolved 并给出明确方向。轮次已尽，按 cs-feat 不再对轮；三项均按 reviewer 方向修复后交 owner 裁决，owner 于 2026-08-06 裁决接受并确认下述两处判断。
+
+### 实现决策（设计文档 active 期间不改，决策记在此）
+
+- **DEC-14 的顺序保证落在 `turn_settled` 事件链内**：热路径实测对 `await` 敏感（前台 run 跟踪、usage basis 轮转、replacement 三处观察其时序，加 await 会打破 4-5 个既有测试）。故 `settleTurnRecord` 是一条 detached 链：先 `await recordTurnOutcome` 且**仅在确实写入时**才派发 `turn_settled`，订阅者收到事件时 outcome 必然已落盘。
+- **`whenTurnStateSettled(agentId)` 是三态判定的前置屏障**：ITEM-4 的 ledger 与兜底扫描在读存储判定 turn 命运**之前**必须 await 它；它在写入失败时 **reject**，调用方据此延后重试而不是就地结算。缺这一步会把运行中的 turn 误判为 `unknown`。
+- **所有"非替换语义"的记录写入必须走 `AgentStorage.mutate`**：队列外 read-spread-upsert 会让并发写互相擦除，且 `carryForwardRecordOnlyFields` 只能救 `undefined`、救不了陈旧的显式值。已改：metadata/label、live archive（`markRecordArchived`）、`archiveSnapshot`、`unarchiveSnapshot`、`setTitle`、session 的 attention 清理。`archivedAt` 的保留也从队列外移进 carry-forward。后续子项新增写路径时沿用此规则。
+- **owner 裁决确认的两处收窄**（reviewer 建议改、owner 接受现状）：① stored-but-not-live 的复用以 `AgentAlreadyExistsError`（携带记录）表达，而非 discriminated result——调用点仅 ITEM-4 一处且必然要写分支，改 result 类型会污染所有既有调用方；实际加载归 ITEM-4。② config 匹配只比 provider + cwd（agent 身份），不比 settings（可变配置，其变化不改变"是不是同一个 agent"）。
+- **遗留 nit**：`onAgentRecordChange` 的 API 注释仍笼统称"触发操作等待订阅者"，与 detached 的 `turn_settled` 不符（`architecture.md` 已精确区分）。reviewer 标为可接受，下次触碰该文件时顺手修正。
+
+### 经验（后续子项复用）
+
+- 动核心文件前**先在干净基线跑一次目标测试文件**再归因。本子项一度把 4 个失败当作预存在，实际全是自己引入的。
+- 跑回归时明确排除 `*.e2e.test.ts`：`*.real.e2e` / `*.local.e2e` 需要真实 provider 凭据或本地资源，混进来会产生 9 个与改动无关的失败。
+- 测试的失败注入点会随实现路径迁移而**静默失效**（本子项 cascade 测试原本 spy `upsert`，写路径改走 `mutate` 后测试假绿）。改写入路径时要检查现有注入点。

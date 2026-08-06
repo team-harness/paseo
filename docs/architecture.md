@@ -78,6 +78,7 @@ not retain non-Git directories.
 | `server/schedule/`              | Cron-based scheduled agents                                                   |
 | `server/loop-service.ts`        | Looping agent runs that retry until an exit condition                         |
 | `server/chat/`                  | Chat rooms for agent-to-agent and human-to-agent messaging                    |
+| `server/team/`                  | Team records: roster authority, per-file store, idempotent creation           |
 
 ### `packages/protocol` — Wire schemas and shared protocol types
 
@@ -299,6 +300,7 @@ initializing → idle ⇄ running
 `ManagedAgent` is a discriminated union over those lifecycle tags. Notes:
 
 - **AgentManager** is the source of truth for agent state and broadcasts updates to all subscribers
+- Durable record changes (archive, unarchive, label edits, deletion, settled turns) are a separate stream from the in-memory lifecycle events, reachable with `onAgentRecordChange`. Subscribers run one after another and each is isolated, so one that throws never fails the operation that told it. Archive, unarchive and label edits wait for their subscribers — that is what keeps schedule completion finishing before an archive returns. Turn settlement does not: it runs on its own persistence chain off the turn hot path, which is timing-sensitive, and is announced only once the outcome is durable. A subscriber needing its own ordering queues internally instead of blocking here. Deletion is announced explicitly because a removed record leaves no tombstone behind, and `assertAgentDeletable` lets a holder of a pre-allocated id refuse the delete before anything is torn down.
 - Timeline sequence allocation is append-only with epochs (each run starts a new epoch). The one
   permitted in-place enrichment adds a provider message id to the manager-owned row for an accepted
   prompt; it preserves the row's sequence, content, and timestamp. Storage uses sequence numbers for

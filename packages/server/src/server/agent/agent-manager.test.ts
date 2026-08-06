@@ -11,6 +11,7 @@ import {
   AgentManagerShuttingDownError,
   commandMayHaveChangedExternalState,
   type AgentManagerEvent,
+  type AgentRecordChange,
   type ManagedAgent,
 } from "./agent-manager.js";
 import { AgentStorage } from "./agent-storage.js";
@@ -3580,14 +3581,16 @@ test("updateAgentMetadata bumps updatedAt for stored agents", async () => {
   await storage.upsert(before);
   expect(manager.getAgent(snapshot.id)).toBeNull();
 
-  const upsertSpy = vi.spyOn(storage, "upsert");
+  // Metadata updates go through the write queue's read-modify-write, so a
+  // concurrent write cannot be carried away by a stale copy.
+  const mutateSpy = vi.spyOn(storage, "mutate");
 
   await manager.updateAgentMetadata(snapshot.id, {
     title: "Stored title",
     labels: { role: "worker" },
   });
 
-  expect(upsertSpy).toHaveBeenCalledTimes(1);
+  expect(mutateSpy).toHaveBeenCalledTimes(1);
   const after = await storage.get(snapshot.id);
   expect(after?.title).toBe("Stored title");
   expect(after?.labels).toEqual({ surface: "mobile", role: "worker" });
@@ -6684,7 +6687,7 @@ test("archiveAgent persists archivedAt and updatedAt before emitting closed stat
   expect(lifecycles.slice(-2)).toEqual(["idle", "closed"]);
 });
 
-test("fires onAgentArchived for archived parent and cascaded children", async () => {
+test("reports archived parent and cascaded children as record changes", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-archived-hook-cascade-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -6694,8 +6697,10 @@ test("fires onAgentArchived for archived parent and cascaded children", async ()
     registry: storage,
     logger,
   });
-  manager.setAgentArchivedCallback((agentId) => {
-    archivedIds.push(agentId);
+  manager.onAgentRecordChange((change) => {
+    if (change.kind === "archived") {
+      archivedIds.push(change.agentId);
+    }
   });
 
   const liveParent = await manager.createAgent(
@@ -6717,7 +6722,7 @@ test("fires onAgentArchived for archived parent and cascaded children", async ()
   expect([...archivedIds].sort()).toEqual([liveChild.id, liveParent.id].sort());
 });
 
-test("fires onAgentArchived for stored-only snapshot archives", async () => {
+test("reports stored-only snapshot archives as record changes", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-archived-hook-snapshot-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -6727,8 +6732,10 @@ test("fires onAgentArchived for stored-only snapshot archives", async () => {
     registry: storage,
     logger,
   });
-  manager.setAgentArchivedCallback((agentId) => {
-    archivedIds.push(agentId);
+  manager.onAgentRecordChange((change) => {
+    if (change.kind === "archived") {
+      archivedIds.push(change.agentId);
+    }
   });
 
   const storedOnly = await manager.createAgent(
@@ -6744,6 +6751,308 @@ test("fires onAgentArchived for stored-only snapshot archives", async () => {
 
   await manager.archiveSnapshot(storedOnly.id, new Date().toISOString());
   expect(archivedIds).toEqual([storedOnly.id]);
+});
+
+// DEC-2: a team pre-allocates agent ids before creating anything, and its
+// reconciler replays creation after a crash. Reusing a live id must fail loudly
+// rather than wipe the running agent's timeline.
+test("refuses to create an agent over an id that is already live", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-conflict-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  await expect(
+    manager.createAgent({ provider: "codex", cwd: workdir }, first.id, {
+      workspaceId: undefined,
+    }),
+  ).rejects.toThrow(/already/i);
+
+  // The original agent is untouched.
+  expect(manager.getAgent(first.id)?.id).toBe(first.id);
+});
+
+test("refuses to create an agent over an id that only exists in storage", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-conflict-stored-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+  await manager.closeAgent(first.id);
+
+  // Creating clears the id's timeline before it validates anything, so a stored
+  // record has to be checked up front rather than trampled.
+  await expect(
+    manager.createAgent({ provider: "codex", cwd: workdir }, first.id, {
+      workspaceId: undefined,
+    }),
+  ).rejects.toThrow(/already/i);
+
+  expect(await storage.get(first.id)).not.toBeNull();
+});
+
+test("returns the live agent when the same owner replays its plan", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-reuse-live-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const owner = { "paseo.team-id": "team-1" };
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+    labels: owner,
+  });
+
+  const again = await manager.createAgent({ provider: "codex", cwd: workdir }, first.id, {
+    workspaceId: undefined,
+    labels: owner,
+    reuseIfOwnedBy: owner,
+  });
+
+  expect(again.id).toBe(first.id);
+});
+
+test("refuses to reuse an id whose agent was built from a different config", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-reuse-config-"));
+  const otherdir = mkdtempSync(join(tmpdir(), "agent-manager-id-reuse-config-other-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const owner = { "paseo.team-id": "team-1" };
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+    labels: owner,
+  });
+
+  // Same owner, same id, different cwd: this describes a different agent, so
+  // handing back the existing one would silently ignore the request.
+  await expect(
+    manager.createAgent({ provider: "codex", cwd: otherdir }, first.id, {
+      workspaceId: undefined,
+      labels: owner,
+      reuseIfOwnedBy: owner,
+    }),
+  ).rejects.toThrow(/different provider or cwd/);
+
+  rmSync(otherdir, { recursive: true, force: true });
+});
+
+test("refuses to reuse an id that belongs to a different owner", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-reuse-foreign-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+    labels: { "paseo.team-id": "team-1" },
+  });
+
+  await expect(
+    manager.createAgent({ provider: "codex", cwd: workdir }, first.id, {
+      workspaceId: undefined,
+      reuseIfOwnedBy: { "paseo.team-id": "team-2" },
+    }),
+  ).rejects.toThrow(/belongs to someone else/);
+});
+
+test("serializes concurrent creates that name the same id", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-concurrent-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const agentId = randomUUID();
+  // Without serialization both calls pass the conflict check, build a session
+  // each, and the second registration replaces the first.
+  const results = await Promise.allSettled([
+    manager.createAgent({ provider: "codex", cwd: workdir }, agentId, {
+      workspaceId: undefined,
+    }),
+    manager.createAgent({ provider: "codex", cwd: workdir }, agentId, {
+      workspaceId: undefined,
+    }),
+  ]);
+
+  expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+  expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+});
+
+test("rehydrating a stored agent may reuse its id", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-rehydrate-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+  await manager.closeAgent(first.id);
+
+  const rehydrated = await manager.createAgent({ provider: "codex", cwd: workdir }, first.id, {
+    workspaceId: undefined,
+    existingRecord: "rehydrate",
+  });
+
+  expect(rehydrated.id).toBe(first.id);
+});
+
+// DEC-12: hard delete leaves no tombstone, so a team being created cannot tell
+// "member never made" from "member deleted". The guard removes that ambiguity at
+// the source instead of guessing afterwards.
+test("lets a guard veto deleting an agent, and reports why", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-deletion-guard-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  await expect(manager.assertAgentDeletable(agent.id)).resolves.toBeUndefined();
+
+  const release = manager.registerAgentDeletionGuard((agentId) =>
+    agentId === agent.id ? "it is being added to team team-1" : null,
+  );
+
+  await expect(manager.assertAgentDeletable(agent.id)).rejects.toThrow(
+    /being added to team team-1/,
+  );
+  await expect(manager.assertAgentDeletable("some-other-agent")).resolves.toBeUndefined();
+
+  release();
+  await expect(manager.assertAgentDeletable(agent.id)).resolves.toBeUndefined();
+});
+
+// The stream replaces a single-slot callback: teams and schedules both need to
+// hear about the same archive, and neither may break the other or the archive.
+test("delivers a record change to every subscriber and isolates their failures", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-record-change-fanout-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const seenByFirst: string[] = [];
+  const seenByLast: string[] = [];
+  manager.onAgentRecordChange(() => {
+    seenByFirst.push("first");
+  });
+  manager.onAgentRecordChange(() => {
+    throw new Error("subscriber blew up");
+  });
+  manager.onAgentRecordChange(async () => {
+    await Promise.resolve();
+    seenByLast.push("last");
+  });
+
+  const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  await expect(manager.archiveAgent(agent.id)).resolves.not.toThrow();
+
+  expect(seenByFirst).toEqual(["first"]);
+  expect(seenByLast).toEqual(["last"]);
+  expect((await storage.get(agent.id))?.archivedAt).toBeTruthy();
+});
+
+test("stops delivering after a subscriber unsubscribes", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-record-change-unsubscribe-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const seen: string[] = [];
+  const unsubscribe = manager.onAgentRecordChange((change) => {
+    seen.push(change.kind);
+  });
+
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+  await manager.archiveAgent(first.id);
+  unsubscribe();
+
+  const second = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+  await manager.archiveAgent(second.id);
+
+  expect(seen).toEqual(["archived"]);
+});
+
+// Archive is the only change the old callback reported. A team roster also has
+// to react to the other three, none of which had any notification at all.
+test("reports unarchive, label changes and deletion", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-record-change-kinds-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const changes: AgentRecordChange[] = [];
+  manager.onAgentRecordChange((change) => {
+    changes.push(change);
+  });
+
+  const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+  await manager.setLabels(agent.id, { "paseo.team-id": "team-1" });
+  await manager.closeAgent(agent.id);
+  await manager.archiveSnapshot(agent.id, new Date().toISOString());
+  await manager.unarchiveSnapshot(agent.id);
+  await manager.notifyAgentDeleted(agent.id);
+
+  expect(changes.map((change) => change.kind)).toEqual([
+    "labels_changed",
+    "archived",
+    "unarchived",
+    "deleted",
+  ]);
+  const labelChange = changes.find((change) => change.kind === "labels_changed");
+  expect(labelChange).toMatchObject({ labels: { "paseo.team-id": "team-1" } });
 });
 
 test("unarchiveSnapshot skips native provider unarchive for active records", async () => {
@@ -7129,11 +7438,19 @@ test("archiveAgent cascade surfaces partial child archive failures", async () =>
   let failingChildId: string | null = null;
 
   class FailingChildArchiveStorage extends AgentStorage {
-    override async upsert(record: StoredAgentRecord): Promise<void> {
-      if (record.id === failingChildId && record.archivedAt) {
-        throw new Error(`Injected cascade archive failure for ${record.id}`);
+    // Archive writes go through the queue's read-modify-write, so the injection
+    // point is the mutation rather than a whole-record upsert.
+    override async mutate<T extends StoredAgentRecord>(
+      agentId: string,
+      mutation: (current: StoredAgentRecord) => T,
+    ): Promise<T | null> {
+      if (agentId === failingChildId) {
+        const current = await this.get(agentId);
+        if (current && mutation(current).archivedAt) {
+          throw new Error(`Injected cascade archive failure for ${agentId}`);
+        }
       }
-      await super.upsert(record);
+      return super.mutate(agentId, mutation);
     }
   }
 
@@ -9501,4 +9818,43 @@ test("onWorkspaceStateMayHaveChanged is not called for running shell tool calls"
   await manager.runAgent(snapshot.id, { text: "merge it" });
 
   expect(onWorkspaceStateMayHaveChanged).not.toHaveBeenCalled();
+});
+
+// DEC-14: the team task ledger settles an assignment against the outcome of the
+// exact turn the provider accepted. It reads that fact from storage, so the fact
+// has to be on disk by the time the terminal event reaches a subscriber.
+test("persists the turn outcome before dispatching the terminal event", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-turn-outcome-"));
+  try {
+    const storage = new AgentStorage(join(workdir, "agents"), logger);
+    const manager = new AgentManager({
+      clients: { codex: new TestAgentClient() },
+      registry: storage,
+      logger,
+    });
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+
+    // Read storage from inside the subscriber: the ledger settles an assignment
+    // the moment it hears the turn ended, and must not be told before the fact
+    // it will read is durable. Converging afterwards would hide exactly that gap.
+    const seenBySubscriber: unknown[] = [];
+    manager.onAgentRecordChange(async (change) => {
+      if (change.kind === "turn_settled") {
+        seenBySubscriber.push(await storage.getTurnOutcome(change.agentId, change.turnId));
+      }
+    });
+
+    for await (const _event of manager.streamAgent(agent.id, "run the task")) {
+      // Drain the foreground stream so the turn settles.
+    }
+    await vi.waitFor(() => expect(seenBySubscriber).toHaveLength(1));
+
+    expect(seenBySubscriber[0]).toMatchObject({ turnId: "turn-1", outcome: "completed" });
+    // A settled turn leaves nothing in flight behind it.
+    expect((await storage.get(agent.id))?.activeTurn).toBeNull();
+  } finally {
+    rmSync(workdir, { recursive: true, force: true });
+  }
 });

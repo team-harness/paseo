@@ -2418,6 +2418,25 @@ export class Session {
   private async handleDeleteAgentRequest(agentId: string, requestId: string): Promise<void> {
     this.sessionLogger.info({ agentId }, `Deleting agent ${agentId} from registry`);
 
+    // Asked before anything is torn down: once the record is unlinked there is
+    // no tombstone, so a holder of this id could never tell the difference.
+    try {
+      await this.agentManager.assertAgentDeletable(agentId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.sessionLogger.warn({ err: error, agentId }, `Refused to delete agent ${agentId}`);
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId,
+          requestType: "delete_agent_request",
+          error: message,
+          code: "agent_delete_refused",
+        },
+      });
+      return;
+    }
+
     const knownWorkspaceId =
       this.agentManager.getAgent(agentId)?.workspaceId ??
       (await this.agentStorage.get(agentId))?.workspaceId ??
@@ -2442,6 +2461,9 @@ export class Session {
     try {
       await this.agentStorage.remove(agentId);
       await this.agentManager.deleteAgentState(agentId);
+      // The record leaves no tombstone behind, so anything tracking this agent
+      // hears about it here or not at all.
+      await this.agentManager.notifyAgentDeleted(agentId);
     } catch (error) {
       this.sessionLogger.error({ err: error, agentId }, `Failed to fully delete agent ${agentId}`);
     }
@@ -6109,14 +6131,18 @@ export class Session {
           ) {
             continue;
           }
-          const nextRecord: StoredAgentRecord = {
-            ...record,
+          // Cleared inside the write queue so an unrelated write landing in
+          // between is not carried away by the copy read above.
+          const nextRecord = await this.agentStorage.mutate(agentId, (current) => ({
+            ...current,
             updatedAt: new Date().toISOString(),
             requiresAttention: false,
             attentionReason: null,
             attentionTimestamp: null,
-          };
-          await this.agentStorage.upsert(nextRecord);
+          }));
+          if (!nextRecord) {
+            continue;
+          }
           const agent = this.buildStoredAgentPayload(nextRecord);
           const project = await this.buildProjectPlacementForWorkspace(workspace);
           this.emit({

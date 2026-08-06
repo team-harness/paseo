@@ -5388,3 +5388,77 @@ describe("agent config setters", () => {
     });
   });
 });
+
+// DEC-12: hard delete unlinks the record with no tombstone, so a refusal has to
+// happen before the first side effect rather than be detected afterwards.
+describe("delete_agent_request deletion guard", () => {
+  const agentId = "11111111-1111-4111-8111-111111111111";
+
+  test("refuses the delete without touching storage or the runtime", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const remove = vi.fn(async () => undefined);
+    const closeAgent = vi.fn(async () => undefined);
+    const session = createSessionForTest({
+      messages,
+      agentManager: {
+        getAgent: vi.fn(() => ({ id: agentId, provider: "codex", lifecycle: "idle" })),
+        assertAgentDeletable: vi.fn(async () => {
+          throw new Error(`Agent ${agentId} cannot be deleted: it is joining team team-1`);
+        }),
+        closeAgent,
+        deleteAgentState: vi.fn(async () => undefined),
+        notifyAgentDeleted: vi.fn(async () => undefined),
+        flush: vi.fn(async () => undefined),
+      },
+      agentStorage: { get: vi.fn(async () => null), remove },
+    });
+
+    await session.handleMessage({
+      type: "delete_agent_request",
+      agentId,
+      requestId: "delete-refused",
+    });
+
+    expect(remove).not.toHaveBeenCalled();
+    expect(closeAgent).not.toHaveBeenCalled();
+    expect(messages).toEqual([
+      {
+        type: "rpc_error",
+        payload: {
+          requestId: "delete-refused",
+          requestType: "delete_agent_request",
+          error: `Agent ${agentId} cannot be deleted: it is joining team team-1`,
+          code: "agent_delete_refused",
+        },
+      },
+    ]);
+  });
+
+  test("deletes and announces it when no guard objects", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const remove = vi.fn(async () => undefined);
+    const notifyAgentDeleted = vi.fn(async () => undefined);
+    const session = createSessionForTest({
+      messages,
+      agentManager: {
+        getAgent: vi.fn(() => ({ id: agentId, provider: "codex", lifecycle: "idle" })),
+        assertAgentDeletable: vi.fn(async () => undefined),
+        closeAgent: vi.fn(async () => undefined),
+        deleteAgentState: vi.fn(async () => undefined),
+        notifyAgentDeleted,
+        flush: vi.fn(async () => undefined),
+      },
+      agentStorage: { get: vi.fn(async () => null), remove },
+    });
+
+    await session.handleMessage({
+      type: "delete_agent_request",
+      agentId,
+      requestId: "delete-ok",
+    });
+
+    expect(remove).toHaveBeenCalledWith(agentId);
+    expect(notifyAgentDeleted).toHaveBeenCalledWith(agentId);
+    expect(messages.some((message) => message.type === "agent_deleted")).toBe(true);
+  });
+});

@@ -5,7 +5,7 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { promises as fs } from "node:fs";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
-import { AgentStorage } from "./agent-storage.js";
+import { AgentStorage, type StoredAgentRecord } from "./agent-storage.js";
 import { buildConfigOverrides, buildSessionConfig } from "../persistence-hooks.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type {
@@ -528,5 +528,242 @@ describe("AgentStorage", () => {
     const afterReload = new AgentStorage(storagePath, logger);
     const after = await afterReload.list();
     expect(after.some((r) => r.id === agentId)).toBe(false);
+  });
+
+  // DEC-14: the team task ledger settles an assignment against the outcome of the
+  // exact turn the provider accepted. Without a queryable per-turn fact it cannot
+  // tell "still running" from "finished while the daemon was down".
+  describe("per-turn outcomes", () => {
+    const rename = (current: StoredAgentRecord): StoredAgentRecord => ({
+      ...current,
+      title: "Renamed",
+    });
+
+    test("records an outcome and answers a lookup by turn id", async () => {
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+
+      await storage.recordTurnOutcome("agent-1", {
+        turnId: "turn-1",
+        outcome: "completed",
+        endedAt: "2026-08-06T10:00:00.000Z",
+      });
+
+      expect(await storage.getTurnOutcome("agent-1", "turn-1")).toEqual({
+        turnId: "turn-1",
+        outcome: "completed",
+        endedAt: "2026-08-06T10:00:00.000Z",
+      });
+      expect(await storage.getTurnOutcome("agent-1", "turn-unknown")).toBeNull();
+    });
+
+    test("keeps the newest outcomes when the cap is exceeded", async () => {
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+
+      for (let index = 0; index < 105; index += 1) {
+        await storage.recordTurnOutcome("agent-1", {
+          turnId: `turn-${index}`,
+          outcome: "completed",
+          endedAt: "2026-08-06T10:00:00.000Z",
+        });
+      }
+
+      const record = await storage.get("agent-1");
+      expect(record?.turnOutcomes).toHaveLength(100);
+      expect(await storage.getTurnOutcome("agent-1", "turn-104")).not.toBeNull();
+      // Rolled out rather than kept forever; the ledger settles these as "unknown".
+      expect(await storage.getTurnOutcome("agent-1", "turn-4")).toBeNull();
+    });
+
+    test("reports whether the active turn marker reached the record", async () => {
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+
+      expect(
+        await storage.setActiveTurn("agent-1", {
+          turnId: "turn-1",
+          startedAt: "2026-08-06T10:00:00.000Z",
+        }),
+      ).toBe(true);
+      // A barrier that reported success here would let a reader conclude the
+      // turn is unrecoverable from a record that was simply never written.
+      expect(
+        await storage.setActiveTurn("agent-missing", {
+          turnId: "turn-1",
+          startedAt: "2026-08-06T10:00:00.000Z",
+        }),
+      ).toBe(false);
+      expect(
+        await storage.recordTurnOutcome("agent-missing", {
+          turnId: "turn-1",
+          outcome: "completed",
+          endedAt: "2026-08-06T10:00:05.000Z",
+        }),
+      ).toBe(false);
+    });
+
+    test("a stale full-record write cannot resurrect a settled turn", async () => {
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+      await storage.setActiveTurn("agent-1", {
+        turnId: "turn-1",
+        startedAt: "2026-08-06T10:00:00.000Z",
+      });
+
+      // What a read-spread-upsert caller holds: a copy taken before the turn
+      // settled, carrying the old active turn as an explicit value.
+      const stale = await storage.get("agent-1");
+      expect(stale?.activeTurn?.turnId).toBe("turn-1");
+
+      await storage.recordTurnOutcome("agent-1", {
+        turnId: "turn-1",
+        outcome: "completed",
+        endedAt: "2026-08-06T10:00:05.000Z",
+      });
+      await storage.mutate("agent-1", rename);
+
+      const after = await storage.get("agent-1");
+      expect(after?.title).toBe("Renamed");
+      expect(after?.activeTurn).toBeNull();
+      expect(await storage.getTurnOutcome("agent-1", "turn-1")).not.toBeNull();
+    });
+
+    test("an unrelated metadata update keeps a concurrently recorded outcome", async () => {
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+
+      await Promise.all([
+        storage.recordTurnOutcome("agent-1", {
+          turnId: "turn-1",
+          outcome: "completed",
+          endedAt: "2026-08-06T10:00:00.000Z",
+        }),
+        storage.mutate("agent-1", rename),
+      ]);
+
+      expect((await storage.get("agent-1"))?.title).toBe("Renamed");
+      expect(await storage.getTurnOutcome("agent-1", "turn-1")).not.toBeNull();
+    });
+
+    test("keeps both outcomes when consecutive turns settle concurrently", async () => {
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+
+      // Two turns settling back to back: read-modify-write outside the queue
+      // would let the later write carry the earlier turn's absence forward.
+      await Promise.all([
+        storage.recordTurnOutcome("agent-1", {
+          turnId: "turn-1",
+          outcome: "completed",
+          endedAt: "2026-08-06T10:00:00.000Z",
+        }),
+        storage.setActiveTurn("agent-1", {
+          turnId: "turn-2",
+          startedAt: "2026-08-06T10:00:01.000Z",
+        }),
+      ]);
+
+      expect(await storage.getTurnOutcome("agent-1", "turn-1")).not.toBeNull();
+      expect((await storage.get("agent-1"))?.activeTurn?.turnId).toBe("turn-2");
+    });
+
+    test("survives an unrelated snapshot flush", async () => {
+      const agent = createManagedAgent({ id: "agent-1", cwd: "/tmp/project" });
+      await storage.applySnapshot(agent);
+      await storage.recordTurnOutcome("agent-1", {
+        turnId: "turn-1",
+        outcome: "failed",
+        endedAt: "2026-08-06T10:00:00.000Z",
+      });
+
+      // A ManagedAgent snapshot knows nothing about turn outcomes, so a naive
+      // projection would wipe them on the next ordinary persist.
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+
+      expect(await storage.getTurnOutcome("agent-1", "turn-1")).toEqual({
+        turnId: "turn-1",
+        outcome: "failed",
+        endedAt: "2026-08-06T10:00:00.000Z",
+      });
+    });
+
+    test("reads a record written before turn outcomes existed", async () => {
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+      const record = await storage.get("agent-1");
+      expect(record?.turnOutcomes).toBeUndefined();
+      expect(await storage.getTurnOutcome("agent-1", "turn-1")).toBeNull();
+    });
+  });
+
+  describe("active turn identity", () => {
+    test("persists the active turn with the daemon run that owns it", async () => {
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+
+      await storage.setActiveTurn("agent-1", {
+        turnId: "turn-1",
+        startedAt: "2026-08-06T10:00:00.000Z",
+      });
+
+      const record = await storage.get("agent-1");
+      expect(record?.activeTurn).toEqual({
+        turnId: "turn-1",
+        startedAt: "2026-08-06T10:00:00.000Z",
+        daemonRunId: storage.runId,
+      });
+    });
+
+    test("clears the active turn in the same write that records its outcome", async () => {
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+      await storage.setActiveTurn("agent-1", {
+        turnId: "turn-1",
+        startedAt: "2026-08-06T10:00:00.000Z",
+      });
+
+      await storage.recordTurnOutcome("agent-1", {
+        turnId: "turn-1",
+        outcome: "completed",
+        endedAt: "2026-08-06T10:00:05.000Z",
+      });
+
+      const record = await storage.get("agent-1");
+      expect(record?.activeTurn).toBeNull();
+      expect(await storage.getTurnOutcome("agent-1", "turn-1")).not.toBeNull();
+    });
+
+    test("drops an active turn left behind by a previous daemon run", async () => {
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+      await storage.setActiveTurn("agent-1", {
+        turnId: "turn-1",
+        startedAt: "2026-08-06T10:00:00.000Z",
+      });
+
+      // Hard kill: the provider process died with the daemon, so this turn can
+      // never finish. A fresh run must not wait on it forever.
+      const nextRun = new AgentStorage(storagePath, logger);
+      await nextRun.initialize();
+
+      const record = await nextRun.get("agent-1");
+      expect(record?.activeTurn).toBeNull();
+      expect(nextRun.runId).not.toBe(storage.runId);
+    });
+
+    test("keeps an active turn belonging to the current run", async () => {
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+      await storage.setActiveTurn("agent-1", {
+        turnId: "turn-1",
+        startedAt: "2026-08-06T10:00:00.000Z",
+      });
+
+      await storage.initialize();
+
+      expect((await storage.get("agent-1"))?.activeTurn?.turnId).toBe("turn-1");
+    });
+
+    test("survives an unrelated snapshot flush", async () => {
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+      await storage.setActiveTurn("agent-1", {
+        turnId: "turn-1",
+        startedAt: "2026-08-06T10:00:00.000Z",
+      });
+
+      await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
+
+      expect((await storage.get("agent-1"))?.activeTurn?.turnId).toBe("turn-1");
+    });
   });
 });
