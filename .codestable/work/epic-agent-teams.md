@@ -171,9 +171,9 @@ ITEM-4 起遵守：
 5. **新功能测试写新文件**（`session.team.test.ts` 之类），不要往 `session.test.ts` 塞——它是 upstream 最热的文件。
 6. **通用性修复推回 upstream**：路径穿越、cursor 重复、mention 打断 running agent 都是 upstream 自身的 bug，推回去才能永久消除冲突源。
 
-## ITEM-4 · TeamService（核心已完成，待评审）
+## ITEM-4 · TeamService（实现完成，待第九轮复核）
 
-七个切片，118 个测试，全部在 `packages/server/src/server/team/` 下，`session.ts` 零改动。
+十二个切片，200 个测试在 `packages/server/src/server/team/` 下。
 
 | 提交        | 内容                                                                                                                |
 | ----------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -192,12 +192,36 @@ ITEM-4 起遵守：
 - **对账器快照陈旧是真 bug**：`evictAgentsThatCameBack` 原先用入口快照判断，会覆盖同一趟里前面步骤刚关闭的 entry。改为重新读取。
 - **变异测试验证了七处不变式**：派发门控、running turn 不结算、容量预留、fence 取消、wire 投影、对账 lead 缺失不重建、对账 eviction 顺序。每处移除后对应测试都转红。
 
-### 已知缺口（未接线，非缺陷）
+### 收尾三批（`1788d2a05` 起）
 
-- 未接入 `bootstrap.ts`，gateway 没有生产实现。
-- `assign_task` / `team_status` / chat agent 工具未建。
-- 60s 兜底扫描未调度；`TeamPump.run` 返回的就是它要挂的信号。
-- 契约列出的崩溃窗口未全覆盖。
+| 内容           | 落点                                                                                      |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| agent 工具     | `team-tools.ts`——`assign_task` / `team_status` / 三个 chat 工具 + `create_agent` 招募钩子 |
+| 兜底扫描       | `team-scheduler.ts`——只在"还有未决"时排下一趟，空账本不留定时器                           |
+| 组合与接线     | `team-runtime.ts`——网关、事件订阅、删除守卫、工具注册；daemon 侧只多一次调用              |
+| 三态屏障       | `team-turn-lookup.ts`——判定前先 await `whenTurnStateSettled`，reject 则不结算             |
+| 真组件集成测试 | `team-runtime.test.ts`——真 AgentManager / AgentStorage / ChatService                      |
+
+**上游触点**：`bootstrap.ts` +1 次调用、`session.ts` 一行分发 + 一个 emit、`websocket-server.ts` 追加末位参数、`paseo-tools.ts` 三处（schema 扩展、钩子调用、`registerExtraTools` 通用缝）。
+
+### 第八轮复核：8 条 blocker，全在 runtime 网关
+
+新 reviewer、新血统。全部属实并已修复：
+
+1. **标签键自造**——runtime 里另写了一套 `paseo.team.id`，protocol 是 `paseo.team-id`。幂等创建认不出自己建的 agent，对账在首次启动就给每个成员补上一对假标签。
+2. **`archiveAgent` / `setLabels` 要求已加载**——成员是懒加载的，重启后归档在第一个成员上抛错，team 永久卡在 `archiving`。改走 stored-capable 路径。
+3. **标签是 patch**——删除要写 `null`，写子集只会合并，什么都没删掉。
+4. **turn id 读早了**——`startAgentRun` 返回时 turn 还没开；读到 null 被泵当作"provider 拒绝"，同一 assignment 每趟重派，成员每趟真执行一次。
+5. **delivery 确认信号取自同一字段**——要么永不确认（lead 反复读到第一批、再没有第二批），要么在静默 no-op 后确认（丢完成通报，违反"无丢失"）。
+6. **成员身份按"出现在 roster"判定**——离队的 agent 仍能读写原 team 房间，且再也建不了 agent。`removed` 是历史。
+7. **`create_agent` 宣传了 `teamRole`/`inheritTeam` 又拒收**——普通路径是 strict 解析。在委派缝上剥离。
+8. **事件回调死锁**——发射方 await 监听器，而监听器触发的 team 操作要拿 per-team 锁，归档 team 与自己死锁。改为不 await。
+
+另两条 should-fix 同批修复：pass 进行中到达的触发被丢弃（改为让该趟再走一圈）；泵在首次对账完成前就可达（加 `reconciled` 闸门）。
+
+再一批 should-fix：`features.teams` 从未广播；创建/退队的 `team.update` 只发给发起方；招募没写 parent label；assignee 离队后 queued 任务永远悬挂（改为结算 `canceled`）；唤醒规则两份实现合一，stored 分支改问 `activeTurn` 而非会陈旧的 `lastStatus`。并移除了契约没要求的"role 必须唯一"。
+
+**教训**：这 8 条全部藏在 `team-runtime.ts` 里，而该文件当时零测试——理由是"它只是组合，正确性靠被组合的单元"。不成立。网关不是组合，是两份契约之间的适配层，而"方法没做到接口承诺的事"对提供该方法的假替身完全不可见。补的 `team-runtime.test.ts` 用真组件跑，变异验证四处（归档路径、标签清除、turn 屏障、创建复用）全部转红。
 
 ### 独立变更评审（codex，同一 reviewer，四轮）
 
@@ -221,4 +245,4 @@ ITEM-4 起遵守：
 
 ### 待办
 
-第四轮复核进行中。通过后：agent 工具（`assign_task`/`team_status`/chat 工具）+ bootstrap 接线 → ITEM-4 里程碑 → ITEM-5。
+第九轮复核（针对第八轮修复）。通过后 → ITEM-4 里程碑 → ITEM-5（CLI + daemon E2E）。
