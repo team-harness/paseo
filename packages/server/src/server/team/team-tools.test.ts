@@ -83,6 +83,11 @@ class StubRoster implements TeamToolsRoster {
     ["member-1", "idle"],
   ]);
 
+  /**
+   * Returns the team an agent appears on, `removed` or not — matching the real
+   * roster lookup's job. Deciding what a `removed` entry means is the tools',
+   * so a stub that filtered here would hide whether they do it.
+   */
   async findTeamForAgent(agentId: string) {
     if (!this.team) return null;
     const isMember = this.team.members.some((member) => member.agentId === agentId);
@@ -276,6 +281,18 @@ describe("team agent tools", () => {
 
       expect(tools.size).toBe(0);
     });
+
+    test("shuts out a member that has been removed", async () => {
+      install("gone-1");
+
+      // `gone-1` is still on the roster, as history. Membership is what the
+      // entry says, not whether the id appears — otherwise leaving a team would
+      // not take away access to its room.
+      expect((await call("team_status", {})).isError).toBe(true);
+      expect((await call("chat_read", {})).isError).toBe(true);
+      expect((await call("chat_post", { body: "still here" })).isError).toBe(true);
+      expect(chat.rooms.get("room-1")?.messages).toEqual([]);
+    });
   });
 });
 
@@ -368,6 +385,16 @@ describe("create_agent as team recruitment", () => {
     install("stranger");
 
     expect(await hook.handleCreateAgent({ provider: "codex", initialPrompt: "help" })).toBeNull();
+  });
+
+  test("stays out of the way of a member that has been removed", async () => {
+    install("gone-1");
+
+    // Not a recruitment, and not a refusal either: an ex-member creating an
+    // agent is doing the ordinary thing, and diverting it here would leave it
+    // unable to create one at all.
+    expect(await hook.handleCreateAgent({ provider: "codex", initialPrompt: "help" })).toBeNull();
+    expect(recruited).toEqual([]);
   });
 
   test("stays out of the way outside an agent session", async () => {

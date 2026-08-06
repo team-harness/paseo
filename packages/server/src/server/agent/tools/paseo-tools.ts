@@ -92,6 +92,16 @@ import type {
   PaseoToolResult,
 } from "./types.js";
 
+function withoutTeamKeys(args: unknown): unknown {
+  if (typeof args !== "object" || args === null) return args;
+  const {
+    teamRole: _teamRole,
+    inheritTeam: _inheritTeam,
+    ...rest
+  } = args as Record<string, unknown>;
+  return rest;
+}
+
 /** How a feature module adds a tool to the catalog. */
 export type RegisterPaseoTool = (
   name: string,
@@ -1434,7 +1444,11 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       const recruited = await options.teamRecruitment?.handleCreateAgent(args);
       if (recruited) return recruited;
 
-      const resolvedArgs = await resolveCreateAgentToolArgs(args);
+      // The ordinary path parses strictly, so the keys the team extension added
+      // to the advertised schema have to come back off. A caller that opted out
+      // with `inheritTeam: false` would otherwise be rejected for using the
+      // field the schema told it about.
+      const resolvedArgs = await resolveCreateAgentToolArgs(withoutTeamKeys(args));
       const { parsedArgs, worktree } = resolvedArgs;
       let requestedBackground: boolean;
       let notifyOnFinish: boolean;

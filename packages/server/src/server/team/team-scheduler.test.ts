@@ -78,6 +78,39 @@ describe("the fallback sweep", () => {
     expect(passes.length).toBe(before + 1);
   });
 
+  test("runs again for a trigger that arrived while a pass was running", async () => {
+    let releasePass = () => {};
+    const passStarted = new Promise<void>((resolve) => {
+      scheduler = new TeamScheduler({
+        logger,
+        listActiveTeams: async () => [],
+        runPass: async (input) => {
+          passes.push(input.teamId);
+          if (passes.length === 1) {
+            resolve();
+            await new Promise<void>((release) => {
+              releasePass = release;
+            });
+          }
+          // The work this pass reported on is done; the second trigger is about
+          // something it never saw.
+          return false;
+        },
+      });
+    });
+
+    const first = scheduler.kick({ teamId: "team-1", leadAgentId: "lead-1" });
+    await passStarted;
+    const second = scheduler.kick({ teamId: "team-1", leadAgentId: "lead-1" });
+    releasePass();
+    await Promise.all([first, second]);
+
+    // A pass reads the ledger at a point in time. Work recorded after that read
+    // is invisible to it, so a trigger it did not see has to produce its own
+    // pass — otherwise the assignment sits queued with nothing coming for it.
+    expect(passes).toEqual(["team-1", "team-1"]);
+  });
+
   test("sweeps every team at startup", async () => {
     outstanding.set("team-1", 1);
     outstanding.set("team-2", 1);

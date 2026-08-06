@@ -34,8 +34,8 @@ export class TeamScheduler {
   private readonly options: TeamSchedulerOptions;
   private readonly logger: Logger;
   private readonly timers = new Map<string, NodeJS.Timeout>();
-  /** Teams with a pass in flight — a second trigger joins it instead of stacking. */
-  private readonly inFlight = new Set<string>();
+  /** Teams with a pass in flight — a second trigger makes it go round again. */
+  private readonly inFlight = new Map<string, { rerun: boolean; pass: Promise<void> }>();
   private stopped = false;
 
   constructor(options: TeamSchedulerOptions) {
@@ -60,23 +60,50 @@ export class TeamScheduler {
   /** Runs a pass now, and keeps sweeping while the team still has work. */
   async kick(input: { teamId: string; leadAgentId: string }): Promise<void> {
     if (this.stopped) return;
-    // A pass already running will see anything this trigger is about — it reads
-    // the ledger fresh — and it reschedules itself, so joining it is enough.
-    if (this.inFlight.has(input.teamId)) return;
+    // A pass reads the ledger at one point in time, so it cannot be assumed to
+    // have seen what this trigger is about. Rather than start a second pass
+    // over the same team, the running one is asked to go round again.
+    const running = this.inFlight.get(input.teamId);
+    if (running) {
+      running.rerun = true;
+      await running.pass;
+      return;
+    }
 
-    this.inFlight.add(input.teamId);
-    let outstanding: boolean;
+    const entry = { rerun: false, pass: Promise.resolve() };
+    entry.pass = this.runUntilSettled(input, entry);
+    this.inFlight.set(input.teamId, entry);
     try {
-      outstanding = await this.options.runPass(input);
-    } catch (error) {
-      // A pass that blew up says nothing about whether work remains. Assuming
-      // it drained would strand that work until an unrelated event woke the
-      // team, so the sweep keeps its appointment.
-      this.logger.warn({ err: error, teamId: input.teamId }, "Team pump pass failed");
-      outstanding = true;
+      await entry.pass;
     } finally {
       this.inFlight.delete(input.teamId);
     }
+  }
+
+  /**
+   * Passes over one team until no trigger arrived during the last one.
+   *
+   * Without the repeat, a trigger landing between a pass's last read and its
+   * return is lost: the pass reports "nothing outstanding", no sweep is
+   * scheduled, and the work it never saw waits for an unrelated event.
+   */
+  private async runUntilSettled(
+    input: { teamId: string; leadAgentId: string },
+    entry: { rerun: boolean },
+  ): Promise<void> {
+    let outstanding: boolean;
+    do {
+      entry.rerun = false;
+      try {
+        outstanding = await this.options.runPass(input);
+      } catch (error) {
+        // A pass that blew up says nothing about whether work remains. Assuming
+        // it drained would strand that work until an unrelated event woke the
+        // team, so the sweep keeps its appointment.
+        this.logger.warn({ err: error, teamId: input.teamId }, "Team pump pass failed");
+        outstanding = true;
+      }
+    } while (entry.rerun && !this.stopped);
 
     if (!outstanding || this.stopped) return;
     this.schedule(input);

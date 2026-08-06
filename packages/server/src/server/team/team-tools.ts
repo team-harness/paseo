@@ -112,7 +112,11 @@ export function registerTeamTools(options: RegisterTeamToolsOptions): void {
     { ok: true; team: TeamToolsTeamView } | { ok: false; result: PaseoToolResult }
   > {
     const team = await roster.findTeamForAgent(callerAgentId!);
-    if (!team) {
+    const entry = team?.members.find((member) => member.agentId === callerAgentId);
+    // A `removed` entry is history, not membership. An agent that left, was
+    // evicted, or was hard-deleted must not keep reading and writing the room
+    // of the team it is no longer in.
+    if (!team || !entry || entry.state === "removed") {
       return { ok: false, result: refuse("You are not a member of a team.") };
     }
     return { ok: true, team };
@@ -383,7 +387,10 @@ export function createTeamRecruitmentHook(
       if (parsed.data.inheritTeam === false) return null;
 
       const team = await roster.findTeamForAgent(callerAgentId);
-      if (!team) return null;
+      const entry = team?.members.find((member) => member.agentId === callerAgentId);
+      // Not a member any more: this is an ordinary `create_agent` again, not a
+      // recruitment into a team the caller has left.
+      if (!team || !entry || entry.state === "removed") return null;
 
       if (team.lifecycle !== "active") {
         return refuse(`This team is ${team.lifecycle} and is no longer recruiting.`);

@@ -490,7 +490,8 @@ type ActiveManagedAgent =
   | ManagedAgentError;
 
 type LiveManagedAgent = ActiveManagedAgent;
-type AgentLabelPatch = Record<string, string | null>;
+/** `null` removes the label; a string sets it. Absent keys are left alone. */
+export type AgentLabelPatch = Record<string, string | null>;
 
 function attachManagedTurnIdentity(
   agent: ActiveManagedAgent,
@@ -529,7 +530,7 @@ interface WriteLabelsResult {
   live: boolean;
 }
 
-interface AgentMetadataPatch {
+export interface AgentMetadataPatch {
   title?: string;
   labels?: AgentLabelPatch;
 }
@@ -2116,13 +2117,7 @@ export class AgentManager {
     await this.unarchiveSnapshot(matched.id);
   }
 
-  async updateAgentMetadata(
-    agentId: string,
-    updates: {
-      title?: string;
-      labels?: Record<string, string>;
-    },
-  ): Promise<void> {
+  async updateAgentMetadata(agentId: string, updates: AgentMetadataPatch): Promise<void> {
     const liveAgent = this.getAgent(agentId);
     if (liveAgent) {
       if (updates.title) {
