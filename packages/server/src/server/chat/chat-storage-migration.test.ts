@@ -10,9 +10,9 @@ const logger = createTestLogger();
 
 /**
  * DEC-9. The invariant that makes this safe: nothing writes the new layout
- * before the marker lands, so a per-room file found beforehand can only have
- * come from an interrupted migration of the very same data. "Already there,
- * skip it" is therefore exact, and no newer-wins comparison is needed.
+ * before the marker lands. While the legacy file is still in place it is the
+ * only authority, so every room file is rewritten from it and no newer-wins
+ * comparison is needed — the legacy copy is always the newer one.
  */
 describe("chat store migration", () => {
   let home: string;
@@ -154,6 +154,44 @@ describe("chat store migration", () => {
       "msg-2",
     ]);
     expect((await service.readMessages({ room: "room-2" })).map((m) => m.id)).toEqual(["msg-3"]);
+  });
+
+  // The partial room file is this migration's own earlier attempt, but the
+  // legacy file it was made from has moved on: the user downgraded to a daemon
+  // that still writes the legacy layout, chatted, then upgraded again. Before
+  // the marker, the legacy file is the only authority.
+  test("picks up messages the legacy file gained since a partial migration", async () => {
+    const laterMessage = {
+      id: "msg-4",
+      roomId: "room-1",
+      authorAgentId: "agent-lead",
+      body: "written while downgraded",
+      replyToMessageId: null,
+      mentionAgentIds: [],
+      createdAt: "2026-08-06T11:00:00.000Z",
+    };
+    await writeLegacy({
+      ...legacyPayload,
+      messages: [...legacyPayload.messages, laterMessage],
+    });
+    await mkdir(join(chatDir, "rooms"), { recursive: true });
+    await writeFile(
+      join(chatDir, "rooms", "room-1.json"),
+      JSON.stringify({
+        room: legacyPayload.rooms[0],
+        messages: legacyPayload.messages.slice(0, 2),
+      }),
+      "utf8",
+    );
+
+    const service = createService();
+    await service.initialize();
+
+    expect((await service.readMessages({ room: "room-1" })).map((m) => m.id)).toEqual([
+      "msg-1",
+      "msg-2",
+      "msg-4",
+    ]);
   });
 
   test("finishes a migration interrupted after the rename but before the marker", async () => {

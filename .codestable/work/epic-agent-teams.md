@@ -88,21 +88,48 @@ change review：1 个阶段 3 轮（上限），reviewer = Paseo agent `dddac5db
 - 跑回归时明确排除 `*.e2e.test.ts`：`*.real.e2e` / `*.local.e2e` 需要真实 provider 凭据或本地资源，混进来会产生 9 个与改动无关的失败。
 - 测试的失败注入点会随实现路径迁移而**静默失效**（本子项 cascade 测试原本 spy `upsert`，写路径改走 `mutate` 后测试假绿）。改写入路径时要检查现有注入点。
 
-## ITEM-3 · chat 改造（进行中）
+## ITEM-3 · chat 改造（实现完成，待变更评审）
 
 已完成并提交（均为 checkpoint，非里程碑）：
 
 - `6ae83dc42` 分文件存储 + DEC-9 迁移状态机。`$PASEO_HOME/chat/rooms/{room-id}.json` + `.migrated` marker，per-room 写队列；迁移顺序 写全部 room → rename `.bak` → 写 marker，7 个场景测试（全新安装、完整迁移、第 k 个房间后中断、rename 后 marker 前中断、marker 已存在时 legacy 重现、重复启动、损坏 legacy）。
 - `cdfb871d9` author 模型 + `post()` 写入边界 + `ChatMentionNotifier` 端口。旧消息读回按 agent 归属；人类作者不进 `listRoomPosterAgentIds`（其 id 是 clientId，交给 mention fanout 会去找不存在的 agent）。
 
-剩余三块，按此顺序：
+已完成的后续提交：
 
-1. **切 handler 到 `post()`**（下一步）。卡点：`chat-schedule-loop-session.ts` 的 fanout 编排要搬进 service 的 notifier，而 notifier 需要 `resolveAgentIdentifier` —— 它是 `session.ts:4118` 的私有方法（约 50 行，id 前缀/名称模糊匹配），只依赖 agentStorage/agentManager，应抽成模块函数供两处共用。notifier 在 `bootstrap.ts` 注入：chatService 于 :809 构造、agentManager 于 :840，顺序决定了要用 setter 而非构造参数。曾起过头并已 `git restore` 回退，当前行为与改动前一致，无半迁移状态。
-2. 房间所有权（`ownerKind`/`ownerId`/`displayName`）+ 指定 id/owner 幂等创建 + owner 专用清理接口；通用 `chat/delete` 拒绝有 owner 的房间。
-3. 订阅协议：`chat.room.subscribe/unsubscribe` + `chat.room.message_posted` 广播，原子首屏 + cursor + `afterCursor`/`hasMore`（语义已在 ITEM-1 冻结），订阅按物理 socket 保存与清理。
+- `f779113eb` mention fanout 入 service。`ChatMentionHandler` 两阶段：`validate` 在写入前可拒（mention 风暴仍是拒绝，不是"存了但没人通知"），`notify` 在写入后（此时消息已存在，失败不能告诉作者没发出去）。`resolveAgentIdentifier` 从 Session 私有方法抽成 `agent/resolve-agent-identifier.ts` 模块，session 与 fanout 共用，行为不变。
+- `ff29f8c25` 房间所有权。指定 id/owner 幂等创建两分支（同 owner 复用 / 异 owner 拒绝，无 owner 的占用 id 也拒绝）、owner 专用 `discardOwnedRoom`（已不存在视为成功）、通用 delete 拒绝有 owner 的房间。
+- `71b7477ad` service 层订阅seam：`readRoomPage`（page + cursor + hasMore）与 `onRoomMessage`；抛异常的订阅者既不丢消息也不阻塞其他订阅者。
+- `240a9c25c` session 层订阅。按物理 socket 保存与清理，广播按 socket 门控 `CLIENT_CAPS.chatRoomSubscriptions`（同一 session 可挂不同版本的 socket）。订阅先注册再发首屏响应，关掉两者之间的窗口。dispatch 挂在 `dispatchAgentTimelineMessage`——其余 chat dispatcher 不接 `source`。
+- `cfd3886a7` DEC-10 唤醒不打断 + 分文件损坏隔离。
+
+### DEC-10 的实际状态（原实现违反）
+
+接手时 mention 走 `sendPromptToAgent` 默认 `replaceRunning: true`，会取消 running agent 正在跑的 turn；`isChatMentionTargetEligible` 只排除 archived/error/internal，**不含 running**。两处都改：
+
+- 新增 `isChatMentionTargetWakeable`——live 优先（stored 记录是 turn 边界的快照，可能滞后两个方向），无 live entry 即无内存会话，正是该唤醒的那个。
+- `sendPromptToAgent` 新增 `replaceRunning` 参数（默认 true 保持既有行为），mention 是唯一传 false 的调用方，关掉"判定后 turn 才启动"的竞态。
 
 ### 实现决策
 
 - **方法名 `post` 而非设计文档的 `postMessage`**：lint 规则 `unicorn/require-post-message-target-origin` 把任何该名字的调用当作 `window.postMessage` 报错（6 处）。重命名比每个调用点加 disable 干净。
 - **`dispatchMessage` 保留为 deprecated 兼容入口**：现有调用方（session handler、schedule/loop 通知）仍在用；`post` 是新的唯一写入边界，切完 handler 后再评估能否移除。
 - **notifier 失败不影响投递**：消息已在房间里，让 post 失败会告诉作者"没发出去"，比漏一次通知更糟。
+
+### 验收要点覆盖
+
+| 验收点                               | 测试落点                                                                                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| subscribe 首屏 + cursor 增量无漏无重 | `chat-service.test.ts` "room pages and live subscription" 5 例 + "a page taken now lines up with the cursors that follow it"                                        |
+| socket 断开清理订阅                  | `session.test.ts` "stops forwarding once the socket goes away"                                                                                                      |
+| 混连只达新 socket                    | `session.test.ts` "does not forward to a socket that never claimed the capability"（变异测试验证：移除门控行即失败）                                                |
+| owner 房间拒绝通用 delete            | `chat-service.test.ts` "refuses a generic delete of an owned room"                                                                                                  |
+| 指定 id/owner 创建幂等两分支         | 同上 "returns the existing room when the same owner asks again" / "refuses an id that belongs to a different owner" / "refuses a taken id that has no owner at all" |
+| 分文件损坏隔离                       | `chat-service.test.ts` "damaged room files" 3 例（坏 JSON、结构不符、名字释放）                                                                                     |
+| 迁移全状态 + 崩溃注入点              | `chat-storage-migration.test.ts` 7 例                                                                                                                               |
+| mention 四分支                       | `chat-mentions.test.ts` "waking a mentioned agent" 4 例 + `agent-prompt.test.ts` "leaves a run in flight alone when replaceRunning is false"                        |
+| 旧 `authorAgentId` 兼容              | `chat-service.test.ts` "treats a message written before the author model as an agent"                                                                               |
+
+### 待办
+
+ITEM-3 独立变更评审进行中（fresh reviewer，codex，未看过本代码）。评审结论回来后据其修复，再做里程碑提交并转 ITEM-4。

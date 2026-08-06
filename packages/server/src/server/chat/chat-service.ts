@@ -628,10 +628,15 @@ export class FileBackedChatService {
    * Moves a legacy single-file store to one file per room, once.
    *
    * Ordering is load-bearing: every room file is written first, then the legacy
-   * file is renamed aside, then the marker lands. Because nothing writes the new
-   * layout until the marker exists, any per-room file found before then can only
-   * be this migration's own earlier attempt over the same data — so "already
-   * there, skip it" is exact rather than a guess about which copy is newer.
+   * file is renamed aside, then the marker lands. Nothing writes the new layout
+   * until the marker exists, so while the legacy file is still in place it is
+   * the only authority and every room file is rewritten from it — including one
+   * an earlier interrupted attempt already produced.
+   *
+   * Skipping a room file that is already there would be faster and is wrong: a
+   * user who downgrades to a daemon that still writes the legacy layout, chats,
+   * and upgrades again would lose everything said in the meantime. Rewriting is
+   * idempotent, so the only cost is the write itself.
    *
    * A missing legacy file with a `.bak` present means the rename already
    * happened, which by the same ordering means the room files are complete.
@@ -645,11 +650,7 @@ export class FileBackedChatService {
     const legacy = await this.readLegacyStore();
     if (legacy) {
       for (const room of legacy.rooms) {
-        const roomPath = this.roomFilePath(room.id);
-        if (await this.fileExists(roomPath)) {
-          continue;
-        }
-        await writeJsonFileAtomic(roomPath, {
+        await writeJsonFileAtomic(this.roomFilePath(room.id), {
           room,
           messages: legacy.messagesByRoomId.get(room.id) ?? [],
         } satisfies ChatRoomFile);
