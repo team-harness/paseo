@@ -14,6 +14,7 @@ import { AgentAlreadyExistsError } from "../agent/agent-manager.js";
 import type { AgentLabelPatch, AgentManager, AgentRecordChange } from "../agent/agent-manager.js";
 import type { AgentStorage } from "../agent/agent-storage.js";
 import type { FileBackedChatService } from "../chat/chat-service.js";
+import { createSerialQueue } from "./serial-queue.js";
 import { TeamInbox } from "./team-inbox.js";
 import { TeamPump, type DispatchResult, type TeamPumpGateway } from "./team-pump.js";
 import { lookUpTurnOutcome } from "./team-turn-lookup.js";
@@ -68,6 +69,8 @@ export interface TeamRuntime extends TeamRuntimeSessionDeps {
    * caller that needs the pass to have happened before it looks at the ledger.
    */
   pumpOnce(teamId: string): Promise<void>;
+  /** Resolves once every record change delivered so far has been handled. */
+  whenRecordChangesHandled(): Promise<void>;
   start(): Promise<void>;
   stop(): void;
 }
@@ -409,16 +412,23 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
    * The reconciler covers the same ground on a timer; this is the fast path,
    * not the guarantee. An event that never arrives is a delay, not a loss.
    *
-   * Detached deliberately. The emitter awaits its listeners, and the team
-   * operations this triggers take the per-team lock — so archiving a team,
-   * which holds that lock while it archives each member, would wait on a
-   * listener that is waiting on the lock it holds. Not awaiting also keeps a
-   * slow or failing subscriber out of the path of the operation that fired it.
+   * Detached from the emitter, and serial among themselves.
+   *
+   * Detached because the emitter awaits its listeners, and the team operations
+   * these trigger take the per-team lock — archiving a team, which holds that
+   * lock while it archives each member, would wait on a listener waiting on the
+   * lock it holds.
+   *
+   * Serial because the order of these events is their meaning. Archive then
+   * unarchive is a member that is back; handled concurrently they finish in
+   * whichever order their reads happen to complete, and "unarchive first" ends
+   * with a roster that calls a running member archived.
    */
+  const recordChanges = createSerialQueue((error) => {
+    teamLogger.warn({ err: error }, "Team failed to handle a record change");
+  });
   const detachRecordChanges = agentManager.onAgentRecordChange((change) => {
-    void handleRecordChange(change).catch((error: unknown) => {
-      teamLogger.warn({ err: error, change: change.kind }, "Team failed to handle a record change");
-    });
+    recordChanges.push(() => handleRecordChange(change));
   });
 
   async function handleRecordChange(change: AgentRecordChange): Promise<void> {
@@ -434,9 +444,11 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
         break;
       case "turn_settled": {
         // The assignee just came free: settle what it finished and give it
-        // whatever was waiting behind it.
+        // whatever was waiting behind it. Started, not awaited — the pass
+        // waits for the first reconciliation and then for itself, and every
+        // record change behind this one would wait with it.
         const team = await findTeamOfAgent(store, change.agentId);
-        if (team) await kickTeam(team.id);
+        if (team) await kickTeamInBackground(team.id);
         break;
       }
       case "labels_changed":
@@ -447,7 +459,10 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
   async function publish(team: StoredTeam | null): Promise<void> {
     if (!team) return;
     options.publishTeamUpdate(toTeamSnapshot(team));
-    await kickTeam(team.id);
+    // Not awaited. A kick waits for the first reconciliation and then for a
+    // whole pass; holding the handler for either would hold every record change
+    // behind it, since they are handled in order.
+    await kickTeamInBackground(team.id);
   }
 
   /**
@@ -484,6 +499,9 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
         kickPump: kickTeamInBackground,
         logger: teamLogger,
       });
+    },
+    whenRecordChangesHandled() {
+      return recordChanges.drained();
     },
     async pumpOnce(teamId) {
       const team = await store.get(teamId);

@@ -196,6 +196,10 @@ describe("teams over the real agent runtime", () => {
     throw new Error(`Turn ${turnId} never ended for ${agentId}`);
   }
 
+  function entryStateOf(team: Awaited<ReturnType<TeamRuntime["store"]["get"]>>, agentId: string) {
+    return team?.members.find((member) => member.agentId === agentId)?.state;
+  }
+
   async function createTeam() {
     return runtime.service.create({
       idempotencyKey: "idem-1",
@@ -298,6 +302,33 @@ describe("teams over the real agent runtime", () => {
 
     expect((await runtime.store.get(team.id))?.lifecycle).toBe("archiving");
     expect((await agentStorage.get(member!.agentId))?.archivedAt).toBeFalsy();
+  });
+
+  test("archives a team without deadlocking against its own events", async () => {
+    const team = await createTeam();
+
+    // The emitter awaits its listeners and the team operations they trigger
+    // take the per-team lock — the one this archive is holding. A listener that
+    // waited on it would wait on the archive that is waiting on the listener.
+    await expect(
+      Promise.race([
+        runtime.service.archive(team.id),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("deadlocked")), 3000)),
+      ]),
+    ).resolves.toBeTruthy();
+  });
+
+  test("records a member archived outside the team without holding up the daemon", async () => {
+    const team = await createTeam();
+    const member = team.members.find((entry) => entry.role === "server");
+
+    await agentManager.archiveAgent(member!.agentId);
+    await runtime.whenRecordChangesHandled();
+
+    // The handler runs detached from the emitter — the operations it starts
+    // need the lock the emitting operation may be holding — but it still has to
+    // land, and the roster is where it lands.
+    expect(entryStateOf(await runtime.store.get(team.id), member!.agentId)).toBe("archived");
   });
 
   test("takes the team labels off a member that leaves", async () => {
