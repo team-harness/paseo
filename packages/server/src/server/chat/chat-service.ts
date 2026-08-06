@@ -92,6 +92,30 @@ export interface DiscardOwnedRoomInput {
   ownerId: string;
 }
 
+export interface ReadChatRoomPageInput {
+  room: string;
+  /** Resume after this cursor instead of jumping to the newest page. */
+  afterCursor?: number;
+  limit?: number;
+}
+
+export interface ChatRoomPage {
+  roomId: string;
+  messages: ChatMessage[];
+  /** Position of the last message returned; 0 for an empty room. */
+  cursor: number;
+  /** Newer messages exist beyond `cursor`. */
+  hasMore: boolean;
+}
+
+export interface ChatRoomMessageEvent {
+  roomId: string;
+  message: ChatMessage;
+  cursor: number;
+}
+
+export type ChatRoomMessageSubscriber = (event: ChatRoomMessageEvent) => void;
+
 export interface InspectChatRoomInput {
   room: string;
 }
@@ -177,6 +201,7 @@ export class FileBackedChatService {
   /** Serialized per room: one busy room no longer rewrites every other room. */
   private readonly persistQueues = new Map<string, Promise<void>>();
   private readonly waitersByRoomId = new Map<string, Set<Waiter>>();
+  private readonly roomMessageSubscribers = new Set<ChatRoomMessageSubscriber>();
 
   private mentionHandler: ChatMentionHandler | null;
 
@@ -288,6 +313,61 @@ export class FileBackedChatService {
       new ChatServiceError("chat_room_deleted", `Chat room deleted: ${room.name}`),
     );
     return { room: detail };
+  }
+
+  /**
+   * A page of a room plus the cursor it ends on, in one call.
+   *
+   * Without `afterCursor` this is the newest `limit` messages, which is what a
+   * freshly opened room wants. A client that was disconnected passes the cursor
+   * it last saw and gets that gap in ascending order instead; `hasMore` says
+   * whether the gap is longer than this page, so it can keep walking forward
+   * while live messages arrive on top.
+   */
+  async readRoomPage(input: ReadChatRoomPageInput): Promise<ChatRoomPage> {
+    await this.load();
+    const room = this.resolveRoom(input.room);
+    const messages = this.getRoomMessages(room.id);
+    const limit = this.normalizeLimit(input.limit);
+
+    if (input.afterCursor === undefined) {
+      const page =
+        limit >= messages.length ? [...messages] : messages.slice(messages.length - limit);
+      return { roomId: room.id, messages: page, cursor: messages.length, hasMore: false };
+    }
+
+    // Cursors are 1-based positions, so the message at cursor N is at index N-1.
+    const start = Math.max(0, input.afterCursor);
+    const page = messages.slice(start, start + limit);
+    return {
+      roomId: room.id,
+      messages: page,
+      cursor: start + page.length,
+      hasMore: start + page.length < messages.length,
+    };
+  }
+
+  /**
+   * Follows every room. Filtering by room belongs to the caller, which knows
+   * which of its own connections asked for which room.
+   */
+  onRoomMessage(subscriber: ChatRoomMessageSubscriber): () => void {
+    this.roomMessageSubscribers.add(subscriber);
+    return () => {
+      this.roomMessageSubscribers.delete(subscriber);
+    };
+  }
+
+  private publishRoomMessage(event: ChatRoomMessageEvent): void {
+    for (const subscriber of Array.from(this.roomMessageSubscribers)) {
+      try {
+        subscriber(event);
+      } catch (error) {
+        // The message is already stored; one bad listener must not take the
+        // others down with it.
+        this.logger.error({ err: error, roomId: event.roomId }, "Chat room subscriber failed");
+      }
+    }
   }
 
   /**
@@ -421,6 +501,7 @@ export class FileBackedChatService {
     );
     await this.enqueuePersist(room.id);
     this.notifyWaiters(room.id);
+    this.publishRoomMessage({ roomId: room.id, message, cursor: messages.length });
     return message;
   }
 

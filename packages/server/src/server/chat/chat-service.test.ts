@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
 import {
+  type ChatRoomMessageEvent,
   type ChatServiceError,
   FileBackedChatService,
   parseMentionAgentIds,
@@ -352,6 +353,148 @@ describe("FileBackedChatService", () => {
       await expect(
         service.discardOwnedRoom({ roomId: "never-existed", ...owner }),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  // Reading and then waiting cannot start following a room without a gap or a
+  // duplicate between the two calls, so a page and its cursor come back together
+  // and every later message arrives with the next cursor.
+  describe("room pages and live subscription", () => {
+    async function seed(room: string, count: number) {
+      for (let index = 0; index < count; index += 1) {
+        await service.post({
+          actor: { kind: "agent", id: "agent-a" },
+          room,
+          body: `message ${index}`,
+        });
+      }
+    }
+
+    // Hoisted out of the tests: an inline listener inside an async test body
+    // nests one callback deeper than the lint budget allows.
+    function collectBodies(sink: string[]) {
+      return (event: ChatRoomMessageEvent) => {
+        sink.push(event.message.body);
+      };
+    }
+
+    function collectCursors(sink: number[]) {
+      return (event: ChatRoomMessageEvent) => {
+        sink.push(event.cursor);
+      };
+    }
+
+    function collectEvents(sink: Array<{ roomId: string; body: string; cursor: number }>) {
+      return (event: ChatRoomMessageEvent) => {
+        sink.push({ roomId: event.roomId, body: event.message.body, cursor: event.cursor });
+      };
+    }
+
+    function throwingSubscriber(): never {
+      throw new Error("subscriber blew up");
+    }
+
+    function bodiesOf(messages: Array<{ body: string }>): string[] {
+      return messages.map((message) => message.body);
+    }
+
+    test("returns the newest page and its cursor when no cursor is given", async () => {
+      const room = await service.createRoom({ name: "paged" });
+      await seed(room.name, 5);
+
+      const page = await service.readRoomPage({ room: room.name, limit: 2 });
+
+      expect(bodiesOf(page.messages)).toEqual(["message 3", "message 4"]);
+      expect(page.cursor).toBe(5);
+      expect(page.hasMore).toBe(false);
+    });
+
+    test("resumes after a cursor in ascending order", async () => {
+      const room = await service.createRoom({ name: "resumed" });
+      await seed(room.name, 5);
+
+      const page = await service.readRoomPage({ room: room.name, afterCursor: 1, limit: 2 });
+
+      expect(bodiesOf(page.messages)).toEqual(["message 1", "message 2"]);
+      expect(page.cursor).toBe(3);
+      // Two more messages sit between this page and the newest one.
+      expect(page.hasMore).toBe(true);
+    });
+
+    test("reports the backlog as drained on the last catch-up page", async () => {
+      const room = await service.createRoom({ name: "drained" });
+      await seed(room.name, 3);
+
+      const page = await service.readRoomPage({ room: room.name, afterCursor: 1, limit: 10 });
+
+      expect(bodiesOf(page.messages)).toEqual(["message 1", "message 2"]);
+      expect(page.cursor).toBe(3);
+      expect(page.hasMore).toBe(false);
+    });
+
+    test("an empty room pages to an empty result at cursor zero", async () => {
+      const room = await service.createRoom({ name: "empty" });
+
+      const page = await service.readRoomPage({ room: room.name });
+
+      expect(page.messages).toEqual([]);
+      expect(page.cursor).toBe(0);
+      expect(page.hasMore).toBe(false);
+    });
+
+    test("hands every new message to subscribers with its cursor", async () => {
+      const room = await service.createRoom({ name: "live" });
+      const seen: Array<{ roomId: string; body: string; cursor: number }> = [];
+      service.onRoomMessage(collectEvents(seen));
+
+      await seed(room.name, 2);
+
+      expect(seen).toEqual([
+        { roomId: room.id, body: "message 0", cursor: 1 },
+        { roomId: room.id, body: "message 1", cursor: 2 },
+      ]);
+    });
+
+    test("stops delivering once a subscriber unsubscribes", async () => {
+      const room = await service.createRoom({ name: "unsubscribed" });
+      const seen: string[] = [];
+      const unsubscribe = service.onRoomMessage(collectBodies(seen));
+
+      await seed(room.name, 1);
+      unsubscribe();
+      await seed(room.name, 1);
+
+      expect(seen).toEqual(["message 0"]);
+    });
+
+    test("a throwing subscriber neither loses the message nor blocks the others", async () => {
+      const room = await service.createRoom({ name: "faulty-subscriber" });
+      const seen: string[] = [];
+      service.onRoomMessage(throwingSubscriber);
+      service.onRoomMessage(collectBodies(seen));
+
+      await service.post({
+        actor: { kind: "agent", id: "agent-a" },
+        room: room.name,
+        body: "still delivered",
+      });
+
+      expect(seen).toEqual(["still delivered"]);
+      expect(await service.readMessages({ room: room.name })).toHaveLength(1);
+    });
+
+    test("a page taken now lines up with the cursors that follow it", async () => {
+      const room = await service.createRoom({ name: "handover" });
+      await seed(room.name, 3);
+
+      const page = await service.readRoomPage({ room: room.name, limit: 10 });
+      const live: number[] = [];
+      service.onRoomMessage(collectCursors(live));
+      await seed(room.name, 2);
+
+      // No gap, no repeat: the subscription picks up exactly where the page ended.
+      expect(page.cursor).toBe(3);
+      expect(live).toEqual([4, 5]);
     });
   });
 
