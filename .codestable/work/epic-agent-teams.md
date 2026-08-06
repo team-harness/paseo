@@ -310,6 +310,18 @@ team 行加进了 `sidebar/sidebar-workspace-row.tsx`——**没有任何地方 
 
 顺带纠正了一个我自己的错误推断：我以为 app 从未声明 teams capability，加了两行；实际 `DaemonClient` 的 hello 默认就带着它们，两行是重复的，已删。
 
+### 第二轮评审：5 blocker，四个是"测试全绿"下的空洞
+
+1. **权限行对大多数 provider 画不出按钮**。上一轮把"自造 Allow/Deny"修过了头：只渲染 `request.actions`，而 Claude 只给 plan 请求带 actions，普通工具权限的 actions 是 `undefined`。于是 team 面板上出现一行"reviewer: Bash"、零个按钮，同时 tab 和侧栏挂着永久的 attention 点。规则现在收敛到 `resolvePermissionActions`，agent-stream 与面板共用：有 actions 用它的，没有就回落到标准两项，question 一个都不给。
+2. **两个确认框的取消按钮显示 `common.cancel` 字面量**。键是 `common.actions.cancel`，i18next 缺键返回键名。没有组件测试、E2E 也从不按这两个按钮，任何东西都发现不了。
+3. **room 没有发言入口**。Epic 目标第二条与 §10 都点名了 post 三态，它就是不存在——既没实现也没改契约，只是消失了。
+4. **§6.4 去重规则是有测试、零调用点的死代码**。招募的 recruit 挂在 lead 的 subagents track 上，带着 track 自己的生命周期动作——正是面板该独占的那些。
+5. **完成的成员被读成"等你输入"**。`requiresAttention` 结束时也会置位，而 `needs_input` 说的是权限，`deriveAgentStateBucket` 一直就是这么定义的。
+
+should-fix 里两条同一形状：路由把"handshake 还没到"读成"daemon 太老"（冷启动 deep link 会说"升级你的 daemon"，且不给重试）；client 为空时动作与作答静默返回（确认过的破坏性动作什么都没发生，读起来像成功了）。
+
+**变异测试第二次救场**：路由的两个 guard 对调，8 条测试全绿——两条相关用例分别覆盖 `supported:true+connecting` 与 `supported:false+online`，而现实中真正出现的组合 `supported:false+connecting` 一条都没有。E2E 也是：第一版用 mock provider 的 plan 请求（少数带 actions 的），把"只渲染 request.actions"这个 blocker 变异回去照样通过。给 mock 加了一个不带 actions 的工具权限请求后才抓得住。
+
 ### 待办
 
 最终验收评审 + owner 验收。QA 证据（docs/qa.md 的平台矩阵）随 PR 提交。
