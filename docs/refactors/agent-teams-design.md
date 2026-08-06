@@ -405,7 +405,7 @@ daemon 启动时扫描**全部** team record：
 
 - team 视图是 **workspace panel target**：`workspace-tabs/model.ts` 的 tab 联合类型新增 `{ kind: "team", teamId }`，接全 identity、持久化、恢复。
 - `/h/[serverId]/team/[teamId]` 只做 **deep-link resolver**：解析后 `navigateToWorkspace({ target: { kind: "team", teamId } })`。实现前必读 `docs/expo-router.md`。
-- **Close policy 显式规则**：关闭 team tab 是 layout-only；关闭 lead 自己的 agent tab 时，若该 agent 是活跃 team 的 lead，**不走 root-agent 的关闭即归档**，改为提示"这是 team 的 lead，请从 team 面板归档"。
+- **Close policy 显式规则**：关闭 team tab 是 layout-only；关闭 lead 自己的 agent tab 时，若该 agent 是活跃（含 `creating`）team 的 lead，**不走 root-agent 的关闭即归档**，tab 关掉、agent 继续跑，并提示归档在 team 面板。规则只有一处（`subagents/close-tab-policy.ts`），单个关闭与批量关闭都问它——批量归档同样彻底，只是更安静。
 - 面板布局：room 主区（时间线消费 §4.3 订阅协议；长消息折叠兜底）+ 成员条 + 权限聚合条 + compact 适配（`docs/mobile-panels.md`）。
 - 侧栏：`sidebar-projection.ts` 现只投影 project/workspace，team 条目是对它的扩展。
 

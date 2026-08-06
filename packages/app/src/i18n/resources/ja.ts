@@ -1145,6 +1145,7 @@ export const ja: TranslationResources = {
         unsupported: "{{hostName}} が古いためチームを扱えません。更新してから開いてください。",
       },
       panel: {
+        leadTabClosed: "タブを閉じました。{{teamName}} は動いたままです。終了はチームパネルから。",
         archiveRunning: "うち {{count}} 個は作業中で、その作業は失われます。",
         creating: "編成中",
         archiving: "アーカイブ中",

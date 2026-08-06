@@ -1168,6 +1168,7 @@ export const es: TranslationResources = {
           "{{hostName}} es demasiado antiguo para equipos. Actualízalo para abrir este enlace.",
       },
       panel: {
+        leadTabClosed: "Pestaña cerrada. {{teamName}} sigue en marcha: archívalo desde su panel.",
         archiveRunning: "{{count}} de ellos están trabajando ahora y perderán ese trabajo.",
         creating: "Formándose",
         archiving: "Archivando",

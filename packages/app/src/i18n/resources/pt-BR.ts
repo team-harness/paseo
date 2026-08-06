@@ -1156,6 +1156,7 @@ export const ptBR: TranslationResources = {
         unsupported: "{{hostName}} é antigo demais para times. Atualize para abrir este link.",
       },
       panel: {
+        leadTabClosed: "Aba fechada. {{teamName}} continua rodando — arquive pelo painel do time.",
         archiveRunning: "{{count}} deles estão trabalhando agora e vão perder esse trabalho.",
         creating: "Formando",
         archiving: "Arquivando",

@@ -2778,9 +2778,14 @@ function WorkspaceScreenContent({
           });
         }
 
+        if (closePolicy.kind === "team-lead") {
+          // Closing a root agent's tab archives it, so a lead's tab closing and
+          // leaving everything running is the surprise. Say where the team does
+          // end, once, rather than letting the user hunt for it.
+          toast.show(t("teams.panel.leadTabClosed", { teamName: closePolicy.teamName }));
+          return;
+        }
         if (closesWithoutArchiving(closePolicy)) {
-          // A lead's tab closes like any other; what it does not do is end the
-          // team behind it. That is the panel's to offer, with what it costs.
           return;
         }
 
@@ -2788,7 +2793,15 @@ function WorkspaceScreenContent({
         void archiveAgent({ serverId: normalizedServerId, agentId }).catch(() => {});
       });
     },
-    [archiveAgent, closeTab, closeWorkspaceTabWithCleanup, normalizedServerId, persistenceKey, t],
+    [
+      archiveAgent,
+      closeTab,
+      closeWorkspaceTabWithCleanup,
+      normalizedServerId,
+      persistenceKey,
+      t,
+      toast,
+    ],
   );
 
   const handleClosePassiveTab = useCallback(

@@ -1140,6 +1140,8 @@ export const ko: TranslationResources = {
         unsupported: "{{hostName}}이(가) 너무 오래되어 팀을 지원하지 않습니다. 업데이트해 주세요.",
       },
       panel: {
+        leadTabClosed:
+          "탭을 닫았습니다. {{teamName}}은(는) 계속 실행됩니다 — 팀 패널에서 보관하세요.",
         archiveRunning: "그중 {{count}}개는 작업 중이며 해당 작업은 사라집니다.",
         creating: "구성 중",
         archiving: "보관 중",

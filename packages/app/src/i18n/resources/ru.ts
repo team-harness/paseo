@@ -1156,6 +1156,8 @@ export const ru: TranslationResources = {
         unsupported: "{{hostName}} слишком старый для команд. Обновите его, чтобы открыть ссылку.",
       },
       panel: {
+        leadTabClosed:
+          "Вкладка закрыта. {{teamName}} продолжает работу — архивируйте её из панели команды.",
         archiveRunning: "Из них {{count}} сейчас работают, и эта работа будет потеряна.",
         creating: "Формируется",
         archiving: "Архивируется",

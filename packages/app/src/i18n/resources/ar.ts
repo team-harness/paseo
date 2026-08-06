@@ -1131,6 +1131,7 @@ export const ar: TranslationResources = {
         unsupported: "{{hostName}} قديم جدًا ولا يدعم الفرق. حدّثه لفتح هذا الرابط.",
       },
       panel: {
+        leadTabClosed: "أُغلق التبويب. {{teamName}} ما زال يعمل — أرشِفه من لوحة الفريق.",
         archiveRunning: "منها {{count}} تعمل الآن وسيضيع عملها.",
         creating: "قيد التكوين",
         archiving: "قيد الأرشفة",

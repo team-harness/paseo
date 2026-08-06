@@ -1119,6 +1119,7 @@ export const zhCN: TranslationResources = {
         unsupported: "{{hostName}} 版本过旧，不支持团队。升级后才能打开此链接。",
       },
       panel: {
+        leadTabClosed: "标签页已关闭。{{teamName}} 仍在运行，需要归档请到团队面板。",
         archiveRunning: "其中 {{count}} 个正在工作，未完成的工作会丢失。",
         creating: "组建中",
         archiving: "归档中",
