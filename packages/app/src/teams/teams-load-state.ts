@@ -13,19 +13,28 @@ import { isLiveTeam } from "@/runtime/team-sync/team-replica";
 export type TeamsLoadState =
   | { status: "unsupported" }
   | { status: "connecting" }
+  | { status: "loading" }
+  | { status: "failed"; message: string; teams: TeamSnapshot[] }
   | { status: "loaded"; teams: TeamSnapshot[] };
 
-export function selectTeamsLoadState(input: {
+export interface TeamsLoadInput {
   supported: boolean;
+  online: boolean;
   hydrated: boolean;
+  /** Set when the last read failed. What is held is still worth showing. */
+  error: string | null;
   teams: ReadonlyMap<string, TeamSnapshot>;
-}): TeamsLoadState {
+}
+
+export function selectTeamsLoadState(input: TeamsLoadInput): TeamsLoadState {
   if (!input.supported) return { status: "unsupported" };
-  if (!input.hydrated) return { status: "connecting" };
-  return {
-    status: "loaded",
-    teams: [...input.teams.values()].filter(isLiveTeam).sort(byNewest),
-  };
+  const teams = [...input.teams.values()].filter(isLiveTeam).sort(byNewest);
+  // A read that failed is not an empty list. What was held last is still the
+  // best answer there is, and saying so beats an empty state that is a lie.
+  if (input.error !== null) return { status: "failed", message: input.error, teams };
+  if (input.hydrated) return { status: "loaded", teams };
+  // Not the same answer: one is waiting for a socket, the other for a reply.
+  return input.online ? { status: "loading" } : { status: "connecting" };
 }
 
 function byNewest(left: TeamSnapshot, right: TeamSnapshot): number {

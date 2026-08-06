@@ -38,6 +38,8 @@ export interface TeamFormState {
   memberCount: number;
   /** Every agent the request would start, lead included. */
   agentCount: number;
+  /** The template this was opened from, carried through to the request. */
+  templateId: string | null;
 }
 
 export interface TeamFormTemplate {
@@ -107,10 +109,13 @@ function derive(state: TeamFormState): TeamFormState {
     memberCount,
     agentCount: memberCount + 1,
     canAddMember: memberCount < TEAM_MAX_NON_LEAD_MEMBERS,
-    // Never while a submit is in flight: a second one under the same key would
-    // be answered with the first one's team, and under a new key would build a
-    // second team.
-    canSubmit: isComplete(state) && state.submission.status !== "pending",
+    // Not while one is in flight, and not once one has succeeded. A second
+    // send under the same key is answered with the first one's team; edit
+    // anything first and the fingerprint no longer matches, so it is refused.
+    canSubmit:
+      isComplete(state) &&
+      state.submission.status !== "pending" &&
+      state.submission.status !== "success",
   };
 }
 
@@ -140,6 +145,7 @@ export function openTeamForm(snapshot: TeamFormSnapshot): TeamFormModel {
     idempotencyKey: snapshot.newIdempotencyKey(),
     memberCount: 0,
     agentCount: 1,
+    templateId: template?.id ?? null,
   });
 
   function publish(next: TeamFormState): void {

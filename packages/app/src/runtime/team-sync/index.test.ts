@@ -27,11 +27,13 @@ function team(overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
 class FakeClient {
   listTeams = vi.fn(async () => {
     await this.listGate;
-    if (this.listError) throw this.listError;
-    return { teams: this.listed, error: null };
+    if (this.listThrows) throw this.listThrows;
+    return { teams: this.listed, error: this.listError };
   });
   listed: TeamSnapshot[] = [];
-  listError: Error | null = null;
+  /** What the daemon answers with when its own read failed. */
+  listError: string | null = null;
+  listThrows: Error | null = null;
   listGate: Promise<void> = Promise.resolve();
   private handlers = new Set<(message: unknown) => void>();
 
@@ -61,6 +63,7 @@ describe("keeping one daemon's teams current", () => {
   let client: FakeClient;
   let committed: TeamSnapshotMap[];
   let hydrated: boolean[];
+  let errors: Array<string | null>;
   let sync: TeamSync;
 
   function connection(overrides: Partial<TeamSyncConnection> = {}): TeamSyncConnection {
@@ -81,9 +84,11 @@ describe("keeping one daemon's teams current", () => {
     client = new FakeClient();
     committed = [];
     hydrated = [];
+    errors = [];
     sync = new TeamSync({
       commit: (teams) => committed.push(teams),
       setHydrated: (value) => hydrated.push(value),
+      setError: (message) => errors.push(message),
     });
   });
 
@@ -176,20 +181,14 @@ describe("keeping one daemon's teams current", () => {
     expect([...latest().keys()]).toEqual(["team-1"]);
   });
 
-  it("keeps what it was told when the list fails", async () => {
+  it("keeps what it was told when the list throws", async () => {
     const release = client.holdList();
-    client.listError = new Error("offline");
-    const errors: unknown[] = [];
-    sync = new TeamSync({
-      commit: (teams) => committed.push(teams),
-      setHydrated: (value) => hydrated.push(value),
-      onError: (error) => errors.push(error),
-    });
+    client.listThrows = new Error("offline");
 
     sync.connectionChanged(connection());
     client.broadcast(team({ id: "announced" }));
     release();
-    await vi.waitFor(() => expect(errors).toHaveLength(1));
+    await vi.waitFor(() => expect(errors.at(-1)).toBe("offline"));
 
     // The broadcasts are about teams, not about the read. Dropping them would
     // lose a team the client had already been told about.
@@ -197,7 +196,54 @@ describe("keeping one daemon's teams current", () => {
     expect(hydrated).not.toContain(true);
   });
 
-  it("shows nothing for a daemon without teams", async () => {
+  it("does not treat a failed read as an empty daemon", async () => {
+    client.listed = [team({ id: "held" })];
+    sync.connectionChanged(connection());
+    await vi.waitFor(() => expect(hydrated.at(-1)).toBe(true));
+
+    // The daemon answers a failed read with an empty list and a message.
+    // Committing that would erase every team because one directory read broke.
+    client.listed = [];
+    client.listError = "teams could not be read";
+    sync.connectionChanged(connection({ source: { clientGeneration: 1, connectionEpoch: 2 } }));
+    await vi.waitFor(() => expect(errors.at(-1)).toBe("teams could not be read"));
+
+    expect([...latest().keys()]).toEqual(["held"]);
+    expect(hydrated.at(-1)).toBe(false);
+  });
+
+  it("keeps what it holds while offline, and reconciles on the way back", async () => {
+    client.listed = [team({ id: "team-1" }), team({ id: "archived-while-away" })];
+    sync.connectionChanged(connection());
+    await vi.waitFor(() => expect(hydrated.at(-1)).toBe(true));
+
+    sync.connectionChanged(connection({ status: "offline" }));
+    // Agents and workspaces stay painted through a blip; teams vanishing where
+    // they do not is worse than a roster a few seconds old.
+    expect([...latest().keys()].toSorted()).toEqual(["archived-while-away", "team-1"]);
+
+    // One of them was archived while the client was away, so the next list does
+    // not name it. Replacement is what converges on that.
+    client.listed = [team({ id: "team-1" })];
+    sync.connectionChanged(connection({ source: { clientGeneration: 1, connectionEpoch: 2 } }));
+    await vi.waitFor(() => expect(hydrated.filter(Boolean)).toHaveLength(2));
+
+    expect([...latest().keys()]).toEqual(["team-1"]);
+  });
+
+  it("waits rather than deciding before the handshake answers", async () => {
+    sync.connectionChanged(connection({ supportsTeams: null }));
+
+    // "Not yet" is not "no". Reading it as no would hide teams on a daemon that
+    // has them, and nothing would come back to correct it.
+    expect(client.listTeams).not.toHaveBeenCalled();
+    expect(committed).toEqual([]);
+
+    sync.connectionChanged(connection({ supportsTeams: true }));
+    await vi.waitFor(() => expect(hydrated.at(-1)).toBe(true));
+  });
+
+  it("shows nothing for a daemon that says it has none", async () => {
     client.listed = [team()];
     sync.connectionChanged(connection());
     await vi.waitFor(() => expect(hydrated.at(-1)).toBe(true));

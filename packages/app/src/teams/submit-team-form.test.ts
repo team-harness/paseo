@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { TEAM_ERROR_CODES } from "@getpaseo/protocol/team/rpc-schemas";
+import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import { openTeamForm, type TeamFormModel } from "./team-form-model";
 import { submitTeamForm, type TeamCreateGateway } from "./submit-team-form";
@@ -25,6 +26,24 @@ function openFilledForm(): TeamFormModel {
   return form;
 }
 
+function builtTeam(overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
+  return {
+    id: "team-1",
+    name: "Disk usage",
+    workspaceId: "ws-1",
+    chatRoomId: "room-1",
+    leadAgentId: "lead-1",
+    members: [],
+    lifecycle: "active",
+    revision: 1,
+    templateId: null,
+    createdAt: "2026-08-06T10:00:00.000Z",
+    updatedAt: "2026-08-06T10:00:00.000Z",
+    archivedAt: null,
+    ...overrides,
+  };
+}
+
 function gateway(
   answer: Awaited<ReturnType<TeamCreateGateway["createTeam"]>> | Error,
 ): TeamCreateGateway & { createTeam: ReturnType<typeof vi.fn> } {
@@ -39,7 +58,7 @@ function gateway(
 describe("sending a team to the daemon", () => {
   it("sends what the form holds, trimmed, with the lead's fixed role", async () => {
     const form = openFilledForm();
-    const client = gateway({ team: { id: "team-1" }, error: null });
+    const client = gateway({ team: builtTeam(), error: null });
 
     await submitTeamForm(form, client);
 
@@ -60,7 +79,7 @@ describe("sending a team to the daemon", () => {
 
   it("leaves an empty briefing out rather than sending an empty string", async () => {
     const form = openFilledForm();
-    const client = gateway({ team: { id: "team-1" }, error: null });
+    const client = gateway({ team: builtTeam(), error: null });
 
     await submitTeamForm(form, client);
 
@@ -118,7 +137,7 @@ describe("sending a team to the daemon", () => {
       newRowKey: () => "row",
       newIdempotencyKey: () => "key",
     });
-    const client = gateway({ team: { id: "team-1" }, error: null });
+    const client = gateway({ team: builtTeam(), error: null });
 
     await submitTeamForm(form, client);
 
@@ -126,12 +145,38 @@ describe("sending a team to the daemon", () => {
     expect(form.getState().submission).toEqual({ status: "idle" });
   });
 
+  it("refuses a team the daemon says failed to build", async () => {
+    const form = openFilledForm();
+    const key = form.getState().idempotencyKey;
+
+    // What a retry under the same key gets back after the first attempt died
+    // mid-creation. Reporting it as success hands the caller a dead id, and
+    // never rotating the key points every later retry at the same corpse.
+    await submitTeamForm(form, gateway({ team: builtTeam({ lifecycle: "failed" }), error: null }));
+
+    expect(form.getState().submission).toMatchObject({ status: "failure", retryable: false });
+    expect(form.getState().idempotencyKey).not.toBe(key);
+  });
+
+  it("accepts a team that is still being built", async () => {
+    const form = openFilledForm();
+
+    // Creation is a transaction the daemon finishes on its own; the client does
+    // not need to wait for it to call this a success.
+    await submitTeamForm(
+      form,
+      gateway({ team: builtTeam({ lifecycle: "creating" }), error: null }),
+    );
+
+    expect(form.getState().submission).toEqual({ status: "success", teamId: "team-1" });
+  });
+
   it("goes through pending on the way", async () => {
     const form = openFilledForm();
     const seen: string[] = [];
     form.subscribe(() => seen.push(form.getState().submission.status));
 
-    await submitTeamForm(form, gateway({ team: { id: "team-1" }, error: null }));
+    await submitTeamForm(form, gateway({ team: builtTeam(), error: null }));
 
     expect(seen).toEqual(["pending", "success"]);
   });

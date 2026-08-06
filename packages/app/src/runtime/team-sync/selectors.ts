@@ -1,6 +1,8 @@
 import { TEAM_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import type { TeamMemberEntry, TeamSnapshot } from "@getpaseo/protocol/team/types";
 
+import { isLiveTeam } from "./team-replica";
+
 /** What a selector needs from an agent; the rest of the record is not its business. */
 export interface TeamMemberAgent {
   id: string;
@@ -86,13 +88,25 @@ export function selectTeamActivity(rows: readonly TeamMemberRow[]): TeamActivity
  */
 export function selectSubagentsWithoutTeamMembers<T extends { id: string; labels?: unknown }>(
   subagents: readonly T[],
-  teamId: string,
+  liveTeamIds: ReadonlySet<string>,
 ): T[] {
   return subagents.filter((subagent) => {
     const labels = subagent.labels;
     if (!labels || typeof labels !== "object") return true;
-    return (labels as Record<string, string>)[TEAM_ID_LABEL] !== teamId;
+    const teamId = (labels as Record<string, string>)[TEAM_ID_LABEL];
+    // A team that is over has no panel drawing its members, so hiding them
+    // from the track as well would hide them everywhere.
+    return teamId === undefined || !liveTeamIds.has(teamId);
   });
+}
+
+/** The teams that still have a panel of their own. */
+export function selectLiveTeamIds(teams: ReadonlyMap<string, TeamSnapshot>): Set<string> {
+  const live = new Set<string>();
+  for (const team of teams.values()) {
+    if (isLiveTeam(team)) live.add(team.id);
+  }
+  return live;
 }
 
 /** Teams whose lead or members include this agent, so a panel can find its team. */
@@ -101,6 +115,10 @@ export function selectTeamOfAgent(
   agentId: string,
 ): TeamSnapshot | null {
   for (const team of teams.values()) {
+    // A team that is over is not one this agent belongs to. The list of teams
+    // hides those; a panel resolving one by agent has to agree, or the two
+    // disagree about what counts as a team.
+    if (!isLiveTeam(team)) continue;
     const entry = team.members.find((member) => member.agentId === agentId);
     // `removed` is history: an agent that left is not on this team any more.
     if (entry && entry.state !== "removed") return team;

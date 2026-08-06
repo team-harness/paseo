@@ -1,4 +1,5 @@
 import { TEAM_ERROR_CODES } from "@getpaseo/protocol/team/rpc-schemas";
+import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import type { TeamFormModel } from "./team-form-model";
 
@@ -10,7 +11,8 @@ export interface TeamCreateGateway {
     task: string;
     lead: { role: string; provider: string };
     members: Array<{ role: string; provider: string; briefing?: string }>;
-  }): Promise<{ team: { id: string } | null; error: string | null; errorCode?: string | null }>;
+    templateId?: string;
+  }): Promise<{ team: TeamSnapshot | null; error: string | null; errorCode?: string | null }>;
 }
 
 /** The role the daemon gives a lead, whatever the request calls it. */
@@ -60,10 +62,24 @@ export async function submitTeamForm(
       task: state.task.trim(),
       lead: { role: LEAD_ROLE, provider: state.leadProvider },
       members: state.members.map(toMemberSpec),
+      // Carried through so the team records what it was built from; the wire
+      // has had the field since ITEM-1.
+      ...(state.templateId ? { templateId: state.templateId } : {}),
     });
 
     if (!payload.team) {
       form.submitFailed({ message: describeFailure(payload), retryable: false });
+      return;
+    }
+    // A team is only built when it says so. Retrying under the same key gets
+    // back whatever that key already produced — including a team whose
+    // creation failed — and reporting that as success hands the caller a dead
+    // id and keeps the key pointing at it forever.
+    if (payload.team.lifecycle !== "active" && payload.team.lifecycle !== "creating") {
+      form.submitFailed({
+        message: `The team could not be created (${payload.team.lifecycle}).`,
+        retryable: false,
+      });
       return;
     }
     form.submitSucceeded(payload.team.id);

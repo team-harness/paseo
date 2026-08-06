@@ -11,8 +11,15 @@ export interface TeamSyncConnection {
   client: DaemonClient | null;
   status: "online" | "offline";
   source: DirectorySourceToken;
-  /** False when the daemon predates teams; nothing is fetched and nothing is shown. */
-  supportsTeams: boolean;
+  /**
+   * Whether this daemon has teams — null while the answer is still unknown.
+   *
+   * Three values because they are three decisions. `false` hides teams and
+   * drops what is held; `null` does neither, because the handshake that answers
+   * this lands after the connection does, and reading "not yet" as "no" settles
+   * the question before it has been asked.
+   */
+  supportsTeams: boolean | null;
 }
 
 export interface TeamSyncCallbacks {
@@ -20,14 +27,20 @@ export interface TeamSyncCallbacks {
   commit(teams: TeamSnapshotMap): void;
   /** Marks whether a list has landed since the last connection change. */
   setHydrated(hydrated: boolean): void;
-  onError?(error: unknown): void;
+  /**
+   * Why the last read failed, or null once one succeeds.
+   *
+   * A failed read is not an empty list, and a caller that cannot tell them
+   * apart shows "you have no teams" to someone who has several.
+   */
+  setError(message: string | null): void;
 }
 
 const OFFLINE: TeamSyncConnection = {
   client: null,
   status: "offline",
   source: { clientGeneration: 0, connectionEpoch: 0 },
-  supportsTeams: false,
+  supportsTeams: null,
 };
 
 /**
@@ -72,11 +85,23 @@ export class TeamSync {
     this.unsubscribe = null;
     this.connection = connection;
     this.callbacks.setHydrated(false);
+    this.callbacks.setError(null);
 
-    if (!connection.client || connection.status !== "online" || !connection.supportsTeams) {
+    if (connection.supportsTeams === false) {
       // A daemon without teams has none to show, and holding the last one's
       // would be worse than showing nothing.
       this.commit(new Map());
+      return true;
+    }
+    if (connection.supportsTeams === null) {
+      // Not answered yet. Waiting costs a moment; deciding now would either
+      // hide teams on a daemon that has them or ask one that does not.
+      return true;
+    }
+    if (!connection.client || connection.status !== "online") {
+      // Offline keeps what is held. Agents and workspaces stay painted through
+      // a blip, and teams vanishing where they do not is worse than a roster
+      // that is a few seconds old.
       return true;
     }
 
@@ -108,19 +133,32 @@ export class TeamSync {
       // The connection changed under the read. Its answer describes a daemon
       // this client is no longer talking to.
       if (completion.kind === "stale") return;
+      // The daemon answers a failed read with an empty list and a message.
+      // Committing that as the authoritative set erases every team the client
+      // holds because one directory read went wrong.
+      if (payload.error) {
+        this.replay(completion.deltas);
+        this.callbacks.setError(payload.error);
+        return;
+      }
       this.commit(replaceTeams(payload.teams, completion.deltas));
       this.callbacks.setHydrated(true);
+      this.callbacks.setError(null);
     } catch (error) {
       // The held broadcasts still apply: they are about teams, not about the
       // read that failed. Dropping them would lose a team created during it.
       const held = this.transactions.fail(transaction);
-      if (held && this.isCurrent(client, source)) {
-        let next = this.teams;
-        for (const team of held) next = applyTeamUpdate(next, team);
-        this.commit(next);
-      }
-      this.callbacks.onError?.(error);
+      if (held && this.isCurrent(client, source)) this.replay(held);
+      this.callbacks.setError(
+        error instanceof Error ? error.message : "The teams could not be read.",
+      );
     }
+  }
+
+  private replay(held: readonly TeamSnapshot[]): void {
+    let next = this.teams;
+    for (const team of held) next = applyTeamUpdate(next, team);
+    this.commit(next);
   }
 
   private commit(teams: TeamSnapshotMap): void {

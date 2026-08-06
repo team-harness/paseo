@@ -4,6 +4,7 @@ import { TEAM_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import type { TeamMemberEntry, TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import {
+  selectLiveTeamIds,
   selectMemberActivity,
   selectSubagentsWithoutTeamMembers,
   selectTeamActivity,
@@ -24,7 +25,7 @@ function entry(overrides: Partial<TeamMemberEntry> = {}): TeamMemberEntry {
   };
 }
 
-function team(members: TeamMemberEntry[]): TeamSnapshot {
+function team(members: TeamMemberEntry[], overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
   return {
     id: "team-1",
     name: "Disk usage",
@@ -38,6 +39,7 @@ function team(members: TeamMemberEntry[]): TeamSnapshot {
     createdAt: "2026-08-06T10:00:00.000Z",
     updatedAt: "2026-08-06T10:00:00.000Z",
     archivedAt: null,
+    ...overrides,
   };
 }
 
@@ -138,19 +140,32 @@ describe("keeping a subagents track from repeating the team panel", () => {
 
     // A recruit is stamped with its recruiter as parent, so it is a subagent
     // and a team member at once. Both surfaces would otherwise draw it.
-    expect(selectSubagentsWithoutTeamMembers(subagents, "team-1").map((row) => row.id)).toEqual([
-      "helper-1",
-    ]);
+    expect(
+      selectSubagentsWithoutTeamMembers(subagents, new Set(["team-1"])).map((row) => row.id),
+    ).toEqual(["helper-1"]);
   });
 
-  it("keeps members of a different team", () => {
-    const subagents = [{ id: "other-1", labels: { [TEAM_ID_LABEL]: "team-2" } }];
+  it("keeps members of a team that is over", () => {
+    const subagents = [{ id: "recruit-1", labels: { [TEAM_ID_LABEL]: "team-1" } }];
 
-    expect(selectSubagentsWithoutTeamMembers(subagents, "team-1")).toHaveLength(1);
+    // Nothing draws that team's panel any more, so hiding its members here
+    // would hide them everywhere.
+    expect(selectSubagentsWithoutTeamMembers(subagents, new Set())).toHaveLength(1);
   });
 
   it("keeps a subagent with no labels at all", () => {
-    expect(selectSubagentsWithoutTeamMembers([{ id: "plain" }], "team-1")).toHaveLength(1);
+    expect(selectSubagentsWithoutTeamMembers([{ id: "plain" }], new Set(["team-1"]))).toHaveLength(
+      1,
+    );
+  });
+
+  it("counts only the teams that still have a panel", () => {
+    const teams = new Map([
+      ["live", team([], { id: "live", lifecycle: "active" })],
+      ["gone", team([], { id: "gone", lifecycle: "archived" })],
+    ]);
+
+    expect([...selectLiveTeamIds(teams)]).toEqual(["live"]);
   });
 });
 
@@ -165,5 +180,13 @@ describe("finding the team an agent belongs to", () => {
     const teams = new Map([["team-1", team([entry()])]]);
 
     expect(selectTeamOfAgent(teams, "member-1")?.id).toBe("team-1");
+  });
+
+  it("ignores a team that is over", () => {
+    const teams = new Map([["team-1", team([entry()], { lifecycle: "archived" })]]);
+
+    // The team list hides these; a panel resolving one by agent has to agree,
+    // or the two disagree about what counts as a team.
+    expect(selectTeamOfAgent(teams, "member-1")).toBeNull();
   });
 });

@@ -414,6 +414,8 @@ export interface SessionState {
   hasHydratedAgents: boolean;
   hasHydratedWorkspaces: boolean;
   hasHydratedTeams: boolean;
+  /** Why the last team read failed, or null. A failure is not an empty list. */
+  teamsError: string | null;
 
   // Audio state
   isPlayingAudio: boolean;
@@ -670,6 +672,7 @@ interface SessionStoreActions {
   setHasHydratedWorkspaces: (serverId: string, hydrated: boolean) => void;
   replaceTeams: (serverId: string, teams: Map<string, TeamSnapshot>) => void;
   setHasHydratedTeams: (serverId: string, hydrated: boolean) => void;
+  setTeamsError: (serverId: string, message: string | null) => void;
 
   // Agent directory (derived from agents)
   getAgentDirectory: (serverId: string) => AgentDirectoryEntry[] | undefined;
@@ -694,6 +697,7 @@ function createInitialSessionState(
     hasHydratedAgents: false,
     hasHydratedWorkspaces: false,
     hasHydratedTeams: false,
+    teamsError: null,
     isPlayingAudio: false,
     focusedAgentId: null,
     focusedTerminalId: null,
@@ -2014,6 +2018,17 @@ export const useSessionStore = create<SessionStore>()(
           return {
             ...prev,
             sessions: { ...prev.sessions, [serverId]: { ...session, teams } },
+          };
+        });
+      },
+
+      setTeamsError: (serverId, message) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session || session.teamsError === message) return prev;
+          return {
+            ...prev,
+            sessions: { ...prev.sessions, [serverId]: { ...session, teamsError: message } },
           };
         });
       },

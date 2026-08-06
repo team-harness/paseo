@@ -21,11 +21,13 @@ export function useTeams(serverId: string | null | undefined): TeamsLoadState {
   const hydrated = useSessionStore(
     (state) => state.sessions[normalized]?.hasHydratedTeams === true,
   );
+  const online = useSessionStore((state) => state.sessions[normalized]?.client != null);
+  const error = useSessionStore((state) => state.sessions[normalized]?.teamsError ?? null);
   const teams = useSessionStore((state) => state.sessions[normalized]?.teams ?? EMPTY);
 
   return useMemo(
-    () => selectTeamsLoadState({ supported, hydrated, teams }),
-    [supported, hydrated, teams],
+    () => selectTeamsLoadState({ supported, online, hydrated, error, teams }),
+    [supported, online, hydrated, error, teams],
   );
 }
 

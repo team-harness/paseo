@@ -103,6 +103,8 @@ describe("starting from a template", () => {
     expect(state.leadProvider).toBe("claude");
     expect(state.members.map((member) => member.role)).toEqual(["server"]);
     expect(state.canSubmit).toBe(true);
+    // Carried through so the team records what it was built from.
+    expect(state.templateId).toBe("triage");
   });
 });
 
@@ -163,6 +165,18 @@ describe("submitting", () => {
 
     // Reusing it would keep handing back the team that failed.
     expect(form.getState().idempotencyKey).not.toBe(key);
+  });
+
+  it("will not send the same request twice after it succeeded", () => {
+    const form = openTeamForm(snapshot());
+    fill(form);
+    form.submitStarted();
+    form.submitSucceeded("team-1");
+
+    // Under the same key the daemon answers with the team it already built;
+    // edit anything first and the fingerprint no longer matches, so it is
+    // refused. Neither is a second team.
+    expect(form.getState().canSubmit).toBe(false);
   });
 
   it("reports the team it built", () => {
