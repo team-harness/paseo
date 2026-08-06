@@ -60,7 +60,11 @@ export interface TeamAgentGateway {
     labels: Record<string, string>;
   }): Promise<void>;
   sendPrompt(input: { agentId: string; prompt: string; clientMessageId: string }): Promise<void>;
+  /** Rejects when the agent is unknown, the same as the user-facing command. */
   archiveAgent(agentId: string): Promise<void>;
+  /** Detaches an agent from its team without ending it. */
+  clearTeamLabels(agentId: string): Promise<void>;
+  restoreTeamLabels(input: { agentId: string; teamId: string; role: string }): Promise<void>;
 }
 
 export interface TeamServiceOptions {
@@ -100,6 +104,7 @@ export class TeamService {
   private readonly logger: Logger;
   private readonly onTeamAllocated: ((teamId: string) => void) | undefined;
   private readonly creationRuns = new Map<string, Promise<StoredTeam>>();
+  private readonly teamOperations = new Map<string, Promise<void>>();
 
   constructor(options: TeamServiceOptions) {
     this.store = options.store;
@@ -230,6 +235,197 @@ export class TeamService {
    * A failed creation keeps its plan and stage. The reconciler needs both to
    * tell what was built before deciding what to clean up.
    */
+  /**
+   * Ends the team: every member that is still active gets archived, then the
+   * record does.
+   *
+   * The room stays. Its history is the reason anyone would look at an archived
+   * team at all.
+   */
+  async archive(teamId: string): Promise<StoredTeam | null> {
+    return await this.serializePerTeam(teamId, async () => {
+      const team = await this.store.get(teamId);
+      if (!team) return null;
+      if (team.lifecycle === "archived") {
+        return team;
+      }
+
+      const marked = await this.store.update(teamId, (current) => ({
+        ...current,
+        lifecycle: "archiving" as const,
+      }));
+      if (!marked) return null;
+
+      for (const member of marked.members) {
+        if (member.state !== "active") continue;
+        await this.archiveAgentIdempotently(member.agentId);
+      }
+
+      return await this.store.update(teamId, (current) => ({
+        ...current,
+        lifecycle: "archived" as const,
+        archivedAt: new Date().toISOString(),
+        members: current.members.map((member) =>
+          member.state === "active" ? { ...member, state: "archived" as const } : member,
+        ),
+      }));
+    });
+  }
+
+  /**
+   * Takes a member off the team. The agent carries on as an ordinary agent —
+   * leaving a team is not the same as being shut down.
+   */
+  async removeMember(input: { teamId: string; agentId: string }): Promise<StoredTeam | null> {
+    return await this.serializePerTeam(input.teamId, async () => {
+      const team = await this.store.get(input.teamId);
+      if (!team) return null;
+      if (team.leadAgentId === input.agentId) {
+        throw new TeamCreateValidationError(
+          "The lead cannot be removed from its own team; archive the team instead",
+        );
+      }
+      const entry = team.members.find((member) => member.agentId === input.agentId);
+      if (!entry || entry.state === "removed") {
+        return team;
+      }
+
+      await this.agents.clearTeamLabels(input.agentId);
+      return await this.markRemoved(input.teamId, input.agentId, "removed_by_user");
+    });
+  }
+
+  /**
+   * DEC-12. A hard delete leaves nothing behind to consult, so the team
+   * converges on what is left: a member simply goes, and a lead takes the team
+   * with it. `leadAgentId` stays as a historical reference — an archived team
+   * does not need its lead to still exist.
+   */
+  async onAgentDeleted(agentId: string): Promise<StoredTeam | null> {
+    const team = await this.findTeamOf(agentId);
+    if (!team) return null;
+
+    const updated = await this.markRemoved(team.id, agentId, "hard_deleted");
+    if (team.leadAgentId !== agentId || updated?.lifecycle !== "active") {
+      return updated;
+    }
+    return await this.archive(team.id);
+  }
+
+  /** An agent archived outside the team. The lead taking that step ends the team. */
+  async onAgentArchived(agentId: string): Promise<StoredTeam | null> {
+    const team = await this.findTeamOf(agentId);
+    if (!team) return null;
+
+    if (team.leadAgentId === agentId && team.lifecycle === "active") {
+      return await this.archive(team.id);
+    }
+    return await this.store.update(team.id, (current) => ({
+      ...current,
+      members: current.members.map((member) =>
+        member.agentId === agentId && member.state === "active"
+          ? { ...member, state: "archived" as const }
+          : member,
+      ),
+    }));
+  }
+
+  /**
+   * DEC-11. However the agent came back, the team asks one question: is there
+   * still a place for it here? Yes means the entry is restored and the labels
+   * with it; no means the entry is closed and the agent goes on without the
+   * team. The rule is the same whether this arrives as an event or as the
+   * reconciler catching up, which is what keeps the two paths equivalent.
+   */
+  async onAgentUnarchived(agentId: string): Promise<StoredTeam | null> {
+    const team = await this.findTeamOf(agentId);
+    if (!team) return null;
+
+    return await this.serializePerTeam(team.id, async () => {
+      const current = await this.store.get(team.id);
+      if (!current) return null;
+      const entry = current.members.find((member) => member.agentId === agentId);
+      if (!entry || entry.state === "active") {
+        return current;
+      }
+
+      if (hasRoomFor(current, agentId)) {
+        await this.agents.restoreTeamLabels({
+          agentId,
+          teamId: current.id,
+          role: entry.role,
+        });
+        return await this.store.update(current.id, (latest) => ({
+          ...latest,
+          members: latest.members.map((member) =>
+            member.agentId === agentId
+              ? { ...member, state: "active" as const, leftAt: null, removalReason: null }
+              : member,
+          ),
+        }));
+      }
+
+      await this.agents.clearTeamLabels(agentId);
+      return await this.markRemoved(current.id, agentId, "unarchive_evicted");
+    });
+  }
+
+  /**
+   * Archiving a member of a team is allowed to find nothing: an entry can point
+   * at an agent that was hard-deleted, and that entry is simply already done.
+   * The user-facing command still reports a missing agent as an error — this
+   * leniency belongs to the team's own bookkeeping, not to that contract.
+   */
+  private async archiveAgentIdempotently(agentId: string): Promise<void> {
+    try {
+      await this.agents.archiveAgent(agentId);
+    } catch (error) {
+      this.logger.info(
+        { err: error, agentId },
+        "Treating a missing agent as already archived while archiving its team",
+      );
+    }
+  }
+
+  private async markRemoved(
+    teamId: string,
+    agentId: string,
+    reason: "removed_by_user" | "hard_deleted" | "unarchive_evicted",
+  ): Promise<StoredTeam | null> {
+    const now = new Date().toISOString();
+    return await this.store.update(teamId, (current) => ({
+      ...current,
+      members: current.members.map((member) =>
+        member.agentId === agentId
+          ? { ...member, state: "removed" as const, leftAt: now, removalReason: reason }
+          : member,
+      ),
+    }));
+  }
+
+  private async findTeamOf(agentId: string): Promise<StoredTeam | null> {
+    const teams = await this.store.list();
+    return teams.find((team) => team.members.some((member) => member.agentId === agentId)) ?? null;
+  }
+
+  /**
+   * One operation per team at a time. Archive reads the roster, acts on each
+   * entry, then writes the outcome; a concurrent removal landing in the middle
+   * would otherwise be overwritten by a decision taken before it.
+   */
+  private async serializePerTeam<T>(teamId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.teamOperations.get(teamId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(operation);
+    this.teamOperations.set(
+      teamId,
+      next.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return await next;
+  }
+
   private async markFailed(teamId: string): Promise<void> {
     try {
       await this.store.update(teamId, (current) => ({
@@ -252,6 +448,24 @@ const CREATION_STAGE_ORDER: TeamCreationStage[] = [
 function isStageComplete(current: TeamCreationStage | null, stage: TeamCreationStage): boolean {
   if (current === null) return false;
   return CREATION_STAGE_ORDER.indexOf(current) >= CREATION_STAGE_ORDER.indexOf(stage);
+}
+
+/**
+ * Whether the team can take this agent back. Only an active team can, and only
+ * if the seats are not full — except for the lead, which does not occupy one,
+ * so an active team always has room for its own lead.
+ */
+function hasRoomFor(team: StoredTeam, agentId: string): boolean {
+  if (team.lifecycle !== "active") {
+    return false;
+  }
+  if (team.leadAgentId === agentId) {
+    return true;
+  }
+  const occupied = team.members.filter(
+    (member) => member.state === "active" && member.agentId !== team.leadAgentId,
+  ).length;
+  return occupied < TEAM_MAX_NON_LEAD_MEMBERS;
 }
 
 function assertMemberSpecsValid(request: CreateTeamRequest): void {
