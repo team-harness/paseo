@@ -260,7 +260,7 @@ export const ko: TranslationResources = {
     states: {
       notFound: "에이전트를 찾을 수 없습니다",
       failedToLoad: "에이전트를 불러오지 못했습니다",
-      reconnecting: "다시 연결하는 중...",
+      reconnecting: "다시 연결하는 중",
       timelineSyncFailed: "에이전트 기록을 새로고침할 수 없습니다. 재시도 중…",
       archivingTitle: "에이전트 보관 중...",
       archivingSubtitle: "이 에이전트를 보관하는 동안 잠시 기다려 주세요.",
@@ -1547,6 +1547,19 @@ export const ko: TranslationResources = {
         label: "고급",
         show: "고급 표시",
         hide: "고급 숨기기",
+      },
+      headers: {
+        title: "사용자 지정 헤더",
+        add: "헤더 추가",
+        name: "이름",
+        value: "값",
+        remove: "헤더 삭제",
+        errors: {
+          missingName: "각 헤더의 이름을 입력하세요",
+          invalidName: "{{name}}은(는) 올바른 헤더 이름이 아닙니다",
+          invalidValue: "{{name}}에 잘못된 줄바꿈이 있습니다",
+          duplicateName: "{{name}}이(가) 두 번 이상 입력되었습니다",
+        },
       },
       passwordVisibility: {
         show: "비밀번호 표시",

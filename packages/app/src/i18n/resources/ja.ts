@@ -261,7 +261,7 @@ export const ja: TranslationResources = {
     states: {
       notFound: "エージェントが見つかりません",
       failedToLoad: "エージェントの読み込みに失敗しました",
-      reconnecting: "再接続中...",
+      reconnecting: "再接続中",
       timelineSyncFailed: "エージェントの履歴を更新できませんでした。再試行しています…",
       archivingTitle: "エージェントをアーカイブ中...",
       archivingSubtitle: "このエージェントをアーカイブするまでお待ちください。",
@@ -1552,6 +1552,19 @@ export const ja: TranslationResources = {
         label: "詳細設定",
         show: "詳細設定を表示",
         hide: "詳細設定を非表示",
+      },
+      headers: {
+        title: "カスタムヘッダー",
+        add: "ヘッダーを追加",
+        name: "名前",
+        value: "値",
+        remove: "ヘッダーを削除",
+        errors: {
+          missingName: "各ヘッダーの名前を入力してください",
+          invalidName: "{{name}} は有効なヘッダー名ではありません",
+          invalidValue: "{{name}} に無効な改行が含まれています",
+          duplicateName: "{{name}} が複数回入力されています",
+        },
       },
       passwordVisibility: {
         show: "パスワードを表示",

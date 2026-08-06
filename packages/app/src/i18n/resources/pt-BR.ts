@@ -261,7 +261,7 @@ export const ptBR: TranslationResources = {
     states: {
       notFound: "Agente não encontrado",
       failedToLoad: "Falha ao carregar agente",
-      reconnecting: "Reconectando...",
+      reconnecting: "Reconectando",
       timelineSyncFailed: "Não foi possível atualizar o histórico do agente. Tentando novamente…",
       archivingTitle: "Arquivando agente...",
       archivingSubtitle: "Aguarde enquanto arquivamos este agente.",
@@ -1565,6 +1565,19 @@ export const ptBR: TranslationResources = {
         label: "Avançado",
         show: "Mostrar avançado",
         hide: "Ocultar avançado",
+      },
+      headers: {
+        title: "Cabeçalhos personalizados",
+        add: "Adicionar cabeçalho",
+        name: "Nome",
+        value: "Valor",
+        remove: "Remover cabeçalho",
+        errors: {
+          missingName: "Digite um nome para cada cabeçalho",
+          invalidName: "{{name}} não é um nome de cabeçalho válido",
+          invalidValue: "{{name}} contém uma quebra de linha inválida",
+          duplicateName: "{{name}} foi inserido mais de uma vez",
+        },
       },
       passwordVisibility: {
         show: "Mostrar senha",

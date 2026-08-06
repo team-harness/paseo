@@ -37,6 +37,14 @@ const ASSISTANT_MARKDOWN = [
   "",
   "```typescript",
   'const answer = "yes";',
+  "  return answer;",
+  "```",
+  "",
+  "After code.",
+  "",
+  "```bash",
+  "echo trailing",
+  "",
   "```",
   "",
   "````text",
@@ -53,10 +61,14 @@ const ASSISTANT_MARKDOWN = [
 const EXPECTED_WHOLE_SELECTION_MARKDOWN = ASSISTANT_MARKDOWN.replace(
   "<https://autolink.example.com>",
   "[https://autolink.example.com](https://autolink.example.com)",
-).replace(
-  "3. Outer three\n\n   7. Inner seven\n   8. Inner eight\n   9. Inner nine",
-  "3. Outer three\n    7. Inner seven\n    8. Inner eight\n    9. Inner nine",
-);
+)
+  .replace(
+    "3. Outer three\n\n   7. Inner seven\n   8. Inner eight\n   9. Inner nine",
+    "3. Outer three\n    7. Inner seven\n    8. Inner eight\n    9. Inner nine",
+  )
+  // Rendering drops the blank line before a closing fence, so copying cannot bring it
+  // back. The fence is here to cover a body that ends in more than one newline.
+  .replace("```bash\necho trailing\n\n```", "```bash\necho trailing\n```");
 
 interface ClipboardContent {
   html: string;
@@ -73,6 +85,19 @@ async function selectAssistantMessage(page: Page): Promise<void> {
   });
   await expect(assistantMessage).toBeVisible();
   await assistantMessage.evaluate((element) => {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  });
+}
+
+async function selectAssistantElement(page: Page, selector: string): Promise<void> {
+  const assistantMessage = page.getByTestId("assistant-message").filter({
+    hasText: "Direct matches:",
+  });
+  await assistantMessage.locator(selector).evaluate((element) => {
     const selection = window.getSelection();
     const range = document.createRange();
     range.selectNodeContents(element);
@@ -135,8 +160,64 @@ async function selectAssistantTextRange(
   );
 }
 
+/**
+ * Select from `startText` into the middle of the next rendered code line.
+ *
+ * Highlighted code splits a line across one text node per syntax token and puts the
+ * newline in a node of its own, so this is a partial selection that crosses a line
+ * break — the shape whose whitespace Turndown would collapse.
+ */
+async function selectAssistantAcrossCodeLines(
+  page: Page,
+  startText: string,
+  endText: string,
+): Promise<void> {
+  const assistantMessage = page.getByTestId("assistant-message").filter({
+    hasText: "Direct matches:",
+  });
+  await assistantMessage.evaluate(
+    (element, selectedRange) => {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let startNode: Node | null = null;
+      let startOffset = -1;
+      let textNode = walker.nextNode();
+      while (textNode) {
+        if (!startNode) {
+          const offset = textNode.textContent?.indexOf(selectedRange.startText) ?? -1;
+          if (offset >= 0) {
+            startNode = textNode;
+            startOffset = offset;
+          }
+          textNode = walker.nextNode();
+          continue;
+        }
+        const endOffset = textNode.textContent?.indexOf(selectedRange.endText) ?? -1;
+        if (endOffset >= 0) {
+          const range = document.createRange();
+          range.setStart(startNode, startOffset);
+          range.setEnd(textNode, endOffset + selectedRange.endText.length);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+          return;
+        }
+        textNode = walker.nextNode();
+      }
+      throw new Error(
+        `Could not find a code range: ${selectedRange.startText} — ${selectedRange.endText}`,
+      );
+    },
+    { startText, endText },
+  );
+}
+
 async function copySelection(page: Page): Promise<void> {
   await page.keyboard.press("ControlOrMeta+c");
+}
+
+/** The Copy button writes text/plain only, so the rich reader would throw on it. */
+async function readPlainClipboard(page: Page): Promise<string> {
+  return page.evaluate(() => navigator.clipboard.readText());
 }
 
 async function readRichClipboard(page: Page): Promise<ClipboardContent> {
@@ -200,12 +281,14 @@ test("copying an assistant selection preserves Markdown structure and links", as
 
     const clipboard = await readRichClipboard(page);
     expect(clipboard.plainText).toBe(EXPECTED_WHOLE_SELECTION_MARKDOWN);
-    expect(clipboard.html).toContain("<ul>");
+    expect(clipboard.html).not.toContain("<ul>");
+    expect(clipboard.html).not.toContain("<li>");
+    expect(clipboard.html).toContain("<div>- ");
     expect(clipboard.html).toContain(
       '<strong><a href="https://example.com/issues/1">First issue</a></strong>',
     );
     expect(clipboard.html).toContain("<code>apply_patch</code>");
-    expect(clipboard.html).toContain('<ol start="5">');
+    expect(clipboard.html).toContain("<div>5. Fifth item</div>");
     expect(clipboard.html).toContain("A hard break<br>");
     expect(clipboard.html).toContain(
       '<a href="http://www.example.com/">www.example.com</a> stays plain Markdown text.',
@@ -239,9 +322,27 @@ test("copying an assistant selection preserves Markdown structure and links", as
     await copySelection(page);
 
     const partialClipboard = await readRichClipboard(page);
-    expect(partialClipboard.plainText).toBe("- **[First](https://example.com/issues/1)**");
-    expect(partialClipboard.html).toContain(
-      '<li><strong><a href="https://example.com/issues/1">First</a></strong></li>',
+    expect(partialClipboard.plainText).toBe("First");
+    expect(partialClipboard.html).toContain("<p>First</p>");
+
+    await selectAssistantTextRange(page, "Direct matches:", "repeated sandbox setup.");
+    await copySelection(page);
+
+    const paragraphAndListClipboard = await readRichClipboard(page);
+    expect(paragraphAndListClipboard.plainText).toBe(
+      [
+        "Direct matches:",
+        "",
+        "Formatted **strong prose**, _emphasized prose_, and ~~struck prose~~.",
+        "",
+        "- **[First issue](https://example.com/issues/1)**: exact `apply_patch` failure.",
+        "- [Second issue](https://example.com/issues/2): repeated sandbox setup.",
+      ].join("\n"),
+    );
+    expect(paragraphAndListClipboard.html).not.toContain("<ul>");
+    expect(paragraphAndListClipboard.html).not.toContain("<li>");
+    expect(paragraphAndListClipboard.html).toContain(
+      '<div>- <strong><a href="https://example.com/issues/1">First issue</a></strong>',
     );
 
     await selectAssistantText(page, "docs");
@@ -277,22 +378,22 @@ test("copying an assistant selection preserves Markdown structure and links", as
     await copySelection(page);
 
     const midListClipboard = await readRichClipboard(page);
-    expect(midListClipboard.plainText).toBe("7. Seventh item\n8. Eighth item");
-    expect(midListClipboard.html).toContain('<ol start="7">');
+    expect(midListClipboard.plainText).toBe("Seventh item\n\n8. Eighth item");
+    expect(midListClipboard.html).toContain("<div>8. Eighth item</div>");
 
     await selectAssistantTextRange(page, "Inner eight", "Inner nine");
     await copySelection(page);
 
     const nestedListClipboard = await readRichClipboard(page);
-    expect(nestedListClipboard.plainText).toBe("3. 8. Inner eight\n    9. Inner nine");
-    expect(nestedListClipboard.html).toContain('<ol start="8">');
+    expect(nestedListClipboard.plainText).toBe("Inner eight\n\n9. Inner nine");
+    expect(nestedListClipboard.html).toContain("<div>9. Inner nine</div>");
 
     await selectAssistantTextRange(page, "Seventh item", "Nested list:");
     await copySelection(page);
 
     const crossBlockClipboard = await readRichClipboard(page);
-    expect(crossBlockClipboard.plainText).toBe("7. Seventh item\n8. Eighth item\n\nNested list:");
-    expect(crossBlockClipboard.html).toContain('<ol start="7">');
+    expect(crossBlockClipboard.plainText).toBe("Seventh item\n\n8. Eighth item\n\nNested list:");
+    expect(crossBlockClipboard.html).toContain("<div>8. Eighth item</div>");
 
     await selectAssistantText(page, "Current");
     await copySelection(page);
@@ -356,6 +457,59 @@ test("copying an assistant selection preserves Markdown structure and links", as
       });
     await page.getByTestId("assistant-selection-quote").click();
     await expect(composer).toHaveValue("> Render the clipboard fixture.\n\n");
+    // A partial selection loses its `pre` wrapper, so the code reaches Turndown as
+    // prose unless it is diverted first: the line break and the indentation go, and
+    // Markdown-significant characters get escaped.
+    await selectAssistantAcrossCodeLines(page, "const", "return");
+    await copySelection(page);
+
+    const codeLinesClipboard = await readRichClipboard(page);
+    expect(codeLinesClipboard.plainText).toBe('const answer = "yes";\n  return');
+    expect(codeLinesClipboard.html).toContain('<pre><code class="language-typescript">');
+
+    // Selecting inside code expresses an intent to copy code, even when the selection
+    // contains every character in the block.
+    await selectAssistantElement(
+      page,
+      '[data-paseo-markdown-language="typescript"] [data-paseo-markdown-tag="code"]',
+    );
+    await copySelection(page);
+
+    const completeCodeClipboard = await readRichClipboard(page);
+    expect(completeCodeClipboard.plainText).toBe('const answer = "yes";\n  return answer;');
+
+    // Crossing the block boundary expresses an intent to carry its Markdown structure.
+    await selectAssistantAcrossCodeLines(page, "const", "After code.");
+    await copySelection(page);
+
+    const crossedCodeClipboard = await readRichClipboard(page);
+    expect(crossedCodeClipboard.plainText).toBe(
+      '```typescript\nconst answer = "yes";\n  return answer;\n```\n\nAfter code.',
+    );
+
+    // Selecting a whole line runs off its end into the newline node. A trailing
+    // newline auto-executes the line when it is pasted into a terminal.
+    await selectAssistantAcrossCodeLines(page, "const", "  ");
+    await copySelection(page);
+
+    expect((await readRichClipboard(page)).plainText).toBe('const answer = "yes";');
+
+    // The block's own Copy button had the same hazard: a Markdown fence body ends in
+    // a newline, and the button copied it raw.
+    const typescriptFence = assistantMessage.locator('[data-paseo-markdown-language="typescript"]');
+    // The button is opacity 0 / pointerEvents none until the fence is hovered.
+    await typescriptFence.hover();
+    await typescriptFence.locator("[data-paseo-markdown-ignore]").click();
+
+    expect(await readPlainClipboard(page)).toBe('const answer = "yes";\n  return answer;');
+
+    // A blank line before the closing fence leaves the body ending in two newlines,
+    // so stripping only the terminal one still hands the terminal an executable line.
+    const bashFence = assistantMessage.locator('[data-paseo-markdown-language="bash"]');
+    await bashFence.hover();
+    await bashFence.locator("[data-paseo-markdown-ignore]").click();
+
+    expect(await readPlainClipboard(page)).toBe("echo trailing");
   } finally {
     await agent.cleanup();
   }

@@ -258,7 +258,7 @@ export const ar: TranslationResources = {
     states: {
       notFound: "لم يتم العثور على Agent",
       failedToLoad: "فشل تحميل الوكيل",
-      reconnecting: "جارٍ إعادة الاتصال...",
+      reconnecting: "جارٍ إعادة الاتصال",
       timelineSyncFailed: "تعذر تحديث سجل الوكيل. جارٍ إعادة المحاولة…",
       archivingTitle: "وكيل الارشيف...",
       archivingSubtitle: "الرجاء الانتظار بينما نقوم بأرشفة هذا الوكيل.",
@@ -1535,6 +1535,19 @@ export const ar: TranslationResources = {
         label: "متقدم",
         show: "عرض متقدم",
         hide: "إخفاء المتقدمة",
+      },
+      headers: {
+        title: "رؤوس مخصصة",
+        add: "إضافة رأس",
+        name: "الاسم",
+        value: "القيمة",
+        remove: "إزالة الرأس",
+        errors: {
+          missingName: "أدخل اسمًا لكل رأس",
+          invalidName: "{{name}} ليس اسم رأس صالحًا",
+          invalidValue: "يحتوي {{name}} على فاصل أسطر غير صالح",
+          duplicateName: "تم إدخال {{name}} أكثر من مرة",
+        },
       },
       passwordVisibility: {
         show: "إظهار كلمة المرور",

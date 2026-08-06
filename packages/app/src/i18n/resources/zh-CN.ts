@@ -257,7 +257,7 @@ export const zhCN: TranslationResources = {
     states: {
       notFound: "未找到 Agent",
       failedToLoad: "加载 Agent 失败",
-      reconnecting: "正在重连...",
+      reconnecting: "正在重连",
       timelineSyncFailed: "无法刷新代理历史记录。正在重试…",
       archivingTitle: "正在归档 Agent...",
       archivingSubtitle: "请稍候，我们正在归档这个 Agent。",
@@ -1516,6 +1516,19 @@ export const zhCN: TranslationResources = {
         label: "高级",
         show: "显示高级选项",
         hide: "隐藏高级选项",
+      },
+      headers: {
+        title: "自定义请求头",
+        add: "添加请求头",
+        name: "名称",
+        value: "值",
+        remove: "删除请求头",
+        errors: {
+          missingName: "请为每个请求头输入名称",
+          invalidName: "{{name}} 不是有效的请求头名称",
+          invalidValue: "{{name}} 包含无效换行符",
+          duplicateName: "{{name}} 输入了多次",
+        },
       },
       passwordVisibility: {
         show: "显示密码",

@@ -261,7 +261,7 @@ export const ru: TranslationResources = {
     states: {
       notFound: "Agent не найден",
       failedToLoad: "Не удалось загрузить агент",
-      reconnecting: "Повторное подключение...",
+      reconnecting: "Повторное подключение",
       timelineSyncFailed: "Не удалось обновить историю агента. Повторная попытка…",
       archivingTitle: "Архивный агент...",
       archivingSubtitle: "Пожалуйста, подождите, пока мы архивируем этого агента.",
@@ -1570,6 +1570,19 @@ export const ru: TranslationResources = {
         label: "Передовой",
         show: "Показать расширенные",
         hide: "Скрыть расширенные",
+      },
+      headers: {
+        title: "Пользовательские заголовки",
+        add: "Добавить заголовок",
+        name: "Имя",
+        value: "Значение",
+        remove: "Удалить заголовок",
+        errors: {
+          missingName: "Введите имя для каждого заголовка",
+          invalidName: "{{name}} — недопустимое имя заголовка",
+          invalidValue: "{{name}} содержит недопустимый перенос строки",
+          duplicateName: "{{name}} введён несколько раз",
+        },
       },
       passwordVisibility: {
         show: "Показать пароль",

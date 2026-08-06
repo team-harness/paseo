@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `fb5cfb9fb90ac1957fe09653bce2667bfe1ec070`，同步于 2026-08-06。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `fb5cfb9fb90ac1957fe09653bce2667bfe1ec070`）。
+- 最近同步基线：`upstream/main` = `ef6d7b3b958b4a6096dd7e600fdc20a77fefc9ce`，同步于 2026-08-07。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `ef6d7b3b958b4a6096dd7e600fdc20a77fefc9ce`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-07: `upstream/main` `ef6d7b3b9` / `v0.3.0-beta.2`
+
+- 合入上游 Claude 模型与 thinking 偏好持久化、直连自定义 Header、重连状态反馈、Composer 工具栏切换稳定性、代码复制换行/缩进保真、可见选区裁剪、Provider 子 Agent/Workflow 展示、OpenCode 子 Agent 信息、Claude runtime 退出处理、终端活动终态清理、桌面浏览器稳定性及 Hub 文档更新。
+- 侧边栏采用上游 needs-input 强调样式、统一状态尺寸和无障碍标签；运行中继续保留 fork 的 `SyncedLoader`，不采用上游静态圆点。一级 Agent 终态仍执行通用 Provider 子 Agent 清理，因为上游本轮只修复 Claude replay 来源的残留记录，不能覆盖实时 Provider 子 Agent 的跨 Provider 终态边界。
+- 能力决策：继续保留 fork 的 Status Bar/usage ledger/多 Host 汇总、计划任务选择既有 Agent、Codex 定价与 usage accounting、Threadshare 分享、Host 常用 Prompt、对话选区引用、跨 File/Changes Review Comments、工作区聊天跟随最新消息、固定签名桌面/Web Server 分发，以及独立 Android 安装身份与本地 APK 构建。本轮没有上游等价能力可下线。
 
 ### 2026-08-06: `upstream/main` `fb5cfb9fb` / `v0.3.0-beta.2`
 

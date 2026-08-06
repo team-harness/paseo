@@ -257,7 +257,7 @@ export const en = {
     states: {
       notFound: "Agent not found",
       failedToLoad: "Failed to load agent",
-      reconnecting: "Reconnecting...",
+      reconnecting: "Reconnecting",
       timelineSyncFailed: "Couldn't refresh agent history. Retrying…",
       archivingTitle: "Archiving agent...",
       archivingSubtitle: "Please wait while we archive this agent.",
@@ -1547,6 +1547,19 @@ export const en = {
         label: "Advanced",
         show: "Show advanced",
         hide: "Hide advanced",
+      },
+      headers: {
+        title: "Custom headers",
+        add: "Add header",
+        name: "Name",
+        value: "Value",
+        remove: "Remove header",
+        errors: {
+          missingName: "Enter a name for each header",
+          invalidName: "{{name}} is not a valid header name",
+          invalidValue: "{{name}} contains an invalid line break",
+          duplicateName: "{{name}} is entered more than once",
+        },
       },
       passwordVisibility: {
         show: "Show password",

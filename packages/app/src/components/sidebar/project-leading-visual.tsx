@@ -14,6 +14,7 @@ import {
 } from "@/utils/project-status-badge-content";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { getStatusDotColor } from "@/utils/status-dot-color";
+import { STATUS_INDICATOR_ALERT_SIZE } from "@/utils/status-indicator-geometry";
 import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
 
 // Every surfaced status shares one badge shell, so the badge never changes size or position
@@ -28,10 +29,8 @@ const STATUS_BADGE_OFFSET = -4;
 // odd size measured 1.5 device px right and down at 3x, ~3px of asymmetry between opposite gaps).
 // Even sizes divide the shell into whole pixels and land dead center with no correction.
 //
-// Lucide's circle-alert paints ~83% of its nominal size, so an alert of 10 draws a ~8.3pt circle
-// against the 8pt dot — the two states read as the same-diameter disc.
-const STATUS_BADGE_DOT_SIZE = 8;
-const STATUS_BADGE_ALERT_SIZE = 10;
+// Needs-input fills the badge shell while passive failed/attention states stay smaller.
+const STATUS_BADGE_DOT_SIZE = 6;
 // SyncedLoader clamps its dot size at 2px, so sizes 5-10 all render the same 5x8 dot grid.
 const STATUS_BADGE_LOADER_SIZE = 7;
 // The dot-comet reads a hair right inside the round badge; this optical nudge centers it.
@@ -48,7 +47,8 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
 const needsInputColorMapping = (theme: Theme) => ({
-  color: getStatusDotColor({ theme, bucket: "needs_input" }) ?? undefined,
+  color: theme.colors.surface0,
+  fill: getStatusDotColor({ theme, bucket: "needs_input" }) ?? undefined,
 });
 const syncedLoaderColorMapping = (theme: Theme) => ({
   color: getStatusDotColor({ theme, bucket: "running" }) ?? undefined,
@@ -245,7 +245,9 @@ function renderProjectStatusBadgeContent(content: ProjectStatusBadgeContent): Re
         </View>
       );
     case "alert":
-      return <ThemedCircleAlert size={STATUS_BADGE_ALERT_SIZE} uniProps={needsInputColorMapping} />;
+      return (
+        <ThemedCircleAlert size={STATUS_INDICATOR_ALERT_SIZE} uniProps={needsInputColorMapping} />
+      );
     case "dot":
       return <View testID="project-status-dot" style={getStatusDotColorStyle(content.bucket)} />;
   }
