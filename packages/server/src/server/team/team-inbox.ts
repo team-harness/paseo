@@ -244,6 +244,17 @@ export class TeamInbox {
     return delivery ? { deliveryId: delivery.deliveryId, completions: delivery.completions } : null;
   }
 
+  /**
+   * Whether the lead has anything coming, without deciding what. Asking
+   * `prepareDelivery` would close a batch around whatever has settled so far,
+   * and anything settling afterwards would have to wait for that batch to be
+   * acknowledged before it could go anywhere.
+   */
+  async hasNewsForLead(teamId: string): Promise<boolean> {
+    const file = await this.read(teamId);
+    return file.inFlightDelivery !== null || file.pendingCompletions.length > 0;
+  }
+
   /** Acknowledging a batch that is already gone is a replay, not an error. */
   async acknowledgeDelivery(input: { teamId: string; deliveryId: string }): Promise<void> {
     await this.mutate(input.teamId, (file) =>

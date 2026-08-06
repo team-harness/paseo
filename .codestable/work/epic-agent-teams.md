@@ -171,6 +171,34 @@ ITEM-4 起遵守：
 5. **新功能测试写新文件**（`session.team.test.ts` 之类），不要往 `session.test.ts` 塞——它是 upstream 最热的文件。
 6. **通用性修复推回 upstream**：路径穿越、cursor 重复、mention 打断 running agent 都是 upstream 自身的 bug，推回去才能永久消除冲突源。
 
+## ITEM-4 · TeamService（核心已完成，待评审）
+
+七个切片，118 个测试，全部在 `packages/server/src/server/team/` 下，`session.ts` 零改动。
+
+| 提交        | 内容                                                                                                                |
+| ----------- | ------------------------------------------------------------------------------------------------------------------- |
+| `c9811c46a` | 创建事务（DEC-2）：计划先落盘、分阶段、幂等键 + 持久化指纹、并发共用一次执行                                        |
+| `67c4c683d` | 生命周期：archive / removeMember / DEC-12 hard delete 收敛 / DEC-11 unarchive 统一规则                              |
+| `f6802051b` | ledger（DEC-3）：assignment 状态机、同 assignee FIFO 且至多一个 in-flight、结算与入队同一写、delivery 按内容派生 id |
+| `ab3b0583d` | 派发泵：无抢占契约、三态结算、每趟返回"是否还有未决"供兜底扫描                                                      |
+| `5ca1ea56b` | 启动对账器（§5.7）：creating 续跑 / archiving 先 evict 再续 / failed 一次性清理 / active 校验                       |
+| `847ea72c4` | 招募两阶段事务（DEC-13）：座位与完整意图同一写、每步 lifecycle fence、对账重放                                      |
+| `218032537` | `team.*` 五个 RPC + `team.update` 广播，全部经 `toTeamSnapshot` 投影                                                |
+
+### 实施中的判断
+
+- **store 接受预分配 id**：设计 §5.2 要求"预分配全部 ID"，而房间内部名是 `team-{teamId}`——若 id 由 store 生成，计划就无法在首次写入时完整落盘。`NewTeam.id` 改为可选。
+- **per-team 串行**：创建计划、生命周期操作、泵各自有队列。资源级幂等是崩溃恢复的保证，不该被用来兜并发。
+- **对账器快照陈旧是真 bug**：`evictAgentsThatCameBack` 原先用入口快照判断，会覆盖同一趟里前面步骤刚关闭的 entry。改为重新读取。
+- **变异测试验证了七处不变式**：派发门控、running turn 不结算、容量预留、fence 取消、wire 投影、对账 lead 缺失不重建、对账 eviction 顺序。每处移除后对应测试都转红。
+
+### 已知缺口（未接线，非缺陷）
+
+- 未接入 `bootstrap.ts`，gateway 没有生产实现。
+- `assign_task` / `team_status` / chat agent 工具未建。
+- 60s 兜底扫描未调度；`TeamPump.run` 返回的就是它要挂的信号。
+- 契约列出的崩溃窗口未全覆盖。
+
 ### 待办
 
-ITEM-3 已达成契约（三轮复核的 finding 全部关闭）。下一步：ITEM-3 里程碑提交 → ITEM-4（TeamService），按上述约束实施。
+ITEM-4 核心评审进行中。通过后：agent 工具 + bootstrap 接线 → ITEM-4 里程碑 → ITEM-5。

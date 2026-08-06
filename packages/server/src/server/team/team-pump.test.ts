@@ -27,6 +27,7 @@ describe("TeamPump", () => {
     unwakeable = new Set<string>();
     readonly dispatched: Array<{ agentId: string; prompt: string; clientMessageId: string }> = [];
     readonly delivered: Array<{ agentId: string; deliveryId: string }> = [];
+    readonly bodies: string[] = [];
     /** Turn ids to hand back, one per dispatch. */
     turnIds: string[] = [];
     /** Turn outcomes the ledger can look up, by turn id. */
@@ -53,6 +54,7 @@ describe("TeamPump", () => {
       body: string;
     }): Promise<boolean> {
       this.delivered.push({ agentId: input.agentId, deliveryId: input.deliveryId });
+      this.bodies.push(input.body);
       return true;
     }
 
@@ -241,6 +243,10 @@ describe("TeamPump", () => {
       await pump.run({ teamId: "team-1", leadAgentId: "lead" });
 
       expect(gateway.delivered).toHaveLength(1);
+      // Both, not just whichever settled first: a pass that only checked
+      // whether there was news must not have closed the batch around it.
+      expect(gateway.bodies[0]).toContain("first");
+      expect(gateway.bodies[0]).toContain("second");
     });
 
     test("does not deliver the same batch twice", async () => {

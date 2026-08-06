@@ -159,6 +159,9 @@ export class TeamPump {
     if (assignments.some((assignment) => assignment.state !== "settled")) {
       return true;
     }
-    return (await this.inbox.prepareDelivery(teamId)) !== null;
+    // Read-only on purpose: asking `prepareDelivery` would close a batch around
+    // what has settled so far, and a pass that only wanted to know whether to
+    // come back would have split a delivery the lead should have got as one.
+    return await this.inbox.hasNewsForLead(teamId);
   }
 }
