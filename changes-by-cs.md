@@ -150,6 +150,8 @@
 - 底部全局 Status Bar 展示 token、费用、运行/需要注意/最近会话，并提供会话导航。
 - 按 host 获取 `status.summary`；客户端可合并多个已连接 host 的信息，并在会话/历史项显示 host。状态栏的 Pin 直接复用侧边栏 workspace 的 `pinnedAt`、列表投影、完整 workspace entry 和 `setWorkspacePinned` API，因此两处展示信息及置顶/取消置顶行为一致。
 - 会话以一级 Agent 聚合；子 Agent 的运行或等待状态汇总到根 Agent，避免大量子 Agent 淹没列表。
+- 一级 Agent 进入完成、失败或取消等终态时，服务端会同步终止仍被 Provider 标为 `running` 的子 Agent，避免工作区侧边栏在实际执行结束后继续显示运行中。
+- 清除“需要注意”成功后，客户端会重新拉取该 Host 的权威 `status.summary`；即使增量推送丢失，Status Bar 也不会长期停留在旧的“需要注意”状态。
 - 历史只显示当前已加载集合中的一级、非 `closed` Agent；支持刷新、workspace Pin 和紧凑/桌面布局。
 - 手机端状态项保持单行并可横向滚动，Android 以末端渐隐提示后续内容；窄屏不能再用 `overflow: hidden` 截掉会话、历史、Pin 或工作区入口。
 - 空闲与运行中使用同一状态栏结构；错误目前只显示计数，不新增错误会话面板或旧 RPC fallback。

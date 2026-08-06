@@ -824,6 +824,11 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       applyStatusSummaryUpdate({ serverId, queryClient, message });
     });
 
+    const unsubAgentAttentionCleared = client.on("clear_agent_attention_response", (message) => {
+      if (message.type !== "clear_agent_attention_response") return;
+      refreshHostStatusSummary();
+    });
+
     const unsubWorkspaceSetupProgress = client.on("workspace_setup_progress", (message) => {
       if (message.type !== "workspace_setup_progress") return;
       applyWorkspaceSetupProgress(message.payload);
@@ -1108,6 +1113,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubScriptStatusUpdate();
       unsubCheckoutStatusUpdate();
       unsubStatusSummaryUpdate();
+      unsubAgentAttentionCleared();
       unsubWorkspaceSetupProgress();
       unsubWorkspaceSetupStatusResponse();
       unsubStatus();
@@ -1140,6 +1146,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     setPendingPermissions,
     notifyAgentAttention,
     recoverTimelineGap,
+    refreshHostStatusSummary,
     applyWorkspaceSetupProgress,
     applyTimelineResponse,
     updateSessionServerInfo,

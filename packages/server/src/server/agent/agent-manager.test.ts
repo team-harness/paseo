@@ -8275,6 +8275,67 @@ test("explicit close cancels running provider subagents before resume", async ()
   }
 });
 
+test("completed parent turn cancels provider subagents left running", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-completed-provider-child-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+
+  class ProviderChildSession extends TestAgentSession {
+    override async startTurn(): Promise<{ turnId: string }> {
+      const turnId = "turn-with-provider-child";
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "provider_subagent",
+          provider: this.provider,
+          event: {
+            type: "upsert",
+            id: "provider-child-running",
+            title: "Provider child",
+            status: "running",
+          },
+        });
+        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+      }, 0);
+      return { turnId };
+    }
+  }
+
+  class ProviderChildClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new ProviderChildSession(config);
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { codex: new ProviderChildClient() },
+    registry: storage,
+    logger,
+  });
+
+  try {
+    const parent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: "workspace-a",
+    });
+
+    await manager.runAgent(parent.id, "run child");
+    await manager.flush();
+
+    expect(manager.getAgent(parent.id)?.lifecycle).toBe("idle");
+    expect(manager.getProviderSubagent(parent.id, "provider-child-running")?.status).toBe(
+      "canceled",
+    );
+    expect(manager.listProviderSubagentActivity()).not.toContainEqual(
+      expect.objectContaining({ id: "provider-child-running", status: "running" }),
+    );
+  } finally {
+    await Promise.all(manager.listAgents().map((agent) => manager.closeAgent(agent.id))).catch(
+      () => undefined,
+    );
+    await storage.flush().catch(() => undefined);
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
 test("load waits for an in-flight explicit close and creates one resumed runtime", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-explicit-close-race-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);
