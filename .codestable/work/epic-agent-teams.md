@@ -322,6 +322,21 @@ should-fix 里两条同一形状：路由把"handshake 还没到"读成"daemon �
 
 **变异测试第二次救场**：路由的两个 guard 对调，8 条测试全绿——两条相关用例分别覆盖 `supported:true+connecting` 与 `supported:false+online`，而现实中真正出现的组合 `supported:false+connecting` 一条都没有。E2E 也是：第一版用 mock provider 的 plan 请求（少数带 actions 的），把"只渲染 request.actions"这个 blocker 变异回去照样通过。给 mock 加了一个不带 actions 的工具权限请求后才抓得住。
 
+---
+
+## 最终验收评审第一轮：一个 blocker 让 Epic 的第一条目标不存在
+
+`NewTeamSheet` **没有任何渲染点**。ITEM-6 造了 sheet、表单模型、provider 解析、提交路径共约 840 行，全都测过；ITEM-7 造了面板。把 sheet 挂进 workspace 这一步，两个子项都以为是对方的。于是"新建面板一键创建 team"在成品里不存在，只能走 CLI 或裸 RPC。三条浏览器 E2E 全部 `workspace.client.createTeam(...)` 直接打 daemon，所以谁也发现不了。
+
+它同时是全仓唯一一个零 i18n 的 team 组件——**没被渲染过所以没人发现**，两件事是同一件事。
+
+另外两条：
+
+- `team.update` 的按 socket 门控零测试。看起来像那条测试的 E2E 连了三个 client，而那是三个 session；DEC-5 说的是**同一 session 的两条 socket**，把循环换成 `this.emit` 广播给全部 socket 照样绿。
+- `failed` team 从不做 unarchive 补偿，尽管 §5.7 把它和 `archived` 写在同一条。daemon 停机期间被 unarchive 的成员，留下"entry 说 archived、agent 在跑"——DEC-11 宣称不存在的状态；而且 `create_agent` 的招募钩子会找到这个 failed team 并拒绝，这个 agent 从此再也招不了人。
+
+还有一条隐蔽的：给 sheet 补文案时，插入脚本的 marker 匹配到了 `sidebar.workspace`，**整个 `teams` 命名空间落进了 `sidebar` 里**。面板与房间此前渲染的一直是键名本身，而没有一条断言看过那些文字——E2E 只断言了团队名（数据）和 testID。
+
 ### 待办
 
-最终验收评审 + owner 验收。QA 证据（docs/qa.md 的平台矩阵）随 PR 提交。
+最终验收评审第二轮 + owner 验收。QA 证据（docs/qa.md 的平台矩阵）随 PR 提交。
