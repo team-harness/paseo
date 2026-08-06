@@ -17,7 +17,7 @@ remote_publish: final
 - [ ] ITEM-3 chat 改造
 - [x] ITEM-4 TeamService
 - [ ] ITEM-5 CLI
-- [ ] ITEM-6 app 运行时 + 新建表单
+- [x] ITEM-6 app 运行时 + 新建表单
 - [ ] ITEM-7 app team 面板
 
 ## 临时决策与证据
@@ -272,6 +272,24 @@ ITEM-4 起遵守：
 
 **教训**：这两条空转断言都是"等一个此刻恰好为真的状态"而不是"等一件已经发生的事实"。turn 的终态在记录里，状态只是一瞬间的读数。
 
+---
+
+## ITEM-6 · app 运行时 + 新建表单（完成）
+
+`runtime/team-sync/`（replica + selectors + TeamSync）、`teams/`（表单模型、加载态、提交、两个适配器）、`components/teams/new-team-sheet.tsx`，76 个测试。
+
+**epoch 缓存重放直接复用了 directory-sync 的 `DirectoryTransactionOwner`**——那本来就是这道栅栏，再写一个只会多一处会漂移的实现。
+
+### 评审：3 blocker，同一形状——"看起来是那个答案，其实不是"
+
+1. **同 key 重试拿回的可能是一个创建失败的 team**。原代码只看"team 非空"就报成功，把死 id 交给调用方，且永不轮换 key，之后每次重试都指向同一具尸体。
+2. **daemon 用"空列表 + 错误消息"回答读失败**。把它当权威集合提交，会因为一次目录读出错而抹掉客户端持有的全部 team。
+3. **抛错的 list 没有任何地方记录错误，也没接线去听**。连接时一次超时就让界面静默地等到这条连接结束。
+
+接线上还有两条更隐蔽的：`serverInfo` 在连接之后才到，把"还不知道"读成"不支持"会在问出口之前把问题定死（现在支持性是三值的，并由 serverInfo 落地重新触发）；`reconcileServerId` 只销毁不重建，teams 会永远停在 connecting（现在注册与销毁各走一个 helper，同时把 host-runtime 这个上游高频文件的合并面缩到一处调用）。
+
+另外补齐了 forms.md 规则 3/4——provider 解析是模型状态而非外壳的 effect，且按 host 隔离。
+
 ### 待办
 
-ITEM-6：app 运行时（`runtime/team-sync/`）+ New Team 表单。
+ITEM-7：app team 面板（权限聚合、关键动作三态）+ Playwright E2E。
