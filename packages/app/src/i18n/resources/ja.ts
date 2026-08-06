@@ -634,6 +634,7 @@ export const ja: TranslationResources = {
         terminal: "ターミナル",
         browser: "ブラウザ",
         agent: "エージェント",
+        team: "チーム",
         workspace: "ワークスペース",
       },
       switcher: {
@@ -707,9 +708,6 @@ export const ja: TranslationResources = {
         archiveRunningAgentTitle: "実行中のエージェントをアーカイブしますか？",
         archiveRunningAgentMessage:
           "このエージェントはまだ実行中です。アーカイブするとエージェントが停止してタブが閉じられます。",
-        archiveTeamLeadTitle: "チームをアーカイブしますか？",
-        archiveTeamLeadMessage:
-          "{{team}} のリードをアーカイブするとチームが終了し、{{count}} 個のエージェントすべてがアーカイブされます。",
         closeTabsLeftTitle: "左のタブを閉じますか？",
         closeTabsRightTitle: "右のタブを閉じますか？",
         closeOtherTabsTitle: "他のタブを閉じますか？",
@@ -1133,6 +1131,30 @@ export const ja: TranslationResources = {
       empty: {
         title: "プロジェクトがまだありません",
         description: "始めるにはプロジェクトを追加してください",
+      },
+    },
+    teams: {
+      panel: {
+        archiveRunning: "うち {{count}} 個は作業中で、その作業は失われます。",
+        creating: "編成中",
+        archiving: "アーカイブ中",
+        ended: "終了",
+        left: "離脱",
+        archiveTitle: "チームをアーカイブしますか？",
+        archiveMessage:
+          "チームと {{count}} 個のエージェントすべてがアーカイブされます。取り消せません。",
+        archiveConfirm: "アーカイブ",
+        archiveAction: "チームをアーカイブ",
+        removeTitle: "メンバーを外しますか？",
+        removeMessage: "{{role}} がチームを離れます。エージェントは動き続けます。",
+        removeConfirm: "外す",
+        removeAction: "外す",
+        waitingOnYou: "対応待ち",
+        working: "作業中",
+        idle: "待機中",
+        notLoaded: "未読み込み",
+        missing: "チームが見つかりません",
+        lead: "リード",
       },
     },
     workspace: {

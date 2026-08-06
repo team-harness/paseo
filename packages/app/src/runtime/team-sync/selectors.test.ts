@@ -10,6 +10,8 @@ import {
   selectTeamActivity,
   selectTeamOfAgent,
   selectTeamRoster,
+  selectTeamStage,
+  teamStageAcceptsActions,
   type TeamMemberAgent,
 } from "./selectors";
 
@@ -64,6 +66,28 @@ describe("joining a roster to the agents the client holds", () => {
     );
 
     expect(rows.map((row) => row.isLead)).toEqual([true, false]);
+  });
+});
+
+describe("where a team is in its own life", () => {
+  it("reads a team still being built as under construction", () => {
+    expect(selectTeamStage(team([], { lifecycle: "creating" }))).toBe("creating");
+  });
+
+  it("keeps archiving separate from archived, because one is still going", () => {
+    expect(selectTeamStage(team([], { lifecycle: "archiving" }))).toBe("archiving");
+    expect(selectTeamStage(team([], { lifecycle: "archived" }))).toBe("ended");
+  });
+
+  it("reads a failed creation as over, not as a team to keep acting on", () => {
+    expect(selectTeamStage(team([], { lifecycle: "failed" }))).toBe("ended");
+  });
+
+  it("stops offering lifecycle actions once one is under way or done", () => {
+    expect(teamStageAcceptsActions("creating")).toBe(true);
+    expect(teamStageAcceptsActions("active")).toBe(true);
+    expect(teamStageAcceptsActions("archiving")).toBe(false);
+    expect(teamStageAcceptsActions("ended")).toBe(false);
   });
 });
 

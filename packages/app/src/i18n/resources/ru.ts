@@ -634,6 +634,7 @@ export const ru: TranslationResources = {
         terminal: "Terminal",
         browser: "Браузер",
         agent: "Agent",
+        team: "Команда",
         workspace: "Workspace",
       },
       switcher: {
@@ -709,9 +710,6 @@ export const ru: TranslationResources = {
         archiveRunningAgentTitle: "Агент запуска архива?",
         archiveRunningAgentMessage:
           "Этот агент все еще работает. Архивирование остановит агент и закроет вкладку.",
-        archiveTeamLeadTitle: "Архивировать команду?",
-        archiveTeamLeadMessage:
-          "Архивирование лида {{team}} завершит команду и заархивирует все её агенты ({{count}}).",
         closeTabsLeftTitle: "Закрыть вкладки слева?",
         closeTabsRightTitle: "Закрыть вкладки справа?",
         closeOtherTabsTitle: "Закрыть другие вкладки?",
@@ -1144,6 +1142,29 @@ export const ru: TranslationResources = {
       empty: {
         title: "Пока нет проектов",
         description: "Добавьте проект, чтобы начать",
+      },
+    },
+    teams: {
+      panel: {
+        archiveRunning: "Из них {{count}} сейчас работают, и эта работа будет потеряна.",
+        creating: "Формируется",
+        archiving: "Архивируется",
+        ended: "Завершена",
+        left: "ушёл",
+        archiveTitle: "Архивировать команду?",
+        archiveMessage: "Команда и все её агенты ({{count}}) будут заархивированы. Это необратимо.",
+        archiveConfirm: "Архивировать",
+        archiveAction: "Архивировать команду",
+        removeTitle: "Убрать участника?",
+        removeMessage: "{{role}} покидает команду. Агент продолжит работу.",
+        removeConfirm: "Убрать",
+        removeAction: "Убрать",
+        waitingOnYou: "Ждёт вас",
+        working: "В работе",
+        idle: "Простой",
+        notLoaded: "Не загружен",
+        missing: "Команда не найдена",
+        lead: "лид",
       },
     },
     workspace: {

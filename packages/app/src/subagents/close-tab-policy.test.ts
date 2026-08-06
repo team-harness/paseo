@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { TeamMemberEntry, TeamSnapshot } from "@getpaseo/protocol/team/types";
 
-import { resolveCloseAgentTabPolicy } from "./close-tab-policy";
+import { closesWithoutArchiving, resolveCloseAgentTabPolicy } from "./close-tab-policy";
 
 function entry(overrides: Partial<TeamMemberEntry> = {}): TeamMemberEntry {
   return {
@@ -53,17 +53,33 @@ describe("resolveCloseAgentTabPolicy", () => {
     expect(resolveCloseAgentTabPolicy(undefined)).toEqual({ kind: "archive-on-close" });
   });
 
-  it("asks before closing the tab of a team's lead", () => {
+  it("closes a team lead's tab without archiving it", () => {
     // A lead is a root agent, so the default archives it — and archiving a lead
-    // ends the whole team. From the tab that looks like closing one agent.
+    // ends the whole team, from a gesture that looks like closing one tab.
+    const policy = resolveCloseAgentTabPolicy(
+      { id: "lead-1", parentAgentId: null },
+      teamLedBy("lead-1"),
+    );
+
+    expect(policy).toEqual({ kind: "team-lead", teamId: "team-1", teamName: "Disk usage" });
+    expect(closesWithoutArchiving(policy)).toBe(true);
+  });
+
+  it("protects a lead while its team is still being built", () => {
+    // Mid-creation the daemon's own deletion guard refuses to remove this
+    // agent, so a close that archived it would fail anyway — and the failure
+    // would be the first the user heard of it.
     expect(
-      resolveCloseAgentTabPolicy({ id: "lead-1", parentAgentId: null }, teamLedBy("lead-1")),
-    ).toEqual({
-      kind: "confirm-team-lead",
-      teamId: "team-1",
-      teamName: "Disk usage",
-      agentCount: 2,
-    });
+      resolveCloseAgentTabPolicy(
+        { id: "lead-1", parentAgentId: null },
+        teamLedBy("lead-1", { lifecycle: "creating" }),
+      ),
+    ).toEqual({ kind: "team-lead", teamId: "team-1", teamName: "Disk usage" });
+  });
+
+  it("archives on close for everything that is not a lead or a subagent", () => {
+    expect(closesWithoutArchiving({ kind: "archive-on-close" })).toBe(false);
+    expect(closesWithoutArchiving({ kind: "layout-only" })).toBe(true);
   });
 
   it("says nothing about a team that is already over", () => {

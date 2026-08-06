@@ -634,6 +634,7 @@ export const fr: TranslationResources = {
         terminal: "Terminal",
         browser: "Navigateur",
         agent: "Agent",
+        team: "Équipe",
         workspace: "Workspace",
       },
       switcher: {
@@ -710,9 +711,6 @@ export const fr: TranslationResources = {
         archiveRunningAgentTitle: "Archiver l'agent en cours d'exécution?",
         archiveRunningAgentMessage:
           "Cet agent est toujours en cours d'exécution. L'archiver arrêtera l'agent et fermera l'onglet.",
-        archiveTeamLeadTitle: "Archiver l’équipe ?",
-        archiveTeamLeadMessage:
-          "Archiver le lead de {{team}} met fin à l’équipe et archive ses {{count}} agents.",
         closeTabsLeftTitle: "Fermer les onglets à gauche?",
         closeTabsRightTitle: "Fermer les onglets à droite?",
         closeOtherTabsTitle: "Fermer les autres onglets?",
@@ -1152,6 +1150,29 @@ export const fr: TranslationResources = {
       empty: {
         title: "Aucun projet pour l'instant",
         description: "Ajoutez un projet pour commencer",
+      },
+    },
+    teams: {
+      panel: {
+        archiveRunning: "{{count}} d’entre eux travaillent en ce moment et perdront ce travail.",
+        creating: "En formation",
+        archiving: "Archivage",
+        ended: "Terminée",
+        left: "partie",
+        archiveTitle: "Archiver l’équipe ?",
+        archiveMessage: "Cela archive l’équipe et ses {{count}} agents. C’est irréversible.",
+        archiveConfirm: "Archiver",
+        archiveAction: "Archiver l’équipe",
+        removeTitle: "Retirer le membre ?",
+        removeMessage: "{{role}} quitte l’équipe. L’agent continue de tourner.",
+        removeConfirm: "Retirer",
+        removeAction: "Retirer",
+        waitingOnYou: "En attente de vous",
+        working: "Au travail",
+        idle: "Inactif",
+        notLoaded: "Non chargé",
+        missing: "Équipe introuvable",
+        lead: "lead",
       },
     },
     workspace: {

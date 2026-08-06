@@ -627,6 +627,7 @@ export const en = {
         terminal: "Terminal",
         browser: "Browser",
         agent: "Agent",
+        team: "Team",
         workspace: "Workspace",
       },
       switcher: {
@@ -700,9 +701,6 @@ export const en = {
         archiveRunningAgentTitle: "Archive running agent?",
         archiveRunningAgentMessage:
           "This agent is still running. Archiving it will stop the agent and close the tab.",
-        archiveTeamLeadTitle: "Archive team?",
-        archiveTeamLeadMessage:
-          "Archiving {{team}}'s lead ends the team and archives all {{count}} of its agents.",
         closeTabsLeftTitle: "Close tabs to the left?",
         closeTabsRightTitle: "Close tabs to the right?",
         closeOtherTabsTitle: "Close other tabs?",
@@ -1130,6 +1128,30 @@ export const en = {
       empty: {
         title: "No projects yet",
         description: "Add a project to get started",
+      },
+    },
+    teams: {
+      panel: {
+        archiveRunning: "{{count}} of them are working right now and will lose that work.",
+        creating: "Forming",
+        archiving: "Archiving",
+        ended: "Ended",
+        left: "left",
+        archiveTitle: "Archive team?",
+        archiveMessage:
+          "This archives the team and all {{count}} of its agents. It cannot be undone.",
+        archiveConfirm: "Archive team",
+        archiveAction: "Archive team",
+        removeTitle: "Remove member?",
+        removeMessage: "{{role}} leaves the team. The agent keeps running.",
+        removeConfirm: "Remove",
+        removeAction: "Remove",
+        waitingOnYou: "Waiting on you",
+        working: "Working",
+        idle: "Idle",
+        notLoaded: "Not loaded",
+        missing: "Team not found",
+        lead: "lead",
       },
     },
     workspace: {

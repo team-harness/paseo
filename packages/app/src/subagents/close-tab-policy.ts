@@ -6,10 +6,11 @@ export type CloseAgentTabPolicy =
   | { kind: "archive-on-close" }
   | { kind: "layout-only" }
   /**
-   * Archiving this agent ends a team. The user is told which one, and how many
-   * agents go with it, before anything happens.
+   * The tab closes and the agent keeps running, because archiving it would end
+   * a team. The team panel is where a team is ended, and the only place that
+   * can say what ending one costs.
    */
-  | { kind: "confirm-team-lead"; teamId: string; teamName: string; agentCount: number };
+  | { kind: "team-lead"; teamId: string; teamName: string };
 
 /**
  * What closing an agent's tab does.
@@ -18,9 +19,9 @@ export type CloseAgentTabPolicy =
  * it lives in its parent's track and the tab is only a view of it.
  *
  * A team lead is a root agent, so the default would archive it — and archiving
- * a lead converges the whole team (DEC-12). That is a reasonable thing to want
- * and an unreasonable thing to do without saying so, because from the tab it
- * looks like closing one agent.
+ * a lead ends the whole team (DEC-12). Closing a tab is a layout gesture, and a
+ * layout gesture cannot be how an eight-agent team ends, however loudly it asks
+ * first. The lead's tab closes and everything keeps running.
  */
 export function resolveCloseAgentTabPolicy(
   agent: Pick<Agent, "id" | "parentAgentId"> | null | undefined,
@@ -32,21 +33,23 @@ export function resolveCloseAgentTabPolicy(
 
   const led = agent ? findLiveTeamLedBy(teams, agent.id) : null;
   if (led) {
-    return {
-      kind: "confirm-team-lead",
-      teamId: led.id,
-      teamName: led.name,
-      agentCount: led.members.filter((member) => member.state === "active").length,
-    };
+    return { kind: "team-lead", teamId: led.id, teamName: led.name };
   }
 
   return { kind: "archive-on-close" };
 }
 
+/** Whether closing this tab leaves its agent running. */
+export function closesWithoutArchiving(policy: CloseAgentTabPolicy): boolean {
+  return policy.kind !== "archive-on-close";
+}
+
 /**
  * A team this agent leads that is still running and still has members.
  *
- * One that is over, or that everyone has left, has nothing left to end.
+ * `creating` counts: the team is mid-transaction, and archiving its lead there
+ * leaves the daemon in a state only reconciliation repairs. One that is over,
+ * or that everyone has left, has nothing to protect.
  */
 function findLiveTeamLedBy(
   teams: ReadonlyMap<string, TeamSnapshot> | undefined,

@@ -54,6 +54,35 @@ export function selectTeamRoster(
   }));
 }
 
+/**
+ * Where the team is in its own life, in the terms the panel acts on.
+ *
+ * `lifecycle` has five values and the panel cares about three questions: is it
+ * still being built, is it on its way out, and is it over. `archiving` and the
+ * two end states differ to the daemon and not to a person looking at a roster
+ * they can no longer change.
+ */
+export type TeamStage = "creating" | "active" | "archiving" | "ended";
+
+export function selectTeamStage(team: TeamSnapshot): TeamStage {
+  switch (team.lifecycle) {
+    case "creating":
+      return "creating";
+    case "archiving":
+      return "archiving";
+    case "archived":
+    case "failed":
+      return "ended";
+    default:
+      return "active";
+  }
+}
+
+/** Whether the panel's lifecycle actions still do anything. */
+export function teamStageAcceptsActions(stage: TeamStage): boolean {
+  return stage === "creating" || stage === "active";
+}
+
 /** What one member is doing. */
 export function selectMemberActivity(agent: TeamMemberAgent | null): TeamActivity {
   if (!agent) return "idle";

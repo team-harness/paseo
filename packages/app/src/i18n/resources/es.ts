@@ -636,6 +636,7 @@ export const es: TranslationResources = {
         terminal: "Terminal",
         browser: "Navegador",
         agent: "Agent",
+        team: "Equipo",
         workspace: "Workspace",
       },
       switcher: {
@@ -712,9 +713,6 @@ export const es: TranslationResources = {
         archiveRunningAgentTitle: "¿Agente de ejecución de archivos?",
         archiveRunningAgentMessage:
           "Este agente todavía está ejecutándose. Archivarlo detendrá al agente y cerrará la pestaña.",
-        archiveTeamLeadTitle: "¿Archivar el equipo?",
-        archiveTeamLeadMessage:
-          "Archivar el lead de {{team}} termina el equipo y archiva sus {{count}} agentes.",
         closeTabsLeftTitle: "¿Cerrar pestañas a la izquierda?",
         closeTabsRightTitle: "¿Cerrar pestañas a la derecha?",
         closeOtherTabsTitle: "¿Cerrar otras pestañas?",
@@ -1155,6 +1153,29 @@ export const es: TranslationResources = {
       empty: {
         title: "Aún no hay proyectos",
         description: "Añade un proyecto para empezar",
+      },
+    },
+    teams: {
+      panel: {
+        archiveRunning: "{{count}} de ellos están trabajando ahora y perderán ese trabajo.",
+        creating: "Formándose",
+        archiving: "Archivando",
+        ended: "Terminado",
+        left: "se fue",
+        archiveTitle: "¿Archivar el equipo?",
+        archiveMessage: "Esto archiva el equipo y sus {{count}} agentes. No se puede deshacer.",
+        archiveConfirm: "Archivar",
+        archiveAction: "Archivar equipo",
+        removeTitle: "¿Quitar al miembro?",
+        removeMessage: "{{role}} deja el equipo. El agente sigue en marcha.",
+        removeConfirm: "Quitar",
+        removeAction: "Quitar",
+        waitingOnYou: "Esperándote",
+        working: "Trabajando",
+        idle: "Inactivo",
+        notLoaded: "No cargado",
+        missing: "Equipo no encontrado",
+        lead: "lead",
       },
     },
     workspace: {

@@ -173,7 +173,7 @@ import {
   classifyBulkClosableTabs,
   closeBulkWorkspaceTabs,
 } from "@/screens/workspace/workspace-bulk-close";
-import { resolveCloseAgentTabPolicy } from "@/subagents";
+import { closesWithoutArchiving, resolveCloseAgentTabPolicy } from "@/subagents";
 import {
   getPanelInstanceAttributes,
   useModifiedPanelTabIds,
@@ -350,6 +350,7 @@ function getFallbackTabOptionLabel(
     terminal: string;
     browser: string;
     agent: string;
+    team: string;
     changes: string;
   },
 ): string {
@@ -373,6 +374,9 @@ function getFallbackTabOptionLabel(
   }
   if (tab.target.kind === "commit_diff") {
     return tab.target.sha.slice(0, 7);
+  }
+  if (tab.target.kind === "team") {
+    return labels.team;
   }
   return labels.agent;
 }
@@ -692,6 +696,7 @@ function MobileWorkspaceTabOption({
       terminal: t("workspace.tabs.fallback.terminal"),
       browser: t("workspace.tabs.fallback.browser"),
       agent: t("workspace.tabs.fallback.agent"),
+      team: t("workspace.tabs.fallback.team"),
       changes: t("panels.diff.changesLabel"),
     }),
     [t],
@@ -2609,6 +2614,7 @@ function WorkspaceScreenContent({
       terminal: t("workspace.tabs.fallback.terminal"),
       browser: t("workspace.tabs.fallback.browser"),
       agent: t("workspace.tabs.fallback.agent"),
+      team: t("workspace.tabs.fallback.team"),
       changes: t("panels.diff.changesLabel"),
     }),
     [t],
@@ -2751,24 +2757,6 @@ function WorkspaceScreenContent({
         const closePolicy = resolveCloseAgentTabPolicy(agent, teams);
         const isRunning = agent?.status === "running";
 
-        // Archiving a lead ends its whole team. Naming the team and the number
-        // of agents is the difference between a decision and a surprise.
-        if (closePolicy.kind === "confirm-team-lead") {
-          const confirmed = await confirmDialog({
-            title: t("workspace.tabs.confirmations.archiveTeamLeadTitle"),
-            message: t("workspace.tabs.confirmations.archiveTeamLeadMessage", {
-              team: closePolicy.teamName,
-              count: closePolicy.agentCount,
-            }),
-            confirmLabel: t("workspace.tabs.confirmations.archive"),
-            cancelLabel: t("workspace.tabs.confirmations.cancel"),
-            destructive: true,
-          });
-          if (!confirmed) {
-            return;
-          }
-        }
-
         if (isRunning && closePolicy.kind === "archive-on-close") {
           const confirmed = await confirmDialog({
             title: t("workspace.tabs.confirmations.archiveRunningAgentTitle"),
@@ -2790,7 +2778,9 @@ function WorkspaceScreenContent({
           });
         }
 
-        if (closePolicy.kind === "layout-only") {
+        if (closesWithoutArchiving(closePolicy)) {
+          // A lead's tab closes like any other; what it does not do is end the
+          // team behind it. That is the panel's to offer, with what it costs.
           return;
         }
 
@@ -3014,7 +3004,11 @@ function WorkspaceScreenContent({
         return;
       }
 
-      const groups = classifyBulkClosableTabs(tabsToClose);
+      const session = useSessionStore.getState().sessions[normalizedServerId];
+      const groups = classifyBulkClosableTabs(tabsToClose, (agentId) => {
+        const agent = session?.agents?.get(agentId) ?? null;
+        return !closesWithoutArchiving(resolveCloseAgentTabPolicy(agent, session?.teams));
+      });
       const modifiedCount = tabsToClose.filter(
         (tab) =>
           getPanelInstanceAttributes({

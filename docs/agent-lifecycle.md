@@ -122,7 +122,11 @@ These are two distinct concepts that used to be conflated:
 
 Closing a tab on a **root agent** still archives — the tab is the agent's home, so closing it means "I'm done with this agent." A confirm dialog protects against archiving a running agent by accident.
 
-Closing a tab on a **subagent** (any agent with `parentAgentId`) is **layout-only**. The agent stays unarchived and stays in its parent's track. The user can re-open the tab from the track at any time. This is implemented in `handleCloseAgentTab` (`packages/app/src/screens/workspace/workspace-screen.tsx`).
+Closing a tab on a **subagent** (any agent with `parentAgentId`) is **layout-only**. The agent stays unarchived and stays in its parent's track. The user can re-open the tab from the track at any time.
+
+Closing a tab on a **team lead** is layout-only too. A lead is a root agent, so the default would archive it — and archiving a lead ends its whole team. The team panel is where a team ends, because it is the only surface that can say what ending one costs. `creating` counts as live: mid-creation the daemon's own deletion guard refuses to remove the lead, so a close that archived it would fail anyway.
+
+The rule lives in one place, `resolveCloseAgentTabPolicy` (`packages/app/src/subagents/close-tab-policy.ts`); single close and bulk close both ask it. Bulk close asks because it is the same question — an agent archived in a batch is archived just as thoroughly, and more quietly.
 
 The asymmetry is intentional: a subagent's persistent relationship lives in the parent's track. Same-workspace subagents are not auto-opened as tabs; the user opens one from that track when needed. A cross-workspace subagent is also auto-opened as a tab in its own workspace so opening that workspace does not appear empty. It remains in the parent's track until it is actually detached.
 

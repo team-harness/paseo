@@ -625,6 +625,7 @@ export const zhCN: TranslationResources = {
         terminal: "Terminal",
         browser: "浏览器",
         agent: "Agent",
+        team: "团队",
         workspace: "Workspace",
       },
       switcher: {
@@ -696,9 +697,6 @@ export const zhCN: TranslationResources = {
         closeTerminalMessage: "此 Terminal 中任何正在运行的进程都会立即停止。",
         archiveRunningAgentTitle: "归档正在运行的 Agent？",
         archiveRunningAgentMessage: "此 Agent 仍在运行。归档会停止该 Agent 并关闭标签。",
-        archiveTeamLeadTitle: "归档团队？",
-        archiveTeamLeadMessage:
-          "归档 {{team}} 的 lead 会结束该团队，并归档它全部 {{count}} 个 agent。",
         closeTabsLeftTitle: "关闭左侧标签？",
         closeTabsRightTitle: "关闭右侧标签？",
         closeOtherTabsTitle: "关闭其他标签？",
@@ -1107,6 +1105,29 @@ export const zhCN: TranslationResources = {
       empty: {
         title: "还没有 projects",
         description: "添加 project 以开始",
+      },
+    },
+    teams: {
+      panel: {
+        archiveRunning: "其中 {{count}} 个正在工作，未完成的工作会丢失。",
+        creating: "组建中",
+        archiving: "归档中",
+        ended: "已结束",
+        left: "已离开",
+        archiveTitle: "归档团队？",
+        archiveMessage: "这会归档该团队及其全部 {{count}} 个 agent，且无法撤销。",
+        archiveConfirm: "归档团队",
+        archiveAction: "归档团队",
+        removeTitle: "移出成员？",
+        removeMessage: "{{role}} 将离开团队，该 agent 继续运行。",
+        removeConfirm: "移出",
+        removeAction: "移出",
+        waitingOnYou: "等待你处理",
+        working: "工作中",
+        idle: "空闲",
+        notLoaded: "未加载",
+        missing: "找不到团队",
+        lead: "lead",
       },
     },
     workspace: {

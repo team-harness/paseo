@@ -53,6 +53,28 @@ describe("workspace bulk close helpers", () => {
     });
   });
 
+  it("routes an agent that does not archive on close away from the archive batch", () => {
+    // Bulk close asks the same question the single close asks. A team lead
+    // archived in a batch ends its whole team, silently, from a gesture that
+    // says "close these tabs" — the loud single-tab path refuses exactly this.
+    const groups = classifyBulkClosableTabs(
+      [makeAgentTab("lead-1"), makeAgentTab("solo-1")],
+      (agentId) => agentId !== "lead-1",
+    );
+
+    expect(groups.agentTabs).toEqual([{ tabId: "agent_solo-1", agentId: "solo-1" }]);
+    expect(groups.otherTabs).toEqual([
+      { tabId: "agent_lead-1", target: { kind: "agent", agentId: "lead-1" } },
+    ]);
+  });
+
+  it("keeps archiving every agent when nothing objects", () => {
+    const groups = classifyBulkClosableTabs([makeAgentTab("a1")]);
+
+    expect(groups.agentTabs).toEqual([{ tabId: "agent_a1", agentId: "a1" }]);
+    expect(groups.otherTabs).toEqual([]);
+  });
+
   it("describes mixed destructive bulk close operations in the confirmation copy", () => {
     const message = buildBulkCloseConfirmationMessage(
       classifyBulkClosableTabs([

@@ -1,15 +1,25 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
+import type {
+  AgentPermissionAction,
+  AgentPermissionResponse,
+} from "@getpaseo/protocol/agent-types";
 import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/utils/confirm-dialog";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import {
+  selectMemberActivity,
   selectTeamActivity,
   selectTeamRoster,
+  selectTeamStage,
+  teamStageAcceptsActions,
   type TeamActivity,
+  type TeamStage,
   type TeamMemberAgent,
   type TeamMemberRow,
 } from "@/runtime/team-sync/selectors";
@@ -29,8 +39,10 @@ export interface TeamPanelProps {
 }
 
 const IDLE: TeamActionState = { status: "idle" };
+const EMPTY_AGENTS: ReadonlyMap<string, TeamMemberAgent> = new Map();
 
 export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
+  const { t } = useTranslation();
   const team = useTeam(serverId, teamId);
   const agents = useSessionStore((state) => state.sessions[serverId]?.agents);
   const pending = useSessionStore((state) => state.sessions[serverId]?.pendingPermissions);
@@ -38,10 +50,23 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
   const [actions, setActions] = useState<Record<string, TeamActionState>>({});
 
   const roster = useMemo<TeamMemberRow[]>(
-    () => (team ? selectTeamRoster(team, (agents ?? new Map()) as never) : []),
+    () => (team ? selectTeamRoster(team, agents ?? EMPTY_AGENTS) : []),
     [team, agents],
   );
   const activity = useMemo(() => selectTeamActivity(roster), [roster]);
+  const activeCount = useMemo(
+    () => roster.filter((entry) => entry.entry.state === "active").length,
+    [roster],
+  );
+  // Agents mid-turn lose that turn. A count of members does not say that, and
+  // the difference is the whole reason someone would hesitate.
+  const runningCount = useMemo(
+    () =>
+      roster.filter(
+        (row) => row.entry.state === "active" && selectMemberActivity(row.agent) === "running",
+      ).length,
+    [roster],
+  );
   const permissions = useMemo<TeamPermissionRow[]>(
     () => (team ? selectTeamPermissions(team, pending ?? new Map()) : []),
     [team, pending],
@@ -58,7 +83,22 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
     [client, teamId],
   );
 
-  const archive = useCallback(() => run({ kind: "archive" }), [run]);
+  const archive = useCallback(() => {
+    // Archiving ends every agent on the team and there is no unarchive for a
+    // team. Red on the page is not consent; the confirmation is.
+    void (async () => {
+      const warning =
+        runningCount > 0 ? ` ${t("teams.panel.archiveRunning", { count: runningCount })}` : "";
+      const confirmed = await confirmDialog({
+        title: t("teams.panel.archiveTitle"),
+        message: `${t("teams.panel.archiveMessage", { count: activeCount })}${warning}`,
+        confirmLabel: t("teams.panel.archiveConfirm"),
+        cancelLabel: t("common.cancel"),
+        destructive: true,
+      });
+      if (confirmed) run({ kind: "archive" });
+    })();
+  }, [activeCount, runningCount, run, t]);
 
   if (!team) {
     // The team is gone, or this client has not been told about it yet. Either
@@ -67,23 +107,29 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
     return (
       <View style={styles.body}>
         <Text style={styles.muted} testID="team-panel-missing">
-          This team is no longer here.
+          {t("teams.panel.missing")}
         </Text>
       </View>
     );
   }
 
   const archiveState = actions.archive ?? IDLE;
+  // A team on its way out, or already gone, still draws its roster — that is
+  // the record of who was on it. What it stops drawing is the buttons, because
+  // the daemon has stopped taking them and a button that does nothing reads as
+  // one that failed.
+  const stage = selectTeamStage(team);
+  const actionable = teamStageAcceptsActions(stage);
 
   return (
     <View style={styles.body} testID="team-panel">
-      <Header team={team} activity={activity} />
+      <Header team={team} activity={activity} stage={stage} />
 
       {permissions.length > 0 ? (
         <View style={styles.section} testID="team-panel-permissions">
-          <Text style={styles.sectionTitle}>Waiting on you</Text>
+          <Text style={styles.sectionTitle}>{t("teams.panel.waitingOnYou")}</Text>
           {permissions.map((row) => (
-            <PermissionRow key={row.permission.key} row={row} serverId={serverId} />
+            <PermissionRow key={row.permission.key} row={row} client={client} />
           ))}
         </View>
       ) : null}
@@ -95,6 +141,7 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
             row={row}
             state={actions[teamActionKeyOf({ kind: "remove", agentId: row.entry.agentId })] ?? IDLE}
             onRemove={run}
+            actionable={actionable}
           />
         ))}
       </View>
@@ -104,85 +151,142 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
           {archiveState.message}
         </Text>
       ) : null}
-      <Button
-        variant="destructive"
-        loading={archiveState.status === "pending"}
-        onPress={archive}
-        testID="team-panel-archive"
-      >
-        Archive team
-      </Button>
+      {actionable ? (
+        <Button
+          variant="destructive"
+          loading={archiveState.status === "pending"}
+          onPress={archive}
+          testID="team-panel-archive"
+        >
+          {t("teams.panel.archiveAction")}
+        </Button>
+      ) : null}
     </View>
   );
 }
 
-function Header({ team, activity }: { team: TeamSnapshot; activity: TeamActivity }): ReactElement {
+function Header({
+  team,
+  activity,
+  stage,
+}: {
+  team: TeamSnapshot;
+  activity: TeamActivity;
+  stage: TeamStage;
+}): ReactElement {
+  const { t } = useTranslation();
+  // Where the team is in its own life outranks what its members are doing:
+  // "Working" under a roster that is being torn down describes the agents
+  // truthfully and the team not at all.
+  const label = stage === "active" ? ACTIVITY_LABEL[activity] : STAGE_LABEL[stage];
   return (
     <View style={styles.header}>
       <Text style={styles.title} testID="team-panel-name">
         {team.name}
       </Text>
       <Text style={styles.muted} testID="team-panel-activity">
-        {ACTIVITY_LABEL[activity]}
+        {t(label)}
       </Text>
     </View>
   );
 }
 
+const STAGE_LABEL: Record<TeamStage, string> = {
+  creating: "teams.panel.creating",
+  active: "teams.panel.idle",
+  archiving: "teams.panel.archiving",
+  ended: "teams.panel.ended",
+};
+
 const ACTIVITY_LABEL: Record<TeamActivity, string> = {
-  needs_input: "Waiting on you",
-  running: "Working",
-  idle: "Idle",
+  needs_input: "teams.panel.waitingOnYou",
+  running: "teams.panel.working",
+  idle: "teams.panel.idle",
 };
 
 function PermissionRow({
   row,
-  serverId,
+  client,
 }: {
   row: TeamPermissionRow;
-  serverId: string;
+  client: ReturnType<typeof useHostRuntimeClient>;
 }): ReactElement {
-  const client = useHostRuntimeClient(serverId);
-  const [answering, setAnswering] = useState(false);
+  const { t } = useTranslation();
+  const [answering, setAnswering] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const request = row.permission.request;
 
   const answer = useCallback(
-    (behavior: "allow" | "deny") => {
+    (action: AgentPermissionAction) => {
       if (!client) return;
-      setAnswering(true);
-      // Each row answers its own request. Two members blocked at once are two
-      // decisions, and one button for both would answer a question the user was
-      // never shown.
-      void client
-        .respondToPermission(row.agentId, row.permission.request.id, { behavior } as never)
-        .finally(() => setAnswering(false));
+      setAnswering(action.id);
+      setError(null);
+      // The request's own action, by id. An invented Allow and Deny answers an
+      // N-way question with option one, and a request whose options carry
+      // bespoke ids is resolved as cancelled rather than as what was pressed.
+      const response: AgentPermissionResponse =
+        action.behavior === "allow"
+          ? { behavior: "allow", selectedActionId: action.id }
+          : {
+              behavior: "deny",
+              selectedActionId: action.id,
+              message: t("agentStream.permission.deny"),
+            };
+      client
+        .respondToPermissionAndWait(row.agentId, request.id, response, 15_000)
+        .catch((cause: unknown) => {
+          setError(
+            cause instanceof Error ? cause.message : t("common.errors.daemonClientUnavailable"),
+          );
+        })
+        .finally(() => setAnswering(null));
     },
-    [client, row.agentId, row.permission.request.id],
+    [client, request.id, row.agentId, t],
   );
-
-  const allow = useCallback(() => answer("allow"), [answer]);
-  const deny = useCallback(() => answer("deny"), [answer]);
 
   return (
     <View style={styles.permission} testID={`team-permission-${row.agentId}`}>
-      <Text style={styles.muted}>{`${row.role}: ${row.permission.request.name}`}</Text>
-      <Button
-        size="sm"
-        loading={answering}
-        onPress={allow}
-        testID={`team-permission-${row.agentId}-allow`}
-      >
-        Allow
-      </Button>
-      <Button
-        size="sm"
-        variant="secondary"
-        loading={answering}
-        onPress={deny}
-        testID={`team-permission-${row.agentId}-deny`}
-      >
-        Deny
-      </Button>
+      <Text style={styles.muted}>{`${row.role}: ${request.title ?? request.name}`}</Text>
+      {(request.actions ?? []).map((action) => (
+        <PermissionAction
+          key={action.id}
+          action={action}
+          answering={answering === action.id}
+          onPress={answer}
+          testID={`team-permission-${row.agentId}-${action.id}`}
+        />
+      ))}
+      {error ? (
+        <Text style={styles.error} testID={`team-permission-${row.agentId}-error`}>
+          {error}
+        </Text>
+      ) : null}
     </View>
+  );
+}
+
+function PermissionAction({
+  action,
+  answering,
+  onPress,
+  testID,
+}: {
+  action: AgentPermissionAction;
+  answering: boolean;
+  onPress: (action: AgentPermissionAction) => void;
+  testID: string;
+}): ReactElement {
+  const press = useCallback(() => onPress(action), [action, onPress]);
+  return (
+    <Button
+      size="sm"
+      variant={action.behavior === "allow" ? "default" : "secondary"}
+      loading={answering}
+      onPress={press}
+      testID={testID}
+    >
+      {action.label}
+    </Button>
   );
 }
 
@@ -190,29 +294,47 @@ function MemberRow({
   row,
   state,
   onRemove,
+  actionable,
 }: {
   row: TeamMemberRow;
   state: TeamActionState;
   onRemove: (action: TeamActionKey) => void;
+  actionable: boolean;
 }): ReactElement {
-  const remove = useCallback(
-    () => onRemove({ kind: "remove", agentId: row.entry.agentId }),
-    [onRemove, row.entry.agentId],
-  );
-  const label = describeMember(row.agent);
+  const { t } = useTranslation();
+  const remove = useCallback(() => {
+    // Removing a member ends its membership, and nothing in the panel puts it
+    // back. Ask before, not after.
+    void (async () => {
+      const confirmed = await confirmDialog({
+        title: t("teams.panel.removeTitle"),
+        message: t("teams.panel.removeMessage", { role: row.entry.role }),
+        confirmLabel: t("teams.panel.removeConfirm"),
+        cancelLabel: t("common.cancel"),
+        destructive: true,
+      });
+      if (confirmed) onRemove({ kind: "remove", agentId: row.entry.agentId });
+    })();
+  }, [onRemove, row.entry.agentId, row.entry.role, t]);
+  const label = describeMember(row.agent, t("teams.panel.notLoaded"));
 
   return (
     <View style={styles.member} testID={`team-member-${row.entry.agentId}`}>
       <Text style={styles.memberRole}>
-        {row.isLead ? `${row.entry.role} (lead)` : row.entry.role}
+        {row.isLead ? `${row.entry.role} (${t("teams.panel.lead")})` : row.entry.role}
       </Text>
       <Text style={styles.muted}>{label}</Text>
+      {row.entry.state === "removed" ? (
+        <Text style={styles.muted} testID={`team-member-${row.entry.agentId}-removed`}>
+          {t("teams.panel.left")}
+        </Text>
+      ) : null}
       {state.status === "failure" ? (
         <Text style={styles.error} testID={`team-member-${row.entry.agentId}-error`}>
           {state.message}
         </Text>
       ) : null}
-      {row.entry.state === "active" && !row.isLead ? (
+      {actionable && row.entry.state === "active" && !row.isLead ? (
         <Button
           size="sm"
           variant="ghost"
@@ -220,7 +342,7 @@ function MemberRow({
           onPress={remove}
           testID={`team-member-${row.entry.agentId}-remove`}
         >
-          Remove
+          {t("teams.panel.removeAction")}
         </Button>
       ) : null}
     </View>
@@ -228,8 +350,8 @@ function MemberRow({
 }
 
 /** A member whose agent has not loaded is still a member; say so rather than blank. */
-function describeMember(agent: TeamMemberAgent | null): string {
-  if (!agent) return "Not loaded";
+function describeMember(agent: TeamMemberAgent | null, notLoaded: string): string {
+  if (!agent) return notLoaded;
   return agent.title?.trim() || agent.status;
 }
 

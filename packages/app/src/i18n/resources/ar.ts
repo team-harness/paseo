@@ -627,6 +627,7 @@ export const ar: TranslationResources = {
         terminal: "Terminal",
         browser: "المتصفح",
         agent: "Agent",
+        team: "فريق",
         workspace: "Workspace",
       },
       switcher: {
@@ -701,9 +702,6 @@ export const ar: TranslationResources = {
         archiveRunningAgentTitle: "وكيل تشغيل الأرشيف؟",
         archiveRunningAgentMessage:
           "هذا الوكيل لا يزال قيد التشغيل. ستؤدي أرشفته إلى إيقاف الوكيل وإغلاق علامة التبويب.",
-        archiveTeamLeadTitle: "أرشفة الفريق؟",
-        archiveTeamLeadMessage:
-          "أرشفة قائد {{team}} تنهي الفريق وتؤرشف جميع وكلائه البالغ عددهم {{count}}.",
         closeTabsLeftTitle: "هل تريد إغلاق علامات التبويب على اليسار؟",
         closeTabsRightTitle: "هل تريد إغلاق علامات التبويب على اليمين؟",
         closeOtherTabsTitle: "هل تريد إغلاق علامات التبويب الأخرى؟",
@@ -1119,6 +1117,30 @@ export const ar: TranslationResources = {
       empty: {
         title: "لا توجد مشاريع حتى الآن",
         description: "أضف مشروعًا للبدء",
+      },
+    },
+    teams: {
+      panel: {
+        archiveRunning: "منها {{count}} تعمل الآن وسيضيع عملها.",
+        creating: "قيد التكوين",
+        archiving: "قيد الأرشفة",
+        ended: "منتهٍ",
+        left: "غادر",
+        archiveTitle: "أرشفة الفريق؟",
+        archiveMessage:
+          "سيؤدي هذا إلى أرشفة الفريق وجميع وكلائه البالغ عددهم {{count}}. لا يمكن التراجع.",
+        archiveConfirm: "أرشفة",
+        archiveAction: "أرشفة الفريق",
+        removeTitle: "إزالة العضو؟",
+        removeMessage: "{{role}} سيغادر الفريق. سيستمر الوكيل في العمل.",
+        removeConfirm: "إزالة",
+        removeAction: "إزالة",
+        waitingOnYou: "بانتظارك",
+        working: "يعمل",
+        idle: "خامل",
+        notLoaded: "غير محمّل",
+        missing: "الفريق غير موجود",
+        lead: "القائد",
       },
     },
     workspace: {

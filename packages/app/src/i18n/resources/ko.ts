@@ -630,6 +630,7 @@ export const ko: TranslationResources = {
         terminal: "터미널",
         browser: "브라우저",
         agent: "에이전트",
+        team: "팀",
         workspace: "워크스페이스",
       },
       switcher: {
@@ -704,9 +705,6 @@ export const ko: TranslationResources = {
         archiveRunningAgentTitle: "실행 중인 에이전트를 보관할까요?",
         archiveRunningAgentMessage:
           "이 에이전트는 아직 실행 중입니다. 보관하면 에이전트가 중지되고 탭이 닫힙니다.",
-        archiveTeamLeadTitle: "팀을 보관할까요?",
-        archiveTeamLeadMessage:
-          "{{team}}의 리드를 보관하면 팀이 종료되고 {{count}}개의 에이전트가 모두 보관됩니다.",
         closeTabsLeftTitle: "왼쪽 탭을 닫을까요?",
         closeTabsRightTitle: "오른쪽 탭을 닫을까요?",
         closeOtherTabsTitle: "다른 탭을 닫을까요?",
@@ -1128,6 +1126,29 @@ export const ko: TranslationResources = {
       empty: {
         title: "아직 프로젝트가 없습니다",
         description: "시작하려면 프로젝트를 추가하세요",
+      },
+    },
+    teams: {
+      panel: {
+        archiveRunning: "그중 {{count}}개는 작업 중이며 해당 작업은 사라집니다.",
+        creating: "구성 중",
+        archiving: "보관 중",
+        ended: "종료됨",
+        left: "떠남",
+        archiveTitle: "팀을 보관할까요?",
+        archiveMessage: "팀과 에이전트 {{count}}개가 모두 보관됩니다. 되돌릴 수 없습니다.",
+        archiveConfirm: "보관",
+        archiveAction: "팀 보관",
+        removeTitle: "멤버를 제외할까요?",
+        removeMessage: "{{role}}이(가) 팀에서 나갑니다. 에이전트는 계속 실행됩니다.",
+        removeConfirm: "제외",
+        removeAction: "제외",
+        waitingOnYou: "확인 필요",
+        working: "작업 중",
+        idle: "대기 중",
+        notLoaded: "불러오지 않음",
+        missing: "팀을 찾을 수 없음",
+        lead: "리드",
       },
     },
     workspace: {

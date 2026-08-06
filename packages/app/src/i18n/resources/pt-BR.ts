@@ -634,6 +634,7 @@ export const ptBR: TranslationResources = {
         terminal: "Terminal",
         browser: "Navegador",
         agent: "Agente",
+        team: "Time",
         workspace: "Workspace",
       },
       switcher: {
@@ -708,9 +709,6 @@ export const ptBR: TranslationResources = {
         archiveRunningAgentTitle: "Arquivar agente em execução?",
         archiveRunningAgentMessage:
           "Este agente ainda está em execução. Arquivá-lo interromperá o agente e fechará a aba.",
-        archiveTeamLeadTitle: "Arquivar o time?",
-        archiveTeamLeadMessage:
-          "Arquivar o lead de {{team}} encerra o time e arquiva todos os seus {{count}} agentes.",
         closeTabsLeftTitle: "Fechar abas à esquerda?",
         closeTabsRightTitle: "Fechar abas à direita?",
         closeOtherTabsTitle: "Fechar outras abas?",
@@ -1144,6 +1142,29 @@ export const ptBR: TranslationResources = {
       empty: {
         title: "Nenhum projeto ainda",
         description: "Adicione um projeto para começar",
+      },
+    },
+    teams: {
+      panel: {
+        archiveRunning: "{{count}} deles estão trabalhando agora e vão perder esse trabalho.",
+        creating: "Formando",
+        archiving: "Arquivando",
+        ended: "Encerrado",
+        left: "saiu",
+        archiveTitle: "Arquivar o time?",
+        archiveMessage: "Isso arquiva o time e seus {{count}} agentes. Não dá para desfazer.",
+        archiveConfirm: "Arquivar",
+        archiveAction: "Arquivar time",
+        removeTitle: "Remover o membro?",
+        removeMessage: "{{role}} sai do time. O agente continua rodando.",
+        removeConfirm: "Remover",
+        removeAction: "Remover",
+        waitingOnYou: "Esperando por você",
+        working: "Trabalhando",
+        idle: "Ocioso",
+        notLoaded: "Não carregado",
+        missing: "Time não encontrado",
+        lead: "lead",
       },
     },
     workspace: {
