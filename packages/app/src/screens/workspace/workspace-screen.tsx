@@ -412,6 +412,9 @@ function getFallbackTabOptionDescription(
   if (tab.target.kind === "working_diff") {
     return labels.changes;
   }
+  if (tab.target.kind === "team") {
+    return tab.target.teamId;
+  }
   return tab.target.path;
 }
 

@@ -188,6 +188,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   if (target.kind === "working_diff") {
     return "working_diff";
   }
+  if (target.kind === "team") {
+    return `team_${target.teamId}`;
+  }
   return `file_${target.path}`;
 }
 
