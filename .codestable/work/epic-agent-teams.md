@@ -254,6 +254,24 @@ ITEM-4 起遵守：
 
 **这一轮最贵的教训**：`team-runtime.test.ts` 的"事件保序"用例反复失败，追下去发现的不是测试问题，而是"handler 里等泵、泵等首次对账"这条真实的阻塞链。测试写不稳的地方，往往是产品里有条等待链没想清楚。
 
+---
+
+## ITEM-5 · CLI + daemon E2E（完成）
+
+`paseo team create/ls/inspect/archive/remove`（`packages/cli/src/commands/team/`）+ 14 条 daemon 级 E2E（`team-e2e.e2e.test.ts`，真 daemon、真 WebSocket、两个 provider adapter），已纳入 `test:integration` 跑 CI。
+
+**上游触点**：`cli.ts` +4、`client/src/index.ts` +2、`cli-surface.test.ts` +19、`architecture.md` +1、`bootstrap.ts` 暴露 `teamRuntime`。
+
+### 评审：3 blocker，两条是我的测试在自欺
+
+1. **mention 唤醒测试空转**——等的是 `status !== "running"`，而刚建出的 agent 是 `initializing`，这条件在简报还没开始时就满足了。于是后面看到的"它跑起来了"是简报那一趟。把 `postChatMessage` 整行删掉测试照样绿。改为读记录里的已结算 turn，断言 mention 开出的是**第二**趟，且没被点名的成员一趟都没多开。
+2. **permission 测试只证明了往返**——断言 `resolved.requestId === request.id`，而 client 的关联逻辑本来就保证这点，只可能超时失败；没有任何东西检查这个答复意味着什么。改为两个成员同时请求、一允一拒，断言副作用：允许的工具跑了，拒绝的没跑。
+3. **验收点名的派发闭环整块没做**——`lead 派发 → 成员完成 → 通报 lead` 在 daemon 级别一条都没有。补上：lead 调它自己注册的 `assign_task`，此后测试不再驱动泵，成员 turn 结束这件事本身触发结算与投递。为此 daemon 暴露了 `teamRuntime`（假 provider 走不到 MCP）。
+
+**CLI 侧四条**：`--lead` 收的是 provider 而非 `role=provider`（daemon 无论如何会把 lead 的 role 覆盖成 `lead`，问了也是白问，而设计文档写的就是 `--lead codex/gpt-5.6-sol`）；补 `--idempotency-key`——没有它，socket 在 daemon 已提交后断开就会让用户多出一整个 team（一次请求六个 agent），这正是这把钥匙存在的理由；成员数不再把 lead 算进去；`inspect` 返回 team 本身加名册，否则脚本读不到 `lifecycle`。
+
+**教训**：这两条空转断言都是"等一个此刻恰好为真的状态"而不是"等一件已经发生的事实"。turn 的终态在记录里，状态只是一瞬间的读数。
+
 ### 待办
 
-ITEM-4 完成（208 测试）。下一步 ITEM-5：CLI（`paseo team create/ls/inspect/archive/remove`）+ 确定性 daemon E2E。
+ITEM-6：app 运行时（`runtime/team-sync/`）+ New Team 表单。
