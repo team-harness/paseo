@@ -4,6 +4,7 @@ import type { Logger } from "pino";
 import { TEAM_ID_LABEL, TEAM_ROLE_LABEL } from "@getpaseo/protocol/agent-labels";
 import { TEAM_MAX_NON_LEAD_MEMBERS } from "@getpaseo/protocol/team/rpc-schemas";
 import type {
+  RecruitmentIntent,
   StoredTeam,
   TeamCreationPlan,
   TeamCreationStage,
@@ -243,6 +244,152 @@ export class TeamService {
    * tell what was built before deciding what to clean up.
    */
   /**
+   * DEC-13. Recruiting is a transaction, not a create followed by bookkeeping.
+   *
+   * The seat and the whole replayable intent are written first, in one write,
+   * before anything external exists. Two things follow from that order: a race
+   * for the last seat is decided before either side builds anything, and a
+   * crash at any later point leaves a record saying what was meant to happen.
+   * There is never an agent wearing team labels that the roster does not know.
+   *
+   * Every later step re-checks that the team is still active. A team archived
+   * mid-recruit does not gain a member afterwards; the seat is released and
+   * whatever was built is archived.
+   */
+  async recruit(input: {
+    teamId: string;
+    recruiterAgentId: string;
+    teamRole: string;
+    provider: string;
+    title: string | null;
+    settings: Record<string, unknown> | null;
+    initialPrompt: string;
+  }): Promise<{ agentId: string }> {
+    const agentId = await this.serializePerTeam(input.teamId, async () => {
+      const team = await this.store.get(input.teamId);
+      assertRecruitable(team, input);
+
+      const reservedId = randomUUID();
+      const now = new Date().toISOString();
+      await this.store.update(input.teamId, (current) => ({
+        ...current,
+        members: [
+          ...current.members,
+          {
+            agentId: reservedId,
+            role: input.teamRole.trim(),
+            joinedAt: now,
+            leftAt: null,
+            state: "active" as const,
+            removalReason: null,
+          },
+        ],
+        pendingRecruitments: {
+          ...current.pendingRecruitments,
+          [reservedId]: {
+            provider: input.provider,
+            settings: input.settings,
+            title: input.title,
+            teamRole: input.teamRole.trim(),
+            initialPrompt: input.initialPrompt,
+            clientMessageId: `team-${current.id}-recruit-${reservedId}`,
+            recruiterAgentId: input.recruiterAgentId,
+            workspaceId: current.workspaceId,
+            stage: "reserved" as const,
+          },
+        },
+      }));
+      return reservedId;
+    });
+
+    await this.landRecruit(input.teamId, agentId);
+    return { agentId };
+  }
+
+  /**
+   * Carries a reserved recruit through to a briefed member, checking before
+   * each step that the team is still active. Used both by `recruit` and by the
+   * reconciler, so an interrupted recruit finishes the way it would have.
+   */
+  private async landRecruit(teamId: string, agentId: string): Promise<void> {
+    const intentOf = async (): Promise<RecruitmentIntent | null> => {
+      const team = await this.store.get(teamId);
+      if (!team || team.lifecycle !== "active") return null;
+      return team.pendingRecruitments?.[agentId] ?? null;
+    };
+
+    let intent = await intentOf();
+    if (!intent) {
+      await this.cancelRecruitment(teamId, agentId);
+      throw new TeamCreateValidationError(
+        `Team ${teamId} is not active; the recruit was cancelled`,
+      );
+    }
+
+    if (intent.stage === "reserved") {
+      await this.agents.createAgent({
+        agentId,
+        provider: intent.provider,
+        workspaceId: intent.workspaceId,
+        title: intent.title,
+        settings: intent.settings,
+        labels: { [TEAM_ID_LABEL]: teamId, [TEAM_ROLE_LABEL]: intent.teamRole },
+      });
+      await this.store.update(teamId, (current) => ({
+        ...current,
+        pendingRecruitments: {
+          ...current.pendingRecruitments,
+          [agentId]: { ...intent!, stage: "created" as const },
+        },
+      }));
+    }
+
+    intent = await intentOf();
+    if (!intent) {
+      await this.cancelRecruitment(teamId, agentId);
+      throw new TeamCreateValidationError(
+        `Team ${teamId} is not active; the recruit was cancelled`,
+      );
+    }
+
+    await this.agents.sendPrompt({
+      agentId,
+      prompt: intent.initialPrompt,
+      clientMessageId: intent.clientMessageId,
+    });
+    await this.clearRecruitmentIntent(teamId, agentId);
+  }
+
+  /**
+   * Releases the seat and takes down whatever was built for it. The agent may
+   * not exist yet, which is why archiving it is allowed to find nothing.
+   */
+  private async cancelRecruitment(teamId: string, agentId: string): Promise<void> {
+    await this.archiveAgentIdempotently(agentId);
+    await this.store.update(teamId, (current) => ({
+      ...current,
+      members: current.members.map((member) =>
+        member.agentId === agentId
+          ? {
+              ...member,
+              state: "removed" as const,
+              leftAt: new Date().toISOString(),
+              removalReason: "recruitment_canceled" as const,
+            }
+          : member,
+      ),
+      pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
+    }));
+  }
+
+  private async clearRecruitmentIntent(teamId: string, agentId: string): Promise<void> {
+    await this.store.update(teamId, (current) => ({
+      ...current,
+      pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
+    }));
+  }
+
+  /**
    * Brings every team back in line with what the daemon actually has.
    *
    * This is not a second implementation of the rules — it applies the same ones
@@ -272,16 +419,19 @@ export class TeamService {
       case "archiving":
         // Eviction first: an agent that came back while the archive was
         // stopped leaves the team rather than being archived on its way out.
+        await this.cancelOutstandingRecruits(team);
         await this.evictAgentsThatCameBack(team);
         await this.archive(team.id);
         return;
       case "failed":
+        await this.cancelOutstandingRecruits(team);
         await this.cleanUpFailed(team);
         return;
       case "active":
         await this.reconcileActive(team);
         return;
       case "archived":
+        await this.cancelOutstandingRecruits(team);
         await this.evictAgentsThatCameBack(team);
         return;
     }
@@ -335,6 +485,8 @@ export class TeamService {
       return;
     }
 
+    await this.finishInterruptedRecruits(team);
+
     for (const member of team.members) {
       if (member.agentId === team.leadAgentId) continue;
       const state = await this.agents.getAgentState(member.agentId);
@@ -353,12 +505,61 @@ export class TeamService {
   }
 
   /**
+   * Replays recruits that were interrupted. The intent holds everything needed
+   * to finish, so this replays rather than re-decides. A replay that cannot go
+   * through releases the seat instead of holding it forever.
+   */
+  private async finishInterruptedRecruits(team: StoredTeam): Promise<void> {
+    for (const agentId of Object.keys(team.pendingRecruitments ?? {})) {
+      try {
+        await this.landRecruit(team.id, agentId);
+      } catch (error) {
+        this.logger.error(
+          { err: error, teamId: team.id, agentId },
+          "Releasing a recruit that could not be finished",
+        );
+        await this.failRecruitment(team.id, agentId);
+      }
+    }
+  }
+
+  /** Cancels every outstanding recruit, for a team that may no longer take them. */
+  private async cancelOutstandingRecruits(team: StoredTeam): Promise<void> {
+    for (const agentId of Object.keys(team.pendingRecruitments ?? {})) {
+      await this.cancelRecruitment(team.id, agentId);
+    }
+  }
+
+  private async failRecruitment(teamId: string, agentId: string): Promise<void> {
+    await this.archiveAgentIdempotently(agentId);
+    await this.store.update(teamId, (current) => ({
+      ...current,
+      members: current.members.map((member) =>
+        member.agentId === agentId
+          ? {
+              ...member,
+              state: "removed" as const,
+              leftAt: new Date().toISOString(),
+              removalReason: "recruitment_failed" as const,
+            }
+          : member,
+      ),
+      pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
+    }));
+  }
+
+  /**
    * DEC-11 applied to entries the event never reached: an agent that is active
    * again while its entry says otherwise gets the same question, and the same
    * answer, as it would have on the event path.
    */
   private async evictAgentsThatCameBack(team: StoredTeam): Promise<void> {
-    for (const member of team.members) {
+    // Re-read: earlier steps in this pass may already have closed entries, and
+    // deciding from the snapshot this pass started with would undo them.
+    const current = await this.store.get(team.id);
+    if (!current) return;
+
+    for (const member of current.members) {
       if (member.state === "removed") continue;
       const state = await this.agents.getAgentState(member.agentId);
       if (state.kind !== "active") continue;
@@ -599,6 +800,53 @@ function hasRoomFor(team: StoredTeam, agentId: string): boolean {
     (member) => member.state === "active" && member.agentId !== team.leadAgentId,
   ).length;
   return occupied < TEAM_MAX_NON_LEAD_MEMBERS;
+}
+
+/** Removes one intent, collapsing an empty table back to null. */
+function withoutIntent(
+  intents: Record<string, RecruitmentIntent> | null,
+  agentId: string,
+): Record<string, RecruitmentIntent> | null {
+  if (!intents) return null;
+  const remaining = Object.fromEntries(
+    Object.entries(intents).filter(([candidate]) => candidate !== agentId),
+  );
+  return Object.keys(remaining).length > 0 ? remaining : null;
+}
+
+function assertRecruitable(
+  team: StoredTeam | null,
+  input: { recruiterAgentId: string; teamRole: string },
+): asserts team is StoredTeam {
+  if (!team || team.lifecycle !== "active") {
+    throw new TeamCreateValidationError(`Team ${team?.id ?? ""} is not active`);
+  }
+  const recruiter = team.members.find((member) => member.agentId === input.recruiterAgentId);
+  if (!recruiter || recruiter.state !== "active") {
+    throw new TeamCreateValidationError(
+      `${input.recruiterAgentId} is not a member of this team and cannot recruit into it`,
+    );
+  }
+
+  const role = input.teamRole.trim();
+  if (role.length === 0) {
+    throw new TeamCreateValidationError("A recruit needs a role");
+  }
+  if (role === TEAM_LEAD_ROLE) {
+    throw new TeamCreateValidationError(`"${TEAM_LEAD_ROLE}" is a reserved role`);
+  }
+  if (team.members.some((member) => member.state === "active" && member.role === role)) {
+    throw new TeamCreateValidationError(`Team member roles must be unique: ${role}`);
+  }
+
+  const occupied = team.members.filter(
+    (member) => member.state === "active" && member.agentId !== team.leadAgentId,
+  ).length;
+  if (occupied >= TEAM_MAX_NON_LEAD_MEMBERS) {
+    throw new TeamCreateValidationError(
+      `A team holds at most ${TEAM_MAX_NON_LEAD_MEMBERS} members besides its lead`,
+    );
+  }
 }
 
 function assertMemberSpecsValid(request: CreateTeamRequest): void {
