@@ -271,6 +271,9 @@ test.describe("Agent stream UI", () => {
     });
     try {
       await awaitAssistantMessage(page);
+      await expect(page.getByTestId("assistant-message-timestamp").last()).toHaveText(
+        /^\(\d{1,2}:\d{2}(?: [AP]M)?\)$/,
+      );
       await expectInlineWorkingIndicator(page);
       await expectAgentIdle(page, 30_000);
       await scrollAgentChatToBottom(page);

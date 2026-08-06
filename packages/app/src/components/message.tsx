@@ -852,6 +852,13 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     textAlign: "center",
   },
+  timestampText: {
+    alignSelf: "flex-start",
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    lineHeight: 16,
+    marginTop: theme.spacing[1],
+  },
 }));
 
 const ASSISTANT_IMAGE_MIN_HEIGHT = 160;
@@ -1510,7 +1517,7 @@ function MarkdownListView({
 export const AssistantMessage = memo(function AssistantMessage({
   occurrenceKey,
   message,
-  timestamp: _timestamp,
+  timestamp,
   workspaceRoot,
   serverId,
   client,
@@ -1965,6 +1972,10 @@ export const AssistantMessage = memo(function AssistantMessage({
     () => blocks.map((block, index) => ({ key: `${index}:${block.slice(0, 32)}`, block })),
     [blocks],
   );
+  const formattedTimestamp = useMemo(
+    () => formatMessageTimestamp(new Date(timestamp)),
+    [timestamp],
+  );
 
   const assistantContainerStyle = useMemo(
     () => [
@@ -1991,6 +2002,15 @@ export const AssistantMessage = memo(function AssistantMessage({
             parser={markdownParser}
             onLinkPress={handleMarkdownLinkPress}
           />
+          {index === keyedBlocks.length - 1 ? (
+            <Text
+              style={assistantMessageStylesheet.timestampText}
+              dataSet={markdownCopyDataSet.ignore}
+              testID="assistant-message-timestamp"
+            >
+              ({formattedTimestamp})
+            </Text>
+          ) : null}
         </AssistantMessageBlockContainer>
       ))}
     </View>
