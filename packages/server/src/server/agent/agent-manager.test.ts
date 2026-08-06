@@ -8318,7 +8318,7 @@ test("explicit close cancels running provider subagents before resume", async ()
   }
 });
 
-test("completed parent turn cancels provider subagents left running", async () => {
+test("completed parent turn preserves provider subagents still running asynchronously", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-completed-provider-child-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);
 
@@ -8365,9 +8365,9 @@ test("completed parent turn cancels provider subagents left running", async () =
 
     expect(manager.getAgent(parent.id)?.lifecycle).toBe("idle");
     expect(manager.getProviderSubagent(parent.id, "provider-child-running")?.status).toBe(
-      "canceled",
+      "running",
     );
-    expect(manager.listProviderSubagentActivity()).not.toContainEqual(
+    expect(manager.listProviderSubagentActivity()).toContainEqual(
       expect.objectContaining({ id: "provider-child-running", status: "running" }),
     );
   } finally {
@@ -8378,6 +8378,110 @@ test("completed parent turn cancels provider subagents left running", async () =
     rmSync(workdir, { recursive: true, force: true });
   }
 });
+
+test.each([
+  {
+    name: "completed",
+    turnId: "autonomous-completed-turn",
+    terminal: {
+      type: "turn_completed",
+      provider: "codex",
+      turnId: "autonomous-completed-turn",
+    } as AgentStreamEvent,
+    expectedLifecycle: "idle",
+  },
+  {
+    name: "failed",
+    turnId: "autonomous-failed-turn",
+    terminal: {
+      type: "turn_failed",
+      provider: "codex",
+      turnId: "autonomous-failed-turn",
+      error: "untracked failure",
+    } as AgentStreamEvent,
+    expectedLifecycle: "error",
+  },
+  {
+    name: "canceled",
+    turnId: "autonomous-canceled-turn",
+    terminal: {
+      type: "turn_canceled",
+      provider: "codex",
+      turnId: "autonomous-canceled-turn",
+      reason: "parent turn canceled",
+    } as AgentStreamEvent,
+    expectedLifecycle: "idle",
+  },
+])(
+  "autonomous parent turn $name preserves provider subagents still running asynchronously",
+  async ({ name, turnId, terminal, expectedLifecycle }) => {
+    const workdir = mkdtempSync(join(tmpdir(), `agent-manager-${name}-provider-child-`));
+    const storage = new AgentStorage(join(workdir, "agents"), logger);
+    let capturedSession: TestAgentSession | null = null;
+
+    class ProviderChildClient extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        capturedSession = new TestAgentSession(config);
+        return capturedSession;
+      }
+    }
+
+    const manager = new AgentManager({
+      clients: { codex: new ProviderChildClient() },
+      registry: storage,
+      logger,
+    });
+
+    try {
+      const parent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+        workspaceId: "workspace-a",
+      });
+
+      capturedSession!.pushEvent({
+        type: "provider_subagent",
+        provider: "codex",
+        event: {
+          type: "upsert",
+          id: "provider-child-running",
+          title: "Provider child",
+          status: "running",
+        },
+      });
+      await vi.waitFor(() => {
+        expect(manager.getProviderSubagent(parent.id, "provider-child-running")?.status).toBe(
+          "running",
+        );
+      });
+
+      capturedSession!.pushEvent({ type: "turn_started", provider: "codex", turnId });
+      await vi.waitFor(() => {
+        const runningParent = manager.getAgent(parent.id);
+        expect(runningParent?.lifecycle).toBe("running");
+        expect(runningParent ? toAgentPayload(runningParent).activeTurn?.turnId : null).toBe(
+          turnId,
+        );
+      });
+
+      capturedSession!.pushEvent(terminal);
+
+      await vi.waitFor(() => {
+        expect(manager.getAgent(parent.id)?.lifecycle).toBe(expectedLifecycle);
+      });
+      expect(manager.getProviderSubagent(parent.id, "provider-child-running")?.status).toBe(
+        "running",
+      );
+      expect(manager.listProviderSubagentActivity()).toContainEqual(
+        expect.objectContaining({ id: "provider-child-running", status: "running" }),
+      );
+    } finally {
+      await Promise.all(manager.listAgents().map((agent) => manager.closeAgent(agent.id))).catch(
+        () => undefined,
+      );
+      await storage.flush().catch(() => undefined);
+      rmSync(workdir, { recursive: true, force: true });
+    }
+  },
+);
 
 test("load waits for an in-flight explicit close and creates one resumed runtime", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-explicit-close-race-"));

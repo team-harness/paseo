@@ -2175,9 +2175,6 @@ export class AgentManager {
       nextLifecycle = "idle";
     }
     mutableAgent.lifecycle = nextLifecycle;
-    if (nextLifecycle !== "running") {
-      this.cancelRunningProviderSubagents(mutableAgent.id);
-    }
     const persistenceHandle =
       mutableAgent.session.describePersistence() ??
       (mutableAgent.runtimeInfo?.sessionId
@@ -3807,7 +3804,6 @@ export class AgentManager {
       !agent.pendingReplacement
     ) {
       (agent as ActiveManagedAgent).lifecycle = "idle";
-      this.cancelRunningProviderSubagents(agent.id);
       this.emitState(agent);
     }
     void this.refreshRuntimeInfo(agent);
@@ -3887,7 +3883,6 @@ export class AgentManager {
     if (terminalDisposition === "stale") return;
     if (!isForegroundEvent && !agent.activeForegroundTurnId) {
       agent.lifecycle = "error";
-      this.cancelRunningProviderSubagents(agent.id);
     }
     agent.lastError = event.error;
     await this.appendSystemErrorTimelineMessage(
@@ -3930,7 +3925,6 @@ export class AgentManager {
     if (terminalDisposition === "stale") return;
     if (!isForegroundEvent && !agent.activeForegroundTurnId && !agent.pendingReplacement) {
       agent.lifecycle = "idle";
-      this.cancelRunningProviderSubagents(agent.id);
     }
     agent.lastError = undefined;
     this.resolvePendingPermissionsForAgent(agent, event.provider, options, "Interrupted");

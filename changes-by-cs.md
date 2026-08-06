@@ -27,7 +27,7 @@
 ### 2026-08-07: `upstream/main` `ef6d7b3b9` / `v0.3.0-beta.2`
 
 - 合入上游 Claude 模型与 thinking 偏好持久化、直连自定义 Header、重连状态反馈、Composer 工具栏切换稳定性、代码复制换行/缩进保真、可见选区裁剪、Provider 子 Agent/Workflow 展示、OpenCode 子 Agent 信息、Claude runtime 退出处理、终端活动终态清理、桌面浏览器稳定性及 Hub 文档更新。
-- 侧边栏采用上游 needs-input 强调样式、统一状态尺寸和无障碍标签；运行中继续保留 fork 的 `SyncedLoader`，不采用上游静态圆点。一级 Agent 终态仍执行通用 Provider 子 Agent 清理，因为上游本轮只修复 Claude replay 来源的残留记录，不能覆盖实时 Provider 子 Agent 的跨 Provider 终态边界。
+- 侧边栏采用上游 needs-input 强调样式、统一状态尺寸和无障碍标签；运行中继续保留 fork 的 `SyncedLoader`，不采用上游静态圆点。采用上游仅针对 Claude replay 来源残留记录的修复；实时 Provider 子 Agent 可以跨越父 turn 异步运行，不随父 Agent 终态统一清理。
 - 能力决策：继续保留 fork 的 Status Bar/usage ledger/多 Host 汇总、计划任务选择既有 Agent、Codex 定价与 usage accounting、Threadshare 分享、Host 常用 Prompt、对话选区引用、跨 File/Changes Review Comments、工作区聊天跟随最新消息、固定签名桌面/Web Server 分发，以及独立 Android 安装身份与本地 APK 构建。本轮没有上游等价能力可下线。
 
 ### 2026-08-06: `upstream/main` `fb5cfb9fb` / `v0.3.0-beta.2`
@@ -156,7 +156,7 @@
 - 底部全局 Status Bar 展示 token、费用、运行/需要注意/最近会话，并提供会话导航。
 - 按 host 获取 `status.summary`；客户端可合并多个已连接 host 的信息，并在会话/历史项显示 host。状态栏的 Pin 直接复用侧边栏 workspace 的 `pinnedAt`、列表投影、完整 workspace entry 和 `setWorkspacePinned` API，因此两处展示信息及置顶/取消置顶行为一致。
 - 会话以一级 Agent 聚合；子 Agent 的运行或等待状态汇总到根 Agent，避免大量子 Agent 淹没列表。
-- 一级 Agent 进入完成、失败或取消等终态时，服务端会同步终止仍被 Provider 标为 `running` 的子 Agent，避免工作区侧边栏在实际执行结束后继续显示运行中。
+- Provider 子 Agent 可以跨越父 Agent 的 turn 继续异步运行；父 Agent 进入 `idle`、`error` 或 turn canceled 时不得据此终止子项。子项只由 Provider 的真实终态事件或显式 runtime closure（close、reload、archive）路径收敛，并在运行期间继续贡献 workspace activity。
 - 清除“需要注意”成功后，客户端会重新拉取该 Host 的权威 `status.summary`；即使增量推送丢失，Status Bar 也不会长期停留在旧的“需要注意”状态。
 - 历史只显示当前已加载集合中的一级、非 `closed` Agent；支持刷新、workspace Pin 和紧凑/桌面布局。
 - 手机端状态项保持单行并可横向滚动，Android 以末端渐隐提示后续内容；窄屏不能再用 `overflow: hidden` 截掉会话、历史、Pin 或工作区入口。
