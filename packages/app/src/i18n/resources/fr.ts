@@ -1153,6 +1153,12 @@ export const fr: TranslationResources = {
       },
     },
     teams: {
+      room: {
+        you: "Vous",
+        empty: "Rien n’a encore été dit.",
+        showMore: "Afficher la suite",
+        showMoreLines: "Afficher {{count}} lignes de plus",
+      },
       route: {
         loading: "Recherche de cette équipe…",
         unsupported:

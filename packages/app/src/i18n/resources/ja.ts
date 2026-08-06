@@ -1134,6 +1134,12 @@ export const ja: TranslationResources = {
       },
     },
     teams: {
+      room: {
+        you: "あなた",
+        empty: "まだ発言はありません。",
+        showMore: "続きを表示",
+        showMoreLines: "残り {{count}} 行を表示",
+      },
       route: {
         loading: "チームを探しています…",
         unsupported: "{{hostName}} が古いためチームを扱えません。更新してから開いてください。",

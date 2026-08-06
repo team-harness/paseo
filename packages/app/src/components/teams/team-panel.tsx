@@ -10,6 +10,8 @@ import type {
 import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import { Button } from "@/components/ui/button";
+import { TeamRoom } from "@/components/teams/team-room";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import {
@@ -43,6 +45,7 @@ const EMPTY_AGENTS: ReadonlyMap<string, TeamMemberAgent> = new Map();
 
 export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const team = useTeam(serverId, teamId);
   const agents = useSessionStore((state) => state.sessions[serverId]?.agents);
   const pending = useSessionStore((state) => state.sessions[serverId]?.pendingPermissions);
@@ -121,19 +124,8 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
   const stage = selectTeamStage(team);
   const actionable = teamStageAcceptsActions(stage);
 
-  return (
-    <View style={styles.body} testID="team-panel">
-      <Header team={team} activity={activity} stage={stage} />
-
-      {permissions.length > 0 ? (
-        <View style={styles.section} testID="team-panel-permissions">
-          <Text style={styles.sectionTitle}>{t("teams.panel.waitingOnYou")}</Text>
-          {permissions.map((row) => (
-            <PermissionRow key={row.permission.key} row={row} client={client} />
-          ))}
-        </View>
-      ) : null}
-
+  const side = (
+    <View style={isCompact ? styles.sideCompact : styles.side}>
       <View style={styles.section} testID="team-panel-roster">
         {roster.map((row) => (
           <MemberRow
@@ -161,6 +153,34 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
           {t("teams.panel.archiveAction")}
         </Button>
       ) : null}
+    </View>
+  );
+
+  return (
+    <View style={styles.body} testID="team-panel">
+      <View style={styles.head}>
+        <Header team={team} activity={activity} stage={stage} />
+
+        {permissions.length > 0 ? (
+          <View style={styles.section} testID="team-panel-permissions">
+            <Text style={styles.sectionTitle}>{t("teams.panel.waitingOnYou")}</Text>
+            {permissions.map((row) => (
+              <PermissionRow key={row.permission.key} row={row} client={client} />
+            ))}
+          </View>
+        ) : null}
+      </View>
+
+      {/* The room is the panel's main surface: what the team said is what
+          someone came here to read. The roster sits beside it on a wide screen
+          and beneath it on a narrow one, where a fixed side column would take
+          the room's width and leave a stripe. */}
+      <View style={isCompact ? styles.columnsCompact : styles.columns}>
+        <View style={styles.roomColumn}>
+          <TeamRoom serverId={serverId} roomId={team.chatRoomId} roster={roster} />
+        </View>
+        {side}
+      </View>
     </View>
   );
 }
@@ -357,6 +377,32 @@ function describeMember(agent: TeamMemberAgent | null, notLoaded: string): strin
 
 const styles = StyleSheet.create((theme) => ({
   body: {
+    flex: 1,
+  },
+  head: {
+    gap: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
+    paddingTop: theme.spacing[4],
+  },
+  columns: {
+    flex: 1,
+    flexDirection: "row",
+    gap: theme.spacing[4],
+  },
+  columnsCompact: {
+    flex: 1,
+    flexDirection: "column",
+  },
+  roomColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  side: {
+    width: 260,
+    gap: theme.spacing[3],
+    padding: theme.spacing[4],
+  },
+  sideCompact: {
     gap: theme.spacing[3],
     padding: theme.spacing[4],
   },

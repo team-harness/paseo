@@ -1129,6 +1129,12 @@ export const ko: TranslationResources = {
       },
     },
     teams: {
+      room: {
+        you: "나",
+        empty: "아직 아무 말도 없습니다.",
+        showMore: "더 보기",
+        showMoreLines: "{{count}}줄 더 보기",
+      },
       route: {
         loading: "팀을 찾는 중…",
         unsupported: "{{hostName}}이(가) 너무 오래되어 팀을 지원하지 않습니다. 업데이트해 주세요.",

@@ -1131,6 +1131,12 @@ export const en = {
       },
     },
     teams: {
+      room: {
+        you: "You",
+        empty: "Nothing said yet.",
+        showMore: "Show more",
+        showMoreLines: "Show {{count}} more lines",
+      },
       route: {
         loading: "Finding this team…",
         unsupported: "{{hostName}} is too old to have teams. Update it to open this link.",

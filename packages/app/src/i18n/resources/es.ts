@@ -1156,6 +1156,12 @@ export const es: TranslationResources = {
       },
     },
     teams: {
+      room: {
+        you: "Tú",
+        empty: "Todavía no se ha dicho nada.",
+        showMore: "Mostrar más",
+        showMoreLines: "Mostrar {{count}} líneas más",
+      },
       route: {
         loading: "Buscando este equipo…",
         unsupported:

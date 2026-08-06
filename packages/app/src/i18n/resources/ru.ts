@@ -1145,6 +1145,12 @@ export const ru: TranslationResources = {
       },
     },
     teams: {
+      room: {
+        you: "Вы",
+        empty: "Пока ничего не сказано.",
+        showMore: "Показать ещё",
+        showMoreLines: "Показать ещё {{count}} строк",
+      },
       route: {
         loading: "Ищем эту команду…",
         unsupported: "{{hostName}} слишком старый для команд. Обновите его, чтобы открыть ссылку.",

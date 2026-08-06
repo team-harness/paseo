@@ -1145,6 +1145,12 @@ export const ptBR: TranslationResources = {
       },
     },
     teams: {
+      room: {
+        you: "Você",
+        empty: "Ninguém disse nada ainda.",
+        showMore: "Mostrar mais",
+        showMoreLines: "Mostrar mais {{count}} linhas",
+      },
       route: {
         loading: "Procurando este time…",
         unsupported: "{{hostName}} é antigo demais para times. Atualize para abrir este link.",

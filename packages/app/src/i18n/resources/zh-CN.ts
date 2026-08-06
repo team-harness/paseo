@@ -1108,6 +1108,12 @@ export const zhCN: TranslationResources = {
       },
     },
     teams: {
+      room: {
+        you: "你",
+        empty: "还没有人发言。",
+        showMore: "展开",
+        showMoreLines: "展开其余 {{count}} 行",
+      },
       route: {
         loading: "正在查找该团队…",
         unsupported: "{{hostName}} 版本过旧，不支持团队。升级后才能打开此链接。",

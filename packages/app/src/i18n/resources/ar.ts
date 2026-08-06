@@ -1120,6 +1120,12 @@ export const ar: TranslationResources = {
       },
     },
     teams: {
+      room: {
+        you: "أنت",
+        empty: "لم يُقل شيء بعد.",
+        showMore: "عرض المزيد",
+        showMoreLines: "عرض {{count}} أسطر أخرى",
+      },
       route: {
         loading: "جارٍ البحث عن هذا الفريق…",
         unsupported: "{{hostName}} قديم جدًا ولا يدعم الفرق. حدّثه لفتح هذا الرابط.",
