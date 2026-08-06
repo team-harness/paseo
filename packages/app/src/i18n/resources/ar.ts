@@ -1120,6 +1120,10 @@ export const ar: TranslationResources = {
       },
     },
     teams: {
+      route: {
+        loading: "جارٍ البحث عن هذا الفريق…",
+        unsupported: "{{hostName}} قديم جدًا ولا يدعم الفرق. حدّثه لفتح هذا الرابط.",
+      },
       panel: {
         archiveRunning: "منها {{count}} تعمل الآن وسيضيع عملها.",
         creating: "قيد التكوين",

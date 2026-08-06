@@ -1131,6 +1131,10 @@ export const en = {
       },
     },
     teams: {
+      route: {
+        loading: "Finding this team…",
+        unsupported: "{{hostName}} is too old to have teams. Update it to open this link.",
+      },
       panel: {
         archiveRunning: "{{count}} of them are working right now and will lose that work.",
         creating: "Forming",

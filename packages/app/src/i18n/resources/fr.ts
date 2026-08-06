@@ -1153,6 +1153,11 @@ export const fr: TranslationResources = {
       },
     },
     teams: {
+      route: {
+        loading: "Recherche de cette équipe…",
+        unsupported:
+          "{{hostName}} est trop ancien pour les équipes. Mettez-le à jour pour ouvrir ce lien.",
+      },
       panel: {
         archiveRunning: "{{count}} d’entre eux travaillent en ce moment et perdront ce travail.",
         creating: "En formation",

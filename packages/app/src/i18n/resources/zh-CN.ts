@@ -1108,6 +1108,10 @@ export const zhCN: TranslationResources = {
       },
     },
     teams: {
+      route: {
+        loading: "正在查找该团队…",
+        unsupported: "{{hostName}} 版本过旧，不支持团队。升级后才能打开此链接。",
+      },
       panel: {
         archiveRunning: "其中 {{count}} 个正在工作，未完成的工作会丢失。",
         creating: "组建中",

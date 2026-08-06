@@ -1156,6 +1156,11 @@ export const es: TranslationResources = {
       },
     },
     teams: {
+      route: {
+        loading: "Buscando este equipo…",
+        unsupported:
+          "{{hostName}} es demasiado antiguo para equipos. Actualízalo para abrir este enlace.",
+      },
       panel: {
         archiveRunning: "{{count}} de ellos están trabajando ahora y perderán ese trabajo.",
         creating: "Formándose",

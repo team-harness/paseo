@@ -1145,6 +1145,10 @@ export const ptBR: TranslationResources = {
       },
     },
     teams: {
+      route: {
+        loading: "Procurando este time…",
+        unsupported: "{{hostName}} é antigo demais para times. Atualize para abrir este link.",
+      },
       panel: {
         archiveRunning: "{{count}} deles estão trabalhando agora e vão perder esse trabalho.",
         creating: "Formando",

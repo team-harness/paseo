@@ -1145,6 +1145,10 @@ export const ru: TranslationResources = {
       },
     },
     teams: {
+      route: {
+        loading: "Ищем эту команду…",
+        unsupported: "{{hostName}} слишком старый для команд. Обновите его, чтобы открыть ссылку.",
+      },
       panel: {
         archiveRunning: "Из них {{count}} сейчас работают, и эта работа будет потеряна.",
         creating: "Формируется",

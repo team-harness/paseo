@@ -1134,6 +1134,10 @@ export const ja: TranslationResources = {
       },
     },
     teams: {
+      route: {
+        loading: "チームを探しています…",
+        unsupported: "{{hostName}} が古いためチームを扱えません。更新してから開いてください。",
+      },
       panel: {
         archiveRunning: "うち {{count}} 個は作業中で、その作業は失われます。",
         creating: "編成中",

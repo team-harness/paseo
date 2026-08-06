@@ -1129,6 +1129,10 @@ export const ko: TranslationResources = {
       },
     },
     teams: {
+      route: {
+        loading: "팀을 찾는 중…",
+        unsupported: "{{hostName}}이(가) 너무 오래되어 팀을 지원하지 않습니다. 업데이트해 주세요.",
+      },
       panel: {
         archiveRunning: "그중 {{count}}개는 작업 중이며 해당 작업은 사라집니다.",
         creating: "구성 중",
