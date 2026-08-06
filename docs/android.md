@@ -48,8 +48,10 @@ The command uses the macOS system proxy when one is enabled, installs the pinned
 NDK, CMake, platform, and build-tools versions, and writes the APK plus its SHA-256 file to
 `artifacts/android/`. The toolchain stays under the mise Android SDK, Gradle keeps its dependency and
 build caches under `~/.gradle`, and an existing `~/.cache/paseo/android-maven` mirror is preferred over
-remote Maven repositories. After one connected build has resolved the current dependency set, verify
-that it can rebuild without downloads:
+remote Maven repositories. Before Gradle runs, the build verifies that Metro resolves `jsonc-parser`
+through its complete ESM dependency graph; its UMD entry produces an incomplete Android release
+bundle. After one connected build has resolved the current dependency set, verify that it can rebuild
+without downloads:
 
 ```bash
 npm run build:android-apk -- --offline

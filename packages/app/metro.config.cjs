@@ -12,6 +12,7 @@ const fdroidModuleOverrides = {
   "expo-camera": path.resolve(appSrcRoot, "fdroid/expo-camera.tsx"),
   "expo-notifications": path.resolve(appSrcRoot, "fdroid/expo-notifications.ts"),
 };
+const jsoncParserEsmEntry = require.resolve("jsonc-parser/lib/esm/main.js");
 const customWebPlatform = (process.env.PASEO_WEB_PLATFORM ?? "")
   .trim()
   .replace(/^\./, "")
@@ -77,6 +78,12 @@ function resolveWithCustomWebOverlay(context, moduleName, platform) {
 }
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // jsonc-parser's UMD entry shadows require inside a factory, so Metro does
+  // not collect its internal modules and release builds crash at runtime.
+  if (moduleName === "jsonc-parser") {
+    return { filePath: jsoncParserEsmEntry, type: "sourceFile" };
+  }
+
   if (isFdroidBuild && platform === "android" && fdroidModuleOverrides[moduleName]) {
     return resolveWithCustomWebOverlay(context, fdroidModuleOverrides[moduleName], platform);
   }

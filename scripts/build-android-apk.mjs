@@ -9,6 +9,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
+import { verifyAndroidMetroBundle } from "./verify-android-metro-bundle.mjs";
+
 const require = createRequire(import.meta.url);
 const { getNativeReleaseVersion } = require("../packages/app/native-release-version");
 const execFileAsync = promisify(execFile);
@@ -496,6 +498,9 @@ async function main() {
   env.PASEO_ANDROID_KEYSTORE_PASSWORD = signing.keystorePassword;
   env.PASEO_ANDROID_KEY_ALIAS = signing.keyAlias;
   env.PASEO_ANDROID_KEY_PASSWORD = signing.keyPassword;
+
+  console.log("Verifying the Android Metro module graph...");
+  await verifyAndroidMetroBundle();
 
   if (reuseNativeProject) {
     await access(path.join(ANDROID_DIR, "gradlew"));
