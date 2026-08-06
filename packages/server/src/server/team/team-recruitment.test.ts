@@ -386,6 +386,21 @@ describe("TeamService recruitment", () => {
       expect(agents.prompts.map(clientMessageIdOf)).toEqual([`team-${team.id}-recruit-recruit-1`]);
     });
 
+    // Two passes over the same pending recruit: the first finishes it, the
+    // second finds no intent left. That is a replay arriving second, not a
+    // cancellation — archiving the agent it just recruited would be worse than
+    // doing nothing.
+    test("does not undo a recruit another pass already finished", async () => {
+      const team = await seedTeam();
+      await leaveReserved(team, "recruit-1");
+
+      await Promise.all([service.reconcile(), service.reconcile()]);
+
+      const entry = entryFor(await store.get(team.id), "recruit-1");
+      expect(entry?.state).toBe("active");
+      expect(agents.archived).toEqual([]);
+    });
+
     test("cancels an intent left behind by a team that is no longer active", async () => {
       const team = await seedTeam();
       await leaveReserved(team, "recruit-1");

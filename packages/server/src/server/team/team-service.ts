@@ -106,6 +106,18 @@ export class TeamCreateConflictError extends Error {
   }
 }
 
+/**
+ * A recruit that was cancelled rather than failed. The distinction matters to
+ * the reconciler: a cancellation has already recorded its reason and cleaned
+ * up, so treating it as a failure would overwrite that with a vaguer one.
+ */
+export class TeamRecruitmentCancelledError extends Error {
+  constructor(teamId: string) {
+    super(`The recruit for team ${teamId} was cancelled before it could join`);
+    this.name = "TeamRecruitmentCancelledError";
+  }
+}
+
 export class TeamCreateValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -180,12 +192,22 @@ export class TeamService {
    * and the stage says which ones are already known to be done.
    */
   private async runCreationPlan(team: StoredTeam): Promise<StoredTeam> {
-    const plan = team.creationPlan;
+    // Re-read under the lock. The snapshot the caller holds was taken before
+    // the lock, and an archive that got there first would otherwise have this
+    // plan go on building a room, agents and briefings for a team that is
+    // already over — the lifecycle guard at the end catches the record, not the
+    // resources.
+    const locked = await this.store.get(team.id);
+    if (!locked || locked.lifecycle !== "creating") {
+      return locked ?? team;
+    }
+
+    const plan = locked.creationPlan;
     if (!plan) {
       throw new Error(`Team ${team.id} has no creation plan to run`);
     }
 
-    let current = team;
+    let current = locked;
     try {
       if (!isStageComplete(current.creationStage, "room_created")) {
         await this.rooms.createRoom({
@@ -353,9 +375,7 @@ export class TeamService {
 
     const cancel = async (): Promise<never> => {
       await this.cancelRecruitment(teamId, agentId);
-      throw new TeamCreateValidationError(
-        `The recruit for team ${teamId} was cancelled before it could join`,
-      );
+      throw new TeamRecruitmentCancelledError(teamId);
     };
 
     let intent = await intentOf();
@@ -392,32 +412,38 @@ export class TeamService {
     // arriving between them would be cleared away as if it had not happened.
     // The store's update runs inside the record's own lock, so deciding there
     // makes the last check and the commit one step.
-    const committed = await this.commitRecruitment(teamId, agentId);
-    if (!committed) await cancel();
+    if ((await this.commitRecruitment(teamId, agentId)) === "invalidated") await cancel();
   }
 
   /**
    * Clears the intent only if this recruit is still one, and says whether it
    * did. The decision and the write are the same locked read-modify-write.
    */
-  private async commitRecruitment(teamId: string, agentId: string): Promise<boolean> {
-    let committed = false;
+  private async commitRecruitment(
+    teamId: string,
+    agentId: string,
+  ): Promise<"committed" | "already_committed" | "invalidated"> {
+    let outcome: "committed" | "already_committed" | "invalidated" = "invalidated";
     await this.store.update(teamId, (current) => {
       const entry = current.members.find((member) => member.agentId === agentId);
-      if (
-        current.lifecycle !== "active" ||
-        entry?.state !== "active" ||
-        !current.pendingRecruitments?.[agentId]
-      ) {
+      const stillJoining = current.lifecycle === "active" && entry?.state === "active";
+      if (!stillJoining) {
         return current;
       }
-      committed = true;
+      // A recruit that is still a member and has no intent left was finished by
+      // another pass. That is a replay arriving second, not a cancellation —
+      // cancelling here would archive an agent that has already joined.
+      if (!current.pendingRecruitments?.[agentId]) {
+        outcome = "already_committed";
+        return current;
+      }
+      outcome = "committed";
       return {
         ...current,
         pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
       };
     });
-    return committed;
+    return outcome;
   }
 
   /**
@@ -491,31 +517,30 @@ export class TeamService {
   }
 
   private async resumeCreation(team: StoredTeam): Promise<void> {
-    if (!team.creationPlan) {
-      await this.markFailed(team.id);
-      return;
-    }
-    // The plan says this agent exists. If it does not, the daemon cannot tell
+    // The plan says the lead exists. If it does not, the daemon cannot tell
     // "deleted" from "never created", and rebuilding could duplicate work that
-    // already happened — so the team fails rather than guesses.
-    if (isStageComplete(team.creationStage, "agents_created")) {
-      const lead = await this.agents.getAgentState(team.leadAgentId);
-      if (lead.kind === "missing") {
-        this.logger.error(
-          { teamId: team.id, leadAgentId: team.leadAgentId },
-          "Failing a half-created team: its lead is gone and cannot be safely rebuilt",
-        );
-        await this.markFailed(team.id);
-        return;
-      }
-    }
-    // Under the team's lock, like the create path. Without it an archive could
-    // land during the checks above and this stale plan would go on briefing
-    // agents it had just archived — and a failure part-way could turn an
-    // archived team into a failed one.
+    // already happened — so the team fails rather than guesses. Asked before
+    // the lock because it is a question for the agent runtime, not the record.
+    const leadIsGone =
+      isStageComplete(team.creationStage, "agents_created") &&
+      (await this.agents.getAgentState(team.leadAgentId)).kind === "missing";
+
+    // Everything that writes happens under the lock, re-reading first. An
+    // archive can complete while the question above is in flight, and marking
+    // that team `failed` would overwrite an ending someone chose.
     await this.serializePerTeam(team.id, async () => {
       const current = await this.store.get(team.id);
       if (current?.lifecycle !== "creating") {
+        return;
+      }
+      if (!current.creationPlan || leadIsGone) {
+        if (leadIsGone) {
+          this.logger.error(
+            { teamId: team.id, leadAgentId: team.leadAgentId },
+            "Failing a half-created team: its lead is gone and cannot be safely rebuilt",
+          );
+        }
+        await this.markFailed(team.id);
         return;
       }
       await this.runCreationPlan(current);
@@ -557,9 +582,14 @@ export class TeamService {
 
     await this.finishInterruptedRecruits(team);
 
+    // The lead goes through the same checks as everyone else. Skipping it left
+    // one state unreachable: an entry that says `archived` while the agent has
+    // since come back — which the event path would have restored.
     for (const member of team.members) {
-      if (member.agentId === team.leadAgentId) continue;
-      const state = await this.agents.getAgentState(member.agentId);
+      const state =
+        member.agentId === team.leadAgentId
+          ? lead
+          : await this.agents.getAgentState(member.agentId);
       if (state.kind === "missing" && member.state !== "removed") {
         await this.markRemoved(team.id, member.agentId, "hard_deleted");
         continue;
@@ -603,6 +633,12 @@ export class TeamService {
       try {
         await this.landRecruit(team.id, agentId);
       } catch (error) {
+        // A cancellation has already recorded why the recruit is gone and
+        // cleaned up after it. Running the failure path on top would overwrite
+        // that reason with a vaguer one.
+        if (error instanceof TeamRecruitmentCancelledError) {
+          continue;
+        }
         this.logger.error(
           { err: error, teamId: team.id, agentId },
           "Releasing a recruit that could not be finished",
@@ -941,7 +977,11 @@ function withoutIntent(
 
 function assertRecruitable(
   team: StoredTeam | null,
-  input: { recruiterAgentId: string; teamRole: string },
+  input: {
+    recruiterAgentId: string;
+    teamRole: string;
+    settings: Record<string, unknown> | null;
+  },
 ): asserts team is StoredTeam {
   if (!team || team.lifecycle !== "active") {
     throw new TeamCreateValidationError(`Team ${team?.id ?? ""} is not active`);
@@ -952,6 +992,8 @@ function assertRecruitable(
       `${input.recruiterAgentId} is not a member of this team and cannot recruit into it`,
     );
   }
+
+  assertJsonValue(input.settings, "settings");
 
   const role = input.teamRole.trim();
   if (role.length === 0) {
@@ -975,6 +1017,11 @@ function assertRecruitable(
 }
 
 function assertMemberSpecsValid(request: CreateTeamRequest): void {
+  assertJsonValue(request.lead.settings, "lead.settings");
+  request.members.forEach((member, index) =>
+    assertJsonValue(member.settings, `members[${index}].settings`),
+  );
+
   if (request.members.length > TEAM_MAX_NON_LEAD_MEMBERS) {
     throw new TeamCreateValidationError(
       `A team holds at most ${TEAM_MAX_NON_LEAD_MEMBERS} members besides its lead`,
@@ -1047,6 +1094,39 @@ function canonicalValue(value: unknown): unknown {
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, nested]) => [key, canonicalValue(nested)]),
   );
+}
+
+/**
+ * Settings arrive as `Record<string, unknown>`, which is wider than what the
+ * wire can carry. The fingerprint has to be total over whatever it is handed:
+ * `undefined` would collide with an absent key, a `Date` or a `Map` would
+ * flatten to `{}`, and a `BigInt` would throw during serialization — all of
+ * which turn a retry into a conflict, or worse, two different requests into
+ * one. Anything that is not JSON is refused where it enters.
+ */
+function assertJsonValue(value: unknown, path: string): void {
+  if (value === null) return;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertJsonValue(item, `${path}[${index}]`));
+    return;
+  }
+  switch (typeof value) {
+    case "string":
+    case "number":
+    case "boolean":
+      return;
+    case "object": {
+      if (Object.getPrototypeOf(value) !== Object.prototype) {
+        throw new TeamCreateValidationError(`${path} must be a plain JSON object`);
+      }
+      for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+        assertJsonValue(nested, `${path}.${key}`);
+      }
+      return;
+    }
+    default:
+      throw new TeamCreateValidationError(`${path} must be a JSON value`);
+  }
 }
 
 function buildAllocatedTeam(

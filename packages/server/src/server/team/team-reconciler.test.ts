@@ -71,11 +71,12 @@ describe("TeamService reconciliation", () => {
 
     /** Agents whose team labels have gone, however that happened. */
     unlabelled = new Set<string>();
-    /** What the daemon would report as this agent's team labels. */
-    labelFor: (agentId: string) => { teamId: string; role: string } | null = () => ({
-      teamId: "any",
-      role: "any",
-    });
+    /**
+     * What the daemon would report as this agent's team labels. Set by the
+     * fixture to whatever the roster says, so only an agent named in
+     * `unlabelled` looks wrong.
+     */
+    labelFor: (agentId: string) => { teamId: string; role: string } | null = () => null;
 
     async getAgentState(agentId: string) {
       if (this.missing.has(agentId)) return { kind: "missing" as const };
@@ -148,6 +149,12 @@ describe("TeamService reconciliation", () => {
     agents.created.length = 0;
     agents.prompts.length = 0;
     agents.archived.length = 0;
+    // Every member wears the labels the roster says it should, so a test only
+    // has to say which agent lost them.
+    agents.labelFor = (agentId) => {
+      const entry = team.members.find((member) => member.agentId === agentId);
+      return entry ? { teamId: team.id, role: entry.role } : null;
+    };
     return team;
   }
 
@@ -300,6 +307,20 @@ describe("TeamService reconciliation", () => {
       await service.reconcile();
 
       expect((await store.get(team.id))?.lifecycle).toBe("archived");
+    });
+
+    // The lead's entry was marked archived, the daemon died before the team
+    // followed, and the lead came back while it was down. The event path would
+    // have restored it, so recovery has to reach the same place.
+    test("restores a lead whose entry was archived but which came back", async () => {
+      const team = await seedTeam();
+      await markEntryArchived(team.id, team.leadAgentId);
+
+      await service.reconcile();
+
+      const after = await store.get(team.id);
+      expect(after?.lifecycle).toBe("active");
+      expect(entryFor(after, team.leadAgentId)?.state).toBe("active");
     });
 
     test("converges the team when its lead turns out to be gone", async () => {

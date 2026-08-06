@@ -334,6 +334,22 @@ describe("TeamPump", () => {
       expect(await pump.run({ teamId: "team-1", leadAgentId: "lead" })).toBe(true);
     });
 
+    // The check at the top of a pass says nothing about the rest of it. A file
+    // that goes bad halfway through makes every later read look empty, and
+    // empty at the end means "retire this team".
+    test("keeps watching when the ledger goes bad mid-pass", async () => {
+      await assign("agent-a", "work");
+      gateway.turnIds = ["turn-1"];
+      await pump.run({ teamId: "team-1", leadAgentId: "lead" });
+      gateway.outcomes.set("turn-1", "completed");
+      gateway.deliverCompletions = async () => {
+        await writeFile(join(home, "team-1.inbox.json"), "{ not json", "utf8");
+        return true;
+      };
+
+      expect(await pump.run({ teamId: "team-1", leadAgentId: "lead" })).toBe(true);
+    });
+
     // Losing the event that says an agent went idle must not strand the work:
     // the next sweep picks it up without anything having to restart.
     test("recovers a dropped wake-up on the next pass", async () => {

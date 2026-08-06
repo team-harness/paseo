@@ -210,6 +210,33 @@ describe("TeamService creation", () => {
     await expect(service.create(createRequest({ members }))).rejects.toThrow(/at most 8/i);
   });
 
+  // Settings are typed `Record<string, unknown>`, which is wider than the wire.
+  // The fingerprint has to be total over whatever it gets: `undefined` would
+  // collide with an absent key, a Date would flatten to `{}`, a BigInt would
+  // throw. Each of those turns a retry into a conflict or two requests into one.
+  test("refuses settings that are not JSON", async () => {
+    for (const settings of [
+      { modeId: undefined },
+      { when: new Date() },
+      { size: 1n },
+      { seen: new Map() },
+    ]) {
+      await expect(
+        service.create(
+          createRequest({
+            lead: {
+              role: "lead",
+              provider: "claude",
+              title: null,
+              briefing: null,
+              settings: settings as Record<string, unknown>,
+            },
+          }),
+        ),
+      ).rejects.toThrow(/JSON/i);
+    }
+  });
+
   test("refuses two members that would share a role", async () => {
     await expect(
       service.create(

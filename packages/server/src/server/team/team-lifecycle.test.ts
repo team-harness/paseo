@@ -12,9 +12,12 @@ import { TeamService, type TeamAgentGateway, type TeamRoomGateway } from "./team
 const logger = createTestLogger();
 
 class RecordingRoomGateway implements TeamRoomGateway {
+  readonly created: string[] = [];
   readonly discarded: string[] = [];
 
-  async createRoom(): Promise<void> {}
+  async createRoom(input: { roomId: string }): Promise<void> {
+    this.created.push(input.roomId);
+  }
 
   async discardRoom(input: { roomId: string }): Promise<void> {
     this.discarded.push(input.roomId);
@@ -32,8 +35,11 @@ class RecordingAgentGateway implements TeamAgentGateway {
   /** Runs as each agent is created, to interleave something else. */
   onCreate: ((agentId: string) => Promise<void>) | null = null;
 
+  readonly created: string[] = [];
+
   async createAgent(input: { agentId: string }): Promise<void> {
     await this.onCreate?.(input.agentId);
+    this.created.push(input.agentId);
   }
   async sendPrompt(): Promise<void> {}
 
@@ -255,6 +261,10 @@ describe("TeamService lifecycle", () => {
       await archiveFirst;
 
       expect((await store.get(teamId))?.lifecycle).toBe("archived");
+      // And nothing was built for it. Guarding only the record would leave a
+      // room and live agents behind a team that is already over.
+      expect(agents.created).toEqual([]);
+      expect(rooms.created).toEqual([]);
     });
 
     // An external event carries the same weight as the RPC. A lead archived by
