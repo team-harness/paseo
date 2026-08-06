@@ -56,7 +56,10 @@ import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
 import { useSettings } from "@/hooks/use-settings";
 import type { ToastApi } from "@/components/toast-host";
 import { returnToTimelineTail } from "./timeline-tail-navigation";
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type {
+  AgentTimelinePromptIndexPayload,
+  DaemonClient,
+} from "@getpaseo/client/internal/daemon-client";
 import { ToolCallDetailsContent } from "@/components/tool-call-details";
 import { QuestionFormCard } from "@/components/question-form-card";
 import { ToolCallSheetProvider } from "@/components/tool-call-sheet";
@@ -109,6 +112,7 @@ import { formatMessageTimestamp } from "@/utils/time";
 import {
   exportChatHistory,
   loadCompleteChatHistory,
+  selectChatHistoryFromPrompt,
   selectChatHistoryFromUserMessage,
 } from "@/chat-share/history";
 import { shareChatHistory } from "@/chat-share/upload";
@@ -217,22 +221,38 @@ function renderStreamItemWithTurnFooter(input: {
   );
 }
 
+type ChatShareStartOption =
+  | {
+      source: "prompt_index";
+      prompt: AgentTimelinePromptIndexPayload["prompts"][number];
+    }
+  | {
+      source: "provider_history";
+      item: Extract<StreamItem, { kind: "user_message" }>;
+    };
+
 interface ChatShareStartSelection {
   items: StreamItem[];
-  startMessages: Array<Extract<StreamItem, { kind: "user_message" }>>;
+  startOptions: ChatShareStartOption[];
 }
 
 function ChatShareStartMessageRow({
-  item,
+  option,
   onSelect,
 }: {
-  item: Extract<StreamItem, { kind: "user_message" }>;
-  onSelect: (itemId: string) => void;
+  option: ChatShareStartOption;
+  onSelect: (option: ChatShareStartOption) => void;
 }) {
   const { t } = useTranslation();
-  const preview = item.text.trim() || t("message.actions.shareStartUntitled");
-  const timestamp = useMemo(() => formatMessageTimestamp(item.timestamp), [item.timestamp]);
-  const handlePress = useCallback(() => onSelect(item.id), [item.id, onSelect]);
+  const preview =
+    (option.source === "prompt_index" ? option.prompt.preview : option.item.text.trim()) ||
+    t("message.actions.shareStartUntitled");
+  const timestamp = formatMessageTimestamp(
+    option.source === "prompt_index" ? new Date(option.prompt.timestamp) : option.item.timestamp,
+  );
+  const optionKey =
+    option.source === "prompt_index" ? `prompt-${option.prompt.seq}` : option.item.id;
+  const handlePress = useCallback(() => onSelect(option), [onSelect, option]);
   const rowStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
       stylesheet.shareStartRow,
@@ -248,7 +268,7 @@ function ChatShareStartMessageRow({
       accessibilityLabel={`${t("message.actions.shareStartTitle")}: ${preview}`}
       onPress={handlePress}
       style={rowStyle}
-      testID={`chat-share-start-${item.id}`}
+      testID={`chat-share-start-${optionKey}`}
     >
       <Text style={stylesheet.shareStartRowPreview} numberOfLines={2}>
         {preview}
@@ -610,15 +630,23 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               localTail: effectiveStreamItems,
               liveHead: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
             });
-        const startMessages = items.filter(
-          (item): item is Extract<StreamItem, { kind: "user_message" }> =>
-            item.kind === "user_message",
-        );
-        if (startMessages.length === 0) {
+        let startOptions: ChatShareStartOption[];
+        if (!loadCompleteHistory && supportsChatOutline) {
+          startOptions = (await client.listAgentTimelinePrompts(agentId)).prompts.map((prompt) => ({
+            source: "prompt_index" as const,
+            prompt,
+          }));
+        } else {
+          // COMPAT(chatSharePromptIndex): keep provider and old-host sharing until daemon floor includes v0.2.X.
+          startOptions = items.flatMap((item) =>
+            item.kind === "user_message" ? [{ source: "provider_history" as const, item }] : [],
+          );
+        }
+        if (startOptions.length === 0) {
           toast?.error(t("message.actions.shareFailed"));
           return;
         }
-        const selection = { items, startMessages };
+        const selection = { items, startOptions };
         shareStartSelectionRef.current = selection;
         setShareStartSelection(selection);
       } catch (error) {
@@ -628,12 +656,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         setIsSharingAssistantTurn(false);
       }
     });
-    const handleShareStartSelected = useStableEvent(async (userMessageId: string) => {
+    const handleShareStartSelected = useStableEvent(async (option: ChatShareStartOption) => {
       const selection = shareStartSelectionRef.current;
       if (!selection || sharingAssistantTurnRef.current) {
         return;
       }
-      const items = selectChatHistoryFromUserMessage(selection.items, userMessageId);
+      const items =
+        option.source === "prompt_index"
+          ? selectChatHistoryFromPrompt(selection.items, option.prompt.seq)
+          : selectChatHistoryFromUserMessage(selection.items, option.item.id);
       if (!items) {
         toast?.error(t("message.actions.shareFailed"));
         return;
@@ -734,7 +765,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       timelineEpoch,
       tail: effectiveStreamItems,
       head: effectiveStreamHead,
-      enabled: supportsChatOutline && chatOutlineEnabled,
+      enabled: isWeb && supportsChatOutline,
+      visible: chatOutlineEnabled,
       viewportRef,
       onJumpError: handleTimelineHistoryLoadError,
     });
@@ -1241,10 +1273,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             testID="chat-share-start-sheet"
           >
             <View style={stylesheet.shareStartList}>
-              {shareStartSelection.startMessages.map((item) => (
+              {shareStartSelection.startOptions.map((option) => (
                 <ChatShareStartMessageRow
-                  key={item.id}
-                  item={item}
+                  key={
+                    option.source === "prompt_index"
+                      ? `prompt-${option.prompt.seq}`
+                      : option.item.id
+                  }
+                  option={option}
                   onSelect={handleShareStartSelected}
                 />
               ))}

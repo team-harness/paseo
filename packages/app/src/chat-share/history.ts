@@ -434,6 +434,16 @@ export async function loadCompleteProviderSubagentChatHistory({
   return [...timeline.tail, ...timeline.head];
 }
 
+export function selectChatHistoryFromPrompt(
+  items: readonly StreamItem[],
+  promptSeq: number,
+): StreamItem[] | null {
+  const startIndex = items.findIndex(
+    (item) => item.kind === "user_message" && item.timelineCursor?.seq === promptSeq,
+  );
+  return startIndex === -1 ? null : items.slice(startIndex);
+}
+
 export function selectChatHistoryFromUserMessage(
   items: readonly StreamItem[],
   userMessageId: string,

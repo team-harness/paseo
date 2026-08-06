@@ -2945,6 +2945,8 @@ export const ServerInfoStatusPayloadSchema = z
         rewind: z.boolean().optional(),
         // COMPAT(agentTimelinePromptIndex): added in v0.2.X, drop the gate when floor >= v0.2.X.
         agentTimelinePromptIndex: z.boolean().optional(),
+        // COMPAT(composerMessageHistory): added in v0.3.0-beta.2, remove gate after 2027-02-06.
+        composerMessageHistory: z.boolean().optional(),
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
         checkoutRefresh: z.boolean().optional(),
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
@@ -3744,6 +3746,8 @@ export const AgentTimelineListPromptsResponseMessageSchema = z.object({
         seq: z.number().int().nonnegative(),
         timestamp: z.string(),
         preview: z.string(),
+        // COMPAT(composerMessageHistory): added in v0.3.0-beta.2, remove optional after 2027-02-06.
+        text: z.string().optional(),
       }),
     ),
     error: z.string().nullable(),

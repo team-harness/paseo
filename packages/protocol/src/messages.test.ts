@@ -400,6 +400,43 @@ describe("prompt library message contract", () => {
   });
 });
 
+describe("composer message history contract", () => {
+  test("accepts optional full prompt text in the timeline prompt index", () => {
+    const parsed = SessionOutboundMessageSchema.parse({
+      type: "agent.timeline.list_prompts.response",
+      payload: {
+        requestId: "prompt-history-1",
+        agentId: "agent-1",
+        epoch: "epoch-1",
+        prompts: [
+          {
+            seq: 3,
+            timestamp: "2026-08-06T00:00:00.000Z",
+            preview: "First prompt",
+            text: "First prompt\nwith original formatting",
+          },
+        ],
+        error: null,
+      },
+    });
+
+    if (parsed.type !== "agent.timeline.list_prompts.response") {
+      throw new Error("Expected agent.timeline.list_prompts.response");
+    }
+    expect(parsed.payload.prompts[0]?.text).toBe("First prompt\nwith original formatting");
+  });
+
+  test("parses the composer message history feature gate", () => {
+    const parsed = parseServerInfoStatusPayload({
+      status: "server_info",
+      serverId: "srv-test",
+      features: { composerMessageHistory: true },
+    });
+
+    expect(parsed?.features?.composerMessageHistory).toBe(true);
+  });
+});
+
 describe("diagnostics message contract", () => {
   test("accepts the diagnostics request as a simple namespaced RPC", () => {
     const parsed = SessionInboundMessageSchema.parse({

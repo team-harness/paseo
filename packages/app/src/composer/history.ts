@@ -1,38 +1,46 @@
-import type { StreamItem } from "@/types/stream";
-
-export interface LastMessageRecall {
+export interface MessageHistoryNavigationResult {
   value: string;
+  index: number | null;
   selection: { start: number; end: number };
 }
 
-function findLastUserMessageInLane(items: readonly StreamItem[]): string | null {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index];
-    if (item?.kind === "user_message" && item.text.length > 0) {
-      return item.text;
-    }
-  }
-  return null;
+export function collectUserMessageHistory(
+  prompts: readonly { text?: string }[] | undefined,
+): string[] {
+  return (prompts ?? []).flatMap((prompt) =>
+    prompt.text === undefined || prompt.text.length === 0 ? [] : [prompt.text],
+  );
 }
 
-export function findLastUserMessageText(
-  tail: readonly StreamItem[] | undefined,
-  head: readonly StreamItem[] | undefined = undefined,
-): string | null {
-  return findLastUserMessageInLane(head ?? []) ?? findLastUserMessageInLane(tail ?? []);
-}
-
-export function resolveLastMessageRecall(input: {
+export function resolveMessageHistoryNavigation(input: {
   key: string;
   value: string;
-  lastUserMessage: string | null;
-}): LastMessageRecall | null {
-  if (input.key !== "ArrowUp" || input.value.length > 0 || !input.lastUserMessage) {
+  history: readonly string[];
+  index: number | null;
+}): MessageHistoryNavigationResult | null {
+  if ((input.key !== "ArrowUp" && input.key !== "ArrowDown") || input.history.length === 0) {
     return null;
   }
-  const cursor = input.lastUserMessage.length;
+
+  const lastIndex = input.history.length - 1;
+  let nextIndex: number | null;
+  if (input.key === "ArrowUp") {
+    if (input.index === null) {
+      if (input.value.length > 0) return null;
+      nextIndex = lastIndex;
+    } else {
+      nextIndex = Math.max(0, Math.min(input.index - 1, lastIndex));
+    }
+  } else {
+    if (input.index === null) return null;
+    nextIndex = input.index >= lastIndex ? null : input.index + 1;
+  }
+
+  const value = nextIndex === null ? "" : (input.history[nextIndex] ?? "");
+  const cursor = value.length;
   return {
-    value: input.lastUserMessage,
+    value,
+    index: nextIndex,
     selection: { start: cursor, end: cursor },
   };
 }

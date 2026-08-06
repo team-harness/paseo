@@ -290,6 +290,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - 2026-08-02：上传体不超过 Threadshare 的 5 MiB 限制时保持原样；超过限制时，完整保留用户、assistant 及其他非工具记录，将同一工具调用的状态更新合并为最终状态，只保留工具名称、首次调用时间、请求参数和最终状态，删除已识别工具类型的返回值与错误详情。未来未知 detail 类型无法可靠区分请求和返回，保持原样并交给最终大小检查。压缩后仍超限时在发起网络请求前中止，并提示选择更靠后的用户消息；其他上传失败会显示服务端原因，不再被通用错误吞掉。
 - 2026-08-06：Android Metro 将 `jsonc-parser` 定向到可静态分析的 ESM 入口。该包的 UMD 工厂会遮蔽 `require`，导致 release bundle 漏掉 `impl/*` 并在恢复工作区时原生崩溃；本地 APK 构建在 Gradle 前验证实际 Android Metro 图，禁止 UMD 入口并要求完整 ESM 依赖。
 - 2026-08-06：Review Comments 与 Host 项目匹配排序不使用 Hermes 尚未实现的 `Array.prototype.toSorted()`；复制数组后使用 `sort()`，保留非变异语义并避免 Android 工作区恢复进入错误边界。
+- 2026-08-06：普通 Agent 的分享起点直接读取 daemon 的完整 prompt index，并按 timeline `seq` 对齐已加载的权威完整历史；不再从当前客户端窗口临时枚举用户消息。Provider 子 Agent 没有普通 Agent prompt index，继续使用其专用完整 timeline。
 
 **关键文件**：
 
@@ -467,6 +468,23 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
 
 **最近同步判断**：2026-08-06 的上游 `fb5cfb9fb` 没有 fork 独立 Android
 安装身份或固定本地签名的离线 APK 构建入口，保留本能力。
+
+### 13. Composer 完整用户消息历史
+
+**状态**：fork 功能。
+
+**行为**：Composer 为空时，`ArrowUp` 从最近一条用户消息开始向前遍历完整会话历史；进入历史导航后，`ArrowDown` 向后遍历并最终回到空输入。用户手动编辑历史内容后退出导航状态，避免后续方向键覆盖草稿。
+
+**关键边界**：daemon 的 `agent.timeline.list_prompts` 是聊天罗盘、分享起点和 Composer 历史的唯一用户消息索引。索引同时提供折叠后的 `preview` 与保留换行的完整 `text`；`text` 在 wire schema 中保持 optional，并由 `server_info.features.composerMessageHistory` 单点 gate，保证旧客户端仍可解析新 daemon、旧 daemon 仍可连接新客户端。
+
+**关键文件**：
+
+- `packages/app/src/composer/history.ts`
+- `packages/app/src/timeline/use-agent-timeline-prompt-index.ts`
+- `packages/protocol/src/messages.ts`
+- `packages/server/src/server/agent/timeline-prompt-index.ts`
+
+**同步规则**：上游若提供等价的 Composer 历史导航，采用其键盘和草稿状态模型，但必须继续由完整会话索引供数，不能退回当前已加载 timeline window。协议字段只能保持或扩宽兼容性，删除 capability gate 前须达到对应 daemon 版本下限。
 
 ## 同步上游操作清单
 

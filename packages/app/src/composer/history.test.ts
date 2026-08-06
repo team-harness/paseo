@@ -1,57 +1,102 @@
 import { describe, expect, it } from "vitest";
-import type { StreamItem } from "@/types/stream";
-import { findLastUserMessageText, resolveLastMessageRecall } from "./history";
-
-function streamItem(kind: StreamItem["kind"], text?: string): StreamItem {
-  return { kind, text } as StreamItem;
-}
+import { collectUserMessageHistory, resolveMessageHistoryNavigation } from "./history";
 
 describe("composer message history", () => {
-  it("finds the latest user message in the current session stream", () => {
+  it("collects complete user messages from the shared prompt index in chronological order", () => {
     expect(
-      findLastUserMessageText(
-        [
-          streamItem("user_message", "first prompt"),
-          streamItem("assistant_message", "first answer"),
-        ],
-        [
-          streamItem("user_message", "latest prompt"),
-          streamItem("assistant_message", "latest answer"),
-        ],
-      ),
-    ).toBe("latest prompt");
+      collectUserMessageHistory([
+        { text: "first prompt" },
+        { text: "second prompt" },
+        { text: "latest prompt" },
+      ]),
+    ).toEqual(["first prompt", "second prompt", "latest prompt"]);
+    expect(collectUserMessageHistory([{ text: "" }, {}, { text: "kept" }])).toEqual(["kept"]);
   });
 
-  it("recalls the last message when ArrowUp is pressed in an empty composer", () => {
+  it("navigates backward and forward through the complete message history", () => {
+    const history = ["first prompt", "second prompt", "latest prompt"];
+
     expect(
-      resolveLastMessageRecall({
+      resolveMessageHistoryNavigation({ key: "ArrowUp", value: "", history, index: null }),
+    ).toEqual({
+      value: "latest prompt",
+      index: 2,
+      selection: { start: 13, end: 13 },
+    });
+    expect(
+      resolveMessageHistoryNavigation({
         key: "ArrowUp",
-        value: "",
-        lastUserMessage: "latest prompt\nwith context",
+        value: "latest prompt",
+        history,
+        index: 2,
+      }),
+    ).toMatchObject({ value: "second prompt", index: 1 });
+    expect(
+      resolveMessageHistoryNavigation({
+        key: "ArrowUp",
+        value: "second prompt",
+        history,
+        index: 1,
+      }),
+    ).toMatchObject({ value: "first prompt", index: 0 });
+    expect(
+      resolveMessageHistoryNavigation({
+        key: "ArrowUp",
+        value: "first prompt",
+        history,
+        index: 0,
+      }),
+    ).toMatchObject({ value: "first prompt", index: 0 });
+
+    expect(
+      resolveMessageHistoryNavigation({
+        key: "ArrowDown",
+        value: "first prompt",
+        history,
+        index: 0,
+      }),
+    ).toMatchObject({ value: "second prompt", index: 1 });
+    expect(
+      resolveMessageHistoryNavigation({
+        key: "ArrowDown",
+        value: "second prompt",
+        history,
+        index: 1,
+      }),
+    ).toMatchObject({ value: "latest prompt", index: 2 });
+    expect(
+      resolveMessageHistoryNavigation({
+        key: "ArrowDown",
+        value: "latest prompt",
+        history,
+        index: 2,
       }),
     ).toEqual({
-      value: "latest prompt\nwith context",
-      selection: { start: 26, end: 26 },
+      value: "",
+      index: null,
+      selection: { start: 0, end: 0 },
     });
   });
 
-  it("keeps normal cursor navigation when the composer already has text", () => {
+  it("keeps normal cursor navigation until history traversal starts from an empty composer", () => {
+    const history = ["latest prompt"];
+
     expect(
-      resolveLastMessageRecall({
+      resolveMessageHistoryNavigation({
         key: "ArrowUp",
         value: "draft in progress",
-        lastUserMessage: "latest prompt",
+        history,
+        index: null,
       }),
     ).toBeNull();
-  });
-
-  it("does not handle other keys or sessions without a previous text message", () => {
     expect(
-      resolveLastMessageRecall({ key: "ArrowDown", value: "", lastUserMessage: "latest prompt" }),
+      resolveMessageHistoryNavigation({ key: "ArrowDown", value: "", history, index: null }),
     ).toBeNull();
     expect(
-      resolveLastMessageRecall({ key: "ArrowUp", value: "", lastUserMessage: null }),
+      resolveMessageHistoryNavigation({ key: "Enter", value: "", history, index: null }),
     ).toBeNull();
-    expect(findLastUserMessageText([streamItem("assistant_message", "answer")])).toBeNull();
+    expect(
+      resolveMessageHistoryNavigation({ key: "ArrowUp", value: "", history: [], index: null }),
+    ).toBeNull();
   });
 });

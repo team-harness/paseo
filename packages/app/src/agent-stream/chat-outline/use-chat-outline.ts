@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import type { AgentTimelinePromptIndexPayload } from "@getpaseo/client/internal/daemon-client";
-import { isWeb } from "@/constants/platform";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { useAgentTimelinePromptIndex } from "@/timeline/use-agent-timeline-prompt-index";
 import { planTimelinePromptJump } from "@/timeline/timeline-sync-plan";
 import type { StreamItem } from "@/types/stream";
 import type { StreamViewportHandle } from "../strategy";
 import {
   createActivePromptPublisher,
   resolveActivePromptSeq,
-  shouldAcceptPromptIndexEpoch,
   type ActivePromptSource,
   type ChatOutlinePrompt,
 } from "./model";
@@ -31,6 +29,7 @@ export interface UseChatOutlineInput {
   tail: StreamItem[];
   head: StreamItem[] | undefined;
   enabled: boolean;
+  visible?: boolean;
   viewportRef: RefObject<StreamViewportHandle | null>;
   onJumpError: () => void;
 }
@@ -49,59 +48,18 @@ export function useChatOutline({
   tail,
   head,
   enabled,
+  visible = true,
   viewportRef,
   onJumpError,
 }: UseChatOutlineInput): ChatOutline {
-  const [index, setIndex] = useState<AgentTimelinePromptIndexPayload | null>(null);
+  const index = useAgentTimelinePromptIndex({ agentId, serverId, timelineEpoch, enabled });
   const [pendingJump, setPendingJump] = useState<PendingPromptJump | null>(null);
   const [activePrompt] = useState(createActivePromptPublisher);
   const readingRowIdRef = useRef<string | null>(null);
   const nextJumpRequestIdRef = useRef(0);
-  const nextIndexRequestIdRef = useRef(0);
   const loadedItems = useMemo(() => [...tail, ...(head ?? NO_STREAM_ITEMS)], [head, tail]);
-  const prompts = enabled ? (index?.prompts ?? NO_PROMPTS) : NO_PROMPTS;
-
-  useEffect(() => {
-    if (!isWeb || !enabled) {
-      setIndex(null);
-      return;
-    }
-    setIndex(null);
-    const client = getHostRuntimeStore().getClient(serverId);
-    if (!client) return;
-    let active = true;
-    const refresh = () => {
-      const requestId = ++nextIndexRequestIdRef.current;
-      void client
-        .listAgentTimelinePrompts(agentId)
-        .then((payload) => {
-          if (
-            active &&
-            requestId === nextIndexRequestIdRef.current &&
-            shouldAcceptPromptIndexEpoch(timelineEpoch, payload.epoch)
-          ) {
-            setIndex(payload);
-          }
-          return undefined;
-        })
-        .catch(() => undefined);
-    };
-    refresh();
-    const unsubscribe = client.on("agent_stream", (message) => {
-      if (
-        message.type === "agent_stream" &&
-        message.payload.agentId === agentId &&
-        message.payload.event.type === "timeline" &&
-        message.payload.event.item.type === "user_message"
-      ) {
-        refresh();
-      }
-    });
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, [agentId, enabled, serverId, timelineEpoch]);
+  const indexedPrompts = enabled ? (index?.prompts ?? NO_PROMPTS) : NO_PROMPTS;
+  const prompts = visible ? indexedPrompts : NO_PROMPTS;
 
   // The transcript names the row it is showing; the outline turns that into a prompt using the
   // complete index, so unloaded rows never have to exist in the DOM to be marked.

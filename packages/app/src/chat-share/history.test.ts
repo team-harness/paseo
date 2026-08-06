@@ -8,7 +8,7 @@ import {
   exportChatHistory,
   loadCompleteChatHistory,
   loadCompleteProviderSubagentChatHistory,
-  selectChatHistoryFromUserMessage,
+  selectChatHistoryFromPrompt,
 } from "./history";
 import type { StreamItem } from "@/types/stream";
 
@@ -423,6 +423,7 @@ describe("exportChatHistory", () => {
       {
         kind: "user_message",
         id: "user-2",
+        timelineCursor: { epoch: "epoch-1", seq: 3 },
         text: "Second request",
         timestamp: new Date("2026-07-28T00:00:03.000Z"),
       },
@@ -434,11 +435,11 @@ describe("exportChatHistory", () => {
       },
     ];
 
-    expect(selectChatHistoryFromUserMessage(items, "user-2")?.map((item) => item.id)).toEqual([
+    expect(selectChatHistoryFromPrompt(items, 3)?.map((item) => item.id)).toEqual([
       "user-2",
       "assistant-2",
     ]);
-    expect(selectChatHistoryFromUserMessage(items, "missing")).toBeNull();
+    expect(selectChatHistoryFromPrompt(items, 99)).toBeNull();
   });
 
   it("loads every older projected page before exporting", async () => {

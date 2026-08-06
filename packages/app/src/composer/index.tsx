@@ -44,6 +44,7 @@ import {
 import { ContextWindowMeter } from "@/components/context-window-meter";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { selectAgentTurnPresentation, useSessionStore } from "@/stores/session-store";
+import { useAgentTimelinePromptIndex } from "@/timeline/use-agent-timeline-prompt-index";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import type { DroppedItem } from "@/components/file-drop/types";
@@ -128,7 +129,7 @@ import { ForgeBrandIcon } from "@/git/forge-icon";
 import { useComposerGithubAutoAttach } from "./github/auto-attach";
 import { readClipboardImage } from "./clipboard-image";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
-import { findLastUserMessageText, resolveLastMessageRecall } from "@/composer/history";
+import { collectUserMessageHistory, resolveMessageHistoryNavigation } from "@/composer/history";
 import {
   appendWorkspaceFileAttachment,
   getWorkspaceFileAttachmentKey,
@@ -1082,13 +1083,22 @@ export function Composer({
   );
   const queuedMessages = queuedMessagesRaw ?? EMPTY_ARRAY;
 
-  const lastUserMessage = useSessionStore((state) => {
-    const session = state.sessions[serverId];
-    return findLastUserMessageText(
-      session?.agentStreamTail.get(agentId),
-      session?.agentStreamHead.get(agentId),
-    );
+  const supportsComposerMessageHistory = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.composerMessageHistory === true,
+  );
+  const timelineEpoch = useSessionStore(
+    (state) => state.sessions[serverId]?.agentTimelineCursor.get(agentId)?.epoch ?? null,
+  );
+  const promptIndex = useAgentTimelinePromptIndex({
+    agentId,
+    serverId,
+    timelineEpoch,
+    enabled: supportsComposerMessageHistory,
   });
+  const messageHistory = useMemo(
+    () => collectUserMessageHistory(promptIndex?.prompts),
+    [promptIndex?.prompts],
+  );
 
   const setQueuedMessages = useSessionStore((state) => state.setQueuedMessages);
 
@@ -1147,6 +1157,8 @@ export function Composer({
   const attachButtonRef = useRef<View | null>(null);
   const messageInputRef = useRef<MessageInputRef>(null);
   const handledTextInsertionIdRef = useRef<string | null>(null);
+  const messageHistoryIndexRef = useRef<number | null>(null);
+  const historyAppliedValueRef = useRef<string | null>(null);
   const isComposerLocked = resolveIsComposerLocked(submitBehavior, isSubmitLoading);
   const keyboardHandlerIdRef = useRef(
     `message-input:${serverId}:${agentId}:${Math.random().toString(36).slice(2)}`,
@@ -1217,6 +1229,19 @@ export function Composer({
       end: Math.min(current.end, userInput.length),
     }));
   }, [userInput.length]);
+
+  useEffect(() => {
+    const historyAppliedValue = historyAppliedValueRef.current;
+    historyAppliedValueRef.current = null;
+    if (historyAppliedValue !== userInput) {
+      messageHistoryIndexRef.current = null;
+    }
+  }, [userInput]);
+
+  useEffect(() => {
+    messageHistoryIndexRef.current = null;
+    historyAppliedValueRef.current = null;
+  }, [agentId, messageHistory, serverId]);
 
   const { pickImages } = useImageAttachmentPicker();
   const { pickFiles } = useFilePicker();
@@ -1721,30 +1746,33 @@ export function Composer({
 
   const hasSendableContent = userInput.trim().length > 0 || selectedAttachments.length > 0;
 
-  // Handle keyboard navigation for command autocomplete.
+  // Handle keyboard navigation for command autocomplete and session message history.
   const handleCommandKeyPress = useCallback(
     (event: { key: string; preventDefault: () => void }) => {
       if (autocompleteOnKeyPressRef.current(event)) {
         return true;
       }
-      const recall = resolveLastMessageRecall({
+      const navigation = resolveMessageHistoryNavigation({
         key: event.key,
         value: userInput,
-        lastUserMessage,
+        history: messageHistory,
+        index: messageHistoryIndexRef.current,
       });
-      if (!recall) {
+      if (!navigation) {
         return false;
       }
       event.preventDefault();
-      setUserInput(recall.value);
-      setCursorIndex(recall.selection.start);
-      setTextSelection(recall.selection);
+      messageHistoryIndexRef.current = navigation.index;
+      historyAppliedValueRef.current = navigation.value;
+      setUserInput(navigation.value);
+      setCursorIndex(navigation.selection.start);
+      setTextSelection(navigation.selection);
       requestAnimationFrame(() => {
-        messageInputRef.current?.setSelection(recall.selection);
+        messageInputRef.current?.setSelection(navigation.selection);
       });
       return true;
     },
-    [lastUserMessage, setUserInput, userInput],
+    [messageHistory, setUserInput, userInput],
   );
 
   const cancelButtonStyle = useMemo(
