@@ -682,11 +682,24 @@ describe("AgentStorage", () => {
       });
     });
 
-    test("reads a record written before turn outcomes existed", async () => {
+    // From disk, through the schema — not from a record this process built.
+    // `get()` answers from the in-memory cache, so a snapshot round-trip never
+    // reaches `parseStoredAgentRecord` and proves nothing about old files.
+    test("reads a record file written before turn outcomes existed", async () => {
       await storage.applySnapshot(createManagedAgent({ id: "agent-1", cwd: "/tmp/project" }));
-      const record = await storage.get("agent-1");
+      const written = await storage.get("agent-1");
+      const projectDir = readdirSync(storagePath)[0]!;
+      const recordPath = path.join(storagePath, projectDir, "agent-1.json");
+      const { turnOutcomes: _outcomes, activeTurn: _turn, ...legacy } = written!;
+      await fs.writeFile(recordPath, JSON.stringify(legacy, null, 2), "utf8");
+
+      const reloaded = new AgentStorage(storagePath, logger);
+      await reloaded.initialize();
+
+      const record = await reloaded.get("agent-1");
+      expect(record).not.toBeNull();
       expect(record?.turnOutcomes).toBeUndefined();
-      expect(await storage.getTurnOutcome("agent-1", "turn-1")).toBeNull();
+      expect(await reloaded.getTurnOutcome("agent-1", "turn-1")).toBeNull();
     });
   });
 

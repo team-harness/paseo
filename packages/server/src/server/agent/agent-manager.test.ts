@@ -16,7 +16,11 @@ import {
 } from "./agent-manager.js";
 import { AgentStorage } from "./agent-storage.js";
 import { toAgentPayload } from "./agent-projections.js";
-import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import {
+  PARENT_AGENT_ID_LABEL,
+  TEAM_ID_LABEL,
+  TEAM_ROLE_LABEL,
+} from "@getpaseo/protocol/agent-labels";
 import { formatSystemNotificationPrompt, startAgentRun } from "./agent-prompt.js";
 import { ensureAgentLoaded, ensureUnarchivedAgentLoaded } from "./agent-loading.js";
 import type { StoredAgentRecord } from "./agent-storage.js";
@@ -3828,7 +3832,11 @@ test("detachAgent removes only the parent label from a live agent and emits stat
     {
       labels: {
         [PARENT_AGENT_ID_LABEL]: parent.id,
-        team: "infra",
+        // Real team labels, not a stand-in: detaching a recruit from its
+        // recruiter must leave its membership alone, or the roster and the
+        // labels that index it disagree about who is on the team.
+        [TEAM_ID_LABEL]: "team-1",
+        [TEAM_ROLE_LABEL]: "reviewer",
       },
       workspaceId: undefined,
     },
@@ -3849,10 +3857,22 @@ test("detachAgent removes only the parent label from a live agent and emits stat
 
   expect(result.previousParentAgentId).toBe(parent.id);
   expect(result.live).toBe(true);
-  expect(result.record.labels).toEqual({ team: "infra" });
-  expect(manager.getAgent(child.id)?.labels).toEqual({ team: "infra" });
-  expect((await storage.get(child.id))?.labels).toEqual({ team: "infra" });
-  expect(emittedLabels).toContainEqual({ team: "infra" });
+  expect(result.record.labels).toEqual({
+    [TEAM_ID_LABEL]: "team-1",
+    [TEAM_ROLE_LABEL]: "reviewer",
+  });
+  expect(manager.getAgent(child.id)?.labels).toEqual({
+    [TEAM_ID_LABEL]: "team-1",
+    [TEAM_ROLE_LABEL]: "reviewer",
+  });
+  expect((await storage.get(child.id))?.labels).toEqual({
+    [TEAM_ID_LABEL]: "team-1",
+    [TEAM_ROLE_LABEL]: "reviewer",
+  });
+  expect(emittedLabels).toContainEqual({
+    [TEAM_ID_LABEL]: "team-1",
+    [TEAM_ROLE_LABEL]: "reviewer",
+  });
 });
 
 test("detachAgent removes the parent label from a stored-only agent", async () => {

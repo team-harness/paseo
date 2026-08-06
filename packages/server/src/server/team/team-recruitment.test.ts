@@ -25,7 +25,11 @@ describe("TeamService recruitment", () => {
   let service: TeamService;
 
   class RecruitingAgentGateway implements TeamAgentGateway {
-    readonly created: Array<{ agentId: string; labels: Record<string, string> }> = [];
+    readonly created: Array<{
+      agentId: string;
+      labels: Record<string, string>;
+      workspaceId: string;
+    }> = [];
     readonly prompts: Array<{ agentId: string; clientMessageId: string }> = [];
     readonly archived: string[] = [];
     readonly labelsCleared: string[] = [];
@@ -37,9 +41,17 @@ describe("TeamService recruitment", () => {
     /** Runs once the briefing has landed, before the intent is committed. */
     afterPrompt: (() => Promise<void>) | null = null;
 
-    async createAgent(input: { agentId: string; labels: Record<string, string> }): Promise<void> {
+    async createAgent(input: {
+      agentId: string;
+      labels: Record<string, string>;
+      workspaceId: string;
+    }): Promise<void> {
       await this.beforeCreate?.();
-      this.created.push({ agentId: input.agentId, labels: input.labels });
+      this.created.push({
+        agentId: input.agentId,
+        labels: input.labels,
+        workspaceId: input.workspaceId,
+      });
     }
 
     async sendPrompt(input: { agentId: string; clientMessageId: string }): Promise<void> {
@@ -221,6 +233,19 @@ describe("TeamService recruitment", () => {
       // recruit does not appear under the agent that asked for it.
       expect(agents.created[0]?.labels["paseo.parent-agent-id"]).toBe(team.leadAgentId);
       expect(agents.created[0]?.agentId).toBe(recruited.agentId);
+    });
+
+    // A recruiter can live in another workspace — cross-workspace subagents are
+    // ordinary, and the recruiter's own workspace is not the team's.
+    test("builds the recruit in the team's workspace, not the recruiter's", async () => {
+      const team = await seedTeam();
+
+      await service.recruit({ teamId: team.id, ...recruitRequest(team) });
+
+      // The team's workspace is where its room and the rest of its members
+      // are. Following the recruiter would scatter one team across workspaces,
+      // and the panel that lists it belongs to exactly one.
+      expect(agents.created[0]?.workspaceId).toBe(team.workspaceId);
     });
 
     test("refuses a recruiter that is not on the team", async () => {

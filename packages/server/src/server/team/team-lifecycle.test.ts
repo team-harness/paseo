@@ -316,6 +316,33 @@ describe("TeamService lifecycle", () => {
       expect(again?.archivedAt).toBe(archivedAt);
       expect(agents.archived).toEqual([]);
     });
+
+    // Tearing a workspace down archives everything in it, including a team's
+    // agents, while the user may be archiving the team from its panel. Both
+    // reach the same service, and per-team serialization is what makes the
+    // second one a no-op rather than a second pass over the roster.
+    test("survives a workspace teardown racing the panel's archive", async () => {
+      const team = await seedActiveTeam();
+      const memberId = memberIdFor(team, "server");
+
+      // The teardown gets there first for these two, so the archive that
+      // follows meets agents the daemon no longer has.
+      agents.missing.add(team.leadAgentId);
+      agents.missing.add(memberId);
+
+      const [byPanel] = await Promise.all([
+        service.archive(team.id),
+        service.onAgentArchived(team.leadAgentId),
+        service.onAgentArchived(memberId),
+      ]);
+
+      // Both paths end at the same place, and the panel's call reports it
+      // rather than failing on the members that were already gone.
+      const settled = await store.get(team.id);
+      expect(settled?.lifecycle).toBe("archived");
+      expect(byPanel?.lifecycle).toBe("archived");
+      expect(settled?.archivedAt).not.toBeNull();
+    });
   });
 
   describe("removing a member", () => {
