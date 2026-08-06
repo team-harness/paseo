@@ -472,6 +472,33 @@ describe("TeamService recruitment", () => {
       expect((await store.get(team.id))?.pendingRecruitments).toBeNull();
     });
 
+    // A reservation whose agent was never built: the daemon died before
+    // `createAgent`. "Reserved" cannot say whether an agent exists, so waiting
+    // for "not found" to become trustworthy would wait forever. Building it
+    // under the reserved id settles the question and the recruit converges.
+    test("converges a reservation whose agent was never built", async () => {
+      const team = await seedTeam();
+      await leaveReserved(team, "recruit-1");
+      await service.archive(team.id);
+      agents.created.length = 0;
+      // The daemon has no record of it, and never will unless one is made.
+      agents.missing.add("recruit-1");
+
+      await service.reconcile();
+
+      // Built under the reserved id, then archived. Skipping the build would
+      // leave "not found" as the answer, which cannot be trusted to mean the
+      // agent will not turn up — and the intent would be held open forever.
+      expect(agents.created.map(agentIdOf)).toEqual(["recruit-1"]);
+      const afterFirst = await store.get(team.id);
+      expect(afterFirst?.pendingRecruitments).toBeNull();
+
+      // And it stays converged rather than being rediscovered every pass.
+      agents.created.length = 0;
+      await service.reconcile();
+      expect(agents.created).toEqual([]);
+    });
+
     test("cancels an intent left behind by a team that is no longer active", async () => {
       const team = await seedTeam();
       await leaveReserved(team, "recruit-1");
@@ -481,7 +508,10 @@ describe("TeamService recruitment", () => {
       await service.reconcile();
 
       const updated = await store.get(team.id);
-      expect(agents.created).toEqual([]);
+      // The reserved agent is built before it is archived: "reserved" cannot
+      // say whether one exists, and guessing either way strands something.
+      expect(agents.created.map(agentIdOf)).toEqual(["recruit-1"]);
+      expect(agents.archived).toContain("recruit-1");
       expect(entryFor(updated, "recruit-1")?.removalReason).toBe("recruitment_canceled");
       expect(updated?.pendingRecruitments).toBeNull();
     });

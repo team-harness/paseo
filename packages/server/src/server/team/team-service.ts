@@ -482,22 +482,26 @@ export class TeamService {
     agentId: string,
     preferred: "recruitment_canceled" | "recruitment_failed",
   ): Promise<void> {
-    let claimed = false;
-    let claimedStage: "reserved" | "created" = "reserved";
+    const claim: { intent?: RecruitmentIntent } = {};
     await this.store.update(teamId, (current) => {
       const intent = current.pendingRecruitments?.[agentId];
       if (!intent) {
         return current;
       }
-      claimed = true;
-      claimedStage = intent.stage;
+      claim.intent = intent;
       const entry = current.members.find((member) => member.agentId === agentId);
       // DEC-13: a recruit the team no longer has room for was cancelled, not
       // failed, however the daemon came to notice. The reason says how this
       // entry ended, and it ended as an unfinished recruit — even when what
       // invalidated it was an explicit removal.
+      // A retry of a retirement that already recorded its reason keeps it. The
+      // entry is `removed` by then, which would otherwise read as "invalidated"
+      // and turn a recorded failure into a cancellation on the way past.
+      const alreadyRetired =
+        entry?.removalReason === "recruitment_failed" ||
+        entry?.removalReason === "recruitment_canceled";
       const invalidated = current.lifecycle !== "active" || entry?.state !== "active";
-      const reason = invalidated ? ("recruitment_canceled" as const) : preferred;
+      const reason = pickRetirementReason({ alreadyRetired, invalidated, preferred, entry });
       return {
         ...current,
         members: current.members.map((member) =>
@@ -517,6 +521,7 @@ export class TeamService {
       };
     });
 
+    const claimed = claim.intent;
     if (!claimed) {
       this.logger.info(
         { teamId, agentId },
@@ -525,21 +530,27 @@ export class TeamService {
       return;
     }
 
-    // Only now, and only if this succeeds. A throw here leaves the intent
-    // marked `cancelling` for the reconciler to pick up.
-    const archived = await this.agents.archiveAgent(agentId);
-    if (archived.kind === "not_found" && claimedStage === "reserved") {
-      // "Not found" does not settle a recruit whose agent was never recorded as
-      // built: a `createAgent` for it may still be in flight, and clearing the
-      // intent now would leave that agent with team labels and nothing saying
-      // it needs archiving. The next pass asks again.
-      this.logger.info(
-        { teamId, agentId },
-        "Holding a cancelled recruit open: its agent has not been seen yet",
-      );
-      return;
+    // `reserved` means one of three things — the create never started, is in
+    // flight, or returned before its stage was written — and nothing here can
+    // tell them apart. Rather than guess, build the agent under the id that was
+    // reserved for it. Creation by id is idempotent, so this either finds the
+    // one that exists or makes the one that does not, and either way there is
+    // now exactly one agent to archive. Waiting for "not found" to become
+    // trustworthy instead would wait forever.
+    if (claimed.stage === "reserved") {
+      await this.agents.createAgent({
+        agentId,
+        provider: claimed.provider,
+        workspaceId: claimed.workspaceId,
+        title: claimed.title,
+        settings: claimed.settings,
+        labels: { [TEAM_ID_LABEL]: teamId, [TEAM_ROLE_LABEL]: claimed.teamRole },
+      });
     }
 
+    // Only now, and only if this succeeds. A throw here leaves the intent
+    // marked `cancelling` for the reconciler to pick up.
+    await this.archiveAgentIdempotently(agentId);
     await this.store.update(teamId, (current) => ({
       ...current,
       pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
@@ -1036,6 +1047,25 @@ function hasRoomFor(team: StoredTeam, agentId: string): boolean {
     (member) => member.state === "active" && member.agentId !== team.leadAgentId,
   ).length;
   return occupied < TEAM_MAX_NON_LEAD_MEMBERS;
+}
+
+/**
+ * Which reason a retiring recruit records.
+ *
+ * A retry keeps whatever the first attempt decided — by then the entry is
+ * `removed`, which would otherwise read as "invalidated" and turn a recorded
+ * failure into a cancellation on the way past.
+ */
+function pickRetirementReason(input: {
+  alreadyRetired: boolean;
+  invalidated: boolean;
+  preferred: "recruitment_canceled" | "recruitment_failed";
+  entry: TeamMemberEntry | undefined;
+}): "recruitment_canceled" | "recruitment_failed" {
+  if (input.alreadyRetired && input.entry?.removalReason) {
+    return input.entry.removalReason as "recruitment_canceled" | "recruitment_failed";
+  }
+  return input.invalidated ? "recruitment_canceled" : input.preferred;
 }
 
 function labelsMatch(
