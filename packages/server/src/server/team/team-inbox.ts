@@ -268,28 +268,46 @@ export class TeamInbox {
     return join(this.dir, `${teamId}.inbox.json`);
   }
 
-  private async read(teamId: string): Promise<InboxFile> {
+  /**
+   * `absent` is a team that has never had a ledger; `unreadable` is one whose
+   * ledger is there and could not be understood. Reading treats both as empty,
+   * but only the first may be written over — a write derived from "nothing"
+   * would replace whatever is actually in the file.
+   */
+  private async readFileState(
+    teamId: string,
+  ): Promise<{ kind: "ok" | "absent"; file: InboxFile } | { kind: "unreadable" }> {
+    let raw: string;
     try {
-      const parsed = InboxFileSchema.safeParse(
-        JSON.parse(await readFile(this.filePath(teamId), "utf8")),
-      );
-      if (parsed.success) {
-        return parsed.data;
-      }
-      this.logger.error(
-        { issues: parsed.error.issues, teamId },
-        "Team ledger is unreadable; this team starts with an empty one",
-      );
-      return EMPTY;
+      raw = await readFile(this.filePath(teamId), "utf8");
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        this.logger.error(
-          { err: error, teamId },
-          "Team ledger is unreadable; this team starts with an empty one",
-        );
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { kind: "absent", file: EMPTY };
       }
-      return EMPTY;
+      this.logger.error({ err: error, teamId }, "Team ledger could not be read");
+      return { kind: "unreadable" };
     }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(raw);
+    } catch (error) {
+      this.logger.error({ err: error, teamId }, "Team ledger is not valid JSON");
+      return { kind: "unreadable" };
+    }
+
+    const parsed = InboxFileSchema.safeParse(payload);
+    if (!parsed.success) {
+      this.logger.error({ issues: parsed.error.issues, teamId }, "Team ledger does not parse");
+      return { kind: "unreadable" };
+    }
+    return { kind: "ok", file: parsed.data };
+  }
+
+  /** Reads what it can. An unreadable ledger reports empty; it never writes. */
+  private async read(teamId: string): Promise<InboxFile> {
+    const state = await this.readFileState(teamId);
+    return state.kind === "unreadable" ? EMPTY : state.file;
   }
 
   /** Read-modify-write inside the team's own lock. */
@@ -298,7 +316,16 @@ export class TeamInbox {
     const next = previous
       .catch(() => undefined)
       .then(async () => {
-        const current = await this.read(teamId);
+        const state = await this.readFileState(teamId);
+        if (state.kind === "unreadable") {
+          // Fail closed. A write built from having read nothing would replace a
+          // ledger that still holds work, and no-loss is the guarantee here.
+          throw new Error(
+            `Team ${teamId} has an unreadable ledger; refusing to write over it. ` +
+              "Repair or remove the file.",
+          );
+        }
+        const current = state.file;
         const updated = change(current);
         if (updated !== current) {
           await mkdir(this.dir, { recursive: true });

@@ -70,7 +70,13 @@ export class TeamPump {
     // than reading the same ledger and dispatching the same assignment twice.
     const running = this.runs.get(input.teamId);
     if (running) {
-      return await running;
+      await running;
+      // That pass may have looked at everything before this caller's trigger
+      // existed, and nothing here can tell whether it did. So a joiner always
+      // gets "come back": a wasted sweep costs nothing, while a scheduler
+      // dropping the team on a stale "nothing left" strands the work until
+      // some unrelated event happens to wake it.
+      return true;
     }
     const pass = this.runPass(input).finally(() => {
       this.runs.delete(input.teamId);

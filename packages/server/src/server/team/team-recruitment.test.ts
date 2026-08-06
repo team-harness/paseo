@@ -32,6 +32,8 @@ describe("TeamService recruitment", () => {
     missing = new Set<string>();
     /** Runs just before an agent is created, to interleave something else. */
     beforeCreate: (() => Promise<void>) | null = null;
+    /** The same, for the briefing — the widest window in a recruit. */
+    beforePrompt: (() => Promise<void>) | null = null;
 
     async createAgent(input: { agentId: string; labels: Record<string, string> }): Promise<void> {
       await this.beforeCreate?.();
@@ -39,12 +41,14 @@ describe("TeamService recruitment", () => {
     }
 
     async sendPrompt(input: { agentId: string; clientMessageId: string }): Promise<void> {
+      await this.beforePrompt?.();
       this.prompts.push(input);
     }
 
-    async archiveAgent(agentId: string): Promise<void> {
-      if (this.missing.has(agentId)) throw new Error(`Agent ${agentId} not found`);
+    async archiveAgent(agentId: string): Promise<{ kind: "archived" } | { kind: "not_found" }> {
+      if (this.missing.has(agentId)) return { kind: "not_found" };
       this.archived.push(agentId);
+      return { kind: "archived" };
     }
 
     async clearTeamLabels(agentId: string): Promise<void> {
@@ -245,7 +249,7 @@ describe("TeamService recruitment", () => {
       };
 
       await expect(service.recruit({ teamId: team.id, ...recruitRequest(team) })).rejects.toThrow(
-        /not active/i,
+        /cancelled/i,
       );
 
       const updated = await store.get(team.id);
@@ -255,6 +259,49 @@ describe("TeamService recruitment", () => {
       expect(updated?.pendingRecruitments).toBeNull();
       // Nothing is left running that the team no longer accounts for.
       expect(agents.archived).toContain(recruit?.agentId);
+    });
+  });
+
+  // The fence asks about this recruit's own entry, not only the team. A recruit
+  // removed while its briefing was in flight is no longer a member, and the
+  // send finishing must not paper over that.
+  describe("a recruit removed mid-recruit", () => {
+    test("cancels rather than reporting a member that already left", async () => {
+      const team = await seedTeam();
+      let reservedId = "";
+      agents.beforeCreate = async () => {
+        const current = await store.get(team.id);
+        reservedId = entryWithRole(current, "database")!.agentId;
+        await service.removeMember({ teamId: team.id, agentId: reservedId });
+      };
+
+      await expect(service.recruit({ teamId: team.id, ...recruitRequest(team) })).rejects.toThrow(
+        /cancelled/i,
+      );
+
+      const entry = entryFor(await store.get(team.id), reservedId);
+      expect(entry?.state).toBe("removed");
+      expect(agents.archived).toContain(reservedId);
+      expect((await store.get(team.id))?.pendingRecruitments).toBeNull();
+    });
+
+    // The briefing is the slowest step, so it is the widest window.
+    test("cancels when the removal lands while the briefing is being sent", async () => {
+      const team = await seedTeam();
+      let reservedId = "";
+      agents.beforePrompt = async () => {
+        const current = await store.get(team.id);
+        reservedId = entryWithRole(current, "database")!.agentId;
+        await service.removeMember({ teamId: team.id, agentId: reservedId });
+      };
+
+      await expect(service.recruit({ teamId: team.id, ...recruitRequest(team) })).rejects.toThrow(
+        /cancelled/i,
+      );
+
+      expect(entryFor(await store.get(team.id), reservedId)?.state).toBe("removed");
+      expect(agents.archived).toContain(reservedId);
+      expect((await store.get(team.id))?.pendingRecruitments).toBeNull();
     });
   });
 

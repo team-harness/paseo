@@ -61,8 +61,13 @@ export interface TeamAgentGateway {
     labels: Record<string, string>;
   }): Promise<void>;
   sendPrompt(input: { agentId: string; prompt: string; clientMessageId: string }): Promise<void>;
-  /** Rejects when the agent is unknown, the same as the user-facing command. */
-  archiveAgent(agentId: string): Promise<void>;
+  /**
+   * Archives an agent, saying which of the two outcomes it was. "Not found" has
+   * to be distinguishable: an entry pointing at a hard-deleted agent is already
+   * done, while a storage or provider failure is not — treating them alike lets
+   * a team record itself archived with a member still running.
+   */
+  archiveAgent(agentId: string): Promise<{ kind: "archived" } | { kind: "not_found" }>;
   /** Detaches an agent from its team without ending it. */
   clearTeamLabels(agentId: string): Promise<void>;
   restoreTeamLabels(input: { agentId: string; teamId: string; role: string }): Promise<void>;
@@ -320,28 +325,40 @@ export class TeamService {
    * reconciler, so an interrupted recruit finishes the way it would have.
    */
   private async landRecruit(teamId: string, agentId: string): Promise<void> {
+    /**
+     * The fence, checked before every step and again after the last one.
+     *
+     * It asks about this recruit's own roster entry, not only the team: a
+     * member removed while its briefing was in flight is no longer a member,
+     * and letting the send finish would leave an agent running with team labels
+     * behind an entry that says it left.
+     */
     const intentOf = async (): Promise<RecruitmentIntent | null> => {
       const team = await this.store.get(teamId);
       if (!team || team.lifecycle !== "active") return null;
+      const entry = team.members.find((member) => member.agentId === agentId);
+      if (!entry || entry.state !== "active") return null;
       return team.pendingRecruitments?.[agentId] ?? null;
     };
 
-    let intent = await intentOf();
-    if (!intent) {
+    const cancel = async (): Promise<never> => {
       await this.cancelRecruitment(teamId, agentId);
       throw new TeamCreateValidationError(
-        `Team ${teamId} is not active; the recruit was cancelled`,
+        `The recruit for team ${teamId} was cancelled before it could join`,
       );
-    }
+    };
 
-    if (intent.stage === "reserved") {
+    let intent = await intentOf();
+    if (!intent) await cancel();
+
+    if (intent!.stage === "reserved") {
       await this.agents.createAgent({
         agentId,
-        provider: intent.provider,
-        workspaceId: intent.workspaceId,
-        title: intent.title,
-        settings: intent.settings,
-        labels: { [TEAM_ID_LABEL]: teamId, [TEAM_ROLE_LABEL]: intent.teamRole },
+        provider: intent!.provider,
+        workspaceId: intent!.workspaceId,
+        title: intent!.title,
+        settings: intent!.settings,
+        labels: { [TEAM_ID_LABEL]: teamId, [TEAM_ROLE_LABEL]: intent!.teamRole },
       });
       await this.store.update(teamId, (current) => ({
         ...current,
@@ -353,18 +370,18 @@ export class TeamService {
     }
 
     intent = await intentOf();
-    if (!intent) {
-      await this.cancelRecruitment(teamId, agentId);
-      throw new TeamCreateValidationError(
-        `Team ${teamId} is not active; the recruit was cancelled`,
-      );
-    }
+    if (!intent) await cancel();
 
     await this.agents.sendPrompt({
       agentId,
-      prompt: intent.initialPrompt,
-      clientMessageId: intent.clientMessageId,
+      prompt: intent!.initialPrompt,
+      clientMessageId: intent!.clientMessageId,
     });
+
+    // Once more: the send is the slowest step, and a removal or an archive
+    // during it would otherwise be papered over by clearing the intent and
+    // reporting success.
+    if (!(await intentOf())) await cancel();
     await this.clearRecruitmentIntent(teamId, agentId);
   }
 
@@ -647,7 +664,10 @@ export class TeamService {
     const team = await this.findTeamOf(agentId);
     if (!team) return null;
 
-    const updated = await this.markRemoved(team.id, agentId, "hard_deleted");
+    // Under the team's lock, for the same reason as an archive event.
+    const updated = await this.serializePerTeam(team.id, () =>
+      this.markRemoved(team.id, agentId, "hard_deleted"),
+    );
     if (team.leadAgentId !== agentId || updated?.lifecycle !== "active") {
       return updated;
     }
@@ -659,17 +679,26 @@ export class TeamService {
     const team = await this.findTeamOf(agentId);
     if (!team) return null;
 
-    if (team.leadAgentId === agentId && team.lifecycle === "active") {
+    // Under the team's lock like everything else. An event landing mid-creation
+    // used to change the roster while creation carried on and declared the team
+    // active — an active team whose lead had already been archived.
+    const marked = await this.serializePerTeam(team.id, async () => {
+      const current = await this.store.get(team.id);
+      if (!current) return null;
+      return await this.store.update(team.id, (latest) => ({
+        ...latest,
+        members: latest.members.map((member) =>
+          member.agentId === agentId && member.state === "active"
+            ? { ...member, state: "archived" as const }
+            : member,
+        ),
+      }));
+    });
+
+    if (marked && marked.leadAgentId === agentId && marked.lifecycle === "active") {
       return await this.archive(team.id);
     }
-    return await this.store.update(team.id, (current) => ({
-      ...current,
-      members: current.members.map((member) =>
-        member.agentId === agentId && member.state === "active"
-          ? { ...member, state: "archived" as const }
-          : member,
-      ),
-    }));
+    return marked;
   }
 
   /**
@@ -687,7 +716,11 @@ export class TeamService {
       const current = await this.store.get(team.id);
       if (!current) return null;
       const entry = current.members.find((member) => member.agentId === agentId);
-      if (!entry || entry.state === "active") {
+      // `removed` is where an entry stops. Someone who left, was evicted, or
+      // was deleted is no longer a member; what happens to that agent
+      // afterwards is not the team's business, and reading its history as a
+      // claim to a seat would undo an explicit removal.
+      if (!entry || entry.state === "active" || entry.state === "removed") {
         return current;
       }
 
@@ -717,13 +750,16 @@ export class TeamService {
    * at an agent that was hard-deleted, and that entry is simply already done.
    * The user-facing command still reports a missing agent as an error — this
    * leniency belongs to the team's own bookkeeping, not to that contract.
+   *
+   * Any other failure propagates. Swallowing it would let the team mark itself
+   * archived, or its cleanup finished, while the agent is still running — and
+   * those markers are exactly what stops anything trying again.
    */
   private async archiveAgentIdempotently(agentId: string): Promise<void> {
-    try {
-      await this.agents.archiveAgent(agentId);
-    } catch (error) {
+    const result = await this.agents.archiveAgent(agentId);
+    if (result.kind === "not_found") {
       this.logger.info(
-        { err: error, agentId },
+        { agentId },
         "Treating a missing agent as already archived while archiving its team",
       );
     }
@@ -745,9 +781,18 @@ export class TeamService {
     }));
   }
 
+  /**
+   * The team this agent still belongs to, if any. A `removed` entry is history
+   * rather than membership — an agent that left one team and joined another
+   * must not be found by the first.
+   */
   private async findTeamOf(agentId: string): Promise<StoredTeam | null> {
     const teams = await this.store.list();
-    return teams.find((team) => team.members.some((member) => member.agentId === agentId)) ?? null;
+    return (
+      teams.find((team) =>
+        team.members.some((member) => member.agentId === agentId && member.state !== "removed"),
+      ) ?? null
+    );
   }
 
   /**
@@ -900,17 +945,32 @@ function fingerprintCreateRequest(request: CreateTeamRequest): string {
 
 function canonicalMember(member: TeamMemberRequest): unknown {
   return {
-    role: member.role,
+    // Trimmed, because the plan stores the trimmed role: two requests that
+    // build the identical team must not look different here.
+    role: member.role.trim(),
     provider: member.provider,
     title: member.title,
     briefing: member.briefing,
-    settings: member.settings === null ? null : sortKeys(member.settings),
+    settings: canonicalValue(member.settings),
   };
 }
 
-function sortKeys(value: Record<string, unknown>): Record<string, unknown> {
+/**
+ * Orders every object key, at every depth. Sorting only the top level would
+ * make `{features: {a: 1, b: 2}}` and `{features: {b: 2, a: 1}}` look like
+ * different requests, and a retry would come back as a conflict.
+ */
+function canonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonicalValue);
+  }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
   return Object.fromEntries(
-    Object.entries(value).sort(([left], [right]) => left.localeCompare(right)),
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, canonicalValue(nested)]),
   );
 }
 

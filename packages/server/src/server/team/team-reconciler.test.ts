@@ -55,9 +55,10 @@ describe("TeamService reconciliation", () => {
       this.prompts.push(input.clientMessageId);
     }
 
-    async archiveAgent(agentId: string): Promise<void> {
-      if (this.missing.has(agentId)) throw new Error(`Agent ${agentId} not found`);
+    async archiveAgent(agentId: string): Promise<{ kind: "archived" } | { kind: "not_found" }> {
+      if (this.missing.has(agentId)) return { kind: "not_found" };
       this.archived.push(agentId);
+      return { kind: "archived" };
     }
 
     async clearTeamLabels(agentId: string): Promise<void> {

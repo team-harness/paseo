@@ -27,15 +27,25 @@ class RecordingAgentGateway implements TeamAgentGateway {
   readonly labelsRestored: string[] = [];
   /** Agent ids the daemon no longer has a record for. */
   missing = new Set<string>();
+  /** Agent ids whose archive fails for a reason that is not "gone". */
+  failing = new Set<string>();
+  /** Runs as each agent is created, to interleave something else. */
+  onCreate: ((agentId: string) => Promise<void>) | null = null;
 
-  async createAgent(): Promise<void> {}
+  async createAgent(input: { agentId: string }): Promise<void> {
+    await this.onCreate?.(input.agentId);
+  }
   async sendPrompt(): Promise<void> {}
 
-  async archiveAgent(agentId: string): Promise<void> {
+  async archiveAgent(agentId: string): Promise<{ kind: "archived" } | { kind: "not_found" }> {
     if (this.missing.has(agentId)) {
-      throw new Error(`Agent ${agentId} not found`);
+      return { kind: "not_found" };
+    }
+    if (this.failing.has(agentId)) {
+      throw new Error(`Storage is unavailable for ${agentId}`);
     }
     this.archived.push(agentId);
+    return { kind: "archived" };
   }
 
   async clearTeamLabels(agentId: string): Promise<void> {
@@ -152,6 +162,20 @@ describe("TeamService lifecycle", () => {
       expect(agents.archived).not.toContain(gone);
     });
 
+    // "Gone" and "could not be reached" are different answers. Recording the
+    // team as archived on the second would leave a member running with the
+    // marker that stops anything trying again.
+    test("does not record the team as archived when a member could not be", async () => {
+      const team = await seedActiveTeam();
+      agents.failing.add(memberIdFor(team, "server"));
+
+      await expect(service.archive(team.id)).rejects.toThrow(/unavailable/i);
+
+      const after = await store.get(team.id);
+      expect(after?.lifecycle).not.toBe("archived");
+      expect(after?.archivedAt).toBeNull();
+    });
+
     test("does not archive a member that already left", async () => {
       const team = await seedActiveTeam();
       const left = memberIdFor(team, "server");
@@ -167,16 +191,16 @@ describe("TeamService lifecycle", () => {
     // archive that lands while a team is still being built would otherwise be
     // undone by the creation finishing and declaring the team active.
     test("does not come back to life when archived mid-creation", async () => {
-      let archiveDuringCreation: Promise<unknown> = Promise.resolve();
+      // One service, so both operations contend for the same lock — with two
+      // instances this would pass whatever the locking does.
       let teamId = "";
-      const racing = new TeamService({
+      let archiveDuringCreation: Promise<unknown> = Promise.resolve();
+      rooms.createRoom = async () => {
+        archiveDuringCreation = raced.archive(teamId);
+      };
+      const raced: TeamService = new TeamService({
         store,
-        rooms: {
-          createRoom: async () => {
-            archiveDuringCreation = service.archive(teamId);
-          },
-          discardRoom: async () => {},
-        },
+        rooms,
         agents,
         logger,
         onTeamAllocated: (id) => {
@@ -184,7 +208,7 @@ describe("TeamService lifecycle", () => {
         },
       });
 
-      await racing.create({
+      await raced.create({
         idempotencyKey: "raced",
         name: "Raced",
         workspaceId: "ws-1",
@@ -195,7 +219,48 @@ describe("TeamService lifecycle", () => {
       });
       await archiveDuringCreation;
 
-      expect((await store.get(teamId))?.lifecycle).toBe("archived");
+      const finished = await store.get(teamId);
+      expect(finished?.lifecycle).toBe("archived");
+      // And the archive really ran: it did not merely lose a write race.
+      expect(finished?.archivedAt).not.toBeNull();
+    });
+
+    // An external event carries the same weight as the RPC. A lead archived by
+    // whatever means during creation must not leave an active team behind it.
+    test("does not activate a team whose lead was archived mid-creation", async () => {
+      let teamId = "";
+      let eventDuringCreation: Promise<unknown> = Promise.resolve();
+      const raced: TeamService = new TeamService({
+        store,
+        rooms: {
+          createRoom: async () => {},
+          discardRoom: async () => {},
+        },
+        agents,
+        logger,
+        onTeamAllocated: (id) => {
+          teamId = id;
+        },
+      });
+      agents.onCreate = async (agentId) => {
+        const team = await store.get(teamId);
+        if (team && agentId === team.leadAgentId) {
+          eventDuringCreation = raced.onAgentArchived(agentId);
+        }
+      };
+
+      await raced.create({
+        idempotencyKey: "raced-event",
+        name: "Raced",
+        workspaceId: "ws-1",
+        task: "task",
+        lead: { role: "lead", provider: "claude", title: null, briefing: null, settings: null },
+        members: [],
+        templateId: null,
+      });
+      await eventDuringCreation;
+
+      expect((await store.get(teamId))?.lifecycle).not.toBe("active");
     });
 
     test("archiving a team that is already archived changes nothing", async () => {
@@ -342,6 +407,24 @@ describe("TeamService lifecycle", () => {
       const entry = entryFor(updated, agentId);
       expect(entry?.state).toBe("removed");
       expect(entry?.removalReason).toBe("unarchive_evicted");
+    });
+
+    // Leaving a team is final. The agent carries on as an ordinary one, and
+    // whatever happens to it afterwards is nobody's business but its own —
+    // certainly not grounds for the team to take it back.
+    test("does not take back someone who was removed", async () => {
+      const team = await seedActiveTeam();
+      const agentId = memberIdFor(team, "server");
+      await service.removeMember({ teamId: team.id, agentId });
+      agents.labelsRestored.length = 0;
+
+      // Not "this team decided to keep it out" but "this is not its team".
+      await expect(service.onAgentUnarchived(agentId)).resolves.toBeNull();
+
+      const entry = entryFor(await store.get(team.id), agentId);
+      expect(entry?.state).toBe("removed");
+      expect(entry?.removalReason).toBe("removed_by_user");
+      expect(agents.labelsRestored).toEqual([]);
     });
 
     test("ignores an agent that was never on a team", async () => {

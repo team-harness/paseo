@@ -342,11 +342,41 @@ describe("TeamInbox", () => {
     });
   });
 
+  // A ledger that cannot be read is not an empty ledger. Reading may report
+  // nothing, but writing has to fail closed: a write derived from "nothing"
+  // would replace whatever is actually in the file, and no-loss is the one
+  // guarantee this thing makes.
   describe("a damaged inbox file", () => {
-    test("starts empty rather than refusing to run the team", async () => {
+    test("reads as empty rather than refusing to run the team", async () => {
       await writeFile(inboxPath("team-1"), "{ not json", "utf8");
 
       await expect(inbox.listAssignments("team-1")).resolves.toEqual([]);
+    });
+
+    test("refuses to write over a ledger it could not read", async () => {
+      await inbox.enqueueAssignment({
+        teamId: "team-1",
+        assigneeAgentId: "agent-a",
+        prompt: "already recorded",
+      });
+      const before = await readFile(inboxPath("team-1"), "utf8");
+      // Something the schema rejects, holding real data.
+      await writeFile(inboxPath("team-1"), JSON.stringify({ assignments: "not an array" }), "utf8");
+
+      const reloaded = new TeamInbox(home, logger);
+      await expect(
+        reloaded.enqueueAssignment({
+          teamId: "team-1",
+          assigneeAgentId: "agent-b",
+          prompt: "would overwrite",
+        }),
+      ).rejects.toThrow(/unreadable/i);
+
+      // Untouched, so a repaired file still has everything it had.
+      expect(await readFile(inboxPath("team-1"), "utf8")).not.toBe(before);
+      expect(JSON.parse(await readFile(inboxPath("team-1"), "utf8")).assignments).toBe(
+        "not an array",
+      );
     });
 
     test("does not take the other teams down with it", async () => {
@@ -360,6 +390,13 @@ describe("TeamInbox", () => {
       const reloaded = new TeamInbox(home, logger);
       expect(await reloaded.listAssignments("team-1")).toEqual([]);
       expect(await reloaded.listAssignments("team-2")).toHaveLength(1);
+      await expect(
+        reloaded.enqueueAssignment({
+          teamId: "team-2",
+          assigneeAgentId: "agent-b",
+          prompt: "still works",
+        }),
+      ).resolves.toBeDefined();
     });
   });
 });

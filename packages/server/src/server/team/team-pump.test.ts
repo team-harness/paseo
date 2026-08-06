@@ -301,6 +301,29 @@ describe("TeamPump", () => {
       expect(await pump.run({ teamId: "team-1", leadAgentId: "lead" })).toBe(false);
     });
 
+    // A pass that is already running may have looked at everything before the
+    // caller's trigger existed, and there is no way from outside to tell. So a
+    // joiner always gets "come back" — a wasted sweep costs nothing, while a
+    // scheduler dropping the team on a stale `false` strands the work until
+    // some unrelated event happens to wake it.
+    test("tells a caller that joined a running pass to come back", async () => {
+      await assign("agent-a", "work");
+      gateway.turnIds = ["turn-1"];
+      await pump.run({ teamId: "team-1", leadAgentId: "lead" });
+      gateway.outcomes.set("turn-1", "completed");
+
+      // This pass settles the last assignment and delivers the news, so on its
+      // own it would report nothing left. The joiner arrives while it runs.
+      let joined: Promise<boolean> | null = null;
+      gateway.deliverCompletions = async () => {
+        joined = pump.run({ teamId: "team-1", leadAgentId: "lead" });
+        return true;
+      };
+
+      expect(await pump.run({ teamId: "team-1", leadAgentId: "lead" })).toBe(false);
+      expect(await joined).toBe(true);
+    });
+
     // Losing the event that says an agent went idle must not strand the work:
     // the next sweep picks it up without anything having to restart.
     test("recovers a dropped wake-up on the next pass", async () => {

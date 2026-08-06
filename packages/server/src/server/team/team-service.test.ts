@@ -71,8 +71,9 @@ describe("TeamService creation", () => {
       this.prompts.push(input);
     }
 
-    async archiveAgent(agentId: string): Promise<void> {
+    async archiveAgent(agentId: string): Promise<{ kind: "archived" }> {
       this.archived.push(agentId);
+      return { kind: "archived" };
     }
   }
 
@@ -261,7 +262,7 @@ describe("TeamService creation idempotency", () => {
           agents.created.push(input.agentId);
         }),
         sendPrompt: vi.fn(async () => {}),
-        archiveAgent: vi.fn(async () => {}),
+        archiveAgent: vi.fn(async () => ({ kind: "archived" as const })),
       },
       logger,
     });
@@ -312,6 +313,58 @@ describe("TeamService creation idempotency", () => {
 
     expect(second.id).toBe(first.id);
     expect(await restarted.list()).toHaveLength(1);
+  });
+
+  // A retry is a retry however the client's JSON serializer felt about key
+  // order. Comparing only the top level would turn one into a conflict.
+  test("recognises a retry whose nested settings are ordered differently", async () => {
+    const first = await service.create(
+      createRequest({
+        lead: {
+          role: "lead",
+          provider: "claude",
+          title: null,
+          briefing: null,
+          settings: { features: { alpha: 1, beta: 2 }, modeId: "plan" },
+        },
+      }),
+    );
+
+    const second = await service.create(
+      createRequest({
+        lead: {
+          role: "lead",
+          provider: "claude",
+          title: null,
+          briefing: null,
+          settings: { modeId: "plan", features: { beta: 2, alpha: 1 } },
+        },
+      }),
+    );
+
+    expect(second.id).toBe(first.id);
+  });
+
+  // The plan stores the trimmed role, so two requests that build the identical
+  // team have to look identical here too.
+  test("recognises a retry whose role has stray whitespace", async () => {
+    const first = await service.create(
+      createRequest({
+        members: [
+          { role: "server", provider: "codex", title: null, briefing: null, settings: null },
+        ],
+      }),
+    );
+
+    const second = await service.create(
+      createRequest({
+        members: [
+          { role: "  server  ", provider: "codex", title: null, briefing: null, settings: null },
+        ],
+      }),
+    );
+
+    expect(second.id).toBe(first.id);
   });
 
   test("refuses the same key with a different request", async () => {
