@@ -54,6 +54,13 @@ export function buildStatusBarSessionList(
   input: BuildStatusBarSessionListInput,
 ): StatusBarSessionListItem[] {
   const snapshotsByAgentId = createActivitySnapshotIndex(input);
+  const sortedAttentionSnapshots = sortAttentionSnapshots(input.needsAttentionAgents);
+  const actionableAttentionSnapshots = sortedAttentionSnapshots.filter(
+    (snapshot) => snapshot.attentionReason !== "finished",
+  );
+  const finishedAttentionSnapshots = sortedAttentionSnapshots.filter(
+    (snapshot) => snapshot.attentionReason === "finished",
+  );
   const seen = new Set<string>();
   const items: StatusBarSessionListItem[] = [];
 
@@ -98,8 +105,9 @@ export function buildStatusBarSessionList(
     }
   };
 
-  appendGroup("attention", sortAttentionSnapshots(input.needsAttentionAgents));
+  appendGroup("attention", actionableAttentionSnapshots);
   appendGroup("running", input.runningAgents);
+  appendGroup("attention", finishedAttentionSnapshots);
   appendGroup("recent", input.recentlyCompletedAgents);
 
   return items;

@@ -113,6 +113,40 @@ describe("status bar session navigation", () => {
     });
   });
 
+  it("prefers running activity over finished attention in the same top-level session", () => {
+    const items = buildStatusBarSessionList({
+      serverId: "server-1",
+      needsAttentionAgents: [
+        snapshot({
+          agentId: "parent",
+          status: "idle",
+          stateBucket: "attention",
+          attentionReason: "finished",
+          workspaceId: "workspace-parent",
+        }),
+      ],
+      runningAgents: [
+        snapshot({
+          agentId: "child",
+          parentAgentId: "parent",
+          workspaceId: "workspace-parent",
+        }),
+      ],
+      recentlyCompletedAgents: [],
+      liveWorkspaceIds: new Set(["workspace-parent"]),
+    });
+
+    expect(items.map((item) => `${item.group}:${item.snapshot.agentId}`)).toEqual([
+      "running:parent",
+    ]);
+    expect(items[0]?.snapshot).toMatchObject({
+      agentId: "parent",
+      status: "running",
+      stateBucket: "running",
+      attentionReason: undefined,
+    });
+  });
+
   it("keeps sessions with the same agent id on different hosts", () => {
     const first = buildStatusBarSessionList({
       serverId: "host-1",
