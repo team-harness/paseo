@@ -123,7 +123,28 @@ Team / Lead / Member / Roster / Team room / Remove（退队）的定义以设计
 
 ## 整体验收
 
-（acceptance 阶段按"验收标准"逐条记录证据）
+| #   | 标准                                                               | 结论                                                                                                                                                                                                                                                                                                         |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | 全子项实现；typecheck/lint 通过；每子项测试跑绿并留证据            | 满足。`npm run typecheck` / `npm run lint` / `npm run format:check` 全绿；`packages/server/src/server/team` 225 passed；app 侧 teams + team-sync + subagents + navigation + permission-actions 共 158 passed；CLI team 15 passed；i18n 资源 36 passed。逐子项证据在 `.codestable/work/epic-agent-teams.md`。 |
+| 2   | 设计 §10 场景逐条绑定并有自动化覆盖                                | 满足。三个曾缺的场景已补：workspace teardown × team archive 并发（`team-lifecycle.test.ts`）、跨 workspace 招募（`team-recruitment.test.ts`）、detach 无关性（`agent-manager.test.ts`，改用真实 team labels）。                                                                                              |
+| 3①  | 确定性 daemon E2E（双 provider，创建→派发→完成→room→权限→archive） | 满足。`packages/server/src/server/team-e2e.e2e.test.ts` 16 例，真 daemon、真 WebSocket、`claude` + `codex` 两个 adapter，已纳入 `test:integration`。                                                                                                                                                         |
+| 3②  | App 级 Playwright + 隔离 daemon                                    | 满足。`packages/app/e2e/browser/team-panel.spec.ts` 4 例：广播到达侧栏、deep link 解析、**走 UI 建 team**（菜单→表单→provider→确认页成本→提交→落到 team tab→daemon 复核）、两成员权限聚合与独立作答（含"provider 不带 actions"的回落）、room 发言三态。                                                      |
+| 3③  | `docs/qa.md` 六行平台矩阵 + 真实 provider 手工 smoke               | **未做**。人工走查，owner 于验收时在 PR 描述里补。模板见下。                                                                                                                                                                                                                                                 |
+| 4   | 协议双向兼容；COMPAT 带版本与移除条件；legacy fixture 解析         | 满足。新 wire schema 无 `.transform/.catch/.preprocess`；`ChatMessage.author` optional、`authorAgentId` 保持必填；`team.update` 与 `chat.room.message_posted` 按 socket 门控且各有变异验证过的测试；`turnOutcomes` legacy 解析走真实读盘 + schema。                                                          |
+| 5   | 文档同步；设计文档并入正式 docs 并删除                             | 满足。见「最终交付索引」。                                                                                                                                                                                                                                                                                   |
+
+### QA 证据模板（owner 走查后填）
+
+| 平台            | 桌面 / compact | 已测 | 备注 |
+| --------------- | -------------- | ---- | ---- |
+| iOS             | compact        |      |      |
+| Android         | compact        |      |      |
+| Web             | 桌面 + compact |      |      |
+| Desktop macOS   | 桌面           |      |      |
+| Desktop Windows | 桌面           |      |      |
+| Desktop Linux   | 桌面           |      |      |
+
+真实 provider smoke 至少覆盖：新建 team（跨 provider 混编）→ lead 派发 → 成员完成 → 结果回到 lead → 权限聚合条一允一拒 → room 里人插话 → 归档。daemon 侧说明 macOS/Linux 覆盖与 Windows/Docker 的覆盖或不适用理由。
 
 ## 遗留风险
 
