@@ -372,11 +372,11 @@ export class TeamService {
       if (!entry || entry.state !== "active") return null;
       const intent = team.pendingRecruitments?.[agentId] ?? null;
       // A recruit already being undone is not one to carry on with.
-      return intent?.stage === "cancelling" ? null : intent;
+      return intent?.cancelling ? null : intent;
     };
 
     const cancel = async (): Promise<never> => {
-      await this.cancelRecruitment(teamId, agentId);
+      await this.retireRecruit(teamId, agentId, "recruitment_canceled");
       throw new TeamRecruitmentCancelledError(teamId);
     };
 
@@ -483,15 +483,19 @@ export class TeamService {
     preferred: "recruitment_canceled" | "recruitment_failed",
   ): Promise<void> {
     let claimed = false;
+    let claimedStage: "reserved" | "created" = "reserved";
     await this.store.update(teamId, (current) => {
       const intent = current.pendingRecruitments?.[agentId];
       if (!intent) {
         return current;
       }
       claimed = true;
+      claimedStage = intent.stage;
       const entry = current.members.find((member) => member.agentId === agentId);
       // DEC-13: a recruit the team no longer has room for was cancelled, not
-      // failed, however the daemon came to notice.
+      // failed, however the daemon came to notice. The reason says how this
+      // entry ended, and it ended as an unfinished recruit — even when what
+      // invalidated it was an explicit removal.
       const invalidated = current.lifecycle !== "active" || entry?.state !== "active";
       const reason = invalidated ? ("recruitment_canceled" as const) : preferred;
       return {
@@ -502,13 +506,13 @@ export class TeamService {
                 ...member,
                 state: "removed" as const,
                 leftAt: member.leftAt ?? new Date().toISOString(),
-                removalReason: member.removalReason ?? reason,
+                removalReason: reason,
               }
             : member,
         ),
         pendingRecruitments: {
           ...current.pendingRecruitments,
-          [agentId]: { ...intent, stage: "cancelling" as const },
+          [agentId]: { ...intent, cancelling: true },
         },
       };
     });
@@ -522,8 +526,20 @@ export class TeamService {
     }
 
     // Only now, and only if this succeeds. A throw here leaves the intent
-    // `cancelling` for the reconciler to pick up.
-    await this.archiveAgentIdempotently(agentId);
+    // marked `cancelling` for the reconciler to pick up.
+    const archived = await this.agents.archiveAgent(agentId);
+    if (archived.kind === "not_found" && claimedStage === "reserved") {
+      // "Not found" does not settle a recruit whose agent was never recorded as
+      // built: a `createAgent` for it may still be in flight, and clearing the
+      // intent now would leave that agent with team labels and nothing saying
+      // it needs archiving. The next pass asks again.
+      this.logger.info(
+        { teamId, agentId },
+        "Holding a cancelled recruit open: its agent has not been seen yet",
+      );
+      return;
+    }
+
     await this.store.update(teamId, (current) => ({
       ...current,
       pendingRecruitments: withoutIntent(current.pendingRecruitments, agentId),
@@ -699,7 +715,7 @@ export class TeamService {
     for (const [agentId, intent] of Object.entries(team.pendingRecruitments ?? {})) {
       // Someone decided to undo this one and did not get to finish. The intent
       // is what says so; picking it up here is the only thing that will.
-      if (intent.stage === "cancelling") {
+      if (intent.cancelling) {
         await this.retireRecruit(team.id, agentId, "recruitment_canceled");
         continue;
       }
@@ -1175,11 +1191,16 @@ function assertJsonValue(value: unknown, path: string, seen = new Set<object>())
   if (value === null) return;
   if (Array.isArray(value)) {
     guardAgainstCycle(value, path, seen);
-    // An array can carry named and symbol properties that JSON drops, so two
-    // arrays that differ only in those serialize the same — and one request
-    // would be taken for a retry of the other.
-    const named = Object.keys(value).filter((key) => !/^\d+$/.test(key));
-    if (named.length > 0 || Object.getOwnPropertySymbols(value).length > 0) {
+    // An array can carry keys JSON drops — named ones, symbol ones, and
+    // number-looking ones that are not indices at all (`"01"`, `2 ** 32 - 1`).
+    // Two arrays differing only in those serialize identically, so one request
+    // would be taken for a retry of the other. Comparing the whole key set
+    // against the one an array is allowed to have leaves no such gap.
+    const allowed = new Set<string | symbol>(["length"]);
+    for (let index = 0; index < value.length; index += 1) {
+      allowed.add(String(index));
+    }
+    if (Reflect.ownKeys(value).some((key) => !allowed.has(key))) {
       throw new TeamCreateValidationError(`${path} must not have properties besides its items`);
     }
     for (let index = 0; index < value.length; index += 1) {

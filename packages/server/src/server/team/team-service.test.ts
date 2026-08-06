@@ -226,6 +226,9 @@ describe("TeamService creation", () => {
     sparse[2] = "third";
     const decorated: unknown[] = ["a"];
     (decorated as unknown as Record<string, unknown>).extra = 1;
+    // Number-shaped but not an index, so it is a property JSON drops.
+    const pseudoIndexed: unknown[] = ["a"];
+    (pseudoIndexed as unknown as Record<string, unknown>)["01"] = 1;
 
     for (const settings of [
       { modeId: undefined },
@@ -241,6 +244,7 @@ describe("TeamService creation", () => {
       // JSON drops both of these, so an array carrying them looks identical to
       // one that does not.
       { items: decorated },
+      { items: pseudoIndexed },
       cyclic,
     ]) {
       await expect(

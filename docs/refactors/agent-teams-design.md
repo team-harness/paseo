@@ -88,6 +88,7 @@ export const RecruitmentIntentSchema = z.object({
   recruiterAgentId: z.string(),
   workspaceId: z.string(),
   stage: z.enum(["reserved", "created"]), // created = agent 已建、prompt 未确认
+  cancelling: z.boolean().optional(), // 已决定撤销、agent 尚未归档
 });
 
 // server-only 持久化 record
