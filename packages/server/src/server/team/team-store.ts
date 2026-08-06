@@ -8,8 +8,16 @@ import { writeJsonFileAtomic } from "../atomic-file.js";
 
 export type TeamUpdater = (team: StoredTeam) => StoredTeam | Promise<StoredTeam>;
 
-/** Everything the caller supplies; the store owns id, revision and timestamps. */
-export type NewTeam = Omit<StoredTeam, "id" | "revision" | "createdAt" | "updatedAt">;
+/**
+ * Everything the caller supplies; the store owns revision and timestamps.
+ *
+ * The id is optional and generated when absent. A caller that has to name
+ * resources after the team — the chat room does — allocates it up front so the
+ * whole creation plan can be written in one go and replayed from it later.
+ */
+export type NewTeam = Omit<StoredTeam, "id" | "revision" | "createdAt" | "updatedAt"> & {
+  id?: string;
+};
 
 function generateTeamId(): string {
   return randomBytes(4).toString("hex");
@@ -114,7 +122,7 @@ export class TeamStore {
     const now = new Date().toISOString();
     const created: StoredTeam = {
       ...team,
-      id: generateTeamId(),
+      id: team.id ?? generateTeamId(),
       revision: 1,
       createdAt: now,
       updatedAt: now,
