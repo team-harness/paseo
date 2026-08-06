@@ -1,0 +1,277 @@
+import type { Logger } from "pino";
+
+import { toTeamSnapshot, type StoredTeam, type TeamSnapshot } from "@getpaseo/protocol/team/types";
+
+import {
+  TeamCreateConflictError,
+  TeamCreateValidationError,
+  type TeamService,
+} from "./team-service.js";
+import type { TeamStore } from "./team-store.js";
+
+export type TeamInboundMessage =
+  | {
+      type: "team.create.request";
+      requestId: string;
+      idempotencyKey: string;
+      name: string;
+      workspaceId: string;
+      task: string;
+      lead: TeamMemberSpecInput;
+      members: TeamMemberSpecInput[];
+      templateId?: string;
+    }
+  | { type: "team.list.request"; requestId: string; includeArchived?: boolean }
+  | { type: "team.inspect.request"; requestId: string; teamId: string }
+  | { type: "team.archive.request"; requestId: string; teamId: string }
+  | {
+      type: "team.member.remove.request";
+      requestId: string;
+      teamId: string;
+      agentId: string;
+    };
+
+interface TeamMemberSpecInput {
+  role: string;
+  title?: string;
+  provider: string;
+  settings?: Record<string, unknown>;
+  briefing?: string;
+}
+
+export type TeamOutboundMessage =
+  | {
+      type: "team.create.response";
+      payload: {
+        requestId: string;
+        team: TeamSnapshot | null;
+        error: string | null;
+        errorCode: string | null;
+      };
+    }
+  | {
+      type: "team.list.response";
+      payload: { requestId: string; teams: TeamSnapshot[]; error: string | null };
+    }
+  | {
+      type: "team.inspect.response";
+      payload: { requestId: string; team: TeamSnapshot | null; error: string | null };
+    }
+  | {
+      type: "team.archive.response";
+      payload: { requestId: string; team: TeamSnapshot | null; error: string | null };
+    }
+  | {
+      type: "team.member.remove.response";
+      payload: { requestId: string; team: TeamSnapshot | null; error: string | null };
+    }
+  | { type: "team.update"; payload: { team: TeamSnapshot } };
+
+export interface TeamSessionHandlersOptions {
+  service: TeamService;
+  store: TeamStore;
+  send: (message: TeamOutboundMessage) => void;
+  logger: Logger;
+}
+
+/**
+ * The wire surface for teams.
+ *
+ * Beyond forwarding, its one job is to keep the daemon's working notes off the
+ * wire: the stored record carries a creation plan, a request fingerprint and
+ * recruitment intents, and spreading it into a response would publish all of
+ * them. Every reply goes through `toTeamSnapshot`, which is an explicit
+ * projection rather than an omission list — a field added to the record does
+ * not leak by default.
+ *
+ * Lives here rather than in the session so the session only needs a line to
+ * hand a message over.
+ */
+export class TeamSessionHandlers {
+  private readonly service: TeamService;
+  private readonly store: TeamStore;
+  private readonly send: (message: TeamOutboundMessage) => void;
+  private readonly logger: Logger;
+
+  constructor(options: TeamSessionHandlersOptions) {
+    this.service = options.service;
+    this.store = options.store;
+    this.send = options.send;
+    this.logger = options.logger.child({ module: "team", component: "team-session" });
+  }
+
+  async handle(message: TeamInboundMessage): Promise<void> {
+    switch (message.type) {
+      case "team.create.request":
+        return await this.handleCreate(message);
+      case "team.list.request":
+        return await this.handleList(message);
+      case "team.inspect.request":
+        return await this.handleInspect(message);
+      case "team.archive.request":
+        return await this.handleArchive(message);
+      case "team.member.remove.request":
+        return await this.handleMemberRemove(message);
+    }
+  }
+
+  private async handleCreate(
+    message: Extract<TeamInboundMessage, { type: "team.create.request" }>,
+  ): Promise<void> {
+    try {
+      const team = await this.service.create({
+        idempotencyKey: message.idempotencyKey,
+        name: message.name,
+        workspaceId: message.workspaceId,
+        task: message.task,
+        lead: toMemberRequest(message.lead),
+        members: message.members.map(toMemberRequest),
+        templateId: message.templateId ?? null,
+      });
+      this.send({
+        type: "team.create.response",
+        payload: {
+          requestId: message.requestId,
+          team: toTeamSnapshot(team),
+          error: null,
+          errorCode: null,
+        },
+      });
+      this.broadcast(team);
+    } catch (error) {
+      this.send({
+        type: "team.create.response",
+        payload: {
+          requestId: message.requestId,
+          team: null,
+          error: describe(error),
+          // A client retrying with a key needs to tell "your retry worked" from
+          // "that key now means something else".
+          errorCode: error instanceof TeamCreateConflictError ? "idempotency_key_conflict" : null,
+        },
+      });
+      this.logFailure("create", error);
+    }
+  }
+
+  private async handleList(
+    message: Extract<TeamInboundMessage, { type: "team.list.request" }>,
+  ): Promise<void> {
+    try {
+      const teams = await this.store.list();
+      const visible = message.includeArchived
+        ? teams
+        : teams.filter((team) => team.lifecycle !== "archived");
+      this.send({
+        type: "team.list.response",
+        payload: { requestId: message.requestId, teams: visible.map(toTeamSnapshot), error: null },
+      });
+    } catch (error) {
+      this.send({
+        type: "team.list.response",
+        payload: { requestId: message.requestId, teams: [], error: describe(error) },
+      });
+      this.logFailure("list", error);
+    }
+  }
+
+  private async handleInspect(
+    message: Extract<TeamInboundMessage, { type: "team.inspect.request" }>,
+  ): Promise<void> {
+    try {
+      const team = await this.store.get(message.teamId);
+      this.send({
+        type: "team.inspect.response",
+        payload: {
+          requestId: message.requestId,
+          team: team ? toTeamSnapshot(team) : null,
+          error: team ? null : `Team not found: ${message.teamId}`,
+        },
+      });
+    } catch (error) {
+      this.send({
+        type: "team.inspect.response",
+        payload: { requestId: message.requestId, team: null, error: describe(error) },
+      });
+      this.logFailure("inspect", error);
+    }
+  }
+
+  private async handleArchive(
+    message: Extract<TeamInboundMessage, { type: "team.archive.request" }>,
+  ): Promise<void> {
+    try {
+      const team = await this.service.archive(message.teamId);
+      this.send({
+        type: "team.archive.response",
+        payload: {
+          requestId: message.requestId,
+          team: team ? toTeamSnapshot(team) : null,
+          error: team ? null : `Team not found: ${message.teamId}`,
+        },
+      });
+      if (team) this.broadcast(team);
+    } catch (error) {
+      this.send({
+        type: "team.archive.response",
+        payload: { requestId: message.requestId, team: null, error: describe(error) },
+      });
+      this.logFailure("archive", error);
+    }
+  }
+
+  private async handleMemberRemove(
+    message: Extract<TeamInboundMessage, { type: "team.member.remove.request" }>,
+  ): Promise<void> {
+    try {
+      const team = await this.service.removeMember({
+        teamId: message.teamId,
+        agentId: message.agentId,
+      });
+      this.send({
+        type: "team.member.remove.response",
+        payload: {
+          requestId: message.requestId,
+          team: team ? toTeamSnapshot(team) : null,
+          error: team ? null : `Team not found: ${message.teamId}`,
+        },
+      });
+      if (team) this.broadcast(team);
+    } catch (error) {
+      this.send({
+        type: "team.member.remove.response",
+        payload: { requestId: message.requestId, team: null, error: describe(error) },
+      });
+      this.logFailure("member remove", error);
+    }
+  }
+
+  private broadcast(team: StoredTeam): void {
+    this.send({ type: "team.update", payload: { team: toTeamSnapshot(team) } });
+  }
+
+  /**
+   * A refused request is an answer, not an incident: the caller asked for
+   * something the rules do not allow and has been told so.
+   */
+  private logFailure(operation: string, error: unknown): void {
+    if (error instanceof TeamCreateValidationError || error instanceof TeamCreateConflictError) {
+      return;
+    }
+    this.logger.error({ err: error, operation }, "A team request failed");
+  }
+}
+
+function toMemberRequest(spec: TeamMemberSpecInput) {
+  return {
+    role: spec.role,
+    provider: spec.provider,
+    title: spec.title ?? null,
+    briefing: spec.briefing ?? null,
+    settings: spec.settings ?? null,
+  };
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : "The team request failed";
+}
