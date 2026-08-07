@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `ef6d7b3b958b4a6096dd7e600fdc20a77fefc9ce`，同步于 2026-08-07。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `ef6d7b3b958b4a6096dd7e600fdc20a77fefc9ce`）。
+- 最近同步基线：`upstream/main` = `292a9c4c8c4a970951d5010c3f122c8977a05cc3`，同步于 2026-08-07。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `292a9c4c8c4a970951d5010c3f122c8977a05cc3`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-07: `upstream/main` `292a9c4c8` / `v0.3.0-beta.2`
+
+- 合入上游 Claude Opus 5 Fast toggle 支持和韩语 README；模型能力沿用上游 manifest，不维护 fork 重复判断。
+- 本轮上游改动没有触及 fork 的 Status Bar、usage ledger、计划任务、消息时间、Review Comments、固定签名桌面/Web Server 分发或 Android APK 构建链路，现有能力全部保留。
+- 本轮没有上游等价能力需要下线。
 
 ### 2026-08-07: `upstream/main` `ef6d7b3b9` / `v0.3.0-beta.2`
 
