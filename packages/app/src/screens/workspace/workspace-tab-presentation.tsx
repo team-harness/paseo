@@ -15,6 +15,7 @@ import {
 } from "@/utils/status-indicator-geometry";
 import type { Theme } from "@/styles/theme";
 import { usePanelInstanceAttributes } from "@/panels/panel-instance-attributes";
+import { SyncedLoader } from "@/components/synced-loader";
 
 export interface WorkspaceTabPresentation {
   key: string;
@@ -30,6 +31,10 @@ export interface WorkspaceTabPresentation {
 
 const DEFAULT_STATUS_DOT_OFFSET = -2;
 const STATUS_ALERT_OFFSET = -3;
+const RUNNING_STATUS_SIZE = 12;
+const RUNNING_LOADER_SIZE = 7;
+const RUNNING_STATUS_OFFSET = -4;
+const RUNNING_LOADER_NUDGE_X = -0.67;
 
 interface WorkspaceTabPresentationResolverProps {
   tab: WorkspaceTabDescriptor;
@@ -116,10 +121,14 @@ interface WorkspaceTabIconProps {
 
 const ThemedCheckIcon = withUnistyles(Check);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
+const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const needsInputAlertMapping = (theme: Theme) => ({
   color: theme.colors.surface0,
   fill: getStatusDotColor({ theme, bucket: "needs_input" }) ?? undefined,
+});
+const runningLoaderColorMapping = (theme: Theme) => ({
+  color: getStatusDotColor({ theme, bucket: "running" }) ?? undefined,
 });
 
 export function WorkspaceTabIcon({
@@ -132,8 +141,8 @@ export function WorkspaceTabIcon({
   const bucket = presentation.statusBucket;
   let statusDotColor: string | undefined;
   if (bucket === "failed") statusDotColor = styles.statusDotFailed.color;
-  else if (bucket === "running") statusDotColor = styles.statusDotRunning.color;
   else if (bucket === "attention") statusDotColor = styles.statusDotAttention.color;
+  const showRunningLoader = bucket === "running";
   const showNeedsInputAlert = bucket === "needs_input";
   const Icon = presentation.icon;
   const agentIconWrapperStyle = useMemo(
@@ -150,16 +159,31 @@ export function WorkspaceTabIcon({
     ],
     [statusDotColor, statusDotBorderColor],
   );
+  const runningStatusStyle = useMemo(
+    () => [
+      styles.runningStatusOverlay,
+      {
+        backgroundColor: statusDotBorderColor ?? styles.statusDotBorderDefault.borderColor,
+      },
+    ],
+    [statusDotBorderColor],
+  );
 
   return (
     <View style={agentIconWrapperStyle}>
       <Icon size={size} color={iconColor} />
-      {statusDotColor ? (
+      {statusDotColor ? <View style={statusDotStyle} /> : null}
+      {showRunningLoader ? (
         <View
-          style={statusDotStyle}
-          accessibilityRole={bucket === "running" ? "progressbar" : undefined}
-          accessibilityLabel={bucket === "running" ? "Agent running" : undefined}
-        />
+          style={runningStatusStyle}
+          accessibilityRole="progressbar"
+          accessibilityLabel="Agent running"
+          testID="workspace-tab-running-indicator"
+        >
+          <View style={styles.runningLoaderNudge}>
+            <ThemedSyncedLoader size={RUNNING_LOADER_SIZE} uniProps={runningLoaderColorMapping} />
+          </View>
+        </View>
       ) : null}
       {showNeedsInputAlert ? (
         <View style={styles.statusAlertOverlay}>
@@ -249,11 +273,22 @@ const styles = StyleSheet.create((theme) => ({
     right: STATUS_ALERT_OFFSET,
     bottom: STATUS_ALERT_OFFSET,
   },
+  runningStatusOverlay: {
+    position: "absolute",
+    right: RUNNING_STATUS_OFFSET,
+    bottom: RUNNING_STATUS_OFFSET,
+    width: RUNNING_STATUS_SIZE,
+    height: RUNNING_STATUS_SIZE,
+    borderRadius: theme.borderRadius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  runningLoaderNudge: {
+    transform: [{ translateX: RUNNING_LOADER_NUDGE_X }],
+  },
   statusDotFailed: {
     color: getStatusDotColor({ theme, bucket: "failed" }) ?? undefined,
-  },
-  statusDotRunning: {
-    color: getStatusDotColor({ theme, bucket: "running" }) ?? undefined,
   },
   statusDotAttention: {
     color: getStatusDotColor({ theme, bucket: "attention" }) ?? undefined,

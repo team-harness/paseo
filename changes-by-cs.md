@@ -331,7 +331,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 
 **状态**：fork 修复。提交：`f548d71e0`。
 
-**行为**：工作区标题继续遵循用户选择的 Title/Branch name 偏好。状态分组、侧边栏 Pinned 区和顶部状态栏 Pinned 面板中的工作区脱离了项目父行，因此在主标题下显示项目名；普通项目分组内的子行仍保持单行。
+**行为**：工作区标题继续遵循用户选择的 Title/Branch name 偏好。状态分组、侧边栏 Pinned 区和顶部状态栏 Pinned 面板中的工作区脱离了项目父行，因此在主标题下显示项目名；普通项目分组内的子行仍保持单行。侧边栏和工作区聊天 Tab 的运行中状态统一使用 fork 的 `SyncedLoader`，不使用容易与完成状态混淆的静态圆点。
 
 **关键文件**：
 
@@ -339,15 +339,17 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - `packages/app/src/components/sidebar-workspace-list.tsx`
 - `packages/app/src/components/sidebar/sidebar-status-list.tsx`
 - `packages/app/src/status-summary/status-bar-session-pins.tsx`
+- `packages/app/src/screens/workspace/workspace-tab-presentation.tsx`
 
 **同步规则**：
 
 - 不要通过重置 `workspaceTitleSource` 修复项目上下文；用户选择 Branch name 时，分支仍是主标题。
 - 脱离项目分组的行必须把项目名渲染为可见次级文字。项目图标和 accessibility label 不能代替可见文字。
 - 次级文字保持单行截断，不能撑宽窄侧边栏或移动端布局。
+- 运行中指示器在侧边栏与工作区聊天 Tab 中必须保持相同的 `SyncedLoader` 形态、状态色和无障碍语义；不要随上游静态圆点回退。
 - 必跑：`status-bar-running-sessions.test.tsx`，以及 `sidebar-model-b.spec.ts` 的状态分组场景和 `sidebar-workspace-pin-shortcut.spec.ts` 的 Pinned 场景。
 
-**最近同步判断**：2026-08-06 合入上游 `fb5cfb9fb` 后，采用 checks 显示偏好、运行中 Service 摘要和统一状态色；脱离项目分组的项目名继续位于 Meta Row 首项。运行中状态保留 fork 的 `SyncedLoader`，并使用上游统一的 running 状态色，没有恢复呼吸圆点。
+**最近同步判断**：2026-08-07 合入上游 `ef6d7b3b9` 后，采用 checks 显示偏好、运行中 Service 摘要和统一状态色；脱离项目分组的项目名继续位于 Meta Row 首项。侧边栏和工作区聊天 Tab 的运行中状态均保留 fork 的 `SyncedLoader`，并使用上游统一的 running 状态色，没有恢复静态或呼吸圆点。
 
 ### 9. 常用 Prompt 集合
 
