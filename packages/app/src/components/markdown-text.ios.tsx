@@ -19,6 +19,8 @@ interface MarkdownTextSpanProps {
   style?: StyleProp<TextStyle>;
   monoSurface?: boolean;
   copyTag?: MarkdownCopyInlineTag;
+  copyIgnored?: boolean;
+  testID?: string;
   children: ReactNode;
   // Links route through this span too (see assistant-file-links/link.tsx). A
   // plain <Text> nested in the paragraph UITextView is dropped, so the link
@@ -38,11 +40,21 @@ interface MarkdownTextSpanProps {
 export function MarkdownTextSpan({
   style,
   children,
+  copyIgnored,
+  testID,
   onPress,
   accessibilityRole,
 }: MarkdownTextSpanProps) {
   const plainStyle = useMemo(() => resolvePlainMarkdownTextStyle(style), [style]);
   const surface = useMarkdownTextSurface();
+
+  if (copyIgnored) {
+    return (
+      <UITextView uiTextView selectable={false} style={plainStyle} testID={testID}>
+        {children}
+      </UITextView>
+    );
+  }
 
   // Each selectable span creates a UIKit UITextView with a window-level tap recognizer.
   // A large table would create one per cell and make every app touch fan out across them.
@@ -53,6 +65,7 @@ export function MarkdownTextSpan({
         style={plainStyle}
         onPress={onPress}
         accessibilityRole={accessibilityRole}
+        testID={testID}
       >
         {children}
       </Text>
@@ -66,6 +79,7 @@ export function MarkdownTextSpan({
       style={plainStyle}
       onPress={onPress}
       accessibilityRole={accessibilityRole}
+      testID={testID}
     >
       {children}
     </UITextView>

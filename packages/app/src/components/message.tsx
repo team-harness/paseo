@@ -800,6 +800,7 @@ interface AssistantMessageProps {
   occurrenceKey: string;
   message: string;
   timestamp: number;
+  showTimestamp?: boolean;
   workspaceRoot?: string;
   serverId?: string;
   client?: DaemonClient | null;
@@ -853,11 +854,10 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
     textAlign: "center",
   },
   timestampText: {
-    alignSelf: "flex-start",
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
     lineHeight: 16,
-    marginTop: theme.spacing[1],
   },
 }));
 
@@ -1437,6 +1437,33 @@ const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
   );
 });
 
+function findLastMarkdownParagraph(node: ASTNode): ASTNode | null {
+  for (let index = node.children.length - 1; index >= 0; index -= 1) {
+    const child = node.children[index];
+    if (!child) continue;
+    const paragraph = findLastMarkdownParagraph(child);
+    if (paragraph) return paragraph;
+  }
+  return node.type === "paragraph" ? node : null;
+}
+
+function isLastMarkdownParagraph(node: ASTNode, parentNodes: ASTNode[]): boolean {
+  const root = parentNodes.at(-1);
+  return root ? findLastMarkdownParagraph(root)?.key === node.key : false;
+}
+
+function AssistantMessageTimestamp({ value }: { value: string }) {
+  return (
+    <MarkdownTextSpan
+      style={assistantMessageStylesheet.timestampText}
+      copyIgnored
+      testID="assistant-message-timestamp"
+    >
+      {` (${value})`}
+    </MarkdownTextSpan>
+  );
+}
+
 interface MarkdownInheritedTextProps {
   inheritedStyles: TextStyle;
   textStyle: TextStyle;
@@ -1518,6 +1545,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   occurrenceKey,
   message,
   timestamp,
+  showTimestamp = true,
   workspaceRoot,
   serverId,
   client,
@@ -1976,6 +2004,37 @@ export const AssistantMessage = memo(function AssistantMessage({
     () => formatMessageTimestamp(new Date(timestamp)),
     [timestamp],
   );
+  const timestampMarkdownRules = useMemo<RenderRules>(() => {
+    const paragraphRule = markdownRules.paragraph;
+    if (!showTimestamp || !paragraphRule) return markdownRules;
+
+    return {
+      ...markdownRules,
+      paragraph: (
+        node: ASTNode,
+        children: ReactNode[],
+        parentNodes: ASTNode[],
+        styles: MarkdownStyles,
+        inheritedStyles: TextStyle = {},
+      ) => {
+        const paragraphChildren = isLastMarkdownParagraph(node, parentNodes)
+          ? [
+              ...children,
+              <AssistantMessageTimestamp
+                key="assistant-message-timestamp"
+                value={formattedTimestamp}
+              />,
+            ]
+          : children;
+        return paragraphRule(node, paragraphChildren, parentNodes, styles, inheritedStyles);
+      },
+    };
+  }, [formattedTimestamp, markdownRules, showTimestamp]);
+  const lastBlockHasParagraph = useMemo(() => {
+    const lastBlock = keyedBlocks.at(-1)?.block;
+    if (!lastBlock || !showTimestamp) return false;
+    return markdownParser.parse(lastBlock, {}).some((token) => token.type === "paragraph_open");
+  }, [keyedBlocks, markdownParser, showTimestamp]);
 
   const assistantContainerStyle = useMemo(
     () => [
@@ -1998,11 +2057,15 @@ export const AssistantMessage = memo(function AssistantMessage({
         >
           <MemoizedMarkdownBlock
             text={block}
-            rules={markdownRules}
+            rules={
+              showTimestamp && index === keyedBlocks.length - 1
+                ? timestampMarkdownRules
+                : markdownRules
+            }
             parser={markdownParser}
             onLinkPress={handleMarkdownLinkPress}
           />
-          {index === keyedBlocks.length - 1 ? (
+          {showTimestamp && index === keyedBlocks.length - 1 && !lastBlockHasParagraph ? (
             <Text
               style={assistantMessageStylesheet.timestampText}
               dataSet={markdownCopyDataSet.ignore}

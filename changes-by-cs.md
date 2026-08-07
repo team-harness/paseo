@@ -377,7 +377,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 
 **状态**：fork 功能。提交：`044802203`。
 
-**行为**：对话中的用户或 Assistant 文本可以按原 Markdown 引用到 Composer，替换当前选区、恢复焦点且不自动发送。Assistant 消息末尾以弱化小字展示本地化时间，时间元数据不进入复制或引用内容。文件 Markdown 预览、代码预览和 Source 视图支持对选区留评论；代码与 Source 使用精确行号，Markdown 预览在没有可靠源码映射时只记录选中文字。评论按 workspace 隔离并持久化，File 与 Changes 共用 Review summary，汇总选区评论和 diff 行评论，支持一键复制、逐条删除，以及确认后删除当前汇总中的全部评论。Android 原生选择保留系统复制/翻译菜单，并在选区末字下方显示 fork 的引用或评论按钮；下方空间被键盘压缩时自动翻到上方。
+**行为**：对话中的用户或 Assistant 文本可以按原 Markdown 引用到 Composer，替换当前选区、恢复焦点且不自动发送。每个已完成 turn 只在最后一条 Assistant 回复的最后一个 Markdown 段落末尾内联展示一次弱化的本地化时间；运行中的回复和工具调用不展示时间，时间元数据也不进入复制或引用内容。文件 Markdown 预览、代码预览和 Source 视图支持对选区留评论；代码与 Source 使用精确行号，Markdown 预览在没有可靠源码映射时只记录选中文字。评论按 workspace 隔离并持久化，File 与 Changes 共用 Review summary，汇总选区评论和 diff 行评论，支持一键复制、逐条删除，以及确认后删除当前汇总中的全部评论。Android 原生选择保留系统复制/翻译菜单，并在选区末字下方显示 fork 的引用或评论按钮；下方空间被键盘压缩时自动翻到上方。
 
 **关键文件**：
 

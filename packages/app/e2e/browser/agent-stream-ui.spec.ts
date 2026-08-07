@@ -271,12 +271,23 @@ test.describe("Agent stream UI", () => {
     });
     try {
       await awaitAssistantMessage(page);
-      await expect(page.getByTestId("assistant-message-timestamp").last()).toHaveText(
-        /^\(\d{1,2}:\d{2}(?: [AP]M)?\)$/,
-      );
+      await expect(page.getByTestId("assistant-message-timestamp")).toHaveCount(0);
       await expectInlineWorkingIndicator(page);
       await expectAgentIdle(page, 30_000);
       await scrollAgentChatToBottom(page);
+      await expect(page.getByTestId("assistant-message-timestamp")).toHaveCount(1);
+      await expect(page.getByTestId("assistant-message-timestamp")).toHaveText(
+        /^ \(\d{1,2}:\d{2}(?: [AP]M)?\)$/,
+      );
+      await expect(page.getByTestId("assistant-message-timestamp")).toHaveAttribute(
+        "data-paseo-markdown-ignore",
+        "true",
+      );
+      await expect(
+        page
+          .getByTestId("assistant-message-timestamp")
+          .locator("xpath=ancestor::*[@data-paseo-markdown-tag='p']"),
+      ).toHaveCount(1);
       await expectTurnCopyButton(page);
     } finally {
       await agent.cleanup();

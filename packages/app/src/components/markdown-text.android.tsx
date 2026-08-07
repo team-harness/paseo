@@ -13,6 +13,8 @@ interface MarkdownTextSpanProps {
   style?: StyleProp<TextStyle>;
   monoSurface?: boolean;
   copyTag?: MarkdownCopyInlineTag;
+  copyIgnored?: boolean;
+  testID?: string;
   children: ReactNode;
   onPress?: TextProps["onPress"];
   accessibilityRole?: TextProps["accessibilityRole"];
@@ -25,11 +27,19 @@ interface MarkdownTextSpanProps {
 export function MarkdownTextSpan({
   style,
   children,
+  copyIgnored,
+  testID,
   onPress,
   accessibilityRole,
 }: MarkdownTextSpanProps) {
   return (
-    <Text selectable style={style} onPress={onPress} accessibilityRole={accessibilityRole}>
+    <Text
+      selectable={!copyIgnored}
+      style={style}
+      onPress={onPress}
+      accessibilityRole={accessibilityRole}
+      testID={testID}
+    >
       {children}
     </Text>
   );

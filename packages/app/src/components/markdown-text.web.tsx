@@ -14,6 +14,8 @@ interface MarkdownTextSpanProps {
   style?: StyleProp<TextStyle>;
   monoSurface?: boolean;
   copyTag?: MarkdownCopyInlineTag;
+  copyIgnored?: boolean;
+  testID?: string;
   children: ReactNode;
   // Web links use the <a>/Pressable path in link.tsx, not this span, so these
   // are accepted for prop-shape parity with the native variants and forwarded
@@ -31,22 +33,30 @@ export function MarkdownTextSpan({
   style,
   monoSurface,
   copyTag,
+  copyIgnored,
+  testID,
   children,
   onPress,
   accessibilityRole,
 }: MarkdownTextSpanProps) {
   const dataSet = useMemo(() => {
-    if (copyTag && (monoSurface || copyTag === "code")) {
-      return { ...CODE_SURFACE_DATASET, ...markdownCopyDataSet[copyTag] };
+    const copyDataSet = copyTag ? markdownCopyDataSet[copyTag] : undefined;
+    const monoDataSet = monoSurface || copyTag === "code" ? CODE_SURFACE_DATASET : undefined;
+    if (copyIgnored) {
+      return { ...monoDataSet, ...copyDataSet, ...markdownCopyDataSet.ignore };
     }
-    if (copyTag) {
-      return markdownCopyDataSet[copyTag];
-    }
-    return monoSurface ? CODE_SURFACE_DATASET : undefined;
-  }, [copyTag, monoSurface]);
+    if (monoDataSet || copyDataSet) return { ...monoDataSet, ...copyDataSet };
+    return undefined;
+  }, [copyIgnored, copyTag, monoSurface]);
 
   return (
-    <Text dataSet={dataSet} style={style} onPress={onPress} accessibilityRole={accessibilityRole}>
+    <Text
+      dataSet={dataSet}
+      style={style}
+      onPress={onPress}
+      accessibilityRole={accessibilityRole}
+      testID={testID}
+    >
       {children}
     </Text>
   );

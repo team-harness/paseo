@@ -756,6 +756,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         streamRenderStrategy,
       ],
     );
+    const timestampAssistantIds = useMemo(() => {
+      const ids = new Set<string>();
+      for (const layoutItem of [...streamLayout.history, ...streamLayout.liveHead]) {
+        if (layoutItem.completedFooter) ids.add(layoutItem.completedFooter.itemId);
+      }
+      if (streamLayout.auxiliaryTurnFooter) {
+        ids.add(streamLayout.auxiliaryTurnFooter.itemId);
+      }
+      return ids;
+    }, [streamLayout]);
     const handleTimelineHistoryLoadError = useCallback(() => {
       toast?.error(t("agentStream.historyLoadFailed"));
     }, [t, toast]);
@@ -865,6 +875,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               occurrenceKey={createAssistantImageOccurrenceKey({ agentId, itemId: item.id })}
               message={item.text}
               timestamp={item.timestamp.getTime()}
+              showTimestamp={timestampAssistantIds.has(item.id)}
               workspaceRoot={workspaceRoot}
               serverId={resolvedServerId}
               client={client}
@@ -873,7 +884,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           </AssistantFileLinkResolverProvider>
         );
       },
-      [agentId, client, handleInlinePathPress, resolvedServerId, toast, workspaceRoot],
+      [
+        agentId,
+        client,
+        handleInlinePathPress,
+        resolvedServerId,
+        timestampAssistantIds,
+        toast,
+        workspaceRoot,
+      ],
     );
 
     const renderThoughtItem = useCallback(
