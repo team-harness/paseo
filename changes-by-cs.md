@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `292a9c4c8c4a970951d5010c3f122c8977a05cc3`，同步于 2026-08-07。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `292a9c4c8c4a970951d5010c3f122c8977a05cc3`）。
+- 最近同步基线：`upstream/main` = `dc19b45f23208e3530e4b737b3815d5e4578d708`，同步于 2026-08-08。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `dc19b45f23208e3530e4b737b3815d5e4578d708`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-08: `upstream/main` `dc19b45f2` / `v0.3.0-beta.3`
+
+- 合入上游新工作区直接启动终端、Hub CLI 配置部署、Git 刷新调度与归档自愈、嵌套列表及选区边界复制保真、Pi 增量流式输出、Windows PTY 延迟失败处理、时间线图片尺寸稳定和桌面浏览器交互修复。
+- Composer 同时保留 fork 的 Host Prompt、对话引用和完整消息历史，并采用上游统一的 chat/terminal input mode；terminal 模式不显示 Prompt 库或 Agent 控件。server 构造链同时保留 fork 的 `PromptLibraryStore` 和上游 `WorkspaceSetupRuntime`。
+- 侧边栏与工作区聊天 Tab 的运行中状态继续使用 fork 的 `SyncedLoader`。本轮上游没有提供 Status Bar/usage ledger、多 Host 汇总、Threadshare 分享、跨 File/Changes Review Comments、Assistant 时间、固定签名分发或独立 Android APK 构建的等价能力，因此没有 fork 功能下线。
 
 ### 2026-08-07: `upstream/main` `292a9c4c8` / `v0.3.0-beta.2`
 

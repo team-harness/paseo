@@ -1043,7 +1043,6 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       minHeight: 0,
       overflowX: "hidden",
       overflowY: scrollEnabled ? "auto" : "hidden",
-      overflowAnchor: "none",
       overscrollBehaviorY: "contain",
     };
   }, [scrollEnabled]);
