@@ -1,6 +1,7 @@
 import type pino from "pino";
 import type { StoredAgentRecord } from "../agent/agent-storage.js";
 import type { ManagedAgent } from "../agent/agent-manager.js";
+import { isAgentWakeable } from "../agent/agent-wakeability.js";
 
 export const CHAT_MENTION_FANOUT_LIMIT = 25;
 
@@ -103,6 +104,19 @@ export async function notifyChatMentions(input: NotifyChatMentionsInput): Promis
         return;
       }
 
+      // DEC-10: a mention nudges, it never interrupts. An agent mid-turn
+      // already has the message in the room and will read it when it looks;
+      // waking it would cancel work someone else is waiting on.
+      if (
+        !isChatMentionTargetWakeable({
+          agentId: resolved.agentId,
+          storedAgents: input.storedAgents,
+          liveAgents: input.liveAgents,
+        })
+      ) {
+        return;
+      }
+
       try {
         await input.sendAgentMessage(resolved.agentId, notification);
       } catch (error) {
@@ -170,6 +184,26 @@ function expandChatMentionTargets(input: {
   return targets;
 }
 
+/**
+ * Whether a mention should start a turn for this agent, as opposed to only
+ * landing the message in the room.
+ *
+ * Live state wins where it exists: the stored record is a snapshot written at
+ * turn boundaries, so it can say "running" for an agent that has since gone
+ * idle, or "idle" for one that just started. An agent with no live entry has no
+ * session in memory at all, which is precisely the one that needs waking.
+ */
+function isChatMentionTargetWakeable(input: {
+  agentId: string;
+  storedAgents: StoredAgentRecord[];
+  liveAgents: ManagedAgent[];
+}): boolean {
+  return isAgentWakeable({
+    live: input.liveAgents.find((agent) => agent.id === input.agentId),
+    record: input.storedAgents.find((record) => record.id === input.agentId),
+  });
+}
+
 function isChatMentionTargetEligible(input: {
   agentId: string;
   authorAgentId: string;
@@ -180,15 +214,17 @@ function isChatMentionTargetEligible(input: {
     return false;
   }
 
+  // Archived is the one state that puts an agent out of reach; `internal` marks
+  // an agent that is not a participant at all. Everything else is transient.
+  //
+  // `error` is not a reason to skip: DEC-10 lists it as wakeable because it
+  // means the last turn failed, not that the agent is unusable. The wake goes
+  // through `ensureAgentLoaded`, which is how such an agent comes back.
   const stored = input.storedAgents.find((record) => record.id === input.agentId);
-  if (stored?.internal || stored?.archivedAt || stored?.lastStatus === "error") {
+  if (stored?.internal || stored?.archivedAt) {
     return false;
   }
 
   const live = input.liveAgents.find((agent) => agent.id === input.agentId);
-  if (live) {
-    return !live.internal && live.lifecycle !== "error";
-  }
-
-  return true;
+  return !live?.internal;
 }

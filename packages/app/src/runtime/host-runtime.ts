@@ -56,6 +56,8 @@ import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
 import { encodeImages } from "@/utils/encode-images";
 import { DirectorySync, type RefreshAgentDirectoryResult } from "@/runtime/directory-sync";
+import { TeamSync } from "@/runtime/team-sync";
+import { hostSupportsFeature } from "@/runtime/host-features";
 import { ReplicaCache } from "@/runtime/replica-cache";
 import { nativePerformanceTrace } from "@/performance/native-trace";
 
@@ -1362,6 +1364,8 @@ export class HostRuntimeStore {
   private directoryBootstrapInFlight = new Map<string, Promise<void>>();
   private queuedAgentDrainInFlight = new Set<string>();
   private directorySyncByServer = new Map<string, DirectorySync>();
+  private teamSyncByServer = new Map<string, TeamSync>();
+  private teamSupportSubscriptions = new Map<string, () => void>();
   private configuredOverrideBootstrapInFlight: Promise<void> | null = null;
   private bootPromise: Promise<void> | null = null;
   private storage: HostRuntimeStorage;
@@ -1599,6 +1603,8 @@ export class HostRuntimeStore {
     this.replicaCache.reconcileServerId(oldServerId, newServerId);
     this.directorySyncByServer.get(oldServerId)?.dispose();
     this.directorySyncByServer.delete(oldServerId);
+    this.disposeTeamSync(oldServerId);
+    this.registerTeamSync(newServerId);
     const directory = new DirectorySync(newServerId, {
       onAgentStoppedRunning: (agentId) => this.drainQueuedAgentMessage(newServerId, agentId),
       markAgentLoading: () => controller.markAgentDirectorySyncLoading(),
@@ -1962,6 +1968,7 @@ export class HostRuntimeStore {
       this.directoryBootstrapInFlight.delete(serverId);
       this.directorySyncByServer.get(serverId)?.dispose();
       this.directorySyncByServer.delete(serverId);
+      this.disposeTeamSync(serverId);
       this.clearHostReplica(serverId);
       void controller.stop();
       this.emit(serverId);
@@ -1994,6 +2001,7 @@ export class HostRuntimeStore {
           markAgentError: (error) => controller.markAgentDirectorySyncError(error),
         }),
       );
+      this.registerTeamSync(host.serverId);
       const initialSnapshot = controller.getSnapshot();
       this.lastConnectionStatusByServer.set(host.serverId, initialSnapshot.connectionStatus);
       this.connectionStatusStartedAtByServer.set(host.serverId, Date.now());
@@ -2017,6 +2025,63 @@ export class HostRuntimeStore {
         });
       this.emit(host.serverId);
     }
+  }
+
+  /**
+   * Builds the team sync for a host, and keeps it told about the one thing the
+   * host snapshot does not carry.
+   *
+   * Whether a daemon has teams arrives in its `serverInfo`, which lands after
+   * the connection does and through the session store rather than the host
+   * snapshot. Without watching for it, the first — and possibly only —
+   * `connectionChanged` for a host says "not known", and nothing would ever
+   * come back to answer it.
+   */
+  private registerTeamSync(serverId: string): void {
+    const sync = new TeamSync({
+      commit: (teams) => useSessionStore.getState().replaceTeams(serverId, teams),
+      applyTasks: (tasks) => useSessionStore.getState().applyTeamTasks(serverId, tasks),
+      clearTasks: () => useSessionStore.getState().clearTeamTasks(serverId),
+      setHydrated: (hydrated) => useSessionStore.getState().setHasHydratedTeams(serverId, hydrated),
+      setError: (message) => useSessionStore.getState().setTeamsError(serverId, message),
+    });
+    this.teamSyncByServer.set(serverId, sync);
+    this.teamSupportSubscriptions.set(
+      serverId,
+      useSessionStore.subscribe(
+        (state) => state.sessions[serverId]?.serverInfo,
+        () => {
+          const controller = this.controllers.get(serverId);
+          if (controller) this.syncTeamConnection(serverId, controller.getSnapshot());
+        },
+      ),
+    );
+  }
+
+  private disposeTeamSync(serverId: string): void {
+    this.teamSyncByServer.get(serverId)?.dispose();
+    this.teamSyncByServer.delete(serverId);
+    this.teamSupportSubscriptions.get(serverId)?.();
+    this.teamSupportSubscriptions.delete(serverId);
+  }
+
+  /**
+   * Teams get their own call rather than riding on the directory's, because
+   * they are gated on a daemon feature the directory knows nothing about and an
+   * older daemon should be asked for nothing at all.
+   */
+  private syncTeamConnection(serverId: string, snapshot: HostRuntimeSnapshot): void {
+    const serverInfo = useSessionStore.getState().sessions[serverId]?.serverInfo;
+    this.teamSyncByServer.get(serverId)?.connectionChanged({
+      client: snapshot.client,
+      status: snapshot.connectionStatus === "online" ? "online" : "offline",
+      source: {
+        clientGeneration: snapshot.clientGeneration,
+        connectionEpoch: snapshot.connectionEpoch,
+      },
+      // Undefined means the handshake has not landed; null is what says so.
+      supportsTeams: serverInfo === undefined ? null : hostSupportsFeature(serverInfo, "teams"),
+    });
   }
 
   private syncSessionReplica(serverId: string, snapshot: HostRuntimeSnapshot): void {
@@ -2051,6 +2116,7 @@ export class HostRuntimeStore {
           connectionEpoch: snapshot.connectionEpoch,
         },
       }) ?? false;
+    this.syncTeamConnection(serverId, snapshot);
     const previousStatus = this.lastConnectionStatusByServer.get(serverId);
     const statusChanged = previousStatus !== snapshot.connectionStatus;
     const isUnavailable =

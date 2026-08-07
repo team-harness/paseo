@@ -8,17 +8,28 @@ import {
   ChatMessageSchema,
   ChatRoomDetailSchema,
   ChatRoomSchema,
+  type ChatAuthor,
   type ChatMessage,
   type ChatRoom,
   type ChatRoomDetail,
+  type ChatRoomOwnerKind,
 } from "@getpaseo/protocol/chat/types";
 
-const ChatStorePayloadSchema = z.object({
-  rooms: z.array(ChatRoomSchema),
+/** The pre-0.3.0 layout: every room and every message in one file. */
+// Rooms and messages both come through as `unknown` and are validated one
+// entry at a time. Validating the arrays as a whole would let one damaged room
+// discard every healthy conversation in the file.
+const LegacyChatStorePayloadSchema = z.object({
+  rooms: z.array(z.unknown()),
+  messages: z.array(z.unknown()),
+});
+
+const ChatRoomFileSchema = z.object({
+  room: ChatRoomSchema,
   messages: z.array(ChatMessageSchema),
 });
 
-type ChatStorePayload = z.infer<typeof ChatStorePayloadSchema>;
+type ChatRoomFile = z.infer<typeof ChatRoomFileSchema>;
 
 function normalizeRoomName(name: string): string {
   return name.trim().toLocaleLowerCase();
@@ -30,6 +41,18 @@ function trimToNull(value: string | null | undefined): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * A room id becomes a filename, so a caller that picks the id would otherwise
+ * pick where in the filesystem the room is written — and, on discard, deleted.
+ * Ids are restricted to one path segment of characters that mean nothing to the
+ * filesystem; `.` and `..` are excluded because they resolve elsewhere.
+ */
+const SAFE_ROOM_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+function isSafeRoomId(roomId: string): boolean {
+  return roomId !== "." && roomId !== ".." && SAFE_ROOM_ID_PATTERN.test(roomId);
 }
 
 const CHAT_MENTION_PATTERN = /(?:^|[\s(])@([A-Za-z0-9][A-Za-z0-9._-]*)/g;
@@ -66,7 +89,49 @@ interface Waiter {
 export interface CreateChatRoomInput {
   name: string;
   purpose?: string | null;
+  /**
+   * Lets a caller that pre-allocated the id create the room under it. Asking
+   * twice with the same owner returns what is already there, so replaying a
+   * creation plan after a crash finds its room instead of making a second one.
+   */
+  roomId?: string;
+  ownerKind?: ChatRoomOwnerKind;
+  ownerId?: string;
+  /** What a human reads. `name` stays the unique internal handle. */
+  displayName?: string;
 }
+
+export interface DiscardOwnedRoomInput {
+  roomId: string;
+  ownerKind: ChatRoomOwnerKind;
+  ownerId: string;
+}
+
+export interface ReadChatRoomPageInput {
+  room: string;
+  /** Resume after this cursor instead of jumping to the newest page. */
+  afterCursor?: number;
+  limit?: number;
+}
+
+export interface ChatRoomPage {
+  roomId: string;
+  messages: ChatMessage[];
+  /** Position of the last message returned; 0 for an empty room. */
+  cursor: number;
+  /** Newer messages exist beyond `cursor`. */
+  hasMore: boolean;
+}
+
+export interface ChatRoomMessageEvent {
+  roomId: string;
+  message: ChatMessage;
+  cursor: number;
+}
+
+export type ChatRoomMessageSubscriber = (event: ChatRoomMessageEvent) => void;
+
+export type ChatRoomRemovedSubscriber = (roomId: string) => void;
 
 export interface InspectChatRoomInput {
   room: string;
@@ -81,6 +146,39 @@ export interface PostChatMessageInput {
   authorAgentId: string;
   body: string;
   replyToMessageId?: string | null;
+}
+
+/** Who is speaking. A human's id is a client id, not an agent id. */
+export type ChatActor = ChatAuthor;
+
+export interface PostMessageInput {
+  actor: ChatActor;
+  room: string;
+  body: string;
+  replyToMessageId?: string | null;
+}
+
+export interface ChatMentionNotification {
+  roomId: string;
+  actor: ChatActor;
+  body: string;
+  mentionAgentIds: string[];
+}
+
+/**
+ * Resolves mentions against the agent runtime. Injected rather than imported so
+ * the service stays independent of that runtime, and so a test can watch the
+ * fanout without one.
+ *
+ * Two phases because they answer different questions at different times.
+ * `validate` runs before the message is written and can refuse it — a mention
+ * storm is rejected outright rather than stored and silently ignored. `notify`
+ * runs after, when the message is already in the room and failing would tell
+ * the author it never landed.
+ */
+export interface ChatMentionHandler {
+  validate?(input: ChatMentionNotification): Promise<{ ok: true } | { ok: false; error: string }>;
+  notify(input: ChatMentionNotification): Promise<void>;
 }
 
 export interface ReadChatMessagesInput {
@@ -109,16 +207,40 @@ export interface InspectChatRoomResult {
 }
 
 export class FileBackedChatService {
-  private readonly filePath: string;
+  private readonly chatDir: string;
+  private readonly roomsDir: string;
+  private readonly legacyFilePath: string;
+  private readonly migratedMarkerPath: string;
   private readonly logger: pino.Logger;
   private loaded = false;
+  private readOnly = false;
   private readonly rooms = new Map<string, ChatRoom>();
+  /**
+   * Which incarnation of an id is current. Ids are chosen by callers and get
+   * reused — a team room is named after its team — so "a room with this id
+   * exists" does not answer "the room this write was for still exists". Counts
+   * survive removal so a recreated id never looks like the one it replaced.
+   */
+  private readonly roomIncarnations = new Map<string, number>();
   private readonly messagesByRoomId = new Map<string, ChatMessage[]>();
-  private persistQueue: Promise<void> = Promise.resolve();
+  /** Serialized per room: one busy room no longer rewrites every other room. */
+  private readonly persistQueues = new Map<string, Promise<void>>();
   private readonly waitersByRoomId = new Map<string, Set<Waiter>>();
+  private readonly roomMessageSubscribers = new Set<ChatRoomMessageSubscriber>();
+  private readonly roomRemovedSubscribers = new Set<ChatRoomRemovedSubscriber>();
 
-  constructor(options: { paseoHome: string; logger: pino.Logger }) {
-    this.filePath = path.join(options.paseoHome, "chat", "rooms.json");
+  private mentionHandler: ChatMentionHandler | null;
+
+  constructor(options: {
+    paseoHome: string;
+    logger: pino.Logger;
+    mentionHandler?: ChatMentionHandler;
+  }) {
+    this.mentionHandler = options.mentionHandler ?? null;
+    this.chatDir = path.join(options.paseoHome, "chat");
+    this.roomsDir = path.join(this.chatDir, "rooms");
+    this.legacyFilePath = path.join(this.chatDir, "rooms.json");
+    this.migratedMarkerPath = path.join(this.chatDir, ".migrated");
     this.logger = options.logger.child({ component: "chat-service" });
   }
 
@@ -126,12 +248,69 @@ export class FileBackedChatService {
     await this.load();
   }
 
+  /**
+   * Set after construction because waking an agent needs the agent runtime, and
+   * the chat store is built before it during daemon startup.
+   */
+  setMentionHandler(handler: ChatMentionHandler): void {
+    this.mentionHandler = handler;
+  }
+
   async createRoom(input: CreateChatRoomInput): Promise<ChatRoomDetail> {
     await this.load();
+    this.assertWritable();
     const name = input.name.trim();
     if (name.length === 0) {
       throw new ChatServiceError("invalid_chat_room_name", "Chat room name is required");
     }
+
+    if (input.roomId !== undefined && !isSafeRoomId(input.roomId)) {
+      throw new ChatServiceError(
+        "invalid_chat_room_id",
+        "Chat room id must be a single path segment of letters, digits, dots, dashes or underscores",
+      );
+    }
+
+    // An owner is a pair. Half of one produces a room that generic delete
+    // refuses because it is owned, and that no discard call can ever match.
+    if ((input.ownerKind && !input.ownerId) || (input.ownerId && !input.ownerKind)) {
+      throw new ChatServiceError(
+        "invalid_chat_room_owner",
+        "Chat room owner needs both a kind and an id",
+      );
+    }
+
+    if (input.roomId) {
+      const existing = this.rooms.get(input.roomId);
+      if (existing) {
+        // Anything under this id that belongs to someone else is a collision.
+        if (
+          !input.ownerKind ||
+          existing.ownerKind !== input.ownerKind ||
+          existing.ownerId !== input.ownerId
+        ) {
+          throw new ChatServiceError(
+            "chat_room_owner_conflict",
+            `Chat room ${input.roomId} already exists and belongs to someone else`,
+          );
+        }
+        // The same owner asking for the same room is a replay. Asking for a
+        // different room under that id is not, and returning the old one would
+        // leave the caller believing it got settings it did not.
+        if (
+          existing.name !== name ||
+          existing.purpose !== trimToNull(input.purpose) ||
+          existing.displayName !== input.displayName
+        ) {
+          throw new ChatServiceError(
+            "chat_room_config_conflict",
+            `Chat room ${input.roomId} already exists with different settings`,
+          );
+        }
+        return this.toRoomDetail(existing);
+      }
+    }
+
     if (this.findRoomByName(name)) {
       throw new ChatServiceError(
         "chat_room_name_taken",
@@ -141,14 +320,17 @@ export class FileBackedChatService {
 
     const now = new Date().toISOString();
     const room = ChatRoomSchema.parse({
-      id: randomUUID(),
+      id: input.roomId ?? randomUUID(),
       name,
       purpose: trimToNull(input.purpose),
       createdAt: now,
       updatedAt: now,
+      ...(input.ownerKind ? { ownerKind: input.ownerKind, ownerId: input.ownerId } : {}),
+      ...(input.displayName ? { displayName: input.displayName } : {}),
     });
     this.rooms.set(room.id, room);
-    await this.enqueuePersist();
+    this.bumpRoomIncarnation(room.id);
+    await this.enqueuePersist(room.id);
     return this.toRoomDetail(room);
   }
 
@@ -169,20 +351,206 @@ export class FileBackedChatService {
 
   async deleteRoom(input: DeleteChatRoomInput): Promise<DeleteChatRoomResult> {
     await this.load();
+    this.assertWritable();
     const room = this.resolveRoom(input.room);
+    if (room.ownerKind) {
+      // An owned room lives and dies with its owner. Deleting it from here would
+      // leave the owner pointing at a room that no longer exists.
+      throw new ChatServiceError(
+        "chat_room_owned",
+        `Chat room ${room.name} belongs to ${room.ownerKind} ${room.ownerId} and cannot be deleted directly`,
+      );
+    }
     const detail = this.toRoomDetail(room);
     this.rooms.delete(room.id);
     this.messagesByRoomId.delete(room.id);
-    await this.enqueuePersist();
+    this.retireRoomIncarnation(room.id);
+    // Announced with the removal, not after the write it triggers. The id can
+    // be taken by a new room while that write is queued, and a removal
+    // announced then would tear down subscriptions to the replacement.
     this.rejectWaiters(
       room.id,
       new ChatServiceError("chat_room_deleted", `Chat room deleted: ${room.name}`),
     );
+    this.publishRoomRemoved(room.id);
+    await this.enqueuePersist(room.id);
     return { room: detail };
   }
 
-  async dispatchMessage(input: PostChatMessageInput): Promise<ChatMessage> {
+  /**
+   * A page of a room plus the cursor it ends on, in one call.
+   *
+   * Without `afterCursor` this is the newest `limit` messages, which is what a
+   * freshly opened room wants. A client that was disconnected passes the cursor
+   * it last saw and gets that gap in ascending order instead; `hasMore` says
+   * whether the gap is longer than this page, so it can keep walking forward
+   * while live messages arrive on top.
+   */
+  async readRoomPage(input: ReadChatRoomPageInput): Promise<ChatRoomPage> {
     await this.load();
+    const room = this.resolveRoom(input.room);
+    const messages = this.getRoomMessages(room.id);
+    const limit = this.normalizeLimit(input.limit);
+
+    if (input.afterCursor === undefined) {
+      const page =
+        limit >= messages.length ? [...messages] : messages.slice(messages.length - limit);
+      return { roomId: room.id, messages: page, cursor: messages.length, hasMore: false };
+    }
+
+    // Cursors are 1-based positions, so the message at cursor N is at index N-1.
+    // A cursor past the end is clamped rather than echoed back: handing it
+    // straight back would have the client discard every message up to it as
+    // already seen. It can only come from a room that shrank or a bad client.
+    const start = Math.min(Math.max(0, input.afterCursor), messages.length);
+    const page = messages.slice(start, start + limit);
+    return {
+      roomId: room.id,
+      messages: page,
+      cursor: start + page.length,
+      hasMore: start + page.length < messages.length,
+    };
+  }
+
+  /**
+   * Follows every room. Filtering by room belongs to the caller, which knows
+   * which of its own connections asked for which room.
+   */
+  onRoomMessage(subscriber: ChatRoomMessageSubscriber): () => void {
+    this.roomMessageSubscribers.add(subscriber);
+    return () => {
+      this.roomMessageSubscribers.delete(subscriber);
+    };
+  }
+
+  /**
+   * Announces a room that is gone, so watchers can let go of it. Ids are
+   * reusable — a team room is named after its team — so a subscription nobody
+   * unsubscribed would otherwise start streaming a different room under the
+   * same id to whoever was watching the old one.
+   */
+  onRoomRemoved(subscriber: ChatRoomRemovedSubscriber): () => void {
+    this.roomRemovedSubscribers.add(subscriber);
+    return () => {
+      this.roomRemovedSubscribers.delete(subscriber);
+    };
+  }
+
+  private publishRoomMessage(event: ChatRoomMessageEvent): void {
+    for (const subscriber of Array.from(this.roomMessageSubscribers)) {
+      try {
+        subscriber(event);
+      } catch (error) {
+        // The message is already stored; one bad listener must not take the
+        // others down with it.
+        this.logger.error({ err: error, roomId: event.roomId }, "Chat room subscriber failed");
+      }
+    }
+  }
+
+  private publishRoomRemoved(roomId: string): void {
+    for (const subscriber of Array.from(this.roomRemovedSubscribers)) {
+      try {
+        subscriber(roomId);
+      } catch (error) {
+        this.logger.error({ err: error, roomId }, "Chat room removal subscriber failed");
+      }
+    }
+  }
+
+  /**
+   * The owner's way to remove its own room, which generic delete refuses.
+   *
+   * Missing is success: a reconciler reruns cleanup after a crash, and a second
+   * pass should not fail because the first one finished.
+   */
+  async discardOwnedRoom(input: DiscardOwnedRoomInput): Promise<void> {
+    await this.load();
+    this.assertWritable();
+    const room = this.rooms.get(input.roomId);
+    if (!room) {
+      return;
+    }
+    if (room.ownerKind !== input.ownerKind || room.ownerId !== input.ownerId) {
+      throw new ChatServiceError(
+        "chat_room_owner_conflict",
+        `Chat room ${input.roomId} does not belong to ${input.ownerKind} ${input.ownerId}`,
+      );
+    }
+    this.rooms.delete(room.id);
+    this.messagesByRoomId.delete(room.id);
+    this.retireRoomIncarnation(room.id);
+    this.rejectWaiters(
+      room.id,
+      new ChatServiceError("chat_room_deleted", `Chat room deleted: ${room.name}`),
+    );
+    this.publishRoomRemoved(room.id);
+    await this.enqueuePersist(room.id);
+  }
+
+  /**
+   * The single way a message enters a room: validate, persist, then wake whoever
+   * was mentioned. Fanout lives here rather than in each caller so a message
+   * posted by an agent tool reaches the same people as one posted over the
+   * WebSocket — previously only the latter woke anyone.
+   */
+  async post(input: PostMessageInput): Promise<ChatMessage> {
+    await this.load();
+    const mentionAgentIds = parseMentionAgentIds(input.body);
+
+    // Checked before the write: a message whose mentions cannot be delivered is
+    // refused outright rather than stored with nobody told about it.
+    if (this.mentionHandler?.validate && mentionAgentIds.length > 0) {
+      const verdict = await this.mentionHandler.validate({
+        roomId: this.resolveRoom(input.room).id,
+        actor: input.actor,
+        body: input.body,
+        mentionAgentIds,
+      });
+      if (!verdict.ok) {
+        throw new ChatServiceError("chat_mention_fanout_limit_exceeded", verdict.error);
+      }
+    }
+
+    const message = await this.appendMessage({
+      room: input.room,
+      authorAgentId: input.actor.id,
+      body: input.body,
+      replyToMessageId: input.replyToMessageId,
+      actor: input.actor,
+    });
+
+    if (this.mentionHandler && message.mentionAgentIds.length > 0) {
+      try {
+        await this.mentionHandler.notify({
+          roomId: message.roomId,
+          actor: input.actor,
+          body: message.body,
+          mentionAgentIds: message.mentionAgentIds,
+        });
+      } catch (error) {
+        // The message is already in the room. Failing the post now would tell
+        // the author it never landed, which is worse than a missed wake-up.
+        this.logger.error(
+          { err: error, roomId: message.roomId },
+          "Failed to notify mentioned agents",
+        );
+      }
+    }
+
+    return message;
+  }
+
+  /**
+   * Private on purpose: {@link post} is the only way in. A public append would
+   * be a second write path that skips mention fanout, which is exactly the
+   * split this consolidation removed.
+   */
+  private async appendMessage(
+    input: PostChatMessageInput & { actor?: ChatActor },
+  ): Promise<ChatMessage> {
+    await this.load();
+    this.assertWritable();
     const room = this.resolveRoom(input.room);
     const body = input.body.trim();
     if (body.length === 0) {
@@ -192,6 +560,9 @@ export class FileBackedChatService {
     if (authorAgentId.length === 0) {
       throw new ChatServiceError("invalid_chat_author", "Chat message author is required");
     }
+    // A caller that predates the author model is an agent by definition: humans
+    // could not post before there was a way to say so.
+    const author: ChatAuthor = input.actor ?? { kind: "agent", id: authorAgentId };
 
     const messages = this.getRoomMessages(room.id);
     const replyToMessageId = trimToNull(input.replyToMessageId);
@@ -206,6 +577,13 @@ export class FileBackedChatService {
     }
 
     const createdAt = new Date().toISOString();
+    // Both `authorAgentId` and `author` are written. The first is what clients
+    // that predate the author model read; for a human it holds a client id,
+    // which is why the second exists.
+    //
+    // COMPAT(chatMessageAuthorDualWrite): added in v0.3.0, remove after
+    // 2027-02-06. `authorAgentId` is required and stays; what ends is writing a
+    // client id into it for a human, once the client floor reads `author`.
     const message = ChatMessageSchema.parse({
       id: randomUUID(),
       roomId: room.id,
@@ -214,9 +592,14 @@ export class FileBackedChatService {
       replyToMessageId,
       mentionAgentIds: parseMentionAgentIds(body),
       createdAt,
+      author,
     });
 
-    messages.push(message);
+    // The cursor is this message's own position, taken when it takes that
+    // position. Reading the length back after the await would give every post
+    // that overlapped the same number, and a client that dedupes on the cursor
+    // would keep one of them and discard the rest as replays.
+    const cursor = messages.push(message);
     this.messagesByRoomId.set(room.id, messages);
     this.rooms.set(
       room.id,
@@ -225,8 +608,22 @@ export class FileBackedChatService {
         updatedAt: createdAt,
       }),
     );
-    await this.enqueuePersist();
+    const incarnation = this.roomIncarnations.get(room.id);
+    await this.enqueuePersist(room.id);
+    // The room can be removed while that write is queued, and the write then
+    // deletes the file instead of creating it — a removed room has no file. So
+    // getting here proves nothing about whether the message was stored; only
+    // the room still being the same room does. Checking the id alone would let
+    // a room removed and recreated under it pass, and this message would be
+    // announced as belonging to a room that never stored it.
+    if (this.roomIncarnations.get(room.id) !== incarnation) {
+      throw new ChatServiceError(
+        "chat_room_not_found",
+        `Chat room was removed before the message could be stored: ${room.id}`,
+      );
+    }
     this.notifyWaiters(room.id);
+    this.publishRoomMessage({ roomId: room.id, message, cursor });
     return message;
   }
 
@@ -259,9 +656,38 @@ export class FileBackedChatService {
     const room = this.resolveRoom(input.room);
     const posters = new Set<string>();
     for (const message of this.getRoomMessages(room.id)) {
+      // Only a message that says it came from an agent counts. Humans post here
+      // too and their id is a client id, which mention fanout would go looking
+      // for an agent under; a message from before `author` existed cannot say
+      // which it was, and guessing would both inflate `@everyone` against its
+      // cap and risk waking whichever agent shares that id.
+      if (message.author?.kind !== "agent") {
+        continue;
+      }
       posters.add(message.authorAgentId);
     }
     return Array.from(posters);
+  }
+
+  /**
+   * Client ids of the humans who have posted here.
+   *
+   * The counterpart to {@link listRoomPosterAgentIds}, for the caller that needs
+   * to know a token is a person rather than an agent it failed to find. A
+   * message from before `author` existed is left out for the same reason it is
+   * left out there: it cannot say which it was.
+   */
+  async listRoomHumanAuthorIds(input: ListChatRoomPosterAgentIdsInput): Promise<string[]> {
+    await this.load();
+    const room = this.resolveRoom(input.room);
+    const humans = new Set<string>();
+    for (const message of this.getRoomMessages(room.id)) {
+      if (message.author?.kind !== "human") {
+        continue;
+      }
+      humans.add(message.authorAgentId);
+    }
+    return Array.from(humans);
   }
 
   async waitForMessages(input: WaitForChatMessagesInput): Promise<ChatMessage[]> {
@@ -321,6 +747,20 @@ export class FileBackedChatService {
     });
   }
 
+  /**
+   * Resolves a room name or id to its id, so a caller can register interest in
+   * the room before reading from it.
+   *
+   * A subscriber that reads its first page and only then starts listening
+   * misses anything posted in between, and the gap is invisible to it. Doing it
+   * the other way round can only duplicate, which the cursor on each message
+   * makes exactly removable.
+   */
+  async resolveRoomId(room: string): Promise<string> {
+    await this.load();
+    return this.resolveRoom(room).id;
+  }
+
   private async load(): Promise<void> {
     if (this.loaded) {
       return;
@@ -329,43 +769,298 @@ export class FileBackedChatService {
     this.rooms.clear();
     this.messagesByRoomId.clear();
 
-    try {
-      const raw = await fs.readFile(this.filePath, "utf8");
-      const parsed = ChatStorePayloadSchema.parse(JSON.parse(raw));
-      for (const room of parsed.rooms) {
-        this.rooms.set(room.id, room);
-      }
-      for (const message of parsed.messages) {
-        const messages = this.messagesByRoomId.get(message.roomId) ?? [];
-        messages.push(message);
-        this.messagesByRoomId.set(message.roomId, messages);
-      }
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "ENOENT") {
-        this.logger.error({ err: error, filePath: this.filePath }, "Failed to load chat store");
-      }
-    }
+    this.readOnly = !(await this.migrateIfNeeded());
+    await this.loadRoomFiles();
 
     this.loaded = true;
   }
 
-  private async enqueuePersist(): Promise<void> {
-    const nextPersist = this.persistQueue.then(() => this.persist());
-    this.persistQueue = nextPersist.catch(() => {});
-    await nextPersist;
+  /**
+   * Refuses writes while an unreadable legacy store is still waiting to be
+   * migrated. Coming up empty is survivable; writing is not, because the
+   * migration rewrites every room from the legacy file once it can be read, and
+   * anything created in the meantime would go with it.
+   */
+  private assertWritable(): void {
+    if (this.readOnly) {
+      throw new ChatServiceError(
+        "chat_store_unavailable",
+        "Chat is read-only until the legacy store at chat/rooms.json can be read and migrated",
+      );
+    }
   }
 
-  private async persist(): Promise<void> {
-    const payload: ChatStorePayload = {
-      rooms: Array.from(this.rooms.values()).sort((left, right) =>
-        left.createdAt.localeCompare(right.createdAt),
-      ),
-      messages: Array.from(this.messagesByRoomId.values())
-        .flat()
-        .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
-    };
-    await writeJsonFileAtomic(this.filePath, payload);
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Moves a legacy single-file store to one file per room, once.
+   *
+   * Ordering is load-bearing: every room file is written first, then the legacy
+   * file is renamed aside, then the marker lands. Nothing writes the new layout
+   * until the marker exists, so while the legacy file is still in place it is
+   * the only authority and every room file is rewritten from it — including one
+   * an earlier interrupted attempt already produced.
+   *
+   * Skipping a room file that is already there would be faster and is wrong: a
+   * user who downgrades to a daemon that still writes the legacy layout, chats,
+   * and upgrades again would lose everything said in the meantime. Rewriting is
+   * idempotent, so the only cost is the write itself.
+   *
+   * A missing legacy file with a `.bak` present means the rename already
+   * happened, which by the same ordering means the room files are complete.
+   *
+   * The legacy file is the whole truth while it is in place, not an upper bound
+   * on it, so a room file it does not account for is removed rather than kept:
+   * a room deleted while downgraded has to stay deleted.
+   *
+   * A legacy file that cannot be read at all leaves the marker unwritten and
+   * the store read-only. The marker means "the legacy file has been dealt
+   * with", and writing it over a store nobody could read would put every
+   * conversation in it out of reach on a path that never runs again. Staying
+   * read-only is the other half: a room created before the file is repaired
+   * would be erased by the rewrite that finally migrates it.
+   *
+   * Returns whether the store is safe to write to.
+   */
+  private async migrateIfNeeded(): Promise<boolean> {
+    if (await this.fileExists(this.migratedMarkerPath)) {
+      return true;
+    }
+
+    await fs.mkdir(this.roomsDir, { recursive: true });
+    const legacy = await this.readLegacyStore();
+    if (legacy.status === "unreadable") {
+      return false;
+    }
+
+    if (legacy.status === "present") {
+      const migratedRoomIds = new Set<string>();
+      for (const room of legacy.rooms) {
+        await writeJsonFileAtomic(this.roomFilePath(room.id), {
+          room,
+          messages: legacy.messagesByRoomId.get(room.id) ?? [],
+        } satisfies ChatRoomFile);
+        migratedRoomIds.add(room.id);
+      }
+      await this.removeRoomFilesOutside(migratedRoomIds);
+      await fs.rename(this.legacyFilePath, `${this.legacyFilePath}.bak`).catch((error) => {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "ENOENT") {
+          throw error;
+        }
+      });
+    }
+
+    await writeJsonFileAtomic(this.migratedMarkerPath, {
+      migratedAt: new Date().toISOString(),
+    });
+    return true;
+  }
+
+  /**
+   * Drops room files an interrupted attempt left behind for rooms since gone.
+   *
+   * Throws on anything but an absent directory. A transient read failure that
+   * was swallowed here would let the migration finish and write its marker over
+   * a store it did not finish cleaning, and the rooms it failed to remove come
+   * back for good on the next start — the migration never runs again.
+   */
+  private async removeRoomFilesOutside(keepRoomIds: Set<string>): Promise<void> {
+    let entries: string[];
+    try {
+      entries = await fs.readdir(this.roomsDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return;
+      }
+      throw error;
+    }
+    for (const entry of entries) {
+      if (!entry.endsWith(".json")) continue;
+      if (keepRoomIds.has(entry.slice(0, -".json".length))) continue;
+      await fs.rm(path.join(this.roomsDir, entry), { force: true });
+    }
+  }
+
+  /**
+   * `absent` means there is nothing to migrate; `unreadable` means there is
+   * something and this process could not make sense of it. The caller has to
+   * tell them apart — the first is a finished migration, the second must not be
+   * recorded as one.
+   */
+  private async readLegacyStore(): Promise<
+    | { status: "absent" }
+    | { status: "unreadable" }
+    | {
+        status: "present";
+        rooms: ChatRoom[];
+        messagesByRoomId: Map<string, ChatMessage[]>;
+      }
+  > {
+    let raw: string;
+    try {
+      raw = await fs.readFile(this.legacyFilePath, "utf8");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        return { status: "absent" };
+      }
+      this.logger.error(
+        { err: error, filePath: this.legacyFilePath },
+        "Failed to read legacy chat store",
+      );
+      return { status: "unreadable" };
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(raw);
+    } catch (error) {
+      this.logger.error(
+        { err: error, filePath: this.legacyFilePath },
+        "Legacy chat store is not valid JSON; leaving it in place",
+      );
+      return { status: "unreadable" };
+    }
+
+    const parsed = LegacyChatStorePayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      this.logger.error(
+        { issues: parsed.error.issues, filePath: this.legacyFilePath },
+        "Legacy chat store is unreadable; leaving it in place",
+      );
+      return { status: "unreadable" };
+    }
+
+    // Entries are validated one at a time: a single damaged room or message
+    // should cost that entry, not every conversation in the file. The original
+    // is never edited.
+    const rooms: ChatRoom[] = [];
+    for (const candidate of parsed.data.rooms) {
+      const room = ChatRoomSchema.safeParse(candidate);
+      if (!room.success) {
+        this.logger.warn(
+          { issues: room.error.issues },
+          "Skipping unreadable room while migrating chat store",
+        );
+        continue;
+      }
+      if (!isSafeRoomId(room.data.id)) {
+        this.logger.error(
+          { roomId: room.data.id },
+          "Skipping legacy room whose id would not be a safe filename",
+        );
+        continue;
+      }
+      rooms.push(room.data);
+    }
+
+    const messagesByRoomId = new Map<string, ChatMessage[]>();
+    for (const candidate of parsed.data.messages) {
+      const message = ChatMessageSchema.safeParse(candidate);
+      if (!message.success) {
+        this.logger.warn(
+          { issues: message.error.issues },
+          "Skipping unreadable message while migrating chat store",
+        );
+        continue;
+      }
+      const bucket = messagesByRoomId.get(message.data.roomId) ?? [];
+      bucket.push(message.data);
+      messagesByRoomId.set(message.data.roomId, bucket);
+    }
+    return { status: "present", rooms, messagesByRoomId };
+  }
+
+  private async loadRoomFiles(): Promise<void> {
+    let entries: string[];
+    try {
+      entries = await fs.readdir(this.roomsDir);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") {
+        this.logger.error({ err: error, dir: this.roomsDir }, "Failed to list chat rooms");
+      }
+      return;
+    }
+
+    for (const entry of entries) {
+      if (!entry.endsWith(".json")) continue;
+      const filePath = path.join(this.roomsDir, entry);
+      try {
+        const parsed = ChatRoomFileSchema.safeParse(
+          JSON.parse(await fs.readFile(filePath, "utf8")),
+        );
+        if (!parsed.success) {
+          // One damaged room must not strand the others.
+          this.logger.error(
+            { issues: parsed.error.issues, filePath },
+            "Skipping unreadable chat room file",
+          );
+          continue;
+        }
+        // The id inside the file decides where this room is written next, so it
+        // has to be a safe filename however it got onto disk. It also has to be
+        // the name of the file it came from: two files claiming one id would
+        // otherwise take turns overwriting each other.
+        if (!isSafeRoomId(parsed.data.room.id) || `${parsed.data.room.id}.json` !== entry) {
+          this.logger.error(
+            { roomId: parsed.data.room.id, filePath },
+            "Skipping chat room file whose id does not match its name",
+          );
+          continue;
+        }
+        this.rooms.set(parsed.data.room.id, parsed.data.room);
+        this.messagesByRoomId.set(parsed.data.room.id, parsed.data.messages);
+      } catch (error) {
+        this.logger.error({ err: error, filePath }, "Skipping unreadable chat room file");
+      }
+    }
+  }
+
+  /** A new room under this id. Anything still referring to the old one is stale. */
+  private bumpRoomIncarnation(roomId: string): void {
+    this.roomIncarnations.set(roomId, (this.roomIncarnations.get(roomId) ?? 0) + 1);
+  }
+
+  /** The room under this id is gone. Same effect: everything holding it is stale. */
+  private retireRoomIncarnation(roomId: string): void {
+    this.bumpRoomIncarnation(roomId);
+  }
+
+  private roomFilePath(roomId: string): string {
+    return path.join(this.roomsDir, `${roomId}.json`);
+  }
+
+  /** Serialized per room: a busy room no longer rewrites every other room. */
+  private async enqueuePersist(roomId: string): Promise<void> {
+    const previous = this.persistQueues.get(roomId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => this.persistRoom(roomId));
+    this.persistQueues.set(
+      roomId,
+      next.catch(() => undefined),
+    );
+    await next;
+  }
+
+  private async persistRoom(roomId: string): Promise<void> {
+    const room = this.rooms.get(roomId);
+    if (!room) {
+      await fs.rm(this.roomFilePath(roomId), { force: true });
+      return;
+    }
+    await fs.mkdir(this.roomsDir, { recursive: true });
+    await writeJsonFileAtomic(this.roomFilePath(roomId), {
+      room,
+      messages: this.messagesByRoomId.get(roomId) ?? [],
+    } satisfies ChatRoomFile);
   }
 
   private findRoomByName(name: string): ChatRoom | null {

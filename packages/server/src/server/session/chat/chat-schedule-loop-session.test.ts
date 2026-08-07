@@ -7,11 +7,11 @@ import {
 import { createStub } from "../../test-utils/class-mocks.js";
 import { findByType } from "../../test-utils/session-stubs.js";
 import type { SessionOutboundMessage } from "../../messages.js";
-import type { FileBackedChatService } from "../../chat/chat-service.js";
+import { ChatServiceError, type FileBackedChatService } from "../../chat/chat-service.js";
 import type { ScheduleService } from "../../schedule/service.js";
 import type { LoopService } from "../../loop-service.js";
 
-type ChatMessageFixture = Awaited<ReturnType<FileBackedChatService["dispatchMessage"]>>;
+type ChatMessageFixture = Awaited<ReturnType<FileBackedChatService["post"]>>;
 
 interface MakeOptions {
   chat?: { [K in keyof FileBackedChatService]?: unknown };
@@ -54,7 +54,10 @@ function makeSubsystem(options: MakeOptions = {}) {
 }
 
 describe("ChatScheduleLoopSession", () => {
-  it("chat/post emits the stored message and does not fan out without mentions", async () => {
+  // Mention fanout moved behind the chat store so an agent tool posting a
+  // message wakes the same people as a human posting one. What is left here is
+  // the handler's own job: name the author and relay the result.
+  it("chat/post attributes a bare post to the human on this socket", async () => {
     const message: ChatMessageFixture = {
       id: "m1",
       roomId: "r1",
@@ -63,9 +66,16 @@ describe("ChatScheduleLoopSession", () => {
       replyToMessageId: null,
       mentionAgentIds: [],
       createdAt: "2026-01-01T00:00:00.000Z",
+      author: { kind: "human", id: "client-1" },
     };
-    const { subsystem, emitted, sentAgentMessages } = makeSubsystem({
-      chat: { dispatchMessage: async () => message, listRoomPosterAgentIds: async () => [] },
+    const posted: Array<{ actor: { kind: string; id: string } }> = [];
+    const { subsystem, emitted } = makeSubsystem({
+      chat: {
+        post: async (input: { actor: { kind: string; id: string } }) => {
+          posted.push(input);
+          return message;
+        },
+      },
     });
 
     await subsystem.handleChatPostRequest({
@@ -75,45 +85,54 @@ describe("ChatScheduleLoopSession", () => {
       body: "hello",
     });
 
+    expect(posted[0]?.actor).toEqual({ kind: "human", id: "client-1" });
     const res = findByType(emitted, "chat/post/response");
     expect(res?.payload.message).toEqual(message);
     expect(res?.payload.error).toBeNull();
-    expect(sentAgentMessages).toEqual([]);
   });
 
-  it("chat/post notifies a mentioned agent through the host send seam", async () => {
+  it("chat/post attributes a post carrying an author id to that agent", async () => {
     const message: ChatMessageFixture = {
       id: "m2",
       roomId: "r1",
-      authorAgentId: "client-1",
-      body: "@agent-2 ping",
+      authorAgentId: "agent-7",
+      body: "on it",
       replyToMessageId: null,
-      mentionAgentIds: ["agent-2"],
+      mentionAgentIds: [],
       createdAt: "2026-01-01T00:00:00.000Z",
+      author: { kind: "agent", id: "agent-7" },
     };
-    const { subsystem, emitted, sentAgentMessages, waitForSend } = makeSubsystem({
-      chat: { dispatchMessage: async () => message, listRoomPosterAgentIds: async () => [] },
+    const posted: Array<{ actor: { kind: string; id: string } }> = [];
+    const { subsystem } = makeSubsystem({
+      chat: {
+        post: async (input: { actor: { kind: string; id: string } }) => {
+          posted.push(input);
+          return message;
+        },
+      },
     });
 
-    const sent = waitForSend();
     await subsystem.handleChatPostRequest({
       type: "chat/post",
       requestId: "p2",
       room: "r1",
-      body: "@agent-2 ping",
+      body: "on it",
+      authorAgentId: "agent-7",
     });
-    await sent;
 
-    expect(findByType(emitted, "chat/post/response")?.payload.error).toBeNull();
-    expect(sentAgentMessages).toHaveLength(1);
-    expect(sentAgentMessages[0]?.agentId).toBe("agent-2");
-    expect(sentAgentMessages[0]?.text).toContain('in room "r1"');
+    expect(posted[0]?.actor).toEqual({ kind: "agent", id: "agent-7" });
   });
 
-  it("chat/post rejects @everyone past the fanout limit with the chat error code", async () => {
-    const posters = Array.from({ length: 26 }, (_, i) => `poster-${i}`);
+  it("chat/post surfaces a refused mention storm as a chat error", async () => {
     const { subsystem, emitted } = makeSubsystem({
-      chat: { listRoomPosterAgentIds: async () => posters },
+      chat: {
+        post: async () => {
+          throw new ChatServiceError(
+            "chat_mention_fanout_limit_exceeded",
+            "Too many mentioned agents",
+          );
+        },
+      },
     });
 
     await subsystem.handleChatPostRequest({

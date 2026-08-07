@@ -135,6 +135,14 @@ export interface SendPromptToAgentParams {
    * schedule fires, notify-on-finish).
    */
   unarchive?: boolean;
+  /**
+   * Default true. When false, a run already in flight is left alone and this
+   * call rejects instead — the manager refuses a second run rather than
+   * queueing it. Use false for prompts that nudge rather than command: a chat
+   * mention must not cancel the turn someone else is waiting on (DEC-10), and
+   * losing the nudge costs nothing because the message is already in the room.
+   */
+  replaceRunning?: boolean;
   logger: Logger;
 }
 
@@ -202,7 +210,7 @@ export async function sendPromptToAgent(
     : params.runOptions;
 
   return await startAgentRun(params.agentManager, params.agentId, params.prompt, params.logger, {
-    replaceRunning: true,
+    replaceRunning: params.replaceRunning ?? true,
     runOptions,
   });
 }

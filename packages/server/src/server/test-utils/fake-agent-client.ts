@@ -122,12 +122,35 @@ function buildPersistence(
   return { provider, sessionId, ...(metadata ? { metadata } : {}) };
 }
 
+/**
+ * A request with more than the usual two answers.
+ *
+ * Real adapters send these, and a client that renders its own Allow/Deny pair
+ * answers a three-way question with option one. Only requests whose command
+ * says `choose` carry them, so every other test keeps the shape it asserts on.
+ */
+const MULTI_CHOICE_PERMISSION_ACTIONS = [
+  { id: "allow-once", label: "Allow once", behavior: "allow" as const },
+  { id: "allow-always", label: "Allow always", behavior: "allow" as const },
+  { id: "stop", label: "Stop", behavior: "deny" as const },
+];
+
+function offersChoices(input: Record<string, unknown> | undefined): boolean {
+  const command = input?.command;
+  return typeof command === "string" && command.includes("choose");
+}
+
 function buildClaudeToolCall(text: string) {
   if (text.includes("read") && text.includes("/etc/hosts")) {
     return { name: "Read", input: { path: "/etc/hosts" }, output: undefined };
   }
   if (text.includes("rm -f permission.txt")) {
     return { name: "Bash", input: { command: "rm -f permission.txt" }, output: { ok: true } };
+  }
+  if (text.includes("choose")) {
+    // The `>` is what makes the fake's auto mode ask at all; `choose` is what
+    // makes the request carry more than two answers.
+    return { name: "Bash", input: { command: "choose > choice.txt" }, output: { ok: true } };
   }
   if (text.includes("rm -f mcp-smoke.txt")) {
     return { name: "Bash", input: { command: "rm -f mcp-smoke.txt" }, output: { ok: true } };
@@ -562,6 +585,7 @@ class FakeAgentSession implements AgentSession {
       title: "Permission required",
       description: "Test permission request",
       input: tool.input ?? {},
+      ...(offersChoices(tool.input) ? { actions: MULTI_CHOICE_PERMISSION_ACTIONS } : {}),
     };
     this.pendingPermissions = [request];
     this.permissionGate = createDeferred<AgentPermissionResponse>();

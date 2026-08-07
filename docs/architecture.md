@@ -64,20 +64,21 @@ not retain non-Git directories.
 
 **Key modules:**
 
-| Module                          | Responsibility                                                                |
-| ------------------------------- | ----------------------------------------------------------------------------- |
-| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay  |
-| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing        |
-| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations         |
-| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management       |
-| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$PASEO_HOME/agents/`                         |
-| `server/agent/tools/`           | Transport-neutral catalog for workspaces, agents, permissions, and automation |
-| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Paseo tool catalog with the MCP SDK       |
-| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                               |
-| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                 |
-| `server/schedule/`              | Cron-based scheduled agents                                                   |
-| `server/loop-service.ts`        | Looping agent runs that retry until an exit condition                         |
-| `server/chat/`                  | Chat rooms for agent-to-agent and human-to-agent messaging                    |
+| Module                          | Responsibility                                                                                     |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay                       |
+| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing                             |
+| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations                              |
+| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management                            |
+| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$PASEO_HOME/agents/`                                              |
+| `server/agent/tools/`           | Transport-neutral catalog for workspaces, agents, permissions, and automation                      |
+| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Paseo tool catalog with the MCP SDK                            |
+| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                                                    |
+| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                                      |
+| `server/schedule/`              | Cron-based scheduled agents                                                                        |
+| `server/loop-service.ts`        | Looping agent runs that retry until an exit condition                                              |
+| `server/chat/`                  | Chat rooms for agent-to-agent and human-to-agent messaging                                         |
+| `server/team/`                  | Team records: roster authority, per-file store, idempotent creation, task ledger and dispatch pump |
 
 ### `packages/protocol` — Wire schemas and shared protocol types
 
@@ -120,6 +121,7 @@ Commander.js CLI with Docker-style commands. Common agent operations are also ex
 - `paseo agent ls/run/import/attach/logs/stop/delete/send/inspect/wait/archive/reload/update/mode`
 - `paseo daemon start/stop/restart/status/pair/set-password`
 - `paseo chat ls/create/inspect/post/read/wait/delete`
+- `paseo team create/ls/inspect/archive/remove`
 - `paseo terminal ls/create/capture/send-keys/kill`
 - `paseo script ls/start/stop`
 - `paseo loop run/ls/inspect/logs/stop`
@@ -229,6 +231,29 @@ New session RPCs use dotted names with `.request` and `.response` suffixes, such
 - `agent_permission_request` / `agent_permission_resolved` — Tool-call permission flow
 - `agent_deleted`, `agent_archived`, `agent_status`, `agent_list`
 - `checkout_status_update`, `checkout_diff_update`, and the full `checkout_*` request/response set for git operations
+- `chat.room.subscribe` / `chat.room.unsubscribe` request/response pairs, plus the `chat.room.message_posted` broadcast
+- `team.update` and `team.tasks.list` / `team.tasks.update` — a team's roster and its assignment ledger
+
+A chat room subscription belongs to one physical socket and dies with it, so the broadcast is gated
+per socket on the `chat_room_subscriptions` capability rather than per session. The daemon starts
+following the room before it reads the first page, which means a message posted in between arrives
+twice — once in the page, once on the stream — and the client drops any streamed message whose cursor
+is at or below the one in the subscribe response. The other order would lose that message instead,
+and a client cannot detect a hole it was never told about.
+
+Mentions inside a room a team owns are resolved against that team's roster before fanout sees them.
+Fanout looks every token up as an agent id, so a role — how a lead is briefed to address its team,
+and how anyone reading the transcript follows it — reached nobody, with one WARN in the daemon log
+as the only sign. Roles resolve only in the room their own team owns; elsewhere the word is a word.
+Client ids of humans who have posted in the room drop out at the same point, because an agent
+replying to a person mentions the id it saw and no agent will ever hold it. What gets stored on the
+message is still the raw token, since that is what the UI has to highlight.
+
+`team.tasks.*` carries the assignment ledger: `queued → dispatched → settled`, with the assignee,
+the prompt, and the outcome. The daemon broadcasts on every write to the ledger, clients order by
+`revision`, and a client that connects late asks `team.tasks.list` for what it missed. Both are
+gated on the `team_tasks` capability per physical socket rather than per session, for the same
+reason room subscriptions are.
 
 Agent snapshots optionally carry the daemon-owned active turn identity, and turn lifecycle stream events
 optionally carry the same `turnId`. New clients use these fields when present and normalize an old daemon's
@@ -299,6 +324,7 @@ initializing → idle ⇄ running
 `ManagedAgent` is a discriminated union over those lifecycle tags. Notes:
 
 - **AgentManager** is the source of truth for agent state and broadcasts updates to all subscribers
+- Durable record changes (archive, unarchive, label edits, deletion, settled turns) are a separate stream from the in-memory lifecycle events, reachable with `onAgentRecordChange`. Subscribers run one after another and each is isolated, so one that throws never fails the operation that told it. Archive, unarchive and label edits wait for their subscribers — that is what keeps schedule completion finishing before an archive returns. Turn settlement does not: it runs on its own persistence chain off the turn hot path, which is timing-sensitive, and is announced only once the outcome is durable. A subscriber needing its own ordering queues internally instead of blocking here. Deletion is announced explicitly because a removed record leaves no tombstone behind, and `assertAgentDeletable` lets a holder of a pre-allocated id refuse the delete before anything is torn down.
 - Timeline sequence allocation is append-only with epochs (each run starts a new epoch). The one
   permitted in-place enrichment adds a provider message id to the manager-owned row for an accepted
   prompt; it preserves the row's sequence, content, and timestamp. Storage uses sequence numbers for

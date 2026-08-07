@@ -38,6 +38,7 @@ import {
 import type { ComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload } from "@/composer/types";
 import { focusWithRetries } from "@/utils/web-focus";
+import { getTextInputNativeElement, setTextInputSelection } from "@/utils/text-input-selection";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
 import {
@@ -381,15 +382,6 @@ function handleDesktopKeyPressImpl(
   if (ctx.isSubmitDisabled || ctx.isSubmitLoading || ctx.disabled) return;
   event.preventDefault();
   ctx.handleDefaultSendAction();
-}
-
-function getTextInputNativeElement(
-  current: TextInput | (TextInput & { getNativeRef?: () => unknown }) | null,
-): HTMLElement | null {
-  if (!current) return null;
-  const handle = current as TextInput & { getNativeRef?: () => unknown };
-  const native = typeof handle.getNativeRef === "function" ? handle.getNativeRef() : current;
-  return native instanceof HTMLElement ? native : null;
 }
 
 interface PasteImagesEffectArgs {
@@ -1077,16 +1069,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         textInputRef.current?.blur?.();
       },
       setSelection: (selection) => {
-        if (isWeb) {
-          const element = getTextInputNativeElement(textInputRef.current) as
-            | (HTMLElement & {
-                setSelectionRange?: (start: number, end: number) => void;
-              })
-            | null;
-          element?.setSelectionRange?.(selection.start, selection.end);
-          return;
-        }
-        textInputRef.current?.setNativeProps({ selection });
+        setTextInputSelection(textInputRef.current, selection);
       },
       runKeyboardAction: (action) =>
         runMessageInputKeyboardAction(action, {

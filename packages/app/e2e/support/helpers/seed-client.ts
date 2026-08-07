@@ -2,6 +2,7 @@ import path from "node:path";
 import { readFileSync } from "node:fs";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import type { SavedPrompt } from "@getpaseo/protocol/messages";
+import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { withProjectOwnership } from "./project-ownership";
 import { createTempDirectory, createTempGitRepo } from "./workspace";
@@ -111,6 +112,24 @@ export interface SeedDaemonClient {
     initialPrompt?: string;
     labels?: Record<string, string>;
   }): Promise<{ id: string; status: string }>;
+  sendMessage(agentId: string, message: string, options?: { requestId?: string }): Promise<unknown>;
+  postChatMessage(options: { room: string; body: string; authorAgentId?: string }): Promise<{
+    message: { id: string; body: string } | null;
+    error: string | null;
+  }>;
+  readChatMessages(options: { room: string; limit?: number }): Promise<{
+    messages: Array<{ id: string; body: string; authorAgentId: string }>;
+    error: string | null;
+  }>;
+  listTeams(options?: { includeArchived?: boolean }): Promise<{ teams: TeamSnapshot[] }>;
+  createTeam(options: {
+    idempotencyKey: string;
+    name: string;
+    workspaceId: string;
+    task: string;
+    lead: { role: string; provider: string; settings?: Record<string, unknown> };
+    members: Array<{ role: string; provider: string; settings?: Record<string, unknown> }>;
+  }): Promise<{ team: TeamSnapshot | null; error: string | null }>;
   fetchAgents(options?: { scope?: "active" }): Promise<{
     entries: Array<{
       agent: {

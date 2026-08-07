@@ -14,6 +14,7 @@ import type {
   HostStatusSummaryPayload,
   WorkspaceDescriptorPayload,
 } from "@getpaseo/protocol/messages";
+import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import {
   decodeFileTransferFrame,
@@ -351,6 +352,7 @@ interface SessionForTestOptions {
     getProjectSlug?: ReturnType<typeof vi.fn>;
   };
   workspaceRegistry?: { get: ReturnType<typeof vi.fn> };
+  chatService?: { [K in keyof SessionOptions["chatService"]]?: unknown };
   projectRegistry?: Partial<SessionOptions["projectRegistry"]>;
   terminalManager?: SessionOptions["terminalManager"];
   statusSummaryService?: FakeStatusSummaryService;
@@ -444,7 +446,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
       get: vi.fn(),
       list: vi.fn().mockResolvedValue([]),
     },
-    chatService: asChatService(),
+    chatService: asChatService(options.chatService),
     scheduleService: asScheduleService(),
     loopService: asLoopService(),
     checkoutDiffManager: asCheckoutDiffManager(checkoutDiffManager),
@@ -5386,5 +5388,538 @@ describe("agent config setters", () => {
         error: "thinking boom",
       },
     });
+  });
+});
+
+// A subscription belongs to one socket. One logical session can hold several,
+// of different vintages, so an older one must not be handed a message it cannot
+// parse — and a closed one must stop receiving anything at all.
+describe("chat room subscriptions", () => {
+  interface RoomEvent {
+    roomId: string;
+    message: unknown;
+    cursor: number;
+  }
+
+  interface SubscriptionHarness {
+    session: Session;
+    targeted: Array<{ source: object; message: SessionOutboundMessage }>;
+    publish: (event: RoomEvent) => void;
+  }
+
+  function createHarness(): SubscriptionHarness {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    let subscriber: ((event: RoomEvent) => void) | null = null;
+    const session = createSessionForTest({
+      targetedMessages: targeted,
+      chatService: {
+        resolveRoomId: vi.fn(async (room: string) => room),
+        readRoomPage: vi.fn(async () => ({
+          roomId: "room-1",
+          messages: [],
+          cursor: 7,
+          hasMore: false,
+        })),
+        onRoomRemoved: vi.fn(() => () => {}),
+        onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
+          subscriber = next;
+          return () => {
+            subscriber = null;
+          };
+        }),
+      },
+    });
+    return {
+      session,
+      targeted,
+      publish: (event) => subscriber?.(event),
+    };
+  }
+
+  function messagesOfType(
+    targeted: Array<{ source: object; message: SessionOutboundMessage }>,
+    type: string,
+  ): Array<{ source: object; message: SessionOutboundMessage }> {
+    return targeted.filter((entry) => entry.message.type === type);
+  }
+
+  // The page and the live stream have to meet exactly. A message posted while
+  // the page is being read belongs to one of them; if it lands after the read
+  // and before the subscription is live, it belongs to neither and the client
+  // has a hole it cannot even ask to fill.
+  test("loses nothing posted between reading the page and going live", async () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    let subscriber: ((event: RoomEvent) => void) | null = null;
+    function postInTheGap(): void {
+      subscriber?.({ roomId: "room-1", message: { id: "m8" }, cursor: 8 });
+    }
+    const session = createSessionForTest({
+      targetedMessages: targeted,
+      chatService: {
+        resolveRoomId: vi.fn(async (room: string) => room),
+        readRoomPage: vi.fn(async () => {
+          // Someone posts in the gap the await opens up.
+          queueMicrotask(postInTheGap);
+          return { roomId: "room-1", messages: [], cursor: 7, hasMore: false };
+        }),
+        onRoomRemoved: vi.fn(() => () => {}),
+        onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
+          subscriber = next;
+          return () => {
+            subscriber = null;
+          };
+        }),
+      },
+    });
+    const socket = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true }, socket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "room-1" },
+      socket,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const delivered = targeted.filter((entry) => entry.message.type === "chat.room.message_posted");
+    expect(delivered).toHaveLength(1);
+  });
+
+  test("answers with the page and cursor, then forwards what follows to that socket", async () => {
+    const { session, targeted, publish } = createHarness();
+    const socket = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true }, socket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "room-1" },
+      socket,
+    );
+
+    const [response] = messagesOfType(targeted, "chat.room.subscribe.response");
+    expect(response?.source).toBe(socket);
+    expect(response?.message).toMatchObject({
+      payload: { requestId: "sub-1", roomId: "room-1", cursor: 7, hasMore: false, error: null },
+    });
+
+    publish({ roomId: "room-1", message: { id: "m1" }, cursor: 8 });
+
+    const [broadcast] = messagesOfType(targeted, "chat.room.message_posted");
+    expect(broadcast?.source).toBe(socket);
+    expect(broadcast?.message).toMatchObject({
+      payload: { roomId: "room-1", cursor: 8, message: { id: "m1" } },
+    });
+  });
+
+  test("forwards nothing for a room this socket never subscribed to", async () => {
+    const { session, targeted, publish } = createHarness();
+    const socket = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true }, socket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "room-1" },
+      socket,
+    );
+    publish({ roomId: "room-other", message: { id: "m1" }, cursor: 8 });
+
+    expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(0);
+  });
+
+  // A session can hold sockets of different vintages. One that never claimed the
+  // capability cannot parse this message, so it must not be handed one.
+  test("does not forward to a socket that never claimed the capability", async () => {
+    const { session, targeted, publish } = createHarness();
+    const legacySocket = {};
+    session.updateClientCapabilities(null, legacySocket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "room-1" },
+      legacySocket,
+    );
+    publish({ roomId: "room-1", message: { id: "m1" }, cursor: 8 });
+
+    expect(messagesOfType(targeted, "chat.room.subscribe.response")).toHaveLength(1);
+    expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(0);
+  });
+
+  test("stops forwarding once the socket goes away", async () => {
+    const { session, targeted, publish } = createHarness();
+    const socket = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true }, socket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "room-1" },
+      socket,
+    );
+    session.clearAgentTimelineSubscription(socket);
+    publish({ roomId: "room-1", message: { id: "m1" }, cursor: 8 });
+
+    expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(0);
+  });
+
+  // Rooms are addressable by name or by id, and both requests must reach the
+  // same subscription. Otherwise unsubscribe reports success and the stream
+  // carries on, which the client has no way to notice.
+  test("unsubscribes by room name from a subscription made by room name", async () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    let subscriber: ((event: RoomEvent) => void) | null = null;
+    const session = createSessionForTest({
+      targetedMessages: targeted,
+      chatService: {
+        resolveRoomId: vi.fn(async () => "room-uuid-1"),
+        readRoomPage: vi.fn(async () => ({
+          roomId: "room-uuid-1",
+          messages: [],
+          cursor: 0,
+          hasMore: false,
+        })),
+        onRoomRemoved: vi.fn(() => () => {}),
+        onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
+          subscriber = next;
+          return () => {
+            subscriber = null;
+          };
+        }),
+      },
+    });
+    const socket = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true }, socket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "general" },
+      socket,
+    );
+    await session.handleMessage(
+      { type: "chat.room.unsubscribe.request", requestId: "unsub-1", room: "general" },
+      socket,
+    );
+    subscriber?.({ roomId: "room-uuid-1", message: { id: "m1" }, cursor: 1 });
+
+    expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(0);
+  });
+
+  // The socket is gone by the time the subscribe finishes. Registering it then
+  // resurrects an entry that nothing will ever clean up.
+  // A socket that never sent its own capabilities is absent from the per-source
+  // map but still passes the broadcast gate through the session-level fallback.
+  // Liveness has to be tracked separately, or such a socket could subscribe and
+  // never be served.
+  test("serves a socket that never registered its own capabilities", async () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    let subscriber: ((event: RoomEvent) => void) | null = null;
+    const session = createSessionForTest({
+      targetedMessages: targeted,
+      chatService: {
+        resolveRoomId: vi.fn(async (room: string) => room),
+        readRoomPage: vi.fn(async () => ({
+          roomId: "room-1",
+          messages: [],
+          cursor: 0,
+          hasMore: false,
+        })),
+        onRoomRemoved: vi.fn(() => () => {}),
+        onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
+          subscriber = next;
+          return () => {
+            subscriber = null;
+          };
+        }),
+      },
+    });
+    // Session-wide capabilities, with no per-socket registration.
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true });
+    const socket = {};
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "room-1" },
+      socket,
+    );
+    subscriber?.({ roomId: "room-1", message: { id: "m1" }, cursor: 1 });
+
+    expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(1);
+  });
+
+  test("does not resurrect a subscription for a socket that dropped mid-request", async () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    let subscriber: ((event: RoomEvent) => void) | null = null;
+    const socket = {};
+    let session!: Session;
+    session = createSessionForTest({
+      targetedMessages: targeted,
+      chatService: {
+        resolveRoomId: vi.fn(async () => {
+          session.clearAgentTimelineSubscription(socket);
+          return "room-1";
+        }),
+        readRoomPage: vi.fn(async () => ({
+          roomId: "room-1",
+          messages: [],
+          cursor: 0,
+          hasMore: false,
+        })),
+        onRoomRemoved: vi.fn(() => () => {}),
+        onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
+          subscriber = next;
+          return () => {
+            subscriber = null;
+          };
+        }),
+      },
+    });
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true }, socket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "room-1" },
+      socket,
+    );
+    subscriber?.({ roomId: "room-1", message: { id: "m1" }, cursor: 1 });
+
+    expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(0);
+  });
+
+  test("unsubscribing stops the stream without closing the socket", async () => {
+    const { session, targeted, publish } = createHarness();
+    const socket = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true }, socket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "room-1" },
+      socket,
+    );
+    await session.handleMessage(
+      { type: "chat.room.unsubscribe.request", requestId: "unsub-1", room: "room-1" },
+      socket,
+    );
+    publish({ roomId: "room-1", message: { id: "m1" }, cursor: 8 });
+
+    const [unsubscribe] = messagesOfType(targeted, "chat.room.unsubscribe.response");
+    expect(unsubscribe?.message).toMatchObject({
+      payload: { requestId: "unsub-1", roomId: "room-1", error: null },
+    });
+    expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(0);
+  });
+
+  // Listening starts before the page is read, so a read that fails leaves a
+  // subscription the client was told it does not have.
+  test("takes back the subscription when reading the first page fails", async () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    let subscriber: ((event: RoomEvent) => void) | null = null;
+    const session = createSessionForTest({
+      targetedMessages: targeted,
+      chatService: {
+        resolveRoomId: vi.fn(async (room: string) => room),
+        readRoomPage: vi.fn(async () => {
+          throw new Error("room was discarded");
+        }),
+        onRoomRemoved: vi.fn(() => () => {}),
+        onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
+          subscriber = next;
+          return () => {
+            subscriber = null;
+          };
+        }),
+      },
+    });
+    const socket = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true }, socket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "room-1" },
+      socket,
+    );
+    subscriber?.({ roomId: "room-1", message: { id: "m1" }, cursor: 1 });
+
+    expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(0);
+  });
+
+  // A room id can be reused — a team room is named after its team. A stale
+  // subscription that nobody unsubscribed would start streaming the new room to
+  // whoever was watching the old one.
+  test("drops subscriptions to a room that was removed", async () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    let subscriber: ((event: RoomEvent) => void) | null = null;
+    let announceRemoval: ((roomId: string) => void) | null = null;
+    const session = createSessionForTest({
+      targetedMessages: targeted,
+      chatService: {
+        // Subscribed by name; the subscription is keyed by the resolved id.
+        resolveRoomId: vi.fn(async () => "room-uuid-1"),
+        readRoomPage: vi.fn(async () => ({
+          roomId: "room-uuid-1",
+          messages: [],
+          cursor: 0,
+          hasMore: false,
+        })),
+        onRoomMessage: vi.fn((next: (event: RoomEvent) => void) => {
+          subscriber = next;
+          return () => {
+            subscriber = null;
+          };
+        }),
+        onRoomRemoved: vi.fn((next: (roomId: string) => void) => {
+          announceRemoval = next;
+          return () => {
+            announceRemoval = null;
+          };
+        }),
+      },
+    });
+    const socket = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true }, socket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "general" },
+      socket,
+    );
+    announceRemoval?.("room-uuid-1");
+    subscriber?.({ roomId: "room-uuid-1", message: { id: "m1" }, cursor: 1 });
+
+    expect(messagesOfType(targeted, "chat.room.message_posted")).toHaveLength(0);
+  });
+
+  test("reports the failure to the caller instead of leaving the request open", async () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    const session = createSessionForTest({
+      targetedMessages: targeted,
+      chatService: {
+        resolveRoomId: vi.fn(async (room: string) => room),
+        readRoomPage: vi.fn(async () => {
+          throw new Error("room file is unreadable");
+        }),
+        onRoomRemoved: vi.fn(() => () => {}),
+        onRoomMessage: vi.fn(() => () => {}),
+      },
+    });
+    const socket = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.chatRoomSubscriptions]: true }, socket);
+
+    await session.handleMessage(
+      { type: "chat.room.subscribe.request", requestId: "sub-1", room: "room-1" },
+      socket,
+    );
+
+    const [response] = messagesOfType(targeted, "chat.room.subscribe.response");
+    expect(response?.message).toMatchObject({
+      payload: { requestId: "sub-1", roomId: "room-1", error: "room file is unreadable" },
+    });
+  });
+});
+
+// DEC-5: the gate is per physical socket, not per session. One session can hold
+// sockets of different vintages, and an old one cannot parse `team.update`.
+describe("team.update socket gating", () => {
+  function team(): TeamSnapshot {
+    return {
+      id: "team-1",
+      name: "Disk usage",
+      workspaceId: "ws-1",
+      chatRoomId: "room-1",
+      leadAgentId: "lead-1",
+      members: [],
+      lifecycle: "active",
+      revision: 1,
+      templateId: null,
+      createdAt: "2026-08-06T10:00:00.000Z",
+      updatedAt: "2026-08-06T10:00:00.000Z",
+      archivedAt: null,
+    };
+  }
+
+  test("reaches only the sockets of this session that understand teams", () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    const session = createSessionForTest({ targetedMessages: targeted });
+    const modern = {};
+    const legacy = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.teams]: true }, modern);
+    session.updateClientCapabilities(null, legacy);
+
+    session.emitTeamUpdate(team());
+
+    const updates = targeted.filter((entry) => entry.message.type === "team.update");
+    expect(updates.map((entry) => entry.source)).toEqual([modern]);
+  });
+
+  test("sends nothing when no socket on the session claimed teams", () => {
+    // Not "send it anyway and let them ignore it": an old client fails to parse
+    // an unknown message and drops the connection.
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    const session = createSessionForTest({ targetedMessages: targeted });
+    session.updateClientCapabilities(null, {});
+
+    session.emitTeamUpdate(team());
+
+    expect(targeted.filter((entry) => entry.message.type === "team.update")).toHaveLength(0);
+  });
+});
+
+// DEC-12: hard delete unlinks the record with no tombstone, so a refusal has to
+// happen before the first side effect rather than be detected afterwards.
+describe("delete_agent_request deletion guard", () => {
+  const agentId = "11111111-1111-4111-8111-111111111111";
+
+  test("refuses the delete without touching storage or the runtime", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const remove = vi.fn(async () => undefined);
+    const closeAgent = vi.fn(async () => undefined);
+    const session = createSessionForTest({
+      messages,
+      agentManager: {
+        getAgent: vi.fn(() => ({ id: agentId, provider: "codex", lifecycle: "idle" })),
+        assertAgentDeletable: vi.fn(async () => {
+          throw new Error(`Agent ${agentId} cannot be deleted: it is joining team team-1`);
+        }),
+        closeAgent,
+        deleteAgentState: vi.fn(async () => undefined),
+        notifyAgentDeleted: vi.fn(async () => undefined),
+        flush: vi.fn(async () => undefined),
+      },
+      agentStorage: { get: vi.fn(async () => null), remove },
+    });
+
+    await session.handleMessage({
+      type: "delete_agent_request",
+      agentId,
+      requestId: "delete-refused",
+    });
+
+    expect(remove).not.toHaveBeenCalled();
+    expect(closeAgent).not.toHaveBeenCalled();
+    expect(messages).toEqual([
+      {
+        type: "rpc_error",
+        payload: {
+          requestId: "delete-refused",
+          requestType: "delete_agent_request",
+          error: `Agent ${agentId} cannot be deleted: it is joining team team-1`,
+          code: "agent_delete_refused",
+        },
+      },
+    ]);
+  });
+
+  test("deletes and announces it when no guard objects", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const remove = vi.fn(async () => undefined);
+    const notifyAgentDeleted = vi.fn(async () => undefined);
+    const session = createSessionForTest({
+      messages,
+      agentManager: {
+        getAgent: vi.fn(() => ({ id: agentId, provider: "codex", lifecycle: "idle" })),
+        assertAgentDeletable: vi.fn(async () => undefined),
+        closeAgent: vi.fn(async () => undefined),
+        deleteAgentState: vi.fn(async () => undefined),
+        notifyAgentDeleted,
+        flush: vi.fn(async () => undefined),
+      },
+      agentStorage: { get: vi.fn(async () => null), remove },
+    });
+
+    await session.handleMessage({
+      type: "delete_agent_request",
+      agentId,
+      requestId: "delete-ok",
+    });
+
+    expect(remove).toHaveBeenCalledWith(agentId);
+    expect(notifyAgentDeleted).toHaveBeenCalledWith(agentId);
+    expect(messages.some((message) => message.type === "agent_deleted")).toBe(true);
   });
 });

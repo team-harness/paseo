@@ -20,7 +20,28 @@ import {
   ChatPostResponseSchema,
   ChatReadResponseSchema,
   ChatWaitResponseSchema,
+  ChatRoomSubscribeRequestSchema,
+  ChatRoomUnsubscribeRequestSchema,
+  ChatRoomSubscribeResponseSchema,
+  ChatRoomUnsubscribeResponseSchema,
+  ChatRoomMessagePostedSchema,
 } from "./chat/rpc-schemas.js";
+import {
+  TeamArchiveRequestSchema,
+  TeamArchiveResponseSchema,
+  TeamCreateRequestSchema,
+  TeamCreateResponseSchema,
+  TeamInspectRequestSchema,
+  TeamInspectResponseSchema,
+  TeamListRequestSchema,
+  TeamListResponseSchema,
+  TeamMemberRemoveRequestSchema,
+  TeamMemberRemoveResponseSchema,
+  TeamTasksListRequestSchema,
+  TeamTasksListResponseSchema,
+  TeamTasksUpdateMessageSchema,
+  TeamUpdateMessageSchema,
+} from "./team/rpc-schemas.js";
 import {
   ScheduleCreateRequestSchema,
   ScheduleListRequestSchema,
@@ -2749,6 +2770,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   LoopInspectRequestSchema,
   LoopLogsRequestSchema,
   LoopStopRequestSchema,
+  TeamCreateRequestSchema,
+  TeamListRequestSchema,
+  TeamInspectRequestSchema,
+  TeamArchiveRequestSchema,
+  TeamMemberRemoveRequestSchema,
+  TeamTasksListRequestSchema,
+  ChatRoomSubscribeRequestSchema,
+  ChatRoomUnsubscribeRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -3021,6 +3050,17 @@ export const ServerInfoStatusPayloadSchema = z
         chatShare: z.boolean().optional(),
         // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
         projectCustomIcon: z.boolean().optional(),
+        // COMPAT(teams): added in v0.3.0, remove gate after 2027-02-06 once the
+        // daemon floor is >= v0.3.0.
+        teams: z.boolean().optional(),
+        // COMPAT(chatRoomSubscriptions): added in v0.3.0, remove gate after
+        // 2027-02-06 once the daemon floor is >= v0.3.0. Live room streaming is a
+        // general chat capability, not a team one — gated separately on purpose.
+        chatRoomSubscriptions: z.boolean().optional(),
+        // COMPAT(teamTasks): added in v0.3.0-beta.3, remove gate after
+        // 2027-02-06 once the daemon floor is >= v0.3.0. A daemon can serve
+        // teams without the task ledger RPCs, so this is not implied by `teams`.
+        teamTasks: z.boolean().optional(),
       })
       .optional(),
   })
@@ -5705,6 +5745,17 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   LoopInspectResponseSchema,
   LoopLogsResponseSchema,
   LoopStopResponseSchema,
+  TeamCreateResponseSchema,
+  TeamListResponseSchema,
+  TeamInspectResponseSchema,
+  TeamArchiveResponseSchema,
+  TeamMemberRemoveResponseSchema,
+  TeamTasksListResponseSchema,
+  TeamUpdateMessageSchema,
+  TeamTasksUpdateMessageSchema,
+  ChatRoomSubscribeResponseSchema,
+  ChatRoomUnsubscribeResponseSchema,
+  ChatRoomMessagePostedSchema,
   DaemonUpdateProgressMessageSchema,
   DaemonUpdateResponseSchema,
 ]);
@@ -5903,6 +5954,17 @@ export type LoopListResponse = z.infer<typeof LoopListResponseSchema>;
 export type LoopInspectResponse = z.infer<typeof LoopInspectResponseSchema>;
 export type LoopLogsResponse = z.infer<typeof LoopLogsResponseSchema>;
 export type LoopStopResponse = z.infer<typeof LoopStopResponseSchema>;
+export type TeamCreateResponse = z.infer<typeof TeamCreateResponseSchema>;
+export type TeamListResponse = z.infer<typeof TeamListResponseSchema>;
+export type TeamInspectResponse = z.infer<typeof TeamInspectResponseSchema>;
+export type TeamArchiveResponse = z.infer<typeof TeamArchiveResponseSchema>;
+export type TeamMemberRemoveResponse = z.infer<typeof TeamMemberRemoveResponseSchema>;
+export type TeamTasksListResponse = z.infer<typeof TeamTasksListResponseSchema>;
+export type TeamUpdateMessage = z.infer<typeof TeamUpdateMessageSchema>;
+export type TeamTasksUpdateMessage = z.infer<typeof TeamTasksUpdateMessageSchema>;
+export type ChatRoomSubscribeResponse = z.infer<typeof ChatRoomSubscribeResponseSchema>;
+export type ChatRoomUnsubscribeResponse = z.infer<typeof ChatRoomUnsubscribeResponseSchema>;
+export type ChatRoomMessagePosted = z.infer<typeof ChatRoomMessagePostedSchema>;
 
 // Type exports for payload types
 export type ActivityLogPayload = z.infer<typeof ActivityLogPayloadSchema>;
@@ -5987,6 +6049,14 @@ export type LoopListRequest = z.infer<typeof LoopListRequestSchema>;
 export type LoopInspectRequest = z.infer<typeof LoopInspectRequestSchema>;
 export type LoopLogsRequest = z.infer<typeof LoopLogsRequestSchema>;
 export type LoopStopRequest = z.infer<typeof LoopStopRequestSchema>;
+export type TeamCreateRequest = z.infer<typeof TeamCreateRequestSchema>;
+export type TeamListRequest = z.infer<typeof TeamListRequestSchema>;
+export type TeamInspectRequest = z.infer<typeof TeamInspectRequestSchema>;
+export type TeamArchiveRequest = z.infer<typeof TeamArchiveRequestSchema>;
+export type TeamMemberRemoveRequest = z.infer<typeof TeamMemberRemoveRequestSchema>;
+export type TeamTasksListRequest = z.infer<typeof TeamTasksListRequestSchema>;
+export type ChatRoomSubscribeRequest = z.infer<typeof ChatRoomSubscribeRequestSchema>;
+export type ChatRoomUnsubscribeRequest = z.infer<typeof ChatRoomUnsubscribeRequestSchema>;
 export type ResumeAgentRequestMessage = z.infer<typeof ResumeAgentRequestMessageSchema>;
 export type DeleteAgentRequestMessage = z.infer<typeof DeleteAgentRequestMessageSchema>;
 export type UpdateAgentRequestMessage = z.infer<typeof UpdateAgentRequestMessageSchema>;
@@ -6208,6 +6278,9 @@ export const WSHelloMessageSchema = z.object({
       [CLIENT_CAPS.providerSubagents]: z.boolean().optional(),
       [CLIENT_CAPS.projectUpdates]: z.boolean().optional(),
       [CLIENT_CAPS.compactProviderSnapshots]: z.boolean().optional(),
+      [CLIENT_CAPS.teams]: z.boolean().optional(),
+      [CLIENT_CAPS.chatRoomSubscriptions]: z.boolean().optional(),
+      [CLIENT_CAPS.teamTasks]: z.boolean().optional(),
       [CLIENT_CAPS.browserHost]: BrowserAutomationHostCapabilitySchema.optional(),
     })
     .passthrough()

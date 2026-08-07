@@ -48,6 +48,27 @@ describe("canonical CLI surface", () => {
     expect(scheduleCreate?.helpInformation()).toContain("--thinking <id>");
   });
 
+  it("offers the team commands", () => {
+    const team = createCli().commands.find((command) => command.name() === "team");
+    const names = team?.commands.map((command) => command.name());
+
+    expect(names).toEqual(["create", "ls", "inspect", "archive", "remove"]);
+  });
+
+  it("asks a team create for everything a team cannot be built without", () => {
+    const team = createCli().commands.find((command) => command.name() === "team");
+    const create = team?.commands.find((command) => command.name() === "create");
+    const help = create?.helpInformation();
+
+    // Members are optional: a lead can build the rest of its team itself.
+    expect(help).toContain("--workspace <id>");
+    expect(help).toContain("--task <text>");
+    expect(help).toContain("--lead <provider>");
+    expect(help).toContain("--member <role=provider>");
+    // The key exists for the retry whose outcome nobody learned.
+    expect(help).toContain("--idempotency-key <key>");
+  });
+
   it("offers opening an existing agent in the desktop app", () => {
     const agent = createCli().commands.find((command) => command.name() === "agent");
     const open = agent?.commands.find((command) => command.name() === "open");

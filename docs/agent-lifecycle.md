@@ -52,6 +52,20 @@ Users can also detach an existing subagent from the subagents track. Detach is d
 
 `notifyOnFinish` defaults to `true` for agent-scoped creation and background prompt follow-ups because most delegated work needs to report back to the creating agent. Set it to `false` only for truly fire-and-forget agents or prompts.
 
+## Teams
+
+A team is a group of agents with one lead, one chat room, and a shared task. Membership lives in the team's roster, not in labels: `AgentManager.listAgents()` only returns loaded agents, so after a restart a label scan would miss most of a team. `paseo.team-id` and `paseo.team-role` are an index into the roster and nothing more.
+
+Team membership is orthogonal to parentage. A recruited member is stamped `paseo.parent-agent-id` pointing at whoever recruited it, so it appears in that agent's subagents track like any other child — but what makes it a member is its roster entry.
+
+Lifecycle events flow both ways and neither direction is authoritative on its own:
+
+- **Team → agents.** Archiving a team archives every entry that is still `active`. An entry that is `removed`, already `archived`, or points at a hard-deleted agent counts as done; a team never reports itself archived with a member still running.
+- **Agents → team.** Archiving, unarchiving, or hard-deleting a member outside the team updates its roster entry. An unarchived member is restored to `active` if the team is still active and has room, and evicted (`unarchive_evicted`, team labels cleared) otherwise — the same rule whether it arrives as an event or as the reconciler catching up.
+- **Lead hard delete** on an active team converges by archiving the team; on a team still being created, deletion is refused outright, because hard delete leaves no tombstone and the creation replay could not tell "deleted" from "not built yet".
+
+`removed` is where an entry stops. An agent that left, was evicted, or was deleted is no longer a member, and nothing about it afterwards is the team's business.
+
 ## Provider-managed child agents
 
 Some providers can create their own child sessions inside one provider runtime. OMP's task tool reports these with `child_session` events; `AgentManager` imports the live provider handle, stamps `paseo.parent-agent-id`, and surfaces the result as a normal subagent in the parent's subagents track.
@@ -108,7 +122,11 @@ These are two distinct concepts that used to be conflated:
 
 Closing a tab on a **root agent** still archives — the tab is the agent's home, so closing it means "I'm done with this agent." A confirm dialog protects against archiving a running agent by accident.
 
-Closing a tab on a **subagent** (any agent with `parentAgentId`) is **layout-only**. The agent stays unarchived and stays in its parent's track. The user can re-open the tab from the track at any time. This is implemented in `handleCloseAgentTab` (`packages/app/src/screens/workspace/workspace-screen.tsx`).
+Closing a tab on a **subagent** (any agent with `parentAgentId`) is **layout-only**. The agent stays unarchived and stays in its parent's track. The user can re-open the tab from the track at any time.
+
+Closing a tab on a **team lead** is layout-only too. A lead is a root agent, so the default would archive it — and archiving a lead ends its whole team. The team panel is where a team ends, because it is the only surface that can say what ending one costs. `creating` counts as live: mid-creation the daemon's own deletion guard refuses to remove the lead, so a close that archived it would fail anyway.
+
+The rule lives in one place, `resolveCloseAgentTabPolicy` (`packages/app/src/subagents/close-tab-policy.ts`); single close and bulk close both ask it. Bulk close asks because it is the same question — an agent archived in a batch is archived just as thoroughly, and more quietly.
 
 The asymmetry is intentional: a subagent's persistent relationship lives in the parent's track. Same-workspace subagents are not auto-opened as tabs; the user opens one from that track when needed. A cross-workspace subagent is also auto-opened as a tab in its own workspace so opening that workspace does not appear empty. It remains in the parent's track until it is actually detached.
 

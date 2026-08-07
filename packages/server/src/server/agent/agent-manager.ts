@@ -45,7 +45,7 @@ import {
   type ListImportableSessionsOptions,
 } from "./agent-sdk-types.js";
 import { buildArchivedAgentRecord, type ArchivedStoredAgentRecord } from "./agent-archive.js";
-import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
+import type { StoredAgentRecord, AgentStorage, TurnOutcome } from "./agent-storage.js";
 import type { AgentOwner } from "./agent-owner.js";
 import {
   InMemoryAgentTimelineStore,
@@ -218,7 +218,60 @@ export type AgentAttentionCallback = (params: {
   reason: "finished" | "error" | "permission";
 }) => void;
 
-export type AgentArchivedCallback = (agentId: string) => Promise<void> | void;
+/**
+ * A durable change to an agent's record, as opposed to the in-memory lifecycle
+ * that `AgentManagerEvent` reports. Emitted after the change is on disk, so a
+ * subscriber that reads storage sees the new state.
+ *
+ * Covers the stored-only paths too: an agent that was never loaded can still be
+ * archived, unarchived, relabelled or deleted.
+ */
+export type AgentRecordChange =
+  | { kind: "archived"; agentId: string; record: StoredAgentRecord }
+  | { kind: "unarchived"; agentId: string; record: StoredAgentRecord }
+  | { kind: "labels_changed"; agentId: string; labels: Record<string, string> }
+  | { kind: "deleted"; agentId: string }
+  | {
+      kind: "turn_settled";
+      agentId: string;
+      turnId: string;
+      outcome: TurnOutcome["outcome"];
+    };
+
+export type AgentRecordChangeListener = (change: AgentRecordChange) => Promise<void> | void;
+
+/**
+ * Returns a human-readable reason to refuse deleting the agent, or null to allow
+ * it. Hard delete keeps no tombstone, so a holder of a pre-allocated id cannot
+ * tell "not created yet" from "created then deleted" afterwards — it has to say
+ * no up front.
+ */
+export type AgentDeletionGuard = (agentId: string) => string | null;
+
+/**
+ * The requested id already holds an agent owned by the caller. Not a failure —
+ * a plan being replayed has found what it created last time and should load it
+ * rather than build it again.
+ */
+export class AgentAlreadyExistsError extends Error {
+  constructor(
+    readonly agentId: string,
+    readonly record: StoredAgentRecord,
+  ) {
+    super(`Agent ${agentId} already exists and belongs to this caller`);
+    this.name = "AgentAlreadyExistsError";
+  }
+}
+
+export class AgentDeletionRefusedError extends Error {
+  constructor(
+    readonly agentId: string,
+    readonly reason: string,
+  ) {
+    super(`Agent ${agentId} cannot be deleted: ${reason}`);
+    this.name = "AgentDeletionRefusedError";
+  }
+}
 
 export interface ProviderAvailability {
   provider: AgentProvider;
@@ -247,6 +300,26 @@ export interface CreateAgentOptions {
   // undefined is an explicit decision: the agent never appears in the sidebar.
   workspaceId: string | undefined;
   owner?: AgentOwner;
+  /**
+   * What an explicitly supplied id is allowed to collide with.
+   *
+   * Creating wipes the id's retained timeline before it validates anything, so
+   * the default refuses any id that is already taken — a caller replaying a
+   * creation plan would otherwise destroy the agent it meant to find.
+   * `"rehydrate"` is for rebuilding a session from a record that is meant to
+   * already exist; a live agent is refused either way.
+   */
+  existingRecord?: "reject" | "rehydrate";
+  /**
+   * Makes creation idempotent for a caller replaying a plan: if the id already
+   * exists and the record carries these labels, the existing agent is returned
+   * instead of being rebuilt. Anything else under that id is a conflict.
+   *
+   * Ownership is expressed as labels because that is what survives a restart —
+   * the caller (a team reconciler, say) knows what it stamped, and the record
+   * knows what it is.
+   */
+  reuseIfOwnedBy?: Record<string, string>;
 }
 
 export interface AgentManagerOptions {
@@ -417,7 +490,8 @@ type ActiveManagedAgent =
   | ManagedAgentError;
 
 type LiveManagedAgent = ActiveManagedAgent;
-type AgentLabelPatch = Record<string, string | null>;
+/** `null` removes the label; a string sets it. Absent keys are left alone. */
+export type AgentLabelPatch = Record<string, string | null>;
 
 function attachManagedTurnIdentity(
   agent: ActiveManagedAgent,
@@ -456,7 +530,7 @@ interface WriteLabelsResult {
   live: boolean;
 }
 
-interface AgentMetadataPatch {
+export interface AgentMetadataPatch {
   title?: string;
   labels?: AgentLabelPatch;
 }
@@ -489,6 +563,12 @@ const AgentIdSchema = z.guid();
 
 function isAgentBusy(status: AgentLifecycleStatus): boolean {
   return BUSY_STATUSES.has(status);
+}
+
+function turnOutcomeForEvent(event: AgentStreamEvent): TurnOutcome["outcome"] {
+  if (event.type === "turn_failed") return "failed";
+  if (event.type === "turn_canceled") return "canceled";
+  return "completed";
 }
 
 function isTurnTerminalEvent(event: AgentStreamEvent): boolean {
@@ -630,7 +710,10 @@ export class AgentManager {
   private paseoToolCatalogFactory: PaseoToolCatalogFactory | null = null;
   private appendSystemPrompt: string;
   private onAgentAttention?: AgentAttentionCallback;
-  private onAgentArchived?: AgentArchivedCallback;
+  private readonly recordChangeListeners = new Set<AgentRecordChangeListener>();
+  private readonly deletionGuards = new Set<AgentDeletionGuard>();
+  private readonly pendingTurnWrites = new Map<string, Promise<void>>();
+  private readonly explicitIdCreations = new Map<string, Promise<void>>();
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
   private logger: Logger;
   private readonly rescueTimeouts: Required<AgentManagerRescueTimeouts>;
@@ -704,8 +787,50 @@ export class AgentManager {
     this.onAgentAttention = callback;
   }
 
-  setAgentArchivedCallback(callback: AgentArchivedCallback): void {
-    this.onAgentArchived = callback;
+  /**
+   * Subscribes to durable record changes. Returns an unsubscribe function.
+   *
+   * Subscribers run one after another and the triggering operation waits for
+   * them, which is what lets schedule completion finish before an archive
+   * returns. Each is isolated: one that throws is logged and skipped, and never
+   * fails the archive that told it. A subscriber that needs its own ordering
+   * queues internally rather than holding a lock here.
+   */
+  onAgentRecordChange(listener: AgentRecordChangeListener): () => void {
+    this.recordChangeListeners.add(listener);
+    return () => {
+      this.recordChangeListeners.delete(listener);
+    };
+  }
+
+  registerAgentDeletionGuard(guard: AgentDeletionGuard): () => void {
+    this.deletionGuards.add(guard);
+    return () => {
+      this.deletionGuards.delete(guard);
+    };
+  }
+
+  /** Throws {@link AgentDeletionRefusedError} if any guard vetoes the delete. */
+  async assertAgentDeletable(agentId: string): Promise<void> {
+    for (const guard of Array.from(this.deletionGuards)) {
+      const reason = guard(agentId);
+      if (reason) {
+        throw new AgentDeletionRefusedError(agentId, reason);
+      }
+    }
+  }
+
+  private async emitRecordChange(change: AgentRecordChange): Promise<void> {
+    for (const listener of Array.from(this.recordChangeListeners)) {
+      try {
+        await listener(change);
+      } catch (error) {
+        this.logger.warn(
+          { err: error, agentId: change.agentId, kind: change.kind },
+          "agent record change listener failed",
+        );
+      }
+    }
   }
 
   setMcpBaseUrl(url: string | null): void {
@@ -1066,7 +1191,110 @@ export class AgentManager {
     agentId: string | undefined,
     options: CreateAgentOptions,
   ): Promise<ManagedAgent> {
-    return this.trackAgentRegistrationOperation(this.createAgentInternal(config, agentId, options));
+    if (!agentId) {
+      return this.trackAgentRegistrationOperation(
+        this.createAgentInternal(config, agentId, options),
+      );
+    }
+    // Explicit ids are serialized per id: checking for a conflict and then
+    // registering leaves a window where two callers both pass the check, both
+    // build a provider session, and the second registration replaces the first.
+    // Generated ids cannot collide, so they skip the queue.
+    const previous = this.explicitIdCreations.get(agentId) ?? Promise.resolve();
+    const attempt = previous
+      .catch(() => undefined)
+      .then(() =>
+        this.trackAgentRegistrationOperation(this.createAgentInternal(config, agentId, options)),
+      );
+    const tracked = attempt.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.explicitIdCreations.set(agentId, tracked);
+    void tracked.finally(() => {
+      if (this.explicitIdCreations.get(agentId) === tracked) {
+        this.explicitIdCreations.delete(agentId);
+      }
+    });
+    return attempt;
+  }
+
+  /**
+   * Decides what an explicitly supplied id may do to whatever already holds it.
+   *
+   * Returns a live agent when the caller owns it and it is loaded (the plan is
+   * being replayed), throws {@link AgentAlreadyExistsError} when the caller owns
+   * a record that is not loaded, and throws a plain conflict otherwise. Returns
+   * null when the id is free and creation should proceed.
+   *
+   * This runs before creation clears the id's retained timeline, which is the
+   * whole point: afterwards there is nothing left to protect.
+   */
+  /**
+   * Both halves of "is this the agent I created last time": it has to be owned
+   * by the caller, and it has to be the agent that was asked for.
+   *
+   * Provider and cwd are the agent's identity — a plan naming a different one
+   * under a used id is describing a different agent, not rediscovering this one.
+   * Mutable settings are deliberately excluded; those change over an agent's
+   * life without making it another agent.
+   */
+  private assertReusable(
+    agentId: string,
+    config: AgentSessionConfig,
+    owner: Record<string, string>,
+    existing: { labels: Record<string, string>; provider?: string; cwd?: string },
+  ): void {
+    const owned = Object.entries(owner).every(([key, value]) => existing.labels[key] === value);
+    if (!owned) {
+      throw new Error(`createAgent: agent '${agentId}' belongs to someone else`);
+    }
+    if (existing.provider !== config.provider || existing.cwd !== config.cwd) {
+      throw new Error(
+        `createAgent: agent '${agentId}' exists with a different provider or cwd ` +
+          `(${existing.provider} at ${existing.cwd}, asked for ${config.provider} at ${config.cwd})`,
+      );
+    }
+  }
+
+  private async resolveExplicitAgentId(
+    agentId: string,
+    config: AgentSessionConfig,
+    options: CreateAgentOptions,
+  ): Promise<ManagedAgent | null> {
+    const live = this.agents.get(agentId);
+    if (options.existingRecord === "rehydrate") {
+      if (live) {
+        throw new Error(`createAgent: agent '${agentId}' is already live`);
+      }
+      return null;
+    }
+
+    const stored = this.registry ? await this.registry.get(agentId) : null;
+    if (!live && !stored) {
+      return null;
+    }
+
+    const owner = options.reuseIfOwnedBy;
+    if (!owner) {
+      throw new Error(
+        live
+          ? `createAgent: agent '${agentId}' is already live`
+          : `createAgent: agent '${agentId}' already exists in storage`,
+      );
+    }
+
+    this.assertReusable(agentId, config, owner, {
+      labels: live?.labels ?? stored?.labels ?? {},
+      provider: live?.provider ?? stored?.provider,
+      cwd: live?.cwd ?? stored?.cwd,
+    });
+    if (live) {
+      return live;
+    }
+    // Resuming a session is agent-loading's job, so the decision is made here
+    // and the record handed over for the caller to load.
+    throw new AgentAlreadyExistsError(agentId, stored as StoredAgentRecord);
   }
 
   private async createAgentInternal(
@@ -1076,6 +1304,12 @@ export class AgentManager {
   ): Promise<ManagedAgent> {
     this.assertAcceptingAgentRegistrations();
     const resolvedAgentId = validateAgentId(agentId ?? this.idFactory(), "createAgent");
+    if (agentId) {
+      const existing = await this.resolveExplicitAgentId(resolvedAgentId, config, options);
+      if (existing) {
+        return existing;
+      }
+    }
     await this.deleteAgentState(resolvedAgentId);
     const { storedConfig, launchConfig } = await this.prepareSessionConfig(
       config,
@@ -1494,12 +1728,7 @@ export class AgentManager {
     await this.registry.applySnapshot(agent, {
       internal: agent.internal,
     });
-    const stored = await this.registry.get(agentId);
-    if (!stored) {
-      throw new Error(`Agent ${agentId} not found in storage after snapshot`);
-    }
-
-    const { archivedAt } = await this.markRecordArchived(stored);
+    const { archivedAt } = await this.markRecordArchived(agentId);
     agent.updatedAt = new Date(archivedAt);
     await this.closeAgent(agentId);
     this.discardRetainedAgentState(agentId);
@@ -1534,12 +1763,19 @@ export class AgentManager {
     }
   }
 
-  private async markRecordArchived(record: StoredAgentRecord): Promise<ArchivedStoredAgentRecord> {
+  private async markRecordArchived(agentId: string): Promise<ArchivedStoredAgentRecord> {
     const registry = this.requireRegistry();
     const archivedAt = new Date().toISOString();
-    const archivedRecord = buildArchivedAgentRecord(record, { archivedAt, updatedAt: archivedAt });
-
-    await registry.upsert(archivedRecord);
+    // Built inside the write queue: a copy read beforehand would carry an
+    // explicit stale `activeTurn`/`turnOutcomes` and undo a turn that settled in
+    // between, which carrying fields forward cannot detect.
+    const archivedRecord = await registry.mutate(agentId, (current) =>
+      buildArchivedAgentRecord(current, { archivedAt, updatedAt: archivedAt }),
+    );
+    if (!archivedRecord) {
+      throw new Error(`Agent ${agentId} not found in storage during archive`);
+    }
+    const record = archivedRecord;
 
     await this.archiveNativeSessionBestEffort(record.provider, record.persistence);
 
@@ -1549,21 +1785,13 @@ export class AgentManager {
       this.dispatchArchivedStoredAgent(archivedRecord);
     }
 
-    await this.fireAgentArchived(record.id);
+    await this.emitRecordChange({
+      kind: "archived",
+      agentId: record.id,
+      record: archivedRecord,
+    });
 
     return archivedRecord;
-  }
-
-  private async fireAgentArchived(agentId: string): Promise<void> {
-    const callback = this.onAgentArchived;
-    if (!callback) {
-      return;
-    }
-    try {
-      await callback(agentId);
-    } catch (error) {
-      this.logger.warn({ err: error, agentId }, "onAgentArchived callback failed");
-    }
   }
 
   private dispatchArchivedStoredAgent(record: StoredAgentRecord): void {
@@ -1715,10 +1943,22 @@ export class AgentManager {
       await this.persistSnapshot(liveAgent);
       this.emitState(liveAgent, { persist: false });
       const record = this.registry ? await this.registry.get(agentId) : null;
+      await this.emitRecordChange({
+        kind: "labels_changed",
+        agentId,
+        labels: record?.labels ?? liveAgent.labels,
+      });
       return { record, live: true };
     }
 
     const nextRecord = await this.writeStoredMetadata(agentId, { labels: patch });
+    if (nextRecord) {
+      await this.emitRecordChange({
+        kind: "labels_changed",
+        agentId,
+        labels: nextRecord.labels,
+      });
+    }
     return { record: nextRecord, live: false };
   }
 
@@ -1727,18 +1967,15 @@ export class AgentManager {
     patch: AgentMetadataPatch,
   ): Promise<StoredAgentRecord> {
     const registry = this.requireRegistry();
-    const record = await registry.get(agentId);
-    if (!record) {
-      throw new Error(`Agent not found: ${agentId}`);
-    }
-
-    const nextRecord = {
+    const nextRecord = await registry.mutate(agentId, (record) => ({
       ...record,
       ...(patch.title ? { title: patch.title } : {}),
       ...(patch.labels ? { labels: applyLabelPatch(record.labels, patch.labels) } : {}),
       updatedAt: this.nextStoredUpdatedAt(record),
-    };
-    await registry.upsert(nextRecord);
+    }));
+    if (!nextRecord) {
+      throw new Error(`Agent not found: ${agentId}`);
+    }
     return nextRecord;
   }
 
@@ -1810,13 +2047,13 @@ export class AgentManager {
       });
     }
 
-    const record = await registry.get(agentId);
-    if (!record) {
+    const nextRecord = await registry.mutate(agentId, (record) =>
+      buildArchivedAgentRecord(record, { archivedAt }),
+    );
+    if (!nextRecord) {
       throw new Error(`Agent not found: ${agentId}`);
     }
-
-    const nextRecord = buildArchivedAgentRecord(record, { archivedAt });
-    await registry.upsert(nextRecord);
+    const record = nextRecord;
 
     await this.archiveNativeSessionBestEffort(record.provider, record.persistence);
 
@@ -1829,7 +2066,7 @@ export class AgentManager {
       }
     }
 
-    await this.fireAgentArchived(agentId);
+    await this.emitRecordChange({ kind: "archived", agentId, record: nextRecord });
     await this.cascadeArchiveChildren(agentId);
 
     return nextRecord;
@@ -1847,17 +2084,21 @@ export class AgentManager {
 
     await this.unarchiveNativeSession(record.provider, record.persistence);
 
-    await registry.upsert({
-      ...record,
+    const unarchived = await registry.mutate(agentId, (current) => ({
+      ...current,
       ...(updates?.workspaceId ? { workspaceId: updates.workspaceId } : {}),
-      ...(updates?.labels ? { labels: applyLabelPatch(record.labels, updates.labels) } : {}),
+      ...(updates?.labels ? { labels: applyLabelPatch(current.labels, updates.labels) } : {}),
       archivedAt: null,
       updatedAt: new Date().toISOString(),
-    });
+    }));
+    if (!unarchived) {
+      return false;
+    }
 
     if (this.getAgent(agentId)) {
       this.notifyAgentState(agentId);
     }
+    await this.emitRecordChange({ kind: "unarchived", agentId, record: unarchived });
     return true;
   }
 
@@ -1876,13 +2117,7 @@ export class AgentManager {
     await this.unarchiveSnapshot(matched.id);
   }
 
-  async updateAgentMetadata(
-    agentId: string,
-    updates: {
-      title?: string;
-      labels?: Record<string, string>;
-    },
-  ): Promise<void> {
+  async updateAgentMetadata(agentId: string, updates: AgentMetadataPatch): Promise<void> {
     const liveAgent = this.getAgent(agentId);
     if (liveAgent) {
       if (updates.title) {
@@ -2163,8 +2398,13 @@ export class AgentManager {
       this.runs.rememberFinalizedTurn(mutableAgent, turnId);
     }
     mutableAgent.activeForegroundTurnId = null;
-    this.applyActiveTurnTerminal(mutableAgent, turnId);
     const terminalError = mutableAgent.lastError;
+    this.applyActiveTurnTerminal(
+      mutableAgent,
+      turnId,
+      false,
+      terminalError ? "failed" : "completed",
+    );
     const shouldHoldBusyForReplacement = mutableAgent.pendingReplacement && !terminalError;
     let nextLifecycle: "running" | "error" | "idle";
     if (shouldHoldBusyForReplacement) {
@@ -2201,21 +2441,123 @@ export class AgentManager {
     }
   }
 
+  /**
+   * Opens a turn in memory, and records it on disk stamped with this daemon run
+   * so a later run can tell a live turn from one its daemon took to the grave.
+   *
+   * The write is queued rather than awaited: this is the hot path of every turn,
+   * and awaiting it here reorders the accepted-turn boundary that foreground run
+   * tracking depends on. Losing the write to a crash is the harmless direction —
+   * a reader that finds no active turn and no outcome concludes the turn died
+   * with its daemon, which is exactly what happened.
+   */
   private openActiveTurn(agent: ActiveManagedAgent, turnId: string, startedAt: Date): void {
     agent.activeTurnId = turnId;
     agent.activeTurnStartedAt = startedAt;
+    if (!this.registry) return;
+    // Readers decide "this turn is unrecoverable" from the absence of both an
+    // outcome and an active marker, so the window where neither is on disk has
+    // to be closable. `whenTurnStateSettled` is that barrier, and it only means
+    // anything if a failed write reaches it — hence the rejection is kept.
+    const registry = this.registry;
+    const write = (async () => {
+      const persisted = await registry.setActiveTurn(agent.id, {
+        turnId,
+        startedAt: startedAt.toISOString(),
+      });
+      if (!persisted) {
+        throw new Error(`active turn ${turnId} was not persisted for agent ${agent.id}`);
+      }
+    })();
+    this.trackTurnStateWrite(agent.id, write);
+  }
+
+  /**
+   * Tracks a turn-state write so `whenTurnStateSettled` can await it.
+   *
+   * The stored promise keeps its rejection; the copies do not. Shutdown flush
+   * should wait for the write, not fail on it, and an unobserved rejection must
+   * not take the process down.
+   */
+  private trackTurnStateWrite(agentId: string, write: Promise<void>): void {
+    this.pendingTurnWrites.set(agentId, write);
+    const settled = write.then(
+      () => undefined,
+      (error) => {
+        this.logger.warn({ err: error, agentId }, "failed to persist turn state");
+      },
+    );
+    void settled.finally(() => {
+      if (this.pendingTurnWrites.get(agentId) === write) {
+        this.pendingTurnWrites.delete(agentId);
+      }
+    });
+    this.trackBackgroundTask(settled);
+  }
+
+  /**
+   * Resolves once this agent's in-flight turn-state writes have landed, and
+   * rejects if one of them did not.
+   *
+   * Anything deciding a turn's fate from storage — the three-state rule, a
+   * periodic sweep — awaits this first. Without it a freshly accepted turn looks
+   * exactly like a turn that died: no outcome, no active marker. A rejection
+   * means the record still cannot be trusted, so the caller retries later rather
+   * than settling on what it reads now.
+   */
+  async whenTurnStateSettled(agentId: string): Promise<void> {
+    await this.pendingTurnWrites.get(agentId);
+  }
+
+  /**
+   * Settles a turn on the agent record: appends how it ended and clears the
+   * in-flight marker in one write.
+   *
+   * Detached from the stream path on purpose. Turn dispatch is timing-sensitive
+   * — foreground run tracking, usage basis rotation and replacement all observe
+   * its ordering — while the team ledger reads records rather than the stream.
+   * Ordering that the ledger does need (outcome on disk before a record-change
+   * subscriber runs) belongs inside this chain, not on the hot path.
+   */
+  private settleTurnRecord(
+    agentId: string,
+    turnId: string | undefined,
+    outcome: TurnOutcome["outcome"],
+  ): void {
+    if (!turnId) return;
+    const settle = (async () => {
+      const persisted =
+        (await this.registry?.recordTurnOutcome(agentId, {
+          turnId,
+          outcome,
+          endedAt: new Date().toISOString(),
+        })) ?? false;
+      // Announced only once the fact is durable. A subscriber settles work off
+      // this event by reading the record; announcing a write that failed, or one
+      // for a record that is already gone, would hand it an event with nothing
+      // behind it. Recovery for those falls to the subscriber's own sweep, which
+      // the rejected barrier tells it to wait for.
+      if (!persisted) {
+        throw new Error(`turn ${turnId} outcome was not persisted for agent ${agentId}`);
+      }
+      await this.emitRecordChange({ kind: "turn_settled", agentId, turnId, outcome });
+    })();
+    this.trackTurnStateWrite(agentId, settle);
   }
 
   private applyActiveTurnTerminal(
     agent: ActiveManagedAgent,
     turnId?: string,
     fromHistory = false,
+    outcome: TurnOutcome["outcome"] = "completed",
   ): ActiveTurnTerminalDisposition {
     if (fromHistory) return "stale";
     if (!agent.activeTurnId) return "untracked";
     if (turnId && agent.activeTurnId !== turnId) return "stale";
+    const settledTurnId = agent.activeTurnId;
     agent.activeTurnId = null;
     agent.activeTurnStartedAt = null;
+    this.settleTurnRecord(agent.id, settledTurnId, outcome);
     return "closed_current";
   }
 
@@ -2561,6 +2903,16 @@ export class AgentManager {
   async deleteAgentState(agentId: string): Promise<void> {
     this.discardRetainedAgentState(agentId);
     await this.deleteCommittedTimeline(agentId);
+  }
+
+  /**
+   * Announces that an agent record is gone for good. Separate from
+   * `deleteAgentState`, which also runs when creating an agent under a reused id
+   * and would otherwise report a deletion that never happened. Hard delete keeps
+   * no tombstone, so a subscriber that misses this has only its startup sweep.
+   */
+  async notifyAgentDeleted(agentId: string): Promise<void> {
+    await this.emitRecordChange({ kind: "deleted", agentId });
   }
 
   async getLastAssistantMessage(agentId: string): Promise<string | null> {
@@ -3496,6 +3848,7 @@ export class AgentManager {
         agent,
         eventTurnId,
         options?.fromHistory === true,
+        turnOutcomeForEvent(event),
       );
     }
 

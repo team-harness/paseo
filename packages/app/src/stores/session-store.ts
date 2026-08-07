@@ -2,6 +2,9 @@ import equal from "fast-deep-equal";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { TeamTaskList } from "@getpaseo/protocol/team/task-types";
+import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
+import { applyTeamTasks } from "@/runtime/team-sync/team-task-replica";
 import type { ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import {
@@ -412,6 +415,9 @@ export interface SessionState {
   // Hydration status
   hasHydratedAgents: boolean;
   hasHydratedWorkspaces: boolean;
+  hasHydratedTeams: boolean;
+  /** Why the last team read failed, or null. A failure is not an empty list. */
+  teamsError: string | null;
 
   // Audio state
   isPlayingAudio: boolean;
@@ -445,6 +451,13 @@ export interface SessionState {
   workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
   agentDetails: Map<string, Agent>;
   workspaces: Map<string, WorkspaceDescriptor>;
+  // Teams on this daemon, keyed by team id. Replaced wholesale by the sync —
+  // a team missing from a list is a team that is over, not one to keep.
+  teams: Map<string, TeamSnapshot>;
+  // Task ledgers, keyed by team id. Filled in per team as one is opened, and
+  // kept current by `team.tasks.update`; a team that has never been looked at
+  // is simply absent, which is not the same as one with no tasks.
+  teamTasks: Map<string, TeamTaskList>;
   // All active project descriptors, keyed by host-local projectId.
   projects: Map<string, ProjectDescriptor>;
   // Transient restore state for archived workspaces, keyed by normalized
@@ -663,6 +676,11 @@ interface SessionStoreActions {
   // Hydration
   setHasHydratedAgents: (serverId: string, hydrated: boolean) => void;
   setHasHydratedWorkspaces: (serverId: string, hydrated: boolean) => void;
+  replaceTeams: (serverId: string, teams: Map<string, TeamSnapshot>) => void;
+  applyTeamTasks: (serverId: string, tasks: TeamTaskList) => void;
+  clearTeamTasks: (serverId: string) => void;
+  setHasHydratedTeams: (serverId: string, hydrated: boolean) => void;
+  setTeamsError: (serverId: string, message: string | null) => void;
 
   // Agent directory (derived from agents)
   getAgentDirectory: (serverId: string) => AgentDirectoryEntry[] | undefined;
@@ -686,6 +704,8 @@ function createInitialSessionState(
     serverInfo: null,
     hasHydratedAgents: false,
     hasHydratedWorkspaces: false,
+    hasHydratedTeams: false,
+    teamsError: null,
     isPlayingAudio: false,
     focusedAgentId: null,
     focusedTerminalId: null,
@@ -707,6 +727,8 @@ function createInitialSessionState(
     workspaceAgentActivity: new Map(),
     agentDetails: new Map(),
     workspaces: new Map(),
+    teams: new Map(),
+    teamTasks: new Map(),
     projects: new Map(),
     restoringWorkspaces: new Map(),
     pendingPermissions: new Map(),
@@ -1993,6 +2015,66 @@ export const useSessionStore = create<SessionStore>()(
             sessions: {
               ...prev.sessions,
               [serverId]: { ...session, hasHydratedAgents: hydrated },
+            },
+          };
+        });
+      },
+
+      replaceTeams: (serverId, teams) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) return prev;
+          return {
+            ...prev,
+            sessions: { ...prev.sessions, [serverId]: { ...session, teams } },
+          };
+        });
+      },
+
+      applyTeamTasks: (serverId, tasks) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) return prev;
+          const teamTasks = applyTeamTasks(session.teamTasks, tasks);
+          if (teamTasks === session.teamTasks) return prev;
+          return {
+            ...prev,
+            sessions: { ...prev.sessions, [serverId]: { ...session, teamTasks } },
+          };
+        });
+      },
+
+      clearTeamTasks: (serverId) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session || session.teamTasks.size === 0) return prev;
+          return {
+            ...prev,
+            sessions: { ...prev.sessions, [serverId]: { ...session, teamTasks: new Map() } },
+          };
+        });
+      },
+
+      setTeamsError: (serverId, message) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session || session.teamsError === message) return prev;
+          return {
+            ...prev,
+            sessions: { ...prev.sessions, [serverId]: { ...session, teamsError: message } },
+          };
+        });
+      },
+
+      setHasHydratedTeams: (serverId, hydrated) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session || session.hasHydratedTeams === hydrated) return prev;
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, hasHydratedTeams: hydrated },
             },
           };
         });

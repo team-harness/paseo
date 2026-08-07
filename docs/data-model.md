@@ -59,8 +59,12 @@ $PASEO_HOME/
 │   └── session-pins.json                 # Host-owned pinned agent/session shortcuts
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
+├── teams/
+│   ├── {teamId}.json                    # One file per team; roster is the membership authority
+│   └── inbox/{teamId}.inbox.json        # That team's task ledger and undelivered completions
 ├── chat/
-│   └── rooms.json                       # All rooms + messages
+│   ├── rooms/{room-id}.json             # One room and its messages
+│   └── .migrated                        # Single-file store has been dealt with
 ├── loops/
 │   └── loops.json                       # All loop records
 ├── projects/
@@ -107,6 +111,26 @@ Each agent is stored as a separate JSON file, grouped by project directory.
 | `attentionTimestamp` | `string?` (ISO 8601)                     | When attention was flagged                                                                                                                                                                                                                                                                                                                                                          |
 | `internal`           | `boolean?`                               | Whether this is a system-internal agent (loop workers, etc.)                                                                                                                                                                                                                                                                                                                        |
 | `archivedAt`         | `string?` (ISO 8601)                     | Soft-delete timestamp                                                                                                                                                                                                                                                                                                                                                               |
+| `turnOutcomes`       | `TurnOutcome[]?`                         | How recent turns ended, newest last, capped at 100. Lets a caller ask "how did turn X end" long after the stream event is gone; `lastStatus` cannot answer that.                                                                                                                                                                                                                    |
+| `activeTurn`         | `ActiveTurn?` (nullable)                 | The turn in flight, stamped with the daemon run that started it. A turn cannot outlive its daemon, so an entry from an earlier run is dropped on load — otherwise a reader waits forever on a turn that died with its process.                                                                                                                                                      |
+
+`turnOutcomes` and `activeTurn` live only on the record: a `ManagedAgent` snapshot knows nothing about them, so `AgentStorage` carries them forward inside its write queue rather than at each call site. Writes go through that queue as read-modify-write, because two turns settling back to back would otherwise both read the record before either write lands.
+
+### Nested: TurnOutcome
+
+| Field     | Type                                    | Description                     |
+| --------- | --------------------------------------- | ------------------------------- |
+| `turnId`  | `string`                                | Daemon-owned turn identity      |
+| `outcome` | `"completed" \| "failed" \| "canceled"` | How the turn ended              |
+| `endedAt` | `string` (ISO 8601)                     | When the terminal event arrived |
+
+### Nested: ActiveTurn
+
+| Field         | Type                | Description                                         |
+| ------------- | ------------------- | --------------------------------------------------- |
+| `turnId`      | `string`            | Daemon-owned turn identity                          |
+| `startedAt`   | `string` (ISO 8601) | When the provider accepted the turn                 |
+| `daemonRunId` | `string`            | The daemon run that owns it; stale runs are cleared |
 
 ### Nested: SerializableConfig
 
@@ -422,42 +446,155 @@ One file per schedule. ID is 8 hex characters.
 
 ## 6. Chat
 
-**Path:** `$PASEO_HOME/chat/rooms.json`
+**Path:** `$PASEO_HOME/chat/rooms/{room-id}.json`, one file per room, each holding
+`{ room, messages }`. Writes are serialized per room, so a busy room no longer
+rewrites every other one and a damaged file costs one room instead of all of them.
 
-Single file containing all rooms and messages.
+### Migrating from the single-file store
 
-```json
-{
-  "rooms": [ ... ],
-  "messages": [ ... ]
-}
-```
+`$PASEO_HOME/chat/rooms.json` was the whole store before 0.3.0. It is migrated
+on first start, in an order that is load-bearing: write every room file, rename
+the legacy file to `rooms.json.bak`, then write the `.migrated` marker.
+
+Only the migration writes the new layout before that marker exists — ordinary
+chat writes are refused until it lands — which is what makes recovery from an
+interrupted run exact. While the legacy file is in place it is the only
+authority, so every room file is rewritten from it: including files an earlier
+attempt already produced, whose data may since have changed, and excluding rooms
+it no longer lists, which are deleted. Skipping what is already there would lose
+whatever a user said after downgrading to a daemon that still writes the legacy
+layout. That cleanup is part of the migration, so failing to read the directory
+aborts before the rename rather than committing a half-cleaned store.
+
+A legacy file that cannot be read leaves the marker unwritten **and** the store
+read-only. The marker means "the legacy file has been dealt with"; writing it
+over a store nobody could read would put every conversation in it permanently
+out of reach. Read-only is the other half — a room created before the file is
+repaired would be erased by the rewrite that eventually migrates it.
+
+A damaged legacy entry costs itself and nothing else: rooms and messages there
+are validated one at a time. A damaged per-room file costs that room, since the
+file is the unit.
+
+A room id becomes a filename, so ids are restricted to one path segment and a
+file whose id does not match its own name is skipped. Callers can choose ids —
+a team room is named after its team — and that choice must not become a choice
+of where on disk to write, or delete.
 
 ### ChatRoom
 
-| Field       | Type                | Description                         |
-| ----------- | ------------------- | ----------------------------------- |
-| `id`        | `string` (UUID)     |                                     |
-| `name`      | `string`            | Unique room name (case-insensitive) |
-| `purpose`   | `string?`           | Room description                    |
-| `createdAt` | `string` (ISO 8601) |                                     |
-| `updatedAt` | `string` (ISO 8601) | Updated on each new message         |
+| Field         | Type                | Description                                            |
+| ------------- | ------------------- | ------------------------------------------------------ |
+| `id`          | `string` (UUID)     |                                                        |
+| `name`        | `string`            | Unique room name (case-insensitive)                    |
+| `purpose`     | `string?`           | Room description                                       |
+| `createdAt`   | `string` (ISO 8601) |                                                        |
+| `updatedAt`   | `string` (ISO 8601) | Updated on each new message                            |
+| `ownerKind`   | `"team"?`           | Set when the room's lifetime belongs to something else |
+| `ownerId`     | `string?`           | Id of that owner; both halves are set or neither is    |
+| `displayName` | `string?`           | What a human reads; `name` stays the internal handle   |
+
+An owned room is created under an id its owner allocated, so replaying a
+creation plan finds the room instead of making a second one. Generic delete
+refuses it — only the owner can discard it, and discarding one that is already
+gone succeeds.
 
 ### ChatMessage
 
-| Field              | Type                | Description                         |
-| ------------------ | ------------------- | ----------------------------------- |
-| `id`               | `string` (UUID)     |                                     |
-| `roomId`           | `string`            | FK to ChatRoom.id                   |
-| `authorAgentId`    | `string`            | Agent ID of the author              |
-| `body`             | `string`            | Message text (supports `@mentions`) |
-| `replyToMessageId` | `string?`           | FK to another ChatMessage.id        |
-| `mentionAgentIds`  | `string[]`          | Extracted `@mention` agent IDs      |
-| `createdAt`        | `string` (ISO 8601) |                                     |
+| Field              | Type                | Description                                       |
+| ------------------ | ------------------- | ------------------------------------------------- |
+| `id`               | `string` (UUID)     |                                                   |
+| `roomId`           | `string`            | FK to ChatRoom.id                                 |
+| `authorAgentId`    | `string`            | Author id; a client id when the author is a human |
+| `body`             | `string`            | Message text (supports `@mentions`)               |
+| `replyToMessageId` | `string?`           | FK to another ChatMessage.id                      |
+| `mentionAgentIds`  | `string[]`          | Extracted `@mention` agent IDs                    |
+| `createdAt`        | `string` (ISO 8601) |                                                   |
+| `author`           | `ChatAuthor?`       | `{ kind: "agent" \| "human", id }`                |
+
+`author` says which kind of id `authorAgentId` holds; both are written. Messages
+stored before it exists keep it absent, and it stays absent — a human posting
+back then had their client id written to `authorAgentId`, which reads exactly
+like an agent id, so there is nothing to recover it from.
 
 ---
 
-## 7. Loop
+## 7. Team
+
+**Path:** `$PASEO_HOME/teams/{teamId}.json`
+
+The roster is the membership authority. Labels on the agents are an index into
+it — `AgentManager.listAgents()` returns only loaded agents, so a label scan
+after a restart would miss most of a team.
+
+A team file is written before anything it describes exists. Creation produces a
+chat room and one agent per member, none of which the store can roll back, so
+the record carries the whole plan and a stage marker; every later step replays a
+decision already on disk rather than making a fresh one. That is what lets the
+reconciler pick up from any crash point.
+
+Six fields never reach a client, and the projection that keeps them off the wire
+is explicit rather than an omission list: `idempotencyKey`,
+`requestFingerprint`, `creationPlan`, `creationStage`, `failedCleanupAt`,
+`pendingRecruitments`. Use `toTeamSnapshot`; a field added to the record does
+not leak by default.
+
+A damaged team file costs that team and nothing else — teams are independent,
+and refusing to load any of them because one is unreadable would strand every
+other team's reconciliation. Unreadable is not the same as absent: nothing may
+read a skipped file as "this team has no members".
+
+`revision` increments on every write. Clients order `team.update` broadcasts by
+it.
+
+### Nested: TeamMemberEntry
+
+| Field           | Type                            | Description                                         |
+| --------------- | ------------------------------- | --------------------------------------------------- |
+| `agentId`       | `string`                        | Allocated before the agent exists                   |
+| `role`          | `string`                        | Display and prompt text; not unique, not an address |
+| `joinedAt`      | `string` (ISO 8601)             |                                                     |
+| `leftAt`        | `string \| null`                |                                                     |
+| `state`         | `active \| removed \| archived` | `removed` is terminal                               |
+| `removalReason` | see below                       | Set with `removed`                                  |
+
+`removalReason` is one of `removed_by_user`, `hard_deleted`,
+`unarchive_evicted`, `recruitment_failed`, `recruitment_canceled`. An
+`archived` member can come back; a `removed` one cannot, and nothing on the
+event path may resurrect it.
+
+### Nested: RecruitmentIntent
+
+Server-only, keyed by the reserved agent id under `pendingRecruitments`.
+Complete enough to replay a recruitment after a crash at any step: provider,
+settings, title, role, briefing, a deterministic `clientMessageId`, the
+recruiter, the workspace, and a `stage` of `reserved | created`.
+
+Cancellation is a separate optional `cancelling` boolean rather than another
+`stage` value. This is a storage format: widening the enum would make a daemon
+that predates it reject the whole team file, drop the team from its idempotency
+index, and let a retry of the original request build a second one.
+
+**Path:** `$PASEO_HOME/teams/inbox/{teamId}.inbox.json`
+
+The task ledger: assignments, settled work the lead has not been told about,
+and the batch currently out for delivery. An assignment carries its own prompt,
+so a crash between recording and sending can resend it.
+
+Every read throws when the file cannot be parsed. An unreadable ledger that
+reported "no assignments" would be indistinguishable from an empty one, and the
+write that followed would make it true.
+
+Nothing is held between calls — every read goes to the file. `revision`
+increments on each write and clients order `team.tasks.update` by it; a file
+written before the field existed reads as 0, which is older than any write that
+follows. Two server-only fields stay off the wire, and `toTeamTask` names what
+it sends rather than what it withholds: `clientMessageId` and
+`completionEventId`.
+
+---
+
+## 8. Loop
 
 **Path:** `$PASEO_HOME/loops/loops.json`
 
@@ -546,7 +683,7 @@ Single file containing an array of all loop records. Writes are direct (not atom
 
 ---
 
-## 8. Project Registry
+## 9. Project Registry
 
 **Path:** `$PASEO_HOME/projects/projects.json`
 
@@ -581,7 +718,7 @@ workspace together with its owning project.
 
 ---
 
-## 9. Workspace Registry
+## 10. Workspace Registry
 
 **Path:** `$PASEO_HOME/projects/workspaces.json`
 
@@ -615,7 +752,7 @@ than treating it as valid.
 
 ---
 
-## 10. Push Token Store
+## 11. Push Token Store
 
 **Path:** `$PASEO_HOME/push-tokens.json`
 
@@ -629,7 +766,7 @@ Simple set of Expo push notification tokens. Loaded with permissive parsing (fil
 
 ---
 
-## 11. Daemon meta files
+## 12. Daemon meta files
 
 These small files are not validated as full Zod schemas but are persisted under `$PASEO_HOME` for daemon identity and runtime coordination.
 

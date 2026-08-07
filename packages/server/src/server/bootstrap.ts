@@ -147,6 +147,12 @@ import {
   type WorkspaceArchiveContext,
 } from "./workspace-registry.js";
 import { FileBackedChatService } from "./chat/chat-service.js";
+import { createTeamRuntime, type TeamRuntime } from "./team/team-runtime.js";
+import { notifyChatMentions, prepareChatMentionFanout } from "./chat/chat-mentions.js";
+import { resolveRoomMentionTokens, type RoomMentionLookups } from "./chat/room-mention-roster.js";
+import type { TeamStore } from "./team/team-store.js";
+import { resolveAgentIdentifier } from "./agent/resolve-agent-identifier.js";
+import { formatSystemNotificationPrompt, sendPromptToAgent } from "./agent/agent-prompt.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
@@ -451,6 +457,7 @@ export interface PaseoDaemon {
   config: PaseoDaemonConfig;
   agentManager: AgentManager;
   agentStorage: AgentStorage;
+  teamRuntime: TeamRuntime;
   terminalManager: TerminalManager;
   serviceProxy: ServiceProxySubsystem;
   scriptRuntimeStore: WorkspaceScriptRuntimeStore;
@@ -850,6 +857,91 @@ export async function createPaseoDaemon(
     logger,
   });
 
+  // Mention fanout lives behind the chat store, not in the WebSocket handler,
+  // so a message posted through an agent tool wakes the same people as one
+  // posted by a human. Wired here because waking an agent needs the runtime,
+  // which does not exist yet when the store is built.
+  // Filled in once the team runtime exists, which is further down. A mention
+  // that arrives before then resolves no roles rather than failing the post.
+  let teamRosterSource: TeamStore | null = null;
+
+  const roomMentionLookups: RoomMentionLookups = {
+    getRoomOwner: async (roomId) => {
+      const room = (await chatService.listRooms()).find((candidate) => candidate.id === roomId);
+      return room?.ownerKind && room.ownerId ? { kind: room.ownerKind, id: room.ownerId } : null;
+    },
+    getTeamRoster: async (teamId) => (await teamRosterSource?.get(teamId))?.members ?? null,
+    listHumanAuthorIds: (roomId) => chatService.listRoomHumanAuthorIds({ room: roomId }),
+  };
+
+  async function prepareChatFanout(roomId: string, authorAgentId: string, mentions: string[]) {
+    const storedAgents = await agentStorage.list();
+    const liveAgents = agentManager.listAgents();
+    // Roles become agent ids and human client ids drop out before anything asks
+    // the agent runtime about them, so the eligibility check below sees the
+    // targets fanout will actually try to wake rather than the raw tokens.
+    const mentionAgentIds = await resolveRoomMentionTokens({
+      roomId,
+      tokens: mentions,
+      lookups: roomMentionLookups,
+    });
+    const fanout = await prepareChatMentionFanout({
+      authorAgentId,
+      mentionAgentIds,
+      storedAgents,
+      liveAgents,
+      listRoomPosterAgentIds: () => chatService.listRoomPosterAgentIds({ room: roomId }),
+    });
+    return { storedAgents, liveAgents, mentionAgentIds, fanout };
+  }
+
+  chatService.setMentionHandler({
+    validate: async ({ roomId, actor, mentionAgentIds }) => {
+      const { fanout } = await prepareChatFanout(roomId, actor.id, mentionAgentIds);
+      return fanout.ok ? { ok: true } : { ok: false, error: fanout.error };
+    },
+    notify: async ({ roomId, actor, body, mentionAgentIds: tokens }) => {
+      const { storedAgents, liveAgents, mentionAgentIds, fanout } = await prepareChatFanout(
+        roomId,
+        actor.id,
+        tokens,
+      );
+      if (!fanout.ok) {
+        return;
+      }
+      await notifyChatMentions({
+        room: roomId,
+        authorAgentId: actor.id,
+        body,
+        mentionAgentIds,
+        logger,
+        storedAgents,
+        liveAgents,
+        prepared: fanout.prepared,
+        resolveAgentIdentifier: async (identifier) =>
+          resolveAgentIdentifier({
+            identifier,
+            storedAgents: await agentStorage.list(),
+            liveAgents: agentManager.listAgents(),
+          }),
+        sendAgentMessage: async (agentId, text) => {
+          await sendPromptToAgent({
+            agentManager,
+            agentStorage,
+            agentId,
+            prompt: formatSystemNotificationPrompt(text),
+            unarchive: false,
+            // DEC-10: the wakeability check happened a moment ago, so a turn
+            // may have started since. Give up on the nudge rather than cancel
+            // that turn — the message is in the room and will be read there.
+            replaceRunning: false,
+            logger,
+          });
+        },
+      });
+    },
+  });
+
   const detachAgentStoragePersistence = attachAgentStoragePersistence(
     logger,
     agentManager,
@@ -903,6 +995,33 @@ export async function createPaseoDaemon(
   });
   await chatService.initialize();
   logger.info({ elapsed: elapsed() }, "Chat service initialized");
+  const teamRuntime = await createTeamRuntime({
+    paseoHome: config.paseoHome,
+    agentManager,
+    agentStorage,
+    chatService,
+    resolveWorkspaceCwd: async (workspaceId) =>
+      (await workspaceRegistry.get(workspaceId))?.cwd ?? null,
+    publishTeamUpdate: (team) => {
+      for (const session of wsServer?.listTrustedSessions() ?? []) {
+        session.emitTeamUpdate(team);
+      }
+    },
+    publishTeamTasksUpdate: (tasks) => {
+      for (const session of wsServer?.listTrustedSessions() ?? []) {
+        session.emitTeamTasksUpdate(tasks);
+      }
+    },
+    logger,
+  });
+  teamRosterSource = teamRuntime.store;
+  logger.info({ elapsed: elapsed() }, "Team runtime initialized");
+  // Not awaited: reconciling every team reads each one's agents, and a daemon
+  // that cannot answer until that finishes is a daemon that looks hung.
+  void teamRuntime.start().catch((error) => {
+    logger.warn({ err: error }, "Initial team reconciliation failed");
+  });
+
   const checkoutDiffManager = new CheckoutDiffManager({
     logger,
     paseoHome: config.paseoHome,
@@ -1239,11 +1358,17 @@ export async function createPaseoDaemon(
     archiveWorkspace: archiveScheduleWorkspaceExternal,
   });
   await scheduleService.start();
-  agentManager.setAgentArchivedCallback(async (agentId) => {
+  agentManager.onAgentRecordChange(async (change) => {
+    if (change.kind !== "archived") {
+      return;
+    }
     try {
-      await scheduleService.completeForAgent(agentId);
+      await scheduleService.completeForAgent(change.agentId);
     } catch (error) {
-      logger.warn({ err: error, agentId }, "Failed to complete schedules for archived agent");
+      logger.warn(
+        { err: error, agentId: change.agentId },
+        "Failed to complete schedules for archived agent",
+      );
     }
   });
   logger.info({ elapsed: elapsed() }, "Schedule service initialized");
@@ -1315,6 +1440,13 @@ export async function createPaseoDaemon(
     voiceOnly: runtime.voiceOnly,
     resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
     resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
+    teamRecruitment: teamRuntime.recruitmentHookFor(runtime.callerAgentId),
+    registerExtraTools: (registerTool) => {
+      teamRuntime.registerToolsFor({
+        registerTool,
+        ...(runtime.callerAgentId ? { callerAgentId: runtime.callerAgentId } : {}),
+      });
+    },
     logger,
   });
   const createAgentToolCatalog = (runtime: PaseoToolRuntimeContext) =>
@@ -1588,6 +1720,7 @@ export async function createPaseoDaemon(
               browserToolsBroker,
               hubRelationships,
               promptLibraryStore,
+              teamRuntime,
             );
             relayRuntime = createRelayRuntime({
               config: {
@@ -1641,6 +1774,7 @@ export async function createPaseoDaemon(
   };
 
   const stop = async () => {
+    teamRuntime.stop();
     await hubRelationships.stop();
     workspaceReconciliation.dispose();
     scriptHealthMonitor.stop();
@@ -1682,6 +1816,7 @@ export async function createPaseoDaemon(
     config,
     agentManager,
     agentStorage,
+    teamRuntime,
     terminalManager,
     serviceProxy,
     scriptRuntimeStore,

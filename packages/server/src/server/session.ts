@@ -40,6 +40,7 @@ import {
   toAgentPersistenceHandle,
 } from "./persistence-hooks.js";
 import { ensureAgentLoaded, ensureUnarchivedAgentLoaded } from "./agent/agent-loading.js";
+import { resolveAgentIdentifier } from "./agent/resolve-agent-identifier.js";
 import {
   formatSystemNotificationPrompt,
   sendPromptToAgent,
@@ -208,6 +209,14 @@ import type { Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type pino from "pino";
 import { FileBackedChatService } from "./chat/chat-service.js";
+import type { TeamTaskList } from "@getpaseo/protocol/team/task-types";
+import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
+import {
+  isTeamInboundMessage,
+  teamUnavailableResponse,
+  TeamSessionHandlers,
+} from "./team/team-session.js";
+import type { TeamRuntimeSessionDeps } from "./team/team-runtime.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import {
@@ -402,6 +411,26 @@ class SessionRequestError extends Error {
   }
 }
 
+/**
+ * Built per session so a reply goes back to the client that asked, rather than
+ * to whoever happens to be connected when it lands.
+ */
+function buildTeamHandlers(
+  teamRuntime: TeamRuntimeSessionDeps | null | undefined,
+  send: (message: SessionOutboundMessage) => void,
+  logger: pino.Logger,
+): TeamSessionHandlers | null {
+  if (!teamRuntime) return null;
+  return new TeamSessionHandlers({
+    service: teamRuntime.service,
+    store: teamRuntime.store,
+    inbox: teamRuntime.inbox,
+    send: (message) => send(message as SessionOutboundMessage),
+    publish: teamRuntime.publishTeamUpdate,
+    logger,
+  });
+}
+
 export interface SessionFileSystem {
   isDirectory(path: string): Promise<boolean>;
 }
@@ -439,6 +468,8 @@ export interface SessionOptions {
   workspaceRegistry: WorkspaceRegistry;
   filesystem?: SessionFileSystem;
   chatService: FileBackedChatService;
+  /** Absent when the daemon runs without teams; the RPCs then answer "not available". */
+  teamRuntime?: TeamRuntimeSessionDeps | null;
   scheduleService: ScheduleService;
   loopService: LoopService;
   checkoutDiffManager: CheckoutDiffManager;
@@ -629,6 +660,21 @@ export class Session {
   private isCleanedUp = false;
   private viewedTimelineAgentIds = new Set<string>();
   private readonly viewedTimelineAgentIdsBySource = new Map<object, Set<string>>();
+  /** Room ids each socket is following. One session can hold several sockets. */
+  private readonly chatRoomSubscriptionsBySource = new Map<object, Set<string>>();
+  /**
+   * Sockets whose cleanup has already run. A subscribe that was still resolving
+   * its room at that moment would otherwise register afterwards, past the
+   * cleanup that was supposed to remove it, and nothing would take it down.
+   * Capability registration is not a usable liveness signal here: a socket that
+   * never sent its own capabilities is absent from that map yet still receives
+   * broadcasts through the session-level fallback.
+   */
+  private readonly retiredSources = new WeakSet<object>();
+  private unsubscribeChatRoomMessages: (() => void) | null = null;
+  private unsubscribeChatRoomRemovals: (() => void) | null = null;
+  private readonly chatService: FileBackedChatService;
+  private readonly teamHandlers: TeamSessionHandlers | null;
   private readonly clientCapabilitiesBySource = new Map<object, ReadonlySet<ClientCapability>>();
   private readonly defaultTimelineSubscriptionSource = {};
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
@@ -696,6 +742,7 @@ export class Session {
       workspaceRegistry,
       filesystem,
       chatService,
+      teamRuntime,
       scheduleService,
       loopService,
       checkoutDiffManager,
@@ -728,6 +775,12 @@ export class Session {
       daemonRuntimeConfig,
       getWebSocketRuntimeMetrics,
     } = options;
+    this.chatService = chatService;
+    this.teamHandlers = buildTeamHandlers(
+      teamRuntime,
+      (message) => this.emit(message),
+      options.logger,
+    );
     this.clientId = clientId;
     this.scopes = [...scopes];
     this.appVersion = appVersion ?? null;
@@ -1065,10 +1118,146 @@ export class Session {
   }
 
   clearAgentTimelineSubscription(source: object): void {
+    this.retiredSources.add(source);
     this.clientCapabilitiesBySource.delete(source);
     if (this.viewedTimelineAgentIdsBySource.delete(source)) {
       this.rebuildViewedTimelineAgentIds();
     }
+    // A room subscription belongs to the socket that asked for it and dies with
+    // it; nothing else would ever take it down.
+    this.chatRoomSubscriptionsBySource.delete(source);
+  }
+
+  /**
+   * Answers a subscribe with the room's page and the cursor it ends on, then
+   * starts forwarding what follows. Both halves happen here so nothing can slip
+   * in between them and go unseen.
+   */
+  private async handleChatRoomSubscribeRequest(
+    msg: Extract<SessionInboundMessage, { type: "chat.room.subscribe.request" }>,
+    source: object | undefined,
+  ): Promise<void> {
+    let registeredRoomId: string | null = null;
+    try {
+      // Listening starts before the first read, with nothing awaited in
+      // between. The other order drops anything posted in the gap, and the
+      // client cannot see that it happened; this order can only repeat a
+      // message, which its cursor makes exactly removable.
+      const roomId = await this.chatService.resolveRoomId(msg.room);
+      if (!this.rememberChatRoomSubscription(source, roomId)) {
+        return;
+      }
+      registeredRoomId = roomId;
+      const page = await this.chatService.readRoomPage({
+        room: roomId,
+        ...(typeof msg.afterCursor === "number" ? { afterCursor: msg.afterCursor } : {}),
+        ...(typeof msg.limit === "number" ? { limit: msg.limit } : {}),
+      });
+      this.sendToSource(source, {
+        type: "chat.room.subscribe.response",
+        payload: {
+          requestId: msg.requestId,
+          roomId: page.roomId,
+          messages: page.messages,
+          cursor: page.cursor,
+          hasMore: page.hasMore,
+          error: null,
+        },
+      });
+    } catch (error) {
+      // Listening started before the read, so a read that failed would leave a
+      // subscription the client has just been told it does not have.
+      if (registeredRoomId) {
+        this.forgetChatRoomSubscription(source, registeredRoomId);
+      }
+      this.sendToSource(source, {
+        type: "chat.room.subscribe.response",
+        payload: {
+          requestId: msg.requestId,
+          roomId: msg.room,
+          messages: [],
+          cursor: 0,
+          hasMore: false,
+          error: error instanceof Error ? error.message : "Failed to subscribe to chat room",
+        },
+      });
+    }
+  }
+
+  /**
+   * Rooms are addressable by name or by id, and subscriptions are keyed by id.
+   * Deleting the selector the client happened to send would leave a
+   * subscription made by name running while the response says it stopped.
+   */
+  private async handleChatRoomUnsubscribeRequest(
+    msg: Extract<SessionInboundMessage, { type: "chat.room.unsubscribe.request" }>,
+    source: object | undefined,
+  ): Promise<void> {
+    let roomId = msg.room;
+    try {
+      roomId = await this.chatService.resolveRoomId(msg.room);
+    } catch {
+      // The room is gone, so its removal already took every subscription to it
+      // down. Answering with the selector the client sent is all that is left.
+    }
+    this.forgetChatRoomSubscription(source, roomId);
+    this.sendToSource(source, {
+      type: "chat.room.unsubscribe.response",
+      payload: { requestId: msg.requestId, roomId, error: null },
+    });
+  }
+
+  /**
+   * Returns false when the socket went away while the room was being resolved.
+   * Registering it then would rebuild an entry that the socket's own cleanup
+   * has already run past, and nothing would ever remove it.
+   */
+  private rememberChatRoomSubscription(source: object | undefined, roomId: string): boolean {
+    if (source && this.retiredSources.has(source)) {
+      return false;
+    }
+    const key = source ?? this.defaultTimelineSubscriptionSource;
+    const rooms = this.chatRoomSubscriptionsBySource.get(key) ?? new Set<string>();
+    rooms.add(roomId);
+    this.chatRoomSubscriptionsBySource.set(key, rooms);
+    this.ensureChatRoomForwarding();
+    return true;
+  }
+
+  private forgetChatRoomSubscription(source: object | undefined, roomId: string): void {
+    const key = source ?? this.defaultTimelineSubscriptionSource;
+    this.chatRoomSubscriptionsBySource.get(key)?.delete(roomId);
+  }
+
+  private ensureChatRoomForwarding(): void {
+    if (this.unsubscribeChatRoomMessages) {
+      return;
+    }
+    this.unsubscribeChatRoomMessages = this.chatService.onRoomMessage((event) => {
+      for (const [source, rooms] of this.chatRoomSubscriptionsBySource) {
+        if (!rooms.has(event.roomId)) continue;
+        // Gated per socket: one session can hold sockets of different vintages,
+        // and an older one cannot parse this message.
+        if (!this.supportsForSource(CLIENT_CAPS.chatRoomSubscriptions, source)) continue;
+        this.sendToSource(source, {
+          type: "chat.room.message_posted",
+          payload: { roomId: event.roomId, message: event.message, cursor: event.cursor },
+        });
+      }
+    });
+    // Room ids are reusable — a team room is named after its team — so a
+    // subscription left over from a removed room would start streaming whatever
+    // is created under that id next.
+    this.unsubscribeChatRoomRemovals = this.chatService.onRoomRemoved((roomId) => {
+      for (const rooms of this.chatRoomSubscriptionsBySource.values()) {
+        rooms.delete(roomId);
+      }
+    });
+  }
+
+  private sendToSource(source: object | undefined, message: SessionOutboundMessage): void {
+    if (source && this.onMessageToSource) this.onMessageToSource(source, message);
+    else this.emit(message);
   }
 
   private replaceAgentTimelineSubscription(source: object | undefined, agentIds: string[]): void {
@@ -1176,6 +1365,46 @@ export class Session {
     }
     for (const [source, capabilities] of this.clientCapabilitiesBySource) {
       if (capabilities.has(CLIENT_CAPS.projectUpdates)) {
+        this.onMessageToSource(source, message);
+      }
+    }
+  }
+
+  /**
+   * Broadcasts a team snapshot, per socket.
+   *
+   * One logical session can hold several physical sockets of different ages, so
+   * the gate is per source: an older socket on the same session must not be
+   * sent a message it cannot parse.
+   */
+  emitTeamUpdate(team: TeamSnapshot): void {
+    const message = { type: "team.update", payload: { team } } as SessionOutboundMessage;
+    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
+      if (this.supports(CLIENT_CAPS.teams)) this.emit(message);
+      return;
+    }
+    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
+      if (capabilities.has(CLIENT_CAPS.teams)) {
+        this.onMessageToSource(source, message);
+      }
+    }
+  }
+
+  /**
+   * Broadcasts a team's task ledger, per socket.
+   *
+   * Gated on its own capability rather than on teams: the beta sockets that
+   * advertise teams shipped before the ledger RPCs and have no branch to parse
+   * this into.
+   */
+  emitTeamTasksUpdate(tasks: TeamTaskList): void {
+    const message = { type: "team.tasks.update", payload: { tasks } } as SessionOutboundMessage;
+    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
+      if (this.supports(CLIENT_CAPS.teamTasks)) this.emit(message);
+      return;
+    }
+    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
+      if (capabilities.has(CLIENT_CAPS.teamTasks)) {
         this.onMessageToSource(source, message);
       }
     }
@@ -1854,10 +2083,23 @@ export class Session {
       this.dispatchProviderMessage(msg) ??
       this.dispatchStatusSummaryMessage(msg) ??
       this.promptLibrarySession.dispatch(msg) ??
+      this.dispatchTeamMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
       this.dispatchChatScheduleLoopMessage(msg) ??
       this.dispatchMiscMessage(msg);
     if (promise) await promise;
+  }
+
+  private dispatchTeamMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    if (!isTeamInboundMessage(msg)) return undefined;
+    const handlers = this.teamHandlers;
+    if (!handlers) {
+      // Parsed but unhandled: a client talking to a daemon without teams gets
+      // an answer rather than silence it would wait on forever.
+      this.emit(teamUnavailableResponse(msg, "This daemon does not have teams enabled."));
+      return Promise.resolve();
+    }
+    return handlers.handle(msg);
   }
 
   private dispatchVoiceAndControlMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -1933,6 +2175,13 @@ export class Session {
     source?: object,
   ): Promise<void> | undefined {
     switch (msg.type) {
+      // Dispatched alongside the timeline subscription rather than with the
+      // other chat RPCs: a room subscription belongs to one socket, and only a
+      // source-aware dispatcher knows which one.
+      case "chat.room.subscribe.request":
+        return this.handleChatRoomSubscribeRequest(msg, source);
+      case "chat.room.unsubscribe.request":
+        return this.handleChatRoomUnsubscribeRequest(msg, source);
       case "fetch_agent_timeline_request":
         return this.handleFetchAgentTimelineRequest(msg, source);
       case "agent.timeline.list_prompts.request":
@@ -2418,6 +2667,25 @@ export class Session {
   private async handleDeleteAgentRequest(agentId: string, requestId: string): Promise<void> {
     this.sessionLogger.info({ agentId }, `Deleting agent ${agentId} from registry`);
 
+    // Asked before anything is torn down: once the record is unlinked there is
+    // no tombstone, so a holder of this id could never tell the difference.
+    try {
+      await this.agentManager.assertAgentDeletable(agentId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.sessionLogger.warn({ err: error, agentId }, `Refused to delete agent ${agentId}`);
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId,
+          requestType: "delete_agent_request",
+          error: message,
+          code: "agent_delete_refused",
+        },
+      });
+      return;
+    }
+
     const knownWorkspaceId =
       this.agentManager.getAgent(agentId)?.workspaceId ??
       (await this.agentStorage.get(agentId))?.workspaceId ??
@@ -2442,6 +2710,9 @@ export class Session {
     try {
       await this.agentStorage.remove(agentId);
       await this.agentManager.deleteAgentState(agentId);
+      // The record leaves no tombstone behind, so anything tracking this agent
+      // hears about it here or not at all.
+      await this.agentManager.notifyAgentDeleted(agentId);
     } catch (error) {
       this.sessionLogger.error({ err: error, agentId }, `Failed to fully delete agent ${agentId}`);
     }
@@ -4096,54 +4367,11 @@ export class Session {
   private async resolveAgentIdentifier(
     identifier: string,
   ): Promise<{ ok: true; agentId: string } | { ok: false; error: string }> {
-    const trimmed = identifier.trim();
-    if (!trimmed) {
-      return { ok: false, error: "Agent identifier cannot be empty" };
-    }
-
-    const stored = await this.agentStorage.list();
-    const storedRecords = stored.filter((record) => !record.internal);
-    const knownIds = new Set<string>();
-    for (const record of storedRecords) {
-      knownIds.add(record.id);
-    }
-    for (const agent of this.agentManager.listAgents()) {
-      knownIds.add(agent.id);
-    }
-
-    if (knownIds.has(trimmed)) {
-      return { ok: true, agentId: trimmed };
-    }
-
-    const prefixMatches = Array.from(knownIds).filter((id) => id.startsWith(trimmed));
-    if (prefixMatches.length === 1) {
-      return { ok: true, agentId: prefixMatches[0] };
-    }
-    if (prefixMatches.length > 1) {
-      return {
-        ok: false,
-        error: `Agent identifier "${trimmed}" is ambiguous (${prefixMatches
-          .slice(0, 5)
-          .map((id) => id.slice(0, 8))
-          .join(", ")}${prefixMatches.length > 5 ? ", …" : ""})`,
-      };
-    }
-
-    const titleMatches = storedRecords.filter((record) => record.title === trimmed);
-    if (titleMatches.length === 1) {
-      return { ok: true, agentId: titleMatches[0].id };
-    }
-    if (titleMatches.length > 1) {
-      return {
-        ok: false,
-        error: `Agent title "${trimmed}" is ambiguous (${titleMatches
-          .slice(0, 5)
-          .map((r) => r.id.slice(0, 8))
-          .join(", ")}${titleMatches.length > 5 ? ", …" : ""})`,
-      };
-    }
-
-    return { ok: false, error: `Agent not found: ${trimmed}` };
+    return resolveAgentIdentifier({
+      identifier,
+      storedAgents: await this.agentStorage.list(),
+      liveAgents: this.agentManager.listAgents(),
+    });
   }
 
   private async getAgentPayloadById(agentId: string): Promise<AgentSnapshotPayload | null> {
@@ -6109,14 +6337,18 @@ export class Session {
           ) {
             continue;
           }
-          const nextRecord: StoredAgentRecord = {
-            ...record,
+          // Cleared inside the write queue so an unrelated write landing in
+          // between is not carried away by the copy read above.
+          const nextRecord = await this.agentStorage.mutate(agentId, (current) => ({
+            ...current,
             updatedAt: new Date().toISOString(),
             requiresAttention: false,
             attentionReason: null,
             attentionTimestamp: null,
-          };
-          await this.agentStorage.upsert(nextRecord);
+          }));
+          if (!nextRecord) {
+            continue;
+          }
           const agent = this.buildStoredAgentPayload(nextRecord);
           const project = await this.buildProjectPlacementForWorkspace(workspace);
           this.emit({
@@ -6921,6 +7153,11 @@ export class Session {
       this.unsubscribeStatusSummary();
       this.unsubscribeStatusSummary = null;
     }
+    this.unsubscribeChatRoomMessages?.();
+    this.unsubscribeChatRoomMessages = null;
+    this.unsubscribeChatRoomRemovals?.();
+    this.unsubscribeChatRoomRemovals = null;
+    this.chatRoomSubscriptionsBySource.clear();
     this.providerCatalogSession.dispose();
 
     await this.voiceSession.cleanup();
