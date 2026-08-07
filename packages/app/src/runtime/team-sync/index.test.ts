@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { TeamTaskList } from "@getpaseo/protocol/team/task-types";
 import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import { TeamSync, type TeamSyncConnection } from "./index";
@@ -23,6 +24,10 @@ function team(overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
   };
 }
 
+function ledger(overrides: Partial<TeamTaskList> = {}): TeamTaskList {
+  return { teamId: "team-1", revision: 1, tasks: [], ...overrides };
+}
+
 /** Enough of a daemon client to answer a list and deliver broadcasts. */
 class FakeClient {
   listTeams = vi.fn(async () => {
@@ -36,8 +41,13 @@ class FakeClient {
   listThrows: Error | null = null;
   listGate: Promise<void> = Promise.resolve();
   private handlers = new Set<(message: unknown) => void>();
+  private taskHandlers = new Set<(message: unknown) => void>();
 
   on(event: string, handler: (message: unknown) => void): () => void {
+    if (event === "team.tasks.update") {
+      this.taskHandlers.add(handler);
+      return () => this.taskHandlers.delete(handler);
+    }
     if (event !== "team.update") return () => {};
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
@@ -46,6 +56,12 @@ class FakeClient {
   broadcast(snapshot: TeamSnapshot): void {
     for (const handler of this.handlers) {
       handler({ type: "team.update", payload: { team: snapshot } });
+    }
+  }
+
+  broadcastTasks(tasks: TeamTaskList): void {
+    for (const handler of this.taskHandlers) {
+      handler({ type: "team.tasks.update", payload: { tasks } });
     }
   }
 
@@ -64,6 +80,8 @@ describe("keeping one daemon's teams current", () => {
   let committed: TeamSnapshotMap[];
   let hydrated: boolean[];
   let errors: Array<string | null>;
+  let appliedTasks: TeamTaskList[];
+  let taskClears: number;
   let sync: TeamSync;
 
   function connection(overrides: Partial<TeamSyncConnection> = {}): TeamSyncConnection {
@@ -85,8 +103,14 @@ describe("keeping one daemon's teams current", () => {
     committed = [];
     hydrated = [];
     errors = [];
+    appliedTasks = [];
+    taskClears = 0;
     sync = new TeamSync({
       commit: (teams) => committed.push(teams),
+      applyTasks: (tasks) => appliedTasks.push(tasks),
+      clearTasks: () => {
+        taskClears += 1;
+      },
       setHydrated: (value) => hydrated.push(value),
       setError: (message) => errors.push(message),
     });
@@ -262,5 +286,48 @@ describe("keeping one daemon's teams current", () => {
     sync.connectionChanged(connection({ status: "offline" }));
 
     expect(hydrated.at(-1)).toBe(false);
+  });
+
+  it("passes a broadcast task ledger on", async () => {
+    sync.connectionChanged(connection());
+    await vi.waitFor(() => expect(hydrated.at(-1)).toBe(true));
+
+    client.broadcastTasks(ledger({ revision: 3 }));
+
+    expect(appliedTasks).toEqual([ledger({ revision: 3 })]);
+  });
+
+  it("drops task ledgers from a connection that has been replaced", async () => {
+    sync.connectionChanged(connection());
+    await vi.waitFor(() => expect(hydrated.at(-1)).toBe(true));
+    taskClears = 0;
+
+    // A daemon restarted with a wiped ledger starts again at revision 0, and
+    // every broadcast after that would read as older than what is held.
+    sync.connectionChanged(connection({ source: { clientGeneration: 1, connectionEpoch: 2 } }));
+
+    expect(taskClears).toBe(1);
+  });
+
+  it("keeps task ledgers through a blip", async () => {
+    sync.connectionChanged(connection());
+    await vi.waitFor(() => expect(hydrated.at(-1)).toBe(true));
+    taskClears = 0;
+
+    // Same connection, momentarily offline. Teams stay painted through this,
+    // and a task list emptying itself would read as the tasks being gone.
+    sync.connectionChanged(connection({ status: "offline" }));
+
+    expect(taskClears).toBe(0);
+  });
+
+  it("stops listening for task ledgers once the connection is gone", async () => {
+    sync.connectionChanged(connection());
+    await vi.waitFor(() => expect(hydrated.at(-1)).toBe(true));
+
+    sync.dispose();
+    client.broadcastTasks(ledger({ revision: 3 }));
+
+    expect(appliedTasks).toEqual([]);
   });
 });

@@ -84,7 +84,9 @@ test("a team reaches the sidebar and its deep link opens the panel", async ({ pa
     for (const member of team.members) {
       await expect(page.getByTestId(`team-member-${member.agentId}`)).toBeVisible();
     }
-    await expect(page.getByTestId("team-panel-archive")).toBeVisible();
+    // Archiving is behind the header menu now. What has to stay reachable is
+    // the menu; the item itself is checked where it is actually pressed.
+    await expect(page.getByTestId("team-panel-menu")).toBeVisible();
   } finally {
     await workspace?.cleanup();
     await daemon.close();

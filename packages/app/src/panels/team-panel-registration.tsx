@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Users } from "lucide-react-native";
 import invariant from "tiny-invariant";
@@ -36,9 +36,15 @@ function useTeamPanelDescriptor(
 }
 
 function TeamPanelHost() {
-  const { serverId, target } = usePaneContext();
+  const { serverId, target, openTab } = usePaneContext();
   invariant(target.kind === "team", "TeamPanel requires team target");
-  return <TeamPanel serverId={serverId} teamId={target.teamId} />;
+  // A member's conversation is an ordinary agent tab. The panel knows who was
+  // pressed; only the pane knows where a tab goes.
+  const openAgent = useCallback(
+    (agentId: string) => openTab({ kind: "agent", agentId }),
+    [openTab],
+  );
+  return <TeamPanel serverId={serverId} teamId={target.teamId} onOpenAgent={openAgent} />;
 }
 
 export const teamPanelRegistration: PanelRegistration<"team"> = {

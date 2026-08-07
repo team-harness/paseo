@@ -224,6 +224,11 @@ describe("FileBackedChatService", () => {
       await expect(service.listRoomPosterAgentIds({ room: room.name })).resolves.toEqual([
         "agent-lead",
       ]);
+      // The other side of the same split: an agent replying to a person mentions
+      // the client id it saw, and fanout has to know that is nobody to wake.
+      await expect(service.listRoomHumanAuthorIds({ room: room.name })).resolves.toEqual([
+        "client-42",
+      ]);
     });
 
     // `@everyone` expands to the agents that spoke in the room. A message from

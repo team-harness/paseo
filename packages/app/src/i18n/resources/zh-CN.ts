@@ -1048,6 +1048,23 @@ export const zhCN: TranslationResources = {
       showMore: "展开",
       showMoreLines: "展开其余 {{count}} 行",
     },
+    tabs: {
+      chat: "聊天",
+      tasks: "任务",
+    },
+    tasks: {
+      empty: "还没有派发任务。",
+      state: {
+        queued: "排队中",
+        dispatched: "进行中",
+      },
+      outcome: {
+        completed: "完成",
+        failed: "失败",
+        canceled: "已取消",
+        unknown: "已结束",
+      },
+    },
     route: {
       loading: "正在查找该团队…",
       unsupported: "{{hostName}} 版本过旧，不支持团队。升级后才能打开此链接。",

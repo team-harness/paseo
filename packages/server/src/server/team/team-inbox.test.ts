@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
-import { TeamInbox } from "./team-inbox.js";
+import { TeamInbox, type Ledger } from "./team-inbox.js";
 
 const logger = createTestLogger();
 
@@ -401,4 +401,117 @@ describe("TeamInbox", () => {
       ).resolves.toBeDefined();
     });
   });
+
+  // How a reader tells an older ledger from a newer one without comparing
+  // contents, and how anyone who cares finds out there is a newer one at all.
+  describe("revision and change notifications", () => {
+    test("a team that has never had a ledger is at revision 0", async () => {
+      expect(await inbox.readLedger("team-1")).toEqual({ revision: 0, assignments: [] });
+    });
+
+    test("counts writes, not calls", async () => {
+      await inbox.enqueueAssignment({
+        teamId: "team-1",
+        assigneeAgentId: "agent-a",
+        prompt: "first",
+      });
+      expect((await inbox.readLedger("team-1")).revision).toBe(1);
+
+      await inbox.enqueueAssignment({
+        teamId: "team-1",
+        assigneeAgentId: "agent-a",
+        prompt: "second",
+      });
+      expect((await inbox.readLedger("team-1")).revision).toBe(2);
+
+      // Acknowledging a batch that is not there changes nothing, so it is not a
+      // revision. A client that saw one move here would refetch for no reason.
+      await inbox.acknowledgeDelivery({ teamId: "team-1", deliveryId: "never-existed" });
+      expect((await inbox.readLedger("team-1")).revision).toBe(2);
+    });
+
+    // No migrations: a ledger from before this field existed is valid, and the
+    // next write is what gives it a number.
+    test("a ledger written without a revision reads as 0", async () => {
+      await writeFile(
+        inboxPath("team-1"),
+        JSON.stringify({ assignments: [], pendingCompletions: [], inFlightDelivery: null }),
+        "utf8",
+      );
+
+      const reloaded = new TeamInbox(home, logger);
+      expect((await reloaded.readLedger("team-1")).revision).toBe(0);
+
+      await reloaded.enqueueAssignment({
+        teamId: "team-1",
+        assigneeAgentId: "agent-a",
+        prompt: "after the upgrade",
+      });
+      expect((await reloaded.readLedger("team-1")).revision).toBe(1);
+    });
+
+    test("tells a listener which team moved, once the write has landed", async () => {
+      const watch = watchChanges(inbox);
+
+      await inbox.enqueueAssignment({
+        teamId: "team-1",
+        assigneeAgentId: "agent-a",
+        prompt: "work",
+      });
+
+      expect(watch.teams).toEqual(["team-1"]);
+      // Read from inside the listener: what it sees is the write it was told
+      // about, not the state before it.
+      expect(await revisionsSeenBy(watch)).toEqual([1]);
+    });
+
+    test("stops telling a listener that has detached", async () => {
+      const watch = watchChanges(inbox);
+
+      await inbox.enqueueAssignment({ teamId: "team-1", assigneeAgentId: "a", prompt: "one" });
+      watch.detach();
+      await inbox.enqueueAssignment({ teamId: "team-1", assigneeAgentId: "a", prompt: "two" });
+
+      expect(watch.teams).toEqual(["team-1"]);
+    });
+
+    // The write is already on disk by the time listeners run. Letting one out
+    // would tell the caller its work was not recorded when it was.
+    test("a listener that throws does not fail the write", async () => {
+      failOnChange(inbox);
+
+      await expect(
+        inbox.enqueueAssignment({ teamId: "team-1", assigneeAgentId: "a", prompt: "work" }),
+      ).resolves.toBeDefined();
+      expect(await inbox.listAssignments("team-1")).toHaveLength(1);
+    });
+  });
 });
+
+interface ChangeWatch {
+  /** The teams the listener was told about, in the order it was told. */
+  teams: string[];
+  /** What the ledger looked like when read from inside the listener. */
+  reads: Promise<Ledger>[];
+  detach(): void;
+}
+
+function watchChanges(inbox: TeamInbox): ChangeWatch {
+  const teams: string[] = [];
+  const reads: Promise<Ledger>[] = [];
+  const detach = inbox.onChange((teamId) => {
+    teams.push(teamId);
+    reads.push(inbox.readLedger(teamId));
+  });
+  return { teams, reads, detach };
+}
+
+async function revisionsSeenBy(watch: ChangeWatch): Promise<number[]> {
+  return (await Promise.all(watch.reads)).map((ledger) => ledger.revision);
+}
+
+function failOnChange(inbox: TeamInbox): void {
+  inbox.onChange(() => {
+    throw new Error("listener is broken");
+  });
+}

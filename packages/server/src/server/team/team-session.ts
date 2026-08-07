@@ -1,8 +1,10 @@
 import type { Logger } from "pino";
 
 import { TEAM_ERROR_CODES } from "@getpaseo/protocol/team/rpc-schemas";
+import { toTeamTask, type TeamTaskList } from "@getpaseo/protocol/team/task-types";
 import { toTeamSnapshot, type StoredTeam, type TeamSnapshot } from "@getpaseo/protocol/team/types";
 
+import type { TeamInbox } from "./team-inbox.js";
 import {
   TeamCreateConflictError,
   TeamCreateValidationError,
@@ -30,7 +32,8 @@ export type TeamInboundMessage =
       requestId: string;
       teamId: string;
       agentId: string;
-    };
+    }
+  | { type: "team.tasks.list.request"; requestId: string; teamId: string };
 
 interface TeamMemberSpecInput {
   role: string;
@@ -46,6 +49,7 @@ const TEAM_REQUEST_TYPES: ReadonlySet<string> = new Set([
   "team.inspect.request",
   "team.archive.request",
   "team.member.remove.request",
+  "team.tasks.list.request",
 ]);
 
 /** Narrows a session message to one this module owns. */
@@ -89,6 +93,11 @@ export function teamUnavailableResponse(
         type: "team.member.remove.response",
         payload: { requestId: message.requestId, team: null, error: reason },
       };
+    case "team.tasks.list.request":
+      return {
+        type: "team.tasks.list.response",
+        payload: { requestId: message.requestId, tasks: null, error: reason },
+      };
   }
 }
 
@@ -118,11 +127,17 @@ export type TeamOutboundMessage =
       type: "team.member.remove.response";
       payload: { requestId: string; team: TeamSnapshot | null; error: string | null };
     }
-  | { type: "team.update"; payload: { team: TeamSnapshot } };
+  | {
+      type: "team.tasks.list.response";
+      payload: { requestId: string; tasks: TeamTaskList | null; error: string | null };
+    }
+  | { type: "team.update"; payload: { team: TeamSnapshot } }
+  | { type: "team.tasks.update"; payload: { tasks: TeamTaskList } };
 
 export interface TeamSessionHandlersOptions {
   service: TeamService;
   store: TeamStore;
+  inbox: TeamInbox;
   /** Answers the client that asked. Correlated by `requestId`. */
   send: (message: TeamOutboundMessage) => void;
   /** Tells every subscribed client. Not correlated with any request. */
@@ -146,6 +161,7 @@ export interface TeamSessionHandlersOptions {
 export class TeamSessionHandlers {
   private readonly service: TeamService;
   private readonly store: TeamStore;
+  private readonly inbox: TeamInbox;
   private readonly send: (message: TeamOutboundMessage) => void;
   private readonly publish: (team: TeamSnapshot) => void;
   private readonly logger: Logger;
@@ -153,6 +169,7 @@ export class TeamSessionHandlers {
   constructor(options: TeamSessionHandlersOptions) {
     this.service = options.service;
     this.store = options.store;
+    this.inbox = options.inbox;
     this.send = options.send;
     this.publish = options.publish;
     this.logger = options.logger.child({ module: "team", component: "team-session" });
@@ -170,6 +187,8 @@ export class TeamSessionHandlers {
         return await this.handleArchive(message);
       case "team.member.remove.request":
         return await this.handleMemberRemove(message);
+      case "team.tasks.list.request":
+        return await this.handleTasksList(message);
     }
   }
 
@@ -305,6 +324,31 @@ export class TeamSessionHandlers {
     }
   }
 
+  private async handleTasksList(
+    message: Extract<TeamInboundMessage, { type: "team.tasks.list.request" }>,
+  ): Promise<void> {
+    try {
+      // Asked of the store rather than inferred from the ledger: a team that has
+      // never been assigned anything has no ledger file, and reading one gives
+      // the same empty list as a team id that was never real.
+      const team = await this.store.get(message.teamId);
+      this.send({
+        type: "team.tasks.list.response",
+        payload: {
+          requestId: message.requestId,
+          tasks: team ? await readTeamTaskList(this.inbox, message.teamId) : null,
+          error: team ? null : `Team not found: ${message.teamId}`,
+        },
+      });
+    } catch (error) {
+      this.send({
+        type: "team.tasks.list.response",
+        payload: { requestId: message.requestId, tasks: null, error: describe(error) },
+      });
+      this.logFailure("tasks list", error);
+    }
+  }
+
   /**
    * Tells every connected client, not just the one that asked.
    *
@@ -326,6 +370,22 @@ export class TeamSessionHandlers {
     }
     this.logger.error({ err: error, operation }, "A team request failed");
   }
+}
+
+/**
+ * The ledger as the wire sees it.
+ *
+ * Shared by the correlated reply and the broadcast so the two cannot disagree
+ * about what a task looks like, and exported because the broadcast is wired
+ * where the inbox is, not where the session is.
+ */
+export async function readTeamTaskList(inbox: TeamInbox, teamId: string): Promise<TeamTaskList> {
+  const ledger = await inbox.readLedger(teamId);
+  return {
+    teamId,
+    revision: ledger.revision,
+    tasks: ledger.assignments.map((assignment) => toTeamTask(assignment)),
+  };
 }
 
 function toMemberRequest(spec: TeamMemberSpecInput) {

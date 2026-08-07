@@ -1072,6 +1072,23 @@ export const ja: TranslationResources = {
       showMore: "続きを表示",
       showMoreLines: "残り {{count}} 行を表示",
     },
+    tabs: {
+      chat: "チャット",
+      tasks: "タスク",
+    },
+    tasks: {
+      empty: "まだ割り当てはありません。",
+      state: {
+        queued: "待機中",
+        dispatched: "作業中",
+      },
+      outcome: {
+        completed: "完了",
+        failed: "失敗",
+        canceled: "取り消し",
+        unknown: "終了",
+      },
+    },
     route: {
       loading: "チームを探しています…",
       unsupported: "{{hostName}} が古いためチームを扱えません。更新してから開いてください。",

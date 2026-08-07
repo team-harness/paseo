@@ -209,6 +209,7 @@ import type { Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type pino from "pino";
 import { FileBackedChatService } from "./chat/chat-service.js";
+import type { TeamTaskList } from "@getpaseo/protocol/team/task-types";
 import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 import {
   isTeamInboundMessage,
@@ -423,6 +424,7 @@ function buildTeamHandlers(
   return new TeamSessionHandlers({
     service: teamRuntime.service,
     store: teamRuntime.store,
+    inbox: teamRuntime.inbox,
     send: (message) => send(message as SessionOutboundMessage),
     publish: teamRuntime.publishTeamUpdate,
     logger,
@@ -1383,6 +1385,26 @@ export class Session {
     }
     for (const [source, capabilities] of this.clientCapabilitiesBySource) {
       if (capabilities.has(CLIENT_CAPS.teams)) {
+        this.onMessageToSource(source, message);
+      }
+    }
+  }
+
+  /**
+   * Broadcasts a team's task ledger, per socket.
+   *
+   * Gated on its own capability rather than on teams: the beta sockets that
+   * advertise teams shipped before the ledger RPCs and have no branch to parse
+   * this into.
+   */
+  emitTeamTasksUpdate(tasks: TeamTaskList): void {
+    const message = { type: "team.tasks.update", payload: { tasks } } as SessionOutboundMessage;
+    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
+      if (this.supports(CLIENT_CAPS.teamTasks)) this.emit(message);
+      return;
+    }
+    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
+      if (capabilities.has(CLIENT_CAPS.teamTasks)) {
         this.onMessageToSource(source, message);
       }
     }

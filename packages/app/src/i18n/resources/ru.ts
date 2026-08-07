@@ -1083,6 +1083,23 @@ export const ru: TranslationResources = {
       showMore: "Показать ещё",
       showMoreLines: "Показать ещё {{count}} строк",
     },
+    tabs: {
+      chat: "Чат",
+      tasks: "Задачи",
+    },
+    tasks: {
+      empty: "Пока ничего не поручено.",
+      state: {
+        queued: "В очереди",
+        dispatched: "В работе",
+      },
+      outcome: {
+        completed: "Готово",
+        failed: "Ошибка",
+        canceled: "Отменена",
+        unknown: "Завершена",
+      },
+    },
     route: {
       loading: "Ищем эту команду…",
       unsupported: "{{hostName}} слишком старый для команд. Обновите его, чтобы открыть ссылку.",

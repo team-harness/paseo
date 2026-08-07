@@ -1067,6 +1067,23 @@ export const ko: TranslationResources = {
       showMore: "더 보기",
       showMoreLines: "{{count}}줄 더 보기",
     },
+    tabs: {
+      chat: "채팅",
+      tasks: "작업",
+    },
+    tasks: {
+      empty: "아직 배정된 작업이 없습니다.",
+      state: {
+        queued: "대기 중",
+        dispatched: "진행 중",
+      },
+      outcome: {
+        completed: "완료",
+        failed: "실패",
+        canceled: "취소됨",
+        unknown: "종료",
+      },
+    },
     route: {
       loading: "팀을 찾는 중…",
       unsupported: "{{hostName}}이(가) 너무 오래되어 팀을 지원하지 않습니다. 업데이트해 주세요.",

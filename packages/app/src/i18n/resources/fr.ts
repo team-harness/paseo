@@ -1091,6 +1091,23 @@ export const fr: TranslationResources = {
       showMore: "Afficher la suite",
       showMoreLines: "Afficher {{count}} lignes de plus",
     },
+    tabs: {
+      chat: "Discussion",
+      tasks: "Tâches",
+    },
+    tasks: {
+      empty: "Rien d'assigné pour l'instant.",
+      state: {
+        queued: "En attente",
+        dispatched: "En cours",
+      },
+      outcome: {
+        completed: "Terminé",
+        failed: "Échec",
+        canceled: "Annulée",
+        unknown: "Fini",
+      },
+    },
     route: {
       loading: "Recherche de cette équipe…",
       unsupported:

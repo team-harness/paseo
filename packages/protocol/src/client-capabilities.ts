@@ -34,6 +34,10 @@ export const CLIENT_CAPS = {
   // the client floor is >= v0.3.0. Gated per socket like teams; separate because
   // live room streaming is useful without teams.
   chatRoomSubscriptions: "chat_room_subscriptions",
+  // COMPAT(teamTasks): added in v0.3.0-beta.3, remove after 2027-02-06 once the
+  // client floor is >= v0.3.0. Separate from teams because the beta clients that
+  // already advertise teams have no `team.tasks.update` branch to parse into.
+  teamTasks: "team_tasks",
 } as const;
 
 export type ClientCapability = (typeof CLIENT_CAPS)[keyof typeof CLIENT_CAPS];

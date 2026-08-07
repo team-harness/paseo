@@ -1058,6 +1058,23 @@ export const ar: TranslationResources = {
       showMore: "عرض المزيد",
       showMoreLines: "عرض {{count}} أسطر أخرى",
     },
+    tabs: {
+      chat: "محادثة",
+      tasks: "المهام",
+    },
+    tasks: {
+      empty: "لا مهام موكلة بعد.",
+      state: {
+        queued: "في الانتظار",
+        dispatched: "قيد التنفيذ",
+      },
+      outcome: {
+        completed: "تم",
+        failed: "فشلت",
+        canceled: "أُلغيت",
+        unknown: "انتهت",
+      },
+    },
     route: {
       loading: "جارٍ البحث عن هذا الفريق…",
       unsupported: "{{hostName}} قديم جدًا ولا يدعم الفرق. حدّثه لفتح هذا الرابط.",

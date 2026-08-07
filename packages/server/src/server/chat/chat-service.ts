@@ -669,6 +669,27 @@ export class FileBackedChatService {
     return Array.from(posters);
   }
 
+  /**
+   * Client ids of the humans who have posted here.
+   *
+   * The counterpart to {@link listRoomPosterAgentIds}, for the caller that needs
+   * to know a token is a person rather than an agent it failed to find. A
+   * message from before `author` existed is left out for the same reason it is
+   * left out there: it cannot say which it was.
+   */
+  async listRoomHumanAuthorIds(input: ListChatRoomPosterAgentIdsInput): Promise<string[]> {
+    await this.load();
+    const room = this.resolveRoom(input.room);
+    const humans = new Set<string>();
+    for (const message of this.getRoomMessages(room.id)) {
+      if (message.author?.kind !== "human") {
+        continue;
+      }
+      humans.add(message.authorAgentId);
+    }
+    return Array.from(humans);
+  }
+
   async waitForMessages(input: WaitForChatMessagesInput): Promise<ChatMessage[]> {
     await this.load();
     const room = this.resolveRoom(input.room);

@@ -149,6 +149,8 @@ import {
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { createTeamRuntime, type TeamRuntime } from "./team/team-runtime.js";
 import { notifyChatMentions, prepareChatMentionFanout } from "./chat/chat-mentions.js";
+import { resolveRoomMentionTokens, type RoomMentionLookups } from "./chat/room-mention-roster.js";
+import type { TeamStore } from "./team/team-store.js";
 import { resolveAgentIdentifier } from "./agent/resolve-agent-identifier.js";
 import { formatSystemNotificationPrompt, sendPromptToAgent } from "./agent/agent-prompt.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
@@ -859,17 +861,38 @@ export async function createPaseoDaemon(
   // so a message posted through an agent tool wakes the same people as one
   // posted by a human. Wired here because waking an agent needs the runtime,
   // which does not exist yet when the store is built.
+  // Filled in once the team runtime exists, which is further down. A mention
+  // that arrives before then resolves no roles rather than failing the post.
+  let teamRosterSource: TeamStore | null = null;
+
+  const roomMentionLookups: RoomMentionLookups = {
+    getRoomOwner: async (roomId) => {
+      const room = (await chatService.listRooms()).find((candidate) => candidate.id === roomId);
+      return room?.ownerKind && room.ownerId ? { kind: room.ownerKind, id: room.ownerId } : null;
+    },
+    getTeamRoster: async (teamId) => (await teamRosterSource?.get(teamId))?.members ?? null,
+    listHumanAuthorIds: (roomId) => chatService.listRoomHumanAuthorIds({ room: roomId }),
+  };
+
   async function prepareChatFanout(roomId: string, authorAgentId: string, mentions: string[]) {
     const storedAgents = await agentStorage.list();
     const liveAgents = agentManager.listAgents();
+    // Roles become agent ids and human client ids drop out before anything asks
+    // the agent runtime about them, so the eligibility check below sees the
+    // targets fanout will actually try to wake rather than the raw tokens.
+    const mentionAgentIds = await resolveRoomMentionTokens({
+      roomId,
+      tokens: mentions,
+      lookups: roomMentionLookups,
+    });
     const fanout = await prepareChatMentionFanout({
       authorAgentId,
-      mentionAgentIds: mentions,
+      mentionAgentIds,
       storedAgents,
       liveAgents,
       listRoomPosterAgentIds: () => chatService.listRoomPosterAgentIds({ room: roomId }),
     });
-    return { storedAgents, liveAgents, fanout };
+    return { storedAgents, liveAgents, mentionAgentIds, fanout };
   }
 
   chatService.setMentionHandler({
@@ -877,11 +900,11 @@ export async function createPaseoDaemon(
       const { fanout } = await prepareChatFanout(roomId, actor.id, mentionAgentIds);
       return fanout.ok ? { ok: true } : { ok: false, error: fanout.error };
     },
-    notify: async ({ roomId, actor, body, mentionAgentIds }) => {
-      const { storedAgents, liveAgents, fanout } = await prepareChatFanout(
+    notify: async ({ roomId, actor, body, mentionAgentIds: tokens }) => {
+      const { storedAgents, liveAgents, mentionAgentIds, fanout } = await prepareChatFanout(
         roomId,
         actor.id,
-        mentionAgentIds,
+        tokens,
       );
       if (!fanout.ok) {
         return;
@@ -984,8 +1007,14 @@ export async function createPaseoDaemon(
         session.emitTeamUpdate(team);
       }
     },
+    publishTeamTasksUpdate: (tasks) => {
+      for (const session of wsServer?.listTrustedSessions() ?? []) {
+        session.emitTeamTasksUpdate(tasks);
+      }
+    },
     logger,
   });
+  teamRosterSource = teamRuntime.store;
   logger.info({ elapsed: elapsed() }, "Team runtime initialized");
   // Not awaited: reconciling every team reads each one's agents, and a daemon
   // that cannot answer until that finishes is a daemon that looks hung.

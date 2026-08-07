@@ -1,4 +1,5 @@
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { TeamTaskList } from "@getpaseo/protocol/team/task-types";
 import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import {
@@ -25,6 +26,17 @@ export interface TeamSyncConnection {
 export interface TeamSyncCallbacks {
   /** Replaces everything held for this daemon. */
   commit(teams: TeamSnapshotMap): void;
+  /**
+   * Folds one team's task ledger into what is held.
+   *
+   * Not a replace, unlike `commit`: teams arrive as one list per daemon, but a
+   * ledger is read one team at a time by whatever is showing it. That read and
+   * this broadcast have to land in the same place under the same revision rule,
+   * or each would decide on its own which of the two is newer.
+   */
+  applyTasks(tasks: TeamTaskList): void;
+  /** Drops every ledger held for the daemon this was connected to. */
+  clearTasks(): void;
   /** Marks whether a list has landed since the last connection change. */
   setHydrated(hydrated: boolean): void;
   /**
@@ -86,6 +98,11 @@ export class TeamSync {
     this.connection = connection;
     this.callbacks.setHydrated(false);
     this.callbacks.setError(null);
+    // Ledgers are dropped on a new connection but kept through a blip, so a
+    // reconnect cannot leave the client holding revisions from a daemon that
+    // has since been restarted with a ledger reset to zero — every broadcast
+    // after that would read as older than what is held, and never apply.
+    if (changed) this.callbacks.clearTasks();
 
     if (connection.supportsTeams === false) {
       // A daemon without teams has none to show, and holding the last one's
@@ -110,7 +127,7 @@ export class TeamSync {
     // Opened before the list is asked for, so a broadcast that arrives during
     // the read has somewhere to go.
     this.transactions.begin(source, () => null);
-    this.unsubscribe = client.on("team.update", (message) => {
+    const detachTeams = client.on("team.update", (message) => {
       // Belt and braces: unsubscribing on a connection change is what actually
       // stops this, and the source check is what makes that not the only thing
       // standing between a dead socket and the store.
@@ -120,6 +137,16 @@ export class TeamSync {
         this.commit(applyTeamUpdate(this.teams, team));
       }
     });
+    // No transaction around this one: a ledger is read per team, by whatever is
+    // showing it, so there is no daemon-wide read for a broadcast to race.
+    const detachTasks = client.on("team.tasks.update", (message) => {
+      if (message.type !== "team.tasks.update" || !this.isCurrent(client, source)) return;
+      this.callbacks.applyTasks(message.payload.tasks);
+    });
+    this.unsubscribe = () => {
+      detachTeams();
+      detachTasks();
+    };
     void this.hydrate(client, source);
     return true;
   }

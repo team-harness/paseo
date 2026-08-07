@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { Logger } from "pino";
 
+import type { TeamTaskList } from "@getpaseo/protocol/team/task-types";
 import type { StoredTeam, TeamSnapshot } from "@getpaseo/protocol/team/types";
 import { toTeamSnapshot } from "@getpaseo/protocol/team/types";
 
@@ -19,6 +20,7 @@ import { TeamInbox } from "./team-inbox.js";
 import { TeamPump, type DispatchResult, type TeamPumpGateway } from "./team-pump.js";
 import { lookUpTurnOutcome } from "./team-turn-lookup.js";
 import { TeamScheduler } from "./team-scheduler.js";
+import { readTeamTaskList } from "./team-session.js";
 import { TeamStore } from "./team-store.js";
 import { TeamService, type TeamAgentGateway, type TeamRoomGateway } from "./team-service.js";
 import {
@@ -38,16 +40,19 @@ export interface TeamRuntimeOptions {
   resolveWorkspaceCwd(workspaceId: string): Promise<string | null>;
   /** Publishes a team snapshot to subscribed clients. */
   publishTeamUpdate(snapshot: TeamSnapshot): void;
+  /** Publishes a team's task ledger to subscribed clients. */
+  publishTeamTasksUpdate(tasks: TeamTaskList): void;
   logger: Logger;
 }
 
 /**
- * What a session needs from the runtime: the two services the RPCs act on, and
- * the way to tell every other client what changed.
+ * What a session needs from the runtime: the services the RPCs act on, and the
+ * way to tell every other client what changed.
  */
 export interface TeamRuntimeSessionDeps {
   service: TeamService;
   store: TeamStore;
+  inbox: TeamInbox;
   publishTeamUpdate: (team: TeamSnapshot) => void;
 }
 
@@ -59,7 +64,6 @@ export interface TeamRuntimeSessionDeps {
  * where anyone looking for how a team reaches the agent runtime should start.
  */
 export interface TeamRuntime extends TeamRuntimeSessionDeps {
-  inbox: TeamInbox;
   recruitmentHook: TeamRecruitmentHook;
   /** Per-agent tool registration, called when a catalog is built for that agent. */
   registerToolsFor(options: Pick<RegisterTeamToolsOptions, "registerTool" | "callerAgentId">): void;
@@ -472,6 +476,27 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
    * from "not built yet" — and the creation replay would build a second one.
    * Refusing up front is the only way to close that window without one.
    */
+  /**
+   * The ledger is the only place a task changes, so this is the only place a
+   * client can be told one did. Nothing else in the daemon knows that a queued
+   * assignment became dispatched: the pump writes it and moves on.
+   *
+   * The read is after the write it was told about, so a broadcast can carry a
+   * revision newer than the change that triggered it. That is why the list is
+   * revision-stamped rather than diffed — a client keeps the higher one and
+   * drops the older, however they interleave.
+   */
+  const detachLedgerChanges = inbox.onChange((teamId) => {
+    readTeamTaskList(inbox, teamId)
+      .then((tasks) => options.publishTeamTasksUpdate(tasks))
+      .catch((error: unknown) => {
+        // A ledger that cannot be read is already logged where it is read. The
+        // clients simply do not learn about this write; the next one, or a
+        // `team.tasks.list.request`, brings them back up to date.
+        teamLogger.warn({ err: error, teamId }, "A task ledger change could not be published");
+      });
+  });
+
   const detachDeletionGuard = agentManager.registerAgentDeletionGuard((agentId) => {
     const teamName = store.creatingTeamNameOf(agentId);
     return teamName
@@ -526,6 +551,7 @@ export async function createTeamRuntime(options: TeamRuntimeOptions): Promise<Te
       releaseReconciled();
       scheduler.stop();
       detachRecordChanges();
+      detachLedgerChanges();
       detachDeletionGuard();
     },
   };

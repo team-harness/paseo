@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { MoreHorizontal } from "lucide-react-native";
 
 import type {
   AgentPermissionAction,
@@ -10,9 +11,24 @@ import type {
 import type { TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import { resolvePermissionActions } from "@/agent-stream/permission-actions";
-import { Button } from "@/components/ui/button";
+import { MemberAvatar } from "@/components/teams/member-avatar";
 import { TeamRoom } from "@/components/teams/team-room";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import { TeamTasks } from "@/components/teams/team-tasks";
+import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import {
@@ -35,23 +51,37 @@ import {
 } from "@/teams/team-actions";
 import { selectTeamPermissions, type TeamPermissionRow } from "@/teams/team-permissions";
 import { useTeam } from "@/teams/use-teams";
+import { useTeamTasks } from "@/teams/use-team-tasks";
+import type { Theme } from "@/styles/theme";
 
 export interface TeamPanelProps {
   serverId: string;
   teamId: string;
+  /** Opens one member's own conversation. Avatars and mentions are inert without it. */
+  onOpenAgent?: (agentId: string) => void;
 }
+
+/** Which of the panel's two surfaces is showing. */
+type TeamTab = "chat" | "tasks";
 
 const IDLE: TeamActionState = { status: "idle" };
 const EMPTY_AGENTS: ReadonlyMap<string, TeamMemberAgent> = new Map();
+const NO_TASK_IDS: readonly string[] = [];
 
-export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
+const MenuGlyph = withUnistyles(MoreHorizontal, (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
+
+export function TeamPanel({ serverId, teamId, onOpenAgent }: TeamPanelProps): ReactElement {
   const { t } = useTranslation();
-  const isCompact = useIsCompactFormFactor();
   const team = useTeam(serverId, teamId);
   const agents = useSessionStore((state) => state.sessions[serverId]?.agents);
   const pending = useSessionStore((state) => state.sessions[serverId]?.pendingPermissions);
   const client = useHostRuntimeClient(serverId);
+  const tasks = useTeamTasks(serverId, teamId);
   const [actions, setActions] = useState<Record<string, TeamActionState>>({});
+  const [tab, setTab] = useState<TeamTab>("chat");
+  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
 
   const roster = useMemo<TeamMemberRow[]>(
     () => (team ? selectTeamRoster(team, agents ?? EMPTY_AGENTS) : []),
@@ -74,6 +104,16 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
   const permissions = useMemo<TeamPermissionRow[]>(
     () => (team ? selectTeamPermissions(team, pending ?? new Map()) : []),
     [team, pending],
+  );
+
+  // Only ids the client actually holds. A `#id` for a task this client has not
+  // read yet stays plain text rather than becoming a chip that opens nothing.
+  const taskIds = useMemo(
+    () =>
+      tasks.status === "loaded" || tasks.status === "failed"
+        ? tasks.tasks.map((task) => task.taskId)
+        : NO_TASK_IDS,
+    [tasks],
   );
 
   const run = useCallback(
@@ -121,6 +161,21 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
     })();
   }, [activeCount, runningCount, run, t]);
 
+  // A task chip in the room names a row on the other tab. Switching without
+  // marking which row would answer the tap with thirty of them.
+  const openTask = useCallback((taskId: string) => {
+    setHighlightTaskId(taskId);
+    setTab("tasks");
+  }, []);
+
+  const tabOptions = useMemo(
+    () => [
+      { value: "chat" as const, label: t("teams.tabs.chat"), testID: "team-tab-chat" },
+      { value: "tasks" as const, label: t("teams.tabs.tasks"), testID: "team-tab-tasks" },
+    ],
+    [t],
+  );
+
   if (!team) {
     // The team is gone, or this client has not been told about it yet. Either
     // way there is no roster to draw, and drawing an empty one would read as a
@@ -141,46 +196,46 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
   // one that failed.
   const stage = selectTeamStage(team);
   const actionable = teamStageAcceptsActions(stage);
-
-  const side = (
-    <View style={isCompact ? styles.sideCompact : styles.side}>
-      <View style={styles.section} testID="team-panel-roster">
-        {roster.map((row) => (
-          <MemberRow
-            key={row.entry.agentId}
-            row={row}
-            state={actions[teamActionKeyOf({ kind: "remove", agentId: row.entry.agentId })] ?? IDLE}
-            onRemove={run}
-            actionable={actionable}
-          />
-        ))}
-      </View>
-
-      {archiveState.status === "failure" ? (
-        <Text style={styles.error} testID="team-panel-archive-error">
-          {archiveState.message}
-        </Text>
-      ) : null}
-      {actionable ? (
-        <View style={styles.archiveRow}>
-          <Button
-            size="sm"
-            variant="outline"
-            loading={archiveState.status === "pending"}
-            onPress={archive}
-            testID="team-panel-archive"
-          >
-            {t("teams.panel.archiveAction")}
-          </Button>
-        </View>
-      ) : null}
-    </View>
-  );
+  const hasTasks = tasks.status !== "unsupported";
+  // A daemon with no ledger has one surface, and a control with one option is
+  // a label that looks pressable.
+  const showing: TeamTab = hasTasks ? tab : "chat";
 
   return (
     <View style={styles.body} testID="team-panel">
       <View style={styles.head}>
-        <Header team={team} activity={activity} stage={stage} />
+        <Header
+          team={team}
+          activity={activity}
+          stage={stage}
+          actionable={actionable}
+          archiving={archiveState.status === "pending"}
+          onArchive={archive}
+        />
+
+        {/* Who is on the team, at the top, because the conversation below is
+            theirs. Pressing one opens that agent's own conversation; the rest
+            of what can be done to a member is behind its menu. */}
+        <View style={styles.strip} testID="team-panel-roster">
+          {roster.map((row) => (
+            <MemberChip
+              key={row.entry.agentId}
+              row={row}
+              state={
+                actions[teamActionKeyOf({ kind: "remove", agentId: row.entry.agentId })] ?? IDLE
+              }
+              onRemove={run}
+              onOpen={onOpenAgent}
+              actionable={actionable}
+            />
+          ))}
+        </View>
+
+        {archiveState.status === "failure" ? (
+          <Text style={styles.error} testID="team-panel-archive-error">
+            {archiveState.message}
+          </Text>
+        ) : null}
 
         {/* No heading: the header already says the team is waiting on you, and
             repeating the same words six pixels below reads as a duplicated
@@ -192,23 +247,37 @@ export function TeamPanel({ serverId, teamId }: TeamPanelProps): ReactElement {
             ))}
           </View>
         ) : null}
+
+        {hasTasks ? (
+          <SegmentedControl
+            options={tabOptions}
+            value={showing}
+            onValueChange={setTab}
+            size="sm"
+            style={styles.tabs}
+            testID="team-panel-tabs"
+          />
+        ) : null}
       </View>
 
-      {/* The room is the panel's main surface: what the team said is what
-          someone came here to read. The roster sits beside it on a wide screen
-          and beneath it on a narrow one, where a fixed side column would take
-          the room's width and leave a stripe. */}
-      <View style={isCompact ? styles.columnsCompact : styles.columns}>
-        <View style={styles.roomColumn}>
-          <TeamRoom
-            serverId={serverId}
-            roomId={team.chatRoomId}
-            roster={roster}
-            readOnly={!actionable}
-          />
-        </View>
-        {side}
-      </View>
+      {showing === "chat" ? (
+        <TeamRoom
+          serverId={serverId}
+          roomId={team.chatRoomId}
+          roster={roster}
+          taskIds={taskIds}
+          readOnly={!actionable}
+          onOpenAgent={onOpenAgent}
+          onOpenTask={openTask}
+        />
+      ) : (
+        <TeamTasks
+          state={tasks}
+          roster={roster}
+          onOpenAgent={onOpenAgent}
+          highlightTaskId={highlightTaskId}
+        />
+      )}
     </View>
   );
 }
@@ -217,10 +286,16 @@ function Header({
   team,
   activity,
   stage,
+  actionable,
+  archiving,
+  onArchive,
 }: {
   team: TeamSnapshot;
   activity: TeamActivity;
   stage: TeamStage;
+  actionable: boolean;
+  archiving: boolean;
+  onArchive: () => void;
 }): ReactElement {
   const { t } = useTranslation();
   // Where the team is in its own life outranks what its members are doing:
@@ -229,14 +304,37 @@ function Header({
   const label = stage === "active" ? ACTIVITY_LABEL[activity] : STAGE_LABEL[stage];
   return (
     <View style={styles.header}>
-      <Text style={styles.title} testID="team-panel-name">
-        {team.name}
-      </Text>
-      <Text style={styles.muted} testID="team-panel-activity">
-        {t(label)}
-      </Text>
+      <View style={styles.headerText}>
+        <Text style={styles.title} testID="team-panel-name">
+          {team.name}
+        </Text>
+        <Text style={styles.muted} testID="team-panel-activity">
+          {t(label)}
+        </Text>
+      </View>
+      {actionable ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger style={triggerStyle} testID="team-panel-menu">
+            <MenuGlyph size={16} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" side="bottom" minWidth={200}>
+            <DropdownMenuItem
+              destructive
+              status={archiving ? "pending" : undefined}
+              onSelect={onArchive}
+              testID="team-panel-archive"
+            >
+              {t("teams.panel.archiveAction")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
     </View>
   );
+}
+
+function triggerStyle({ hovered }: { hovered: boolean }) {
+  return hovered ? styles.menuTriggerHovered : styles.menuTrigger;
 }
 
 const STAGE_LABEL: Record<TeamStage, string> = {
@@ -355,18 +453,29 @@ function PermissionAction({
   );
 }
 
-function MemberRow({
+/**
+ * One member of the team, in the strip above the room.
+ *
+ * Pressing opens that agent's own conversation, which is the thing anyone comes
+ * to a roster to do. Removing is a long press or a right click away, because it
+ * is not undoable and a button next to the face makes it a slip.
+ */
+function MemberChip({
   row,
   state,
   onRemove,
+  onOpen,
   actionable,
 }: {
   row: TeamMemberRow;
   state: TeamActionState;
   onRemove: (action: TeamActionKey) => void;
+  onOpen?: (agentId: string) => void;
   actionable: boolean;
 }): ReactElement {
   const { t } = useTranslation();
+  const removable = actionable && row.entry.state === "active" && !row.isLead;
+
   const remove = useCallback(() => {
     // Removing a member ends its membership, and nothing in the panel puts it
     // back. Ask before, not after.
@@ -381,36 +490,58 @@ function MemberRow({
       if (confirmed) onRemove({ kind: "remove", agentId: row.entry.agentId });
     })();
   }, [onRemove, row.entry.agentId, row.entry.role, t]);
-  const label = describeMember(row.agent, t("teams.panel.notLoaded"));
+
+  const open = useCallback(() => {
+    onOpen?.(row.entry.agentId);
+  }, [onOpen, row.entry.agentId]);
+
+  const role =
+    row.isLead && row.entry.role !== "lead"
+      ? `${row.entry.role} (${t("teams.panel.lead")})`
+      : row.entry.role;
+  // The circle cannot carry a tag, so the fact that someone left rides on the
+  // label a screen reader gets and on the fill everyone else sees.
+  const name =
+    row.entry.state === "removed"
+      ? `${role} (${t("teams.panel.left")})`
+      : `${role} — ${describeMember(row.agent, t("teams.panel.notLoaded"))}`;
 
   return (
-    <View style={styles.member} testID={`team-member-${row.entry.agentId}`}>
-      <Text style={styles.memberRole}>
-        {row.isLead && row.entry.role !== "lead"
-          ? `${row.entry.role} (${t("teams.panel.lead")})`
-          : row.entry.role}
-      </Text>
-      <Text style={styles.muted}>{label}</Text>
-      {row.entry.state === "removed" ? (
-        <Text style={styles.muted} testID={`team-member-${row.entry.agentId}-removed`}>
-          {t("teams.panel.left")}
-        </Text>
-      ) : null}
+    <View style={styles.chip}>
+      <ContextMenu>
+        <ContextMenuTrigger
+          enabled={removable}
+          onPress={open}
+          accessibilityRole="button"
+          accessibilityLabel={name}
+          style={row.entry.state === "removed" ? styles.chipLeft : undefined}
+          testID={`team-member-${row.entry.agentId}`}
+        >
+          <MemberAvatar
+            agentId={row.entry.agentId}
+            label={row.entry.role}
+            status={row.agent?.status}
+            requiresAttention={row.agent?.requiresAttention}
+            attentionReason={row.agent?.attentionReason}
+            pendingPermissionCount={row.agent?.pendingPermissions?.length ?? 0}
+          />
+        </ContextMenuTrigger>
+        <ContextMenuContent minWidth={200} sheetTitle={role}>
+          <ContextMenuLabel>{role}</ContextMenuLabel>
+          <ContextMenuItem
+            destructive
+            status={state.status === "pending" ? "pending" : undefined}
+            onSelect={remove}
+            testID={`team-member-${row.entry.agentId}-remove`}
+          >
+            {t("teams.panel.removeAction")}
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
       {state.status === "failure" ? (
         <Text style={styles.error} testID={`team-member-${row.entry.agentId}-error`}>
           {state.message}
         </Text>
-      ) : null}
-      {actionable && row.entry.state === "active" && !row.isLead ? (
-        <Button
-          size="sm"
-          variant="ghost"
-          loading={state.status === "pending"}
-          onPress={remove}
-          testID={`team-member-${row.entry.agentId}-remove`}
-        >
-          {t("teams.panel.removeAction")}
-        </Button>
       ) : null}
     </View>
   );
@@ -431,35 +562,46 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
     paddingTop: theme.spacing[4],
   },
-  columns: {
-    flex: 1,
+  header: {
     flexDirection: "row",
-    gap: theme.spacing[4],
+    alignItems: "flex-start",
+    gap: theme.spacing[2],
   },
-  columnsCompact: {
+  headerText: {
     flex: 1,
-    flexDirection: "column",
-  },
-  roomColumn: {
-    flex: 1,
+    gap: theme.spacing[1],
     minWidth: 0,
   },
-  side: {
-    width: 260,
-    gap: theme.spacing[3],
-    padding: theme.spacing[4],
+  menuTrigger: {
+    padding: theme.spacing[1],
+    borderRadius: theme.borderRadius.md,
   },
-  sideCompact: {
-    gap: theme.spacing[3],
-    padding: theme.spacing[4],
-  },
-  header: {
-    gap: theme.spacing[1],
+  menuTriggerHovered: {
+    padding: theme.spacing[1],
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface2,
   },
   title: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
     fontWeight: "600",
+  },
+  strip: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
+  },
+  chip: {
+    gap: theme.spacing[1],
+  },
+  chipLeft: {
+    // Someone who left is still part of the record of who was on this team.
+    // Dimmed rather than dropped, so the strip does not quietly shrink.
+    opacity: 0.4,
+  },
+  tabs: {
+    alignSelf: "flex-start",
   },
   section: {
     gap: theme.spacing[1],
@@ -468,22 +610,6 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-  },
-  member: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingVertical: theme.spacing[2],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  archiveRow: {
-    flexDirection: "row",
-    paddingTop: theme.spacing[2],
-  },
-  memberRole: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
   },
   muted: {
     color: theme.colors.foregroundMuted,

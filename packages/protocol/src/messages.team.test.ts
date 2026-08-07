@@ -30,6 +30,24 @@ const teamSnapshot = {
   archivedAt: null,
 };
 
+const taskList = {
+  teamId: "team-1",
+  revision: 2,
+  tasks: [
+    {
+      taskId: "task-1",
+      assigneeAgentId: "agent-impl",
+      prompt: "Add a disk usage indicator",
+      state: "dispatched",
+      acceptedTurnId: "turn-9",
+      outcome: null,
+      createdAt: "2026-08-06T10:00:00.000Z",
+      dispatchedAt: "2026-08-06T10:00:04.000Z",
+      settledAt: null,
+    },
+  ],
+};
+
 describe("team session messages", () => {
   it("accepts every team request on the inbound union", () => {
     const requests = [
@@ -52,6 +70,7 @@ describe("team session messages", () => {
         teamId: "team-1",
         agentId: "agent-impl",
       },
+      { type: "team.tasks.list.request", requestId: "req-6", teamId: "team-1" },
     ];
     for (const request of requests) {
       expect(SessionInboundMessageSchema.safeParse(request).success).toBe(true);
@@ -80,6 +99,10 @@ describe("team session messages", () => {
         type: "team.member.remove.response",
         payload: { requestId: "req-5", team: teamSnapshot, error: null },
       },
+      {
+        type: "team.tasks.list.response",
+        payload: { requestId: "req-6", tasks: taskList, error: null },
+      },
     ];
     for (const response of responses) {
       expect(SessionOutboundMessageSchema.safeParse(response).success).toBe(true);
@@ -90,6 +113,14 @@ describe("team session messages", () => {
     const parsed = SessionOutboundMessageSchema.safeParse({
       type: "team.update",
       payload: { team: teamSnapshot },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts the task ledger broadcast carrying the ledger revision", () => {
+    const parsed = SessionOutboundMessageSchema.safeParse({
+      type: "team.tasks.update",
+      payload: { tasks: taskList },
     });
     expect(parsed.success).toBe(true);
   });
@@ -116,5 +147,17 @@ describe("team capability gating", () => {
 
   it("exposes a client capability so the daemon can gate team broadcasts per socket", () => {
     expect(CLIENT_CAPS.teams).toBe("teams");
+  });
+
+  it("advertises the task ledger separately from teams", () => {
+    const payload = ServerInfoStatusPayloadSchema.parse({
+      status: "server_info",
+      serverId: "srv_test",
+      features: { teams: true },
+    });
+    // A daemon serving teams without the ledger RPCs is a real configuration —
+    // every 0.3.0 beta is one — so the client must not read `teams` as both.
+    expect(payload.features?.teamTasks).toBeUndefined();
+    expect(CLIENT_CAPS.teamTasks).toBe("team_tasks");
   });
 });

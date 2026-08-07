@@ -7,6 +7,7 @@ import { TEAM_ERROR_CODES } from "@getpaseo/protocol/team/rpc-schemas";
 import type { StoredTeam, TeamSnapshot } from "@getpaseo/protocol/team/types";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
+import { TeamInbox } from "./team-inbox.js";
 import { TeamStore } from "./team-store.js";
 import { TeamService, type TeamAgentGateway, type TeamRoomGateway } from "./team-service.js";
 import { TeamSessionHandlers, type TeamOutboundMessage } from "./team-session.js";
@@ -39,6 +40,7 @@ describe("team session handlers", () => {
   let home: string;
   let store: TeamStore;
   let service: TeamService;
+  let inbox: TeamInbox;
   let sent: TeamOutboundMessage[];
   let published: TeamSnapshot[];
   let handlers: TeamSessionHandlers;
@@ -93,11 +95,13 @@ describe("team session handlers", () => {
     store = new TeamStore(join(home, "teams"), logger);
     await store.initialize();
     service = new TeamService({ store, rooms, agents, logger });
+    inbox = new TeamInbox(join(home, "teams", "inbox"), logger);
     sent = [];
     published = [];
     handlers = new TeamSessionHandlers({
       service,
       store,
+      inbox,
       send: (message) => sent.push(message),
       publish: (team) => published.push(team),
       logger,
@@ -246,6 +250,83 @@ describe("team session handlers", () => {
       const payload = payloadOf("team.member.remove.response");
       expect(payload.team).toBeNull();
       expect(payload.error).toMatch(/lead/i);
+    });
+  });
+
+  describe("listing tasks", () => {
+    test("answers with the ledger and the revision it was read at", async () => {
+      const team = await seedTeam();
+      const memberId = memberIdWithRole(team, "server");
+      await inbox.enqueueAssignment({
+        teamId: team.id,
+        assigneeAgentId: memberId,
+        prompt: "Measure the cache directory",
+      });
+
+      await handlers.handle({
+        type: "team.tasks.list.request",
+        requestId: "req-1",
+        teamId: team.id,
+      });
+
+      const payload = payloadOf("team.tasks.list.response");
+      expect(payload.error).toBeNull();
+      expect(payload.tasks?.teamId).toBe(team.id);
+      // A client compares this against what it already holds, so the reply has
+      // to carry it rather than leave the client to guess at ordering.
+      expect(payload.tasks?.revision).toBe(1);
+      expect(payload.tasks?.tasks).toHaveLength(1);
+      expect(payload.tasks?.tasks[0]?.assigneeAgentId).toBe(memberId);
+      expect(payload.tasks?.tasks[0]?.state).toBe("queued");
+    });
+
+    // The ledger's own handles on a prompt and on a delivery. A client can
+    // neither use nor act on either.
+    test("does not put the ledger's own bookkeeping on the wire", async () => {
+      const team = await seedTeam();
+      await inbox.enqueueAssignment({
+        teamId: team.id,
+        assigneeAgentId: memberIdWithRole(team, "server"),
+        prompt: "Measure the cache directory",
+      });
+
+      await handlers.handle({
+        type: "team.tasks.list.request",
+        requestId: "req-1",
+        teamId: team.id,
+      });
+
+      const wire = JSON.stringify(payloadOf("team.tasks.list.response").tasks);
+      expect(wire).not.toContain("clientMessageId");
+      expect(wire).not.toContain("completionEventId");
+    });
+
+    test("answers with an empty ledger for a team nobody has assigned work to", async () => {
+      const team = await seedTeam();
+
+      await handlers.handle({
+        type: "team.tasks.list.request",
+        requestId: "req-1",
+        teamId: team.id,
+      });
+
+      const payload = payloadOf("team.tasks.list.response");
+      expect(payload.error).toBeNull();
+      expect(payload.tasks).toEqual({ teamId: team.id, revision: 0, tasks: [] });
+    });
+
+    // A team that has never been assigned anything has no ledger file, so an
+    // empty list cannot be what a client gets for a team id that was never real.
+    test("says so when there is no such team", async () => {
+      await handlers.handle({
+        type: "team.tasks.list.request",
+        requestId: "req-1",
+        teamId: "nope",
+      });
+
+      const payload = payloadOf("team.tasks.list.response");
+      expect(payload.tasks).toBeNull();
+      expect(payload.error).toMatch(/not found/i);
     });
   });
 });

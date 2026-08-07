@@ -1069,6 +1069,23 @@ export const en = {
       showMore: "Show more",
       showMoreLines: "Show {{count}} more lines",
     },
+    tabs: {
+      chat: "Chat",
+      tasks: "Tasks",
+    },
+    tasks: {
+      empty: "Nothing assigned yet.",
+      state: {
+        queued: "Queued",
+        dispatched: "Working",
+      },
+      outcome: {
+        completed: "Done",
+        failed: "Failed",
+        canceled: "Canceled",
+        unknown: "Ended",
+      },
+    },
     route: {
       loading: "Finding this team…",
       unsupported: "{{hostName}} is too old to have teams. Update it to open this link.",

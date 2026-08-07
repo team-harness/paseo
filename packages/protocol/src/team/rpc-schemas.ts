@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TeamTaskListSchema } from "./task-types.js";
 import { TeamSnapshotSchema } from "./types.js";
 
 /**
@@ -69,6 +70,12 @@ export const TeamMemberRemoveRequestSchema = z.object({
   agentId: z.string(),
 });
 
+export const TeamTasksListRequestSchema = z.object({
+  type: z.literal("team.tasks.list.request"),
+  requestId: z.string(),
+  teamId: z.string(),
+});
+
 export const TeamCreateResponseSchema = z.object({
   type: z.literal("team.create.response"),
   payload: z.object({
@@ -115,6 +122,15 @@ export const TeamMemberRemoveResponseSchema = z.object({
   }),
 });
 
+export const TeamTasksListResponseSchema = z.object({
+  type: z.literal("team.tasks.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    tasks: TeamTaskListSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
 /**
  * Broadcast, not a correlated response: it carries no `requestId`. Emitted on
  * lifecycle and roster changes only — member agent status travels on
@@ -124,5 +140,19 @@ export const TeamUpdateMessageSchema = z.object({
   type: z.literal("team.update"),
   payload: z.object({
     team: TeamSnapshotSchema,
+  }),
+});
+
+/**
+ * Broadcast, like `team.update` and for the same reason: a task queued by one
+ * client's lead has to reach every other client watching the team. Carries the
+ * whole list rather than a delta — a ledger is a handful of entries, and a delta
+ * stream would need a client to have the previous revision to apply it to.
+ * Clients order it by `tasks.revision`.
+ */
+export const TeamTasksUpdateMessageSchema = z.object({
+  type: z.literal("team.tasks.update"),
+  payload: z.object({
+    tasks: TeamTaskListSchema,
   }),
 });

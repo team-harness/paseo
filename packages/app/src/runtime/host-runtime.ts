@@ -2040,6 +2040,8 @@ export class HostRuntimeStore {
   private registerTeamSync(serverId: string): void {
     const sync = new TeamSync({
       commit: (teams) => useSessionStore.getState().replaceTeams(serverId, teams),
+      applyTasks: (tasks) => useSessionStore.getState().applyTeamTasks(serverId, tasks),
+      clearTasks: () => useSessionStore.getState().clearTeamTasks(serverId),
       setHydrated: (hydrated) => useSessionStore.getState().setHasHydratedTeams(serverId, hydrated),
       setError: (message) => useSessionStore.getState().setTeamsError(serverId, message),
     });

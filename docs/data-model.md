@@ -61,7 +61,7 @@ $PASEO_HOME/
 │   └── {scheduleId}.json                # One file per schedule
 ├── teams/
 │   ├── {teamId}.json                    # One file per team; roster is the membership authority
-│   └── inbox/{teamId}.json              # That team's task ledger and undelivered completions
+│   └── inbox/{teamId}.inbox.json        # That team's task ledger and undelivered completions
 ├── chat/
 │   ├── rooms/{room-id}.json             # One room and its messages
 │   └── .migrated                        # Single-file store has been dealt with
@@ -575,7 +575,7 @@ Cancellation is a separate optional `cancelling` boolean rather than another
 that predates it reject the whole team file, drop the team from its idempotency
 index, and let a retry of the original request build a second one.
 
-**Path:** `$PASEO_HOME/teams/inbox/{teamId}.json`
+**Path:** `$PASEO_HOME/teams/inbox/{teamId}.inbox.json`
 
 The task ledger: assignments, settled work the lead has not been told about,
 and the batch currently out for delivery. An assignment carries its own prompt,
@@ -584,6 +584,13 @@ so a crash between recording and sending can resend it.
 Every read throws when the file cannot be parsed. An unreadable ledger that
 reported "no assignments" would be indistinguishable from an empty one, and the
 write that followed would make it true.
+
+Nothing is held between calls — every read goes to the file. `revision`
+increments on each write and clients order `team.tasks.update` by it; a file
+written before the field existed reads as 0, which is older than any write that
+follows. Two server-only fields stay off the wire, and `toTeamTask` names what
+it sends rather than what it withholds: `clientMessageId` and
+`completionEventId`.
 
 ---
 

@@ -64,21 +64,21 @@ not retain non-Git directories.
 
 **Key modules:**
 
-| Module                          | Responsibility                                                                |
-| ------------------------------- | ----------------------------------------------------------------------------- |
-| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay  |
-| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing        |
-| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations         |
-| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management       |
-| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$PASEO_HOME/agents/`                         |
-| `server/agent/tools/`           | Transport-neutral catalog for workspaces, agents, permissions, and automation |
-| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Paseo tool catalog with the MCP SDK       |
-| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                               |
-| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                 |
-| `server/schedule/`              | Cron-based scheduled agents                                                   |
-| `server/loop-service.ts`        | Looping agent runs that retry until an exit condition                         |
-| `server/chat/`                  | Chat rooms for agent-to-agent and human-to-agent messaging                    |
-| `server/team/`                  | Team records: roster authority, per-file store, idempotent creation           |
+| Module                          | Responsibility                                                                                     |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay                       |
+| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing                             |
+| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations                              |
+| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management                            |
+| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$PASEO_HOME/agents/`                                              |
+| `server/agent/tools/`           | Transport-neutral catalog for workspaces, agents, permissions, and automation                      |
+| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Paseo tool catalog with the MCP SDK                            |
+| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                                                    |
+| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                                      |
+| `server/schedule/`              | Cron-based scheduled agents                                                                        |
+| `server/loop-service.ts`        | Looping agent runs that retry until an exit condition                                              |
+| `server/chat/`                  | Chat rooms for agent-to-agent and human-to-agent messaging                                         |
+| `server/team/`                  | Team records: roster authority, per-file store, idempotent creation, task ledger and dispatch pump |
 
 ### `packages/protocol` — Wire schemas and shared protocol types
 
@@ -232,6 +232,7 @@ New session RPCs use dotted names with `.request` and `.response` suffixes, such
 - `agent_deleted`, `agent_archived`, `agent_status`, `agent_list`
 - `checkout_status_update`, `checkout_diff_update`, and the full `checkout_*` request/response set for git operations
 - `chat.room.subscribe` / `chat.room.unsubscribe` request/response pairs, plus the `chat.room.message_posted` broadcast
+- `team.update` and `team.tasks.list` / `team.tasks.update` — a team's roster and its assignment ledger
 
 A chat room subscription belongs to one physical socket and dies with it, so the broadcast is gated
 per socket on the `chat_room_subscriptions` capability rather than per session. The daemon starts
@@ -239,6 +240,20 @@ following the room before it reads the first page, which means a message posted 
 twice — once in the page, once on the stream — and the client drops any streamed message whose cursor
 is at or below the one in the subscribe response. The other order would lose that message instead,
 and a client cannot detect a hole it was never told about.
+
+Mentions inside a room a team owns are resolved against that team's roster before fanout sees them.
+Fanout looks every token up as an agent id, so a role — how a lead is briefed to address its team,
+and how anyone reading the transcript follows it — reached nobody, with one WARN in the daemon log
+as the only sign. Roles resolve only in the room their own team owns; elsewhere the word is a word.
+Client ids of humans who have posted in the room drop out at the same point, because an agent
+replying to a person mentions the id it saw and no agent will ever hold it. What gets stored on the
+message is still the raw token, since that is what the UI has to highlight.
+
+`team.tasks.*` carries the assignment ledger: `queued → dispatched → settled`, with the assignee,
+the prompt, and the outcome. The daemon broadcasts on every write to the ledger, clients order by
+`revision`, and a client that connects late asks `team.tasks.list` for what it missed. Both are
+gated on the `team_tasks` capability per physical socket rather than per session, for the same
+reason room subscriptions are.
 
 Agent snapshots optionally carry the daemon-owned active turn identity, and turn lifecycle stream events
 optionally carry the same `turnId`. New clients use these fields when present and normalize an old daemon's

@@ -302,6 +302,11 @@ export type DaemonEvent =
       payload: Extract<SessionOutboundMessage, { type: "team.update" }>["payload"];
     }
   | {
+      type: "team.tasks.update";
+      teamId: string;
+      payload: Extract<SessionOutboundMessage, { type: "team.tasks.update" }>["payload"];
+    }
+  | {
       type: "chat.room.message_posted";
       roomId: string;
       payload: Extract<SessionOutboundMessage, { type: "chat.room.message_posted" }>["payload"];
@@ -559,6 +564,10 @@ type TeamArchivePayload = Extract<
 type TeamMemberRemovePayload = Extract<
   SessionOutboundMessage,
   { type: "team.member.remove.response" }
+>["payload"];
+type TeamTasksListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.tasks.list.response" }
 >["payload"];
 type LoopRunPayload = Extract<SessionOutboundMessage, { type: "loop/run/response" }>["payload"];
 type LoopListPayload = Extract<SessionOutboundMessage, { type: "loop/list/response" }>["payload"];
@@ -835,6 +844,10 @@ export interface ArchiveTeamOptions {
 export interface RemoveTeamMemberOptions {
   teamId: string;
   agentId: string;
+  requestId?: string;
+}
+export interface ListTeamTasksOptions {
+  teamId: string;
   requestId?: string;
 }
 export interface RunLoopOptions {
@@ -5411,6 +5424,16 @@ export class DaemonClient {
     });
   }
 
+  async listTeamTasks(options: ListTeamTasksOptions): Promise<TeamTasksListPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "team.tasks.list.request",
+        teamId: options.teamId,
+      },
+    });
+  }
+
   async scheduleCreate(options: CreateScheduleOptions): Promise<ScheduleCreatePayload> {
     return this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
@@ -5668,6 +5691,7 @@ export class DaemonClient {
           [CLIENT_CAPS.projectUpdates]: true,
           [CLIENT_CAPS.compactProviderSnapshots]: true,
           [CLIENT_CAPS.teams]: true,
+          [CLIENT_CAPS.teamTasks]: true,
           [CLIENT_CAPS.chatRoomSubscriptions]: true,
           ...this.config.capabilities,
         },
@@ -6182,6 +6206,12 @@ export class DaemonClient {
         return { type: "project.update", payload: msg.payload };
       case "team.update":
         return { type: "team.update", teamId: msg.payload.team.id, payload: msg.payload };
+      case "team.tasks.update":
+        return {
+          type: "team.tasks.update",
+          teamId: msg.payload.tasks.teamId,
+          payload: msg.payload,
+        };
       case "chat.room.message_posted":
         return {
           type: "chat.room.message_posted",

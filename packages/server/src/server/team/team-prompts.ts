@@ -31,10 +31,14 @@ export function buildLeadBriefing(input: BriefingInput): string {
       ? `Your team: ${others.map((member) => `${member.role} (${member.agentId})`).join(", ")}.`
       : "You have no members yet. Recruit the ones you need.",
     `Team room: ${input.team.chatRoomId}. Everything the team says to each other goes there.`,
+    // Role, not id: the room resolves a mention against the roster, and a role
+    // is the only form a person reading the transcript can follow.
+    "Reach a member there by mentioning its role, like @reviewer.",
     "",
     "Assign work with the assign_task tool. A member that is busy stays busy —",
     "the assignment waits for it rather than interrupting, and you are told when",
-    "it finishes.",
+    "it finishes. Post to the room saying what you assigned to whom, so the team",
+    "can follow the work without asking for it.",
   ];
   return appendCallerBriefing(lines, input.member.briefing);
 }
@@ -47,12 +51,21 @@ export function buildMemberBriefing(input: BriefingInput): string {
     "The team's task:",
     input.plan.task,
     "",
-    lead ? `Your lead is ${lead.agentId}; it assigns your work.` : "",
+    ...(lead ? [`Your lead is ${lead.agentId}; it assigns your work.`] : []),
     `Team room: ${input.team.chatRoomId}. Post there to reach the rest of the team,`,
-    "and mention an agent by id when you need it specifically.",
+    "and mention a teammate by role, like @reviewer, when you need one specifically.",
     "",
-    "Wait for an assignment before starting on the task.",
-  ].filter((line) => line !== "");
+    // This used to read "Wait for an assignment before starting on the task."
+    // The only tool a member has for waiting is chat_wait, which blocks its
+    // whole turn — and an assignment is delivered by waking the member, which
+    // the daemon will not do to an agent mid-turn (DEC-3, DEC-10). Waiting for
+    // the assignment was what kept it from arriving, for the full five-minute
+    // ceiling. chat_wait now returns early when work is queued, and this says
+    // not to wait in the first place.
+    "When you have nothing to do, end your turn. The daemon wakes you with an",
+    "assignment when the lead sends one, and it can only do that between turns —",
+    "sitting in chat_wait holds up your own work.",
+  ];
   return appendCallerBriefing(lines, input.member.briefing);
 }
 

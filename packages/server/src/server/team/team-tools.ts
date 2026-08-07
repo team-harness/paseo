@@ -275,13 +275,46 @@ export function registerTeamTools(options: RegisterTeamToolsOptions): void {
     },
   );
 
+  /**
+   * What the daemon is holding for this agent that it can only hand over
+   * between turns, or null when it is holding nothing.
+   *
+   * An assignment reaches a member by waking it, and completions reach the lead
+   * the same way; neither happens to an agent that is mid-turn. So an agent
+   * blocking inside `chat_wait` is an agent the daemon cannot deliver to.
+   *
+   * An unreadable ledger answers null. That is the pump's failure to report,
+   * and failing the wait over it would take the room down with the ledger.
+   */
+  async function heldForCaller(team: TeamToolsTeamView): Promise<"assignment" | "news" | null> {
+    try {
+      const assignments = await inbox.listAssignments(team.id);
+      const queued = assignments.some(
+        (assignment) =>
+          assignment.assigneeAgentId === callerAgentId && assignment.state === "queued",
+      );
+      if (queued) return "assignment";
+      if (team.leadAgentId === callerAgentId && (await inbox.hasNewsForLead(team.id))) {
+        return "news";
+      }
+      return null;
+    } catch (error) {
+      options.logger.warn(
+        { err: error, teamId: team.id, agentId: callerAgentId },
+        "Could not check for undelivered work while waiting",
+      );
+      return null;
+    }
+  }
+
   registerTool(
     "chat_wait",
     {
       title: "Wait for team messages",
       description:
         "Block until someone posts to your team's room, or until the timeout. Returns everything " +
-        "posted after `afterMessageId`.",
+        "posted after `afterMessageId`. Returns immediately if the daemon has work waiting for " +
+        "you, which it can only deliver once your turn ends.",
       inputSchema: {
         room: z.string().optional(),
         afterMessageId: z.string().nullable().optional(),
@@ -291,15 +324,69 @@ export function registerTeamTools(options: RegisterTeamToolsOptions): void {
     async ({ room, afterMessageId, timeoutMs }) => {
       const found = await resolveRoom(room);
       if (!found.ok) return found.result;
+      const { team } = found;
 
-      const messages = await chat.waitForMessages({
-        room: found.team.chatRoomId,
-        afterMessageId: afterMessageId ?? null,
-        timeoutMs: Math.min(timeoutMs ?? MAX_CHAT_WAIT_MS, MAX_CHAT_WAIT_MS),
+      // Subscribed before the first look, so work queued between the look and
+      // the subscription is not missed.
+      let announce = () => {};
+      const queued = new Promise<void>((resolve) => {
+        announce = resolve;
       });
-      return ok({ roomId: found.team.chatRoomId, messages });
+      const detach = inbox.onChange((changedTeamId) => {
+        if (changedTeamId !== team.id) return;
+        void heldForCaller(team).then((held) => {
+          if (held) announce();
+          return held;
+        });
+      });
+
+      try {
+        const already = await heldForCaller(team);
+        if (already) return waitInterrupted(team.chatRoomId, already);
+
+        const outcome = await Promise.race([
+          // The losing wait is left to time out on its own and its result
+          // discarded. Every caller passes a cursor, so nothing it swallows is
+          // lost — the next call asks for the same messages again.
+          chat
+            .waitForMessages({
+              room: team.chatRoomId,
+              afterMessageId: afterMessageId ?? null,
+              timeoutMs: Math.min(timeoutMs ?? MAX_CHAT_WAIT_MS, MAX_CHAT_WAIT_MS),
+            })
+            .then((messages) => ({ kind: "messages" as const, messages })),
+          queued.then(() => ({ kind: "held" as const })),
+        ]);
+
+        if (outcome.kind === "messages") {
+          return ok({ roomId: team.chatRoomId, messages: outcome.messages });
+        }
+        return waitInterrupted(team.chatRoomId, (await heldForCaller(team)) ?? "assignment");
+      } finally {
+        detach();
+      }
     },
   );
+}
+
+/**
+ * Why the wait ended without any messages, in terms the caller can act on.
+ *
+ * Both answers are the same instruction — end the turn — because ending it is
+ * the only way the thing being held can be delivered.
+ */
+function waitInterrupted(roomId: string, held: "assignment" | "news"): PaseoToolResult {
+  return ok({
+    roomId,
+    messages: [],
+    waitInterrupted: held,
+    guidance:
+      held === "assignment"
+        ? "You have an assignment waiting. End your turn now — the daemon delivers it by waking " +
+          "you, which it cannot do while you are still running."
+        : "Members have finished work you assigned. End your turn now — the daemon reports it by " +
+          "waking you, which it cannot do while you are still running.",
+  });
 }
 
 /** Reserved: the lead role is granted by the creation transaction and by nothing else. */

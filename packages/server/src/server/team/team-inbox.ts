@@ -4,10 +4,23 @@ import { join } from "node:path";
 import type { Logger } from "pino";
 import { z } from "zod";
 
+import {
+  TeamTaskOutcomeSchema,
+  TeamTaskStateSchema,
+  type TeamTaskOutcome,
+} from "@getpaseo/protocol/team/task-types";
+
 import { writeJsonFileAtomic } from "../atomic-file.js";
 
-export const AssignmentOutcomeSchema = z.enum(["completed", "failed", "canceled", "unknown"]);
-export type AssignmentOutcome = z.infer<typeof AssignmentOutcomeSchema>;
+/**
+ * The wire enums, under the ledger's names for them.
+ *
+ * Shared rather than restated: an outcome the protocol can carry and the ledger
+ * cannot store would be a value `toTeamTask` happily projects and the next read
+ * of the file rejects, leaving the team with an unreadable ledger.
+ */
+export const AssignmentOutcomeSchema = TeamTaskOutcomeSchema;
+export type AssignmentOutcome = TeamTaskOutcome;
 
 const AssignmentSchema = z.object({
   taskId: z.string(),
@@ -15,7 +28,7 @@ const AssignmentSchema = z.object({
   /** Persisted so a crash between recording and sending can resend it. */
   prompt: z.string(),
   clientMessageId: z.string(),
-  state: z.enum(["queued", "dispatched", "settled"]),
+  state: TeamTaskStateSchema,
   /** The turn the provider accepted this assignment as. Settles it, and only it. */
   acceptedTurnId: z.string().nullable(),
   outcome: AssignmentOutcomeSchema.nullable(),
@@ -39,6 +52,12 @@ const PendingCompletionSchema = z.object({
 export type PendingCompletion = z.infer<typeof PendingCompletionSchema>;
 
 const InboxFileSchema = z.object({
+  /**
+   * Bumped once per write, so a client can tell an older ledger from a newer
+   * one without comparing contents. Optional because ledgers written before it
+   * existed have none, and those read as 0 — there are no migrations here.
+   */
+  revision: z.number().optional(),
   assignments: z.array(AssignmentSchema),
   /** Settled work the lead has not been told about yet. */
   pendingCompletions: z.array(PendingCompletionSchema),
@@ -59,7 +78,21 @@ export interface Delivery {
   completions: PendingCompletion[];
 }
 
-const EMPTY: InboxFile = { assignments: [], pendingCompletions: [], inFlightDelivery: null };
+/** The whole ledger as a reader sees it: what is in it, and how new that is. */
+export interface Ledger {
+  revision: number;
+  assignments: Assignment[];
+}
+
+/** Told which team's ledger moved, after the write that moved it landed. */
+export type TeamInboxListener = (teamId: string) => void;
+
+const EMPTY: InboxFile = {
+  revision: 0,
+  assignments: [],
+  pendingCompletions: [],
+  inFlightDelivery: null,
+};
 
 /**
  * A ledger that is there and could not be understood.
@@ -93,14 +126,41 @@ export class TeamInbox {
   private readonly dir: string;
   private readonly logger: Logger;
   private readonly writes = new Map<string, Promise<unknown>>();
+  private readonly listeners = new Set<TeamInboxListener>();
 
   constructor(dir: string, logger: Logger) {
     this.dir = dir;
     this.logger = logger.child({ module: "team", component: "team-inbox" });
   }
 
+  /**
+   * Watch every write to every team's ledger. Returns the detach.
+   *
+   * A subscription rather than a constructor callback because two unrelated
+   * callers need the same signal: a member parked in `chat_wait` has to stop
+   * waiting the moment work is queued for it, and the clients watching a team's
+   * task list have to be told the list moved. Neither is assembled where the
+   * inbox is built.
+   *
+   * Listeners are told what changed, not what it changed to. The ledger is on
+   * disk and one read behind the call; handing out a copy would mean deciding
+   * whose view it is, and the two callers want different projections of it.
+   */
+  onChange(listener: TeamInboxListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
   async listAssignments(teamId: string): Promise<Assignment[]> {
     return (await this.read(teamId)).assignments;
+  }
+
+  /** The assignments together with the revision they were read at. */
+  async readLedger(teamId: string): Promise<Ledger> {
+    const file = await this.read(teamId);
+    return { revision: file.revision ?? 0, assignments: file.assignments };
   }
 
   async enqueueAssignment(input: {
@@ -336,11 +396,17 @@ export class TeamInbox {
         // Fail closed by construction: an unreadable ledger throws here, so a
         // write is never built from having read nothing.
         const current = await this.read(teamId);
-        const updated = change(current);
-        if (updated !== current) {
-          await mkdir(this.dir, { recursive: true });
-          await writeJsonFileAtomic(this.filePath(teamId), updated);
-        }
+        const changed = change(current);
+        // Identity is how a no-op change says so — every mutator returns the
+        // file it was given when it decides there is nothing to do. Bumping the
+        // revision there would announce a change that never happened.
+        if (changed === current) return current;
+        const updated = { ...changed, revision: (current.revision ?? 0) + 1 };
+        await mkdir(this.dir, { recursive: true });
+        await writeJsonFileAtomic(this.filePath(teamId), updated);
+        // After the write, so a listener that reads the ledger back sees the
+        // state it was told about.
+        this.announce(teamId);
         return updated;
       });
     this.writes.set(
@@ -351,6 +417,21 @@ export class TeamInbox {
       ),
     );
     return await next;
+  }
+
+  /**
+   * A listener that throws is its own problem. Letting it out would fail the
+   * write that already landed on disk, and the caller would be told its work
+   * was not recorded when it was.
+   */
+  private announce(teamId: string): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(teamId);
+      } catch (error) {
+        this.logger.warn({ err: error, teamId }, "A team ledger listener threw");
+      }
+    }
   }
 }
 

@@ -1589,7 +1589,7 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(teams): added in v0.3.0, remove gate after 2027-02-06. Only
         // advertised when the daemon actually has a team runtime — the RPCs
         // parse either way, but without one they can only answer "not here".
-        ...(this.teamRuntime ? { teams: true } : {}),
+        ...(this.teamRuntime ? { teams: true, teamTasks: true } : {}),
         // COMPAT(chatRoomSubscriptions): added in v0.3.0, remove gate after 2027-02-06.
         chatRoomSubscriptions: true,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.

@@ -1,0 +1,45 @@
+{
+  "id": "73538ca9-752d-467d-820c-0e3ca2d20af1",
+  "name": "Smoke Squad 2",
+  "workspaceId": "wks_db52133eb58238ff",
+  "chatRoomId": "0b8b35df-59de-4004-9135-26736e5ed2d4",
+  "leadAgentId": "6506f3cd-0ffe-4b07-ad40-463c76a9b1ba",
+  "members": [
+    {
+      "agentId": "6506f3cd-0ffe-4b07-ad40-463c76a9b1ba",
+      "role": "lead",
+      "joinedAt": "2026-08-07T00:25:30.909Z",
+      "leftAt": null,
+      "state": "archived",
+      "removalReason": null
+    },
+    {
+      "agentId": "3ac70643-d70e-4193-be48-8411d353a4bf",
+      "role": "docs",
+      "joinedAt": "2026-08-07T00:25:30.909Z",
+      "leftAt": null,
+      "state": "archived",
+      "removalReason": null
+    },
+    {
+      "agentId": "cbaf2a72-e804-4720-a5cf-90bc123edd33",
+      "role": "code",
+      "joinedAt": "2026-08-07T00:25:30.909Z",
+      "leftAt": null,
+      "state": "archived",
+      "removalReason": null
+    }
+  ],
+  "lifecycle": "archived",
+  "revision": 10,
+  "idempotencyKey": "cli-b421c9ea-3037-45b7-980d-8d04c68ddb3b",
+  "requestFingerprint": "c5ac23f5c0d23b32dd4549afc9a3428a4e991c5b1b9a95be04181ad79c860739",
+  "creationPlan": null,
+  "creationStage": null,
+  "templateId": null,
+  "createdAt": "2026-08-07T00:25:30.909Z",
+  "updatedAt": "2026-08-07T00:42:51.897Z",
+  "archivedAt": "2026-08-07T00:42:51.894Z",
+  "failedCleanupAt": null,
+  "pendingRecruitments": null
+}

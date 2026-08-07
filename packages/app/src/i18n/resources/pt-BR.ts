@@ -1083,6 +1083,23 @@ export const ptBR: TranslationResources = {
       showMore: "Mostrar mais",
       showMoreLines: "Mostrar mais {{count}} linhas",
     },
+    tabs: {
+      chat: "Conversa",
+      tasks: "Tarefas",
+    },
+    tasks: {
+      empty: "Nada atribuído ainda.",
+      state: {
+        queued: "Na fila",
+        dispatched: "Trabalhando",
+      },
+      outcome: {
+        completed: "Pronto",
+        failed: "Falhou",
+        canceled: "Cancelada",
+        unknown: "Terminou",
+      },
+    },
     route: {
       loading: "Procurando este time…",
       unsupported: "{{hostName}} é antigo demais para times. Atualize para abrir este link.",

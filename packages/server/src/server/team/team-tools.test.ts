@@ -24,6 +24,28 @@ class StubChat implements TeamToolsChat {
   readonly rooms = new Map<string, StubRoom>([["room-1", { messages: [] }]]);
   /** What `chat_wait` was actually asked to wait for. */
   waited: Array<{ room: string; timeoutMs: number | undefined }> = [];
+  /**
+   * Makes `waitForMessages` block, the way the real one does when the room is
+   * quiet. Without it every wait resolves with an empty page immediately and
+   * there is no wait to interrupt.
+   */
+  holdWaits = false;
+  /** Resolves once a wait has actually started, so a test can act after it. */
+  readonly waitStarted: Promise<void>;
+  private announceWaitStarted: () => void = () => {};
+  private readonly held: Array<() => void> = [];
+
+  constructor() {
+    this.waitStarted = new Promise<void>((resolve) => {
+      this.announceWaitStarted = resolve;
+    });
+  }
+
+  /** Lets every blocked wait finish, reading whatever is in the room by then. */
+  releaseWaits(): void {
+    this.holdWaits = false;
+    for (const release of this.held.splice(0)) release();
+  }
 
   async post(input: { actor: { kind: "agent"; id: string }; room: string; body: string }) {
     const room = this.rooms.get(input.room);
@@ -52,6 +74,10 @@ class StubChat implements TeamToolsChat {
     timeoutMs?: number;
   }) {
     this.waited.push({ room: input.room, timeoutMs: input.timeoutMs });
+    this.announceWaitStarted();
+    if (this.holdWaits) {
+      await new Promise<void>((resolve) => this.held.push(resolve));
+    }
     return this.readMessages({ room: input.room, since: input.afterMessageId ?? undefined });
   }
 }
@@ -259,6 +285,79 @@ describe("team agent tools", () => {
 
       expect(result.isError).toBe(true);
       expect(chat.rooms.get("room-2")?.messages).toEqual([]);
+    });
+  });
+
+  /**
+   * The deadlock this closes: a member told to wait for its assignment calls
+   * `chat_wait`, which blocks its whole turn — and an assignment is delivered by
+   * waking the member, which the daemon will not do to an agent mid-turn. The
+   * wait for the task was what kept the task from arriving, for the full
+   * five-minute ceiling.
+   */
+  describe("chat_wait and undelivered work", () => {
+    test("does not wait at all when an assignment is already queued", async () => {
+      await call("assign_task", { assigneeAgentId: "member-1", prompt: "look" });
+      install("member-1");
+
+      const payload = structured(await call("chat_wait", {}));
+
+      expect(payload.waitInterrupted).toBe("assignment");
+      expect(payload.messages).toEqual([]);
+      // Never even asked to wait: the answer was on disk before the call.
+      expect(chat.waited).toEqual([]);
+    });
+
+    test("stops waiting the moment an assignment is queued", async () => {
+      install("member-1");
+      chat.holdWaits = true;
+
+      const waiting = call("chat_wait", {});
+      await chat.waitStarted;
+      await inbox.enqueueAssignment({
+        teamId: "team-1",
+        assigneeAgentId: "member-1",
+        prompt: "look",
+      });
+
+      expect(structured(await waiting).waitInterrupted).toBe("assignment");
+    });
+
+    test("stops waiting when finished work is waiting to be reported to the lead", async () => {
+      const assigned = await inbox.enqueueAssignment({
+        teamId: "team-1",
+        assigneeAgentId: "member-1",
+        prompt: "look",
+      });
+      await inbox.markDispatched({ teamId: "team-1", taskId: assigned.taskId, turnId: "turn-1" });
+      chat.holdWaits = true;
+
+      const waiting = call("chat_wait", {});
+      await chat.waitStarted;
+      await inbox.settle({ teamId: "team-1", taskId: assigned.taskId, outcome: "completed" });
+
+      // The lead is woken with the news the same way a member is woken with an
+      // assignment, so a lead parked in `chat_wait` blocks its own report.
+      expect(structured(await waiting).waitInterrupted).toBe("news");
+    });
+
+    test("leaves a member waiting for work assigned to someone else", async () => {
+      install("member-1");
+      chat.holdWaits = true;
+
+      const waiting = call("chat_wait", {});
+      await chat.waitStarted;
+      await inbox.enqueueAssignment({
+        teamId: "team-1",
+        assigneeAgentId: "lead-1",
+        prompt: "not yours",
+      });
+      await chat.post({ actor: { kind: "agent", id: "lead-1" }, room: "room-1", body: "hi" });
+      chat.releaseWaits();
+
+      const payload = structured(await waiting);
+      expect(payload.waitInterrupted).toBeUndefined();
+      expect((payload.messages as unknown[]).length).toBe(1);
     });
   });
 
