@@ -6,6 +6,7 @@ import {
   collectWorkspaceReviewSummaryEntries,
   deleteWorkspaceReviewCommentFromState,
   formatWorkspaceReviewSummary,
+  formatWorkspaceReviewSummaryEntries,
   normalizeWorkspaceReviewCommentsState,
   serializeWorkspaceReviewCommentsState,
   trimReviewTextSelection,
@@ -178,5 +179,16 @@ describe("formatWorkspaceReviewSummary", () => {
 
   it("returns an empty string when the review has no comments", () => {
     expect(formatWorkspaceReviewSummary({ selectionComments: [], diffComments: [] })).toBe("");
+  });
+
+  it("formats an incremental subset without including delivered comments", () => {
+    const first = selectionComment({ id: "first", body: "Already delivered" });
+    const second = selectionComment({ id: "second", body: "New feedback" });
+    const summary = formatWorkspaceReviewSummaryEntries([
+      { kind: "selection", ownerKey: "workspace", comment: second },
+    ]);
+
+    expect(summary).toContain("New feedback");
+    expect(summary).not.toContain(first.body);
   });
 });

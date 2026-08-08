@@ -21,6 +21,8 @@ export interface QueuedComposerMessage {
   id: string;
   text: string;
   attachments: ComposerAttachment[];
+  onSubmitted?: () => void;
+  onDiscarded?: () => void;
 }
 
 export interface AttachmentPersister {
@@ -213,6 +215,8 @@ export interface QueueComposerMessageInput {
   text: string;
   attachments: ComposerAttachment[];
   queue: QueueWriter;
+  onSubmitted?: () => void;
+  onDiscarded?: () => void;
 }
 
 export interface QueueComposerMessageResult {
@@ -228,6 +232,8 @@ export function queueComposerMessage(input: QueueComposerMessageInput): QueueCom
     id: generateMessageId(),
     text: trimmed,
     attachments: input.attachments,
+    ...(input.onSubmitted ? { onSubmitted: input.onSubmitted } : {}),
+    ...(input.onDiscarded ? { onDiscarded: input.onDiscarded } : {}),
   };
   input.queue.write((prev) => {
     const next = new Map(prev);
@@ -261,6 +267,7 @@ export function editQueuedComposerMessage(
     );
     return next;
   });
+  item.onDiscarded?.();
   return {
     text: item.text,
     attachments: userAttachmentsOnly(item.attachments),
@@ -295,7 +302,6 @@ export async function sendQueuedComposerMessageNow(
   });
   try {
     await input.submitMessage({ text: item.text, attachments: item.attachments });
-    return { status: "submitted" };
   } catch (error) {
     input.queue.write((prev) => {
       const next = new Map(prev);
@@ -310,6 +316,8 @@ export async function sendQueuedComposerMessageNow(
           : (input.failedToSendMessage ?? i18n.t("composer.errors.failedToSend")),
     };
   }
+  item.onSubmitted?.();
+  return { status: "submitted" };
 }
 
 export interface OpenComposerAttachmentInput {

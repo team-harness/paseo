@@ -161,7 +161,14 @@ export class DirectorySync {
   ): Promise<Awaited<ReturnType<DaemonClient["fetchAgentTimeline"]>>> {
     const { client } = this.requireOnline();
     const token = this.agents.captureTimeline(agentId);
-    const page = await fetchAgentTimelineOnce(client, agentId, request);
+    const requestedPage = request ?? {};
+    // COMPAT(bounded-projected-timeline): added in v0.3.0-beta.3; remove after 2027-02-08
+    // once supported daemons guarantee projected pages stay within their requested window.
+    const boundedRequest =
+      requestedPage.projection === "projected"
+        ? { ...requestedPage, projection: "canonical" as const }
+        : requestedPage;
+    const page = await fetchAgentTimelineOnce(client, agentId, boundedRequest);
     if (page.agent) this.agents.submitTimelineAgent(token, page.agent);
     return page;
   }

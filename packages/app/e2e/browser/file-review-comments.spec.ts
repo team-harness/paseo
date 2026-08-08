@@ -111,6 +111,11 @@ test("file selection comments persist and remain available from Changes", async 
     .first();
   await expect(summaryTrigger).toHaveAccessibleName("Open review comments (2)");
   await summaryTrigger.click();
+  const sendToAgentButton = page.getByTestId("review-summary-send");
+  await expect(sendToAgentButton).toHaveAccessibleName("Send to agent");
+  await sendToAgentButton.click();
+  await expect(page.getByText("Choose an agent", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back" }).click();
   await page.getByTestId("review-summary-copy").click();
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))

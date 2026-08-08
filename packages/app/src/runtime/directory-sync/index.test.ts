@@ -11,6 +11,10 @@ class FakeDirectoryClient {
   fetchAgentsCalls = 0;
   fetchWorkspacesCalls = 0;
   listProjectsCalls = 0;
+  fetchAgentTimelineCalls: Array<{
+    agentId: string;
+    options: NonNullable<Parameters<DaemonClient["fetchAgentTimeline"]>[1]>;
+  }> = [];
   private pendingWorkspaceFetch: Promise<WorkspaceFetchResult> | null = null;
   private readonly handlers = new Map<
     SessionOutboundMessage["type"],
@@ -81,6 +85,32 @@ class FakeDirectoryClient {
       ],
     };
   }
+
+  async fetchAgentTimeline(
+    agentId: string,
+    options: Parameters<DaemonClient["fetchAgentTimeline"]>[1],
+  ): Promise<Awaited<ReturnType<DaemonClient["fetchAgentTimeline"]>>> {
+    const resolvedOptions = options ?? {};
+    this.fetchAgentTimelineCalls.push({ agentId, options: resolvedOptions });
+    return {
+      requestId: resolvedOptions.requestId ?? "timeline",
+      agentId,
+      agent: null,
+      direction: resolvedOptions.direction ?? "tail",
+      projection: resolvedOptions.projection ?? "projected",
+      epoch: "epoch-1",
+      reset: false,
+      staleCursor: false,
+      gap: false,
+      window: { minSeq: 0, maxSeq: 0, nextSeq: 0 },
+      startCursor: null,
+      endCursor: null,
+      hasOlder: false,
+      hasNewer: false,
+      entries: [],
+      error: null,
+    };
+  }
 }
 
 const serverIds = new Set<string>();
@@ -111,6 +141,67 @@ afterEach(() => {
 });
 
 describe("DirectorySync session readiness", () => {
+  it("uses bounded canonical pages for every app timeline direction", async () => {
+    const { client, directory } = createDirectory("canonical-timeline-pages");
+    const cursor = { epoch: "epoch-1", seq: 42 };
+
+    await directory.fetchTimeline("agent-1", {
+      direction: "tail",
+      limit: 40,
+      projection: "projected",
+      requestId: "tail-request",
+    });
+    await directory.fetchTimeline("agent-1", {
+      direction: "before",
+      cursor,
+      limit: 40,
+      projection: "projected",
+      requestId: "before-request",
+    });
+    await directory.fetchTimeline("agent-1", {
+      direction: "after",
+      cursor,
+      limit: 40,
+      projection: "projected",
+      mergeWindow: true,
+      requestId: "after-request",
+    });
+
+    expect(client.fetchAgentTimelineCalls).toEqual([
+      {
+        agentId: "agent-1",
+        options: {
+          direction: "tail",
+          limit: 40,
+          projection: "canonical",
+          requestId: "tail-request",
+        },
+      },
+      {
+        agentId: "agent-1",
+        options: {
+          direction: "before",
+          cursor,
+          limit: 40,
+          projection: "canonical",
+          requestId: "before-request",
+        },
+      },
+      {
+        agentId: "agent-1",
+        options: {
+          direction: "after",
+          cursor,
+          limit: 40,
+          projection: "canonical",
+          mergeWindow: true,
+          requestId: "after-request",
+        },
+      },
+    ]);
+    directory.dispose();
+  });
+
   it("waits for workspace capability metadata before choosing the workspace protocol", async () => {
     const serverId = "workspace-metadata";
     const { client, directory } = createDirectory(serverId);

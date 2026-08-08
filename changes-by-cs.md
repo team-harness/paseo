@@ -391,7 +391,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 
 **状态**：fork 功能。提交：`044802203`。
 
-**行为**：对话中的用户或 Assistant 文本可以按原 Markdown 引用到 Composer，替换当前选区、恢复焦点且不自动发送。每个已完成 turn 只在最后一条 Assistant 回复的最后一个 Markdown 段落末尾内联展示一次弱化的本地化时间；运行中的回复和工具调用不展示时间，时间元数据也不进入复制或引用内容。文件 Markdown 预览、代码预览和 Source 视图支持对选区留评论；代码与 Source 使用精确行号，Markdown 预览在没有可靠源码映射时只记录选中文字。评论按 workspace 隔离并持久化，File 与 Changes 共用 Review summary，汇总选区评论和 diff 行评论，支持一键复制、逐条删除，以及确认后删除当前汇总中的全部评论。Android 原生选择保留系统复制/翻译菜单，并在选区末字下方显示 fork 的引用或评论按钮；下方空间被键盘压缩时自动翻到上方。
+**行为**：对话中的用户或 Assistant 文本可以按原 Markdown 引用到 Composer，替换当前选区、恢复焦点且不自动发送。每个已完成 turn 只在最后一条 Assistant 回复的最后一个 Markdown 段落末尾内联展示一次弱化的本地化时间；运行中的回复和工具调用不展示时间，时间元数据也不进入复制或引用内容。文件 Markdown 预览、代码预览和 Source 视图支持对选区留评论；代码与 Source 使用精确行号，Markdown 预览在没有可靠源码映射时只记录选中文字。评论按 workspace 隔离并持久化，File 与 Changes 共用 Review summary，汇总选区评论和 diff 行评论，支持一键复制、逐条删除，以及确认后删除当前汇总中的全部评论。用户首次把汇总交给 Agent 时选择当前 workspace 的既有 Agent 或按最近 Agent 配置新建一个；首次成功投递后，该 workspace 永久绑定同一 Agent，后续只追加新增或修改过的评论。运行中的 Agent 使用 Composer 队列，只有队列真正提交成功才更新投递记录。Android 原生选择保留系统复制/翻译菜单，并在选区末字下方显示 fork 的引用或评论按钮；下方空间被键盘压缩时自动翻到上方。
 
 **关键文件**：
 
@@ -399,6 +399,8 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - `packages/app/src/composer/index.tsx`
 - `packages/app/src/review/workspace-comments.ts`
 - `packages/app/src/review/workspace-comments-store.ts`
+- `packages/app/src/review/delivery.ts`
+- `packages/app/src/review/delivery-store.ts`
 - `packages/app/src/native-text-selection/`
 - `packages/app/modules/paseo-text-selection/`
 - `packages/app/src/review/selection-surface.web.tsx`
@@ -411,12 +413,14 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - 引用必须生成合法 Markdown blockquote，精确替换 Composer 当前选区、恢复焦点且不自动发送。
 - 评论必须按 `workspaceId` 隔离；同一 workspace 的 File、Changes、preview/source/diff 需要汇总到同一 Review summary。
 - 删除全部必须同时清理 selection 和 diff 两类 store，取消确认时不能改变数据；清空后关闭 summary，并确保刷新后评论不会恢复。
+- 首次成功投递后，workspace review 必须固定到同一 Agent；多个 Review summary 入口使用共享 operation token，发送副作用发生前完成原子占用，不能把同一批评论发给两个 Agent。
+- 投递账本按评论 `updatedAt` 记录 revision；后续只发送新增或更新的评论。运行中 Agent 的内存队列在实际提交前不得提前记为已发送，应用重载后未送出的评论必须仍可重试。
 - 没有 AST 级源码映射时，Markdown 预览不得猜测行号；代码预览和 Source 选区继续保留精确范围。
 - Web/Electron 与 Android 的操作按钮都锚定选区最后一个可见字符，优先放在下方；可视区域不足时翻到上方并限制在屏幕横向边界内。
 - Android 必须保留系统复制/翻译 ActionMode；打开评论编辑器前结束当前系统选区，避免 ActionMode、软键盘和评论面板同时争抢空间。原生无法可靠映射源码时仍只保存选中文字，不猜测行号。
 - iOS 在没有等价原生选区桥接前继续保留系统复制菜单，不显示不可用入口。
 
-**验证**：`quote.test.ts`、`workspace-comments.test.ts`、`store.test.ts`、`resources.test.ts`、`assistant-selection-copy.spec.ts`、`file-review-comments.spec.ts`、`npm run typecheck`、`npm run lint`。
+**验证**：`quote.test.ts`、`workspace-comments.test.ts`、`delivery.test.ts`、`composer/actions.test.ts`、`store.test.ts`、`resources.test.ts`、`assistant-selection-copy.spec.ts`、`file-review-comments.spec.ts`、`npm run typecheck`、`npm run lint`。
 
 **最近同步判断**：2026-08-06 的上游 `fb5cfb9fb` 仍只有基础选区复制，没有直接引用到 Composer、文件选区 Review Comments、Android 原生选区操作或跨预览与 diff 的 Review summary，保留 fork 实现。
 
@@ -507,6 +511,21 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
 - `packages/server/src/server/agent/timeline-prompt-index.ts`
 
 **同步规则**：上游若提供等价的 Composer 历史导航，采用其键盘和草稿状态模型，但必须继续由完整会话索引供数，不能退回当前已加载 timeline window。协议字段只能保持或扩宽兼容性，删除 capability gate 前须达到对应 daemon 版本下限。
+
+### 14. 超长对话的客户端有界 Timeline 兼容
+
+**状态**：fork 临时修复。
+
+**行为**：App 通过 `DirectorySync` 发出的 `tail`、`before` 和 `after` timeline 请求统一把 `projection: "projected"` 改写为 `projection: "canonical"`。旧 Host 的 projected 分页可能因跨区间 tool lifecycle 把有限页面扩成完整历史，并把十几 MiB 的加密响应作为单个 Relay frame 发送，最终以 WebSocket `1009 Message Too Big` 断开。canonical 分页严格遵守请求窗口，使客户端能够打开和翻页超长对话而不进入重连循环。
+
+**关键文件**：
+
+- `packages/app/src/runtime/directory-sync/index.ts`
+- `packages/app/src/runtime/directory-sync/index.test.ts`
+
+**同步规则**：这是只能更新客户端时的止血路径。必须在 `DirectorySync.fetchTimeline` 中统一覆盖三种方向，不能只改 tail plan；cursor、limit、mergeWindow、requestId 等其余请求字段保持不变。等受支持 Host 的 projected timeline 具备 canonical coverage 和响应字节上限后，删除 `COMPAT(bounded-projected-timeline)` 改写并恢复 projected 请求。
+
+**验证**：`directory-sync/index.test.ts`、`npm run typecheck`、`npm run lint`。
 
 ## 同步上游操作清单
 

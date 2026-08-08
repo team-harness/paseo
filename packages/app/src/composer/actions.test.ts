@@ -720,6 +720,17 @@ describe("editQueuedComposerMessage", () => {
     });
     expect(queue.state.get("agent")).toEqual([]);
   });
+
+  it("notifies the owner when a queued message is returned to the composer", () => {
+    const onDiscarded = vi.fn();
+    const queue = createFakeQueue(
+      new Map([["agent", [{ id: "msg-1", text: "queued draft", attachments: [], onDiscarded }]]]),
+    );
+
+    editQueuedComposerMessage({ agentId: "agent", messageId: "msg-1", queue });
+
+    expect(onDiscarded).toHaveBeenCalledOnce();
+  });
 });
 
 describe("sendQueuedComposerMessageNow", () => {
@@ -757,13 +768,30 @@ describe("sendQueuedComposerMessageNow", () => {
     expect(submitted).toEqual([{ text: "send me", attachments: [review] }]);
   });
 
+  it("notifies the owner only after a queued message is submitted", async () => {
+    const onSubmitted = vi.fn();
+    const queue = createFakeQueue(
+      new Map([["agent", [{ id: "msg-1", text: "send me", attachments: [], onSubmitted }]]]),
+    );
+
+    await sendQueuedComposerMessageNow({
+      agentId: "agent",
+      messageId: "msg-1",
+      queue,
+      submitMessage: async () => undefined,
+    });
+
+    expect(onSubmitted).toHaveBeenCalledOnce();
+  });
+
   it("restores the queued entry to the front and surfaces the error message on failure", async () => {
+    const onSubmitted = vi.fn();
     const queue = createFakeQueue(
       new Map([
         [
           "agent",
           [
-            { id: "msg-1", text: "first", attachments: [] },
+            { id: "msg-1", text: "first", attachments: [], onSubmitted },
             { id: "msg-2", text: "second", attachments: [] },
           ],
         ],
@@ -780,6 +808,7 @@ describe("sendQueuedComposerMessageNow", () => {
     expect(result).toEqual({ status: "failed", errorMessage: "network down" });
     const state = queue.state.get("agent");
     expect(state?.map((m) => m.id)).toEqual(["msg-1", "msg-2"]);
+    expect(onSubmitted).not.toHaveBeenCalled();
   });
 });
 

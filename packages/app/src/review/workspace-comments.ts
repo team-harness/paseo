@@ -185,6 +185,22 @@ export function formatWorkspaceReviewSummary(input: {
     ...input.selectionComments.map((comment) => ({ kind: "selection" as const, comment })),
     ...input.diffComments.map((comment) => ({ kind: "diff" as const, comment })),
   ].sort((left, right) => left.comment.createdAt.localeCompare(right.comment.createdAt));
+  return formatSummaryEntries(entries);
+}
+
+export function formatWorkspaceReviewSummaryEntries(
+  entries: readonly WorkspaceReviewSummaryEntry[],
+): string {
+  return formatSummaryEntries(
+    entries.map((entry) =>
+      entry.kind === "selection"
+        ? { kind: "selection" as const, comment: entry.comment }
+        : { kind: "diff" as const, comment: entry.comment },
+    ),
+  );
+}
+
+function formatSummaryEntries(entries: readonly SummaryEntry[]): string {
   if (entries.length === 0) {
     return "";
   }
