@@ -284,8 +284,13 @@ export const en = {
   sessions: {
     title: "History",
     empty: "No sessions yet",
+    noMatches: "No sessions match",
+    tooManyMatches: "Too many matches — narrow your search",
+    hostLoadFailed: "{{host}}: Could not load history",
+    searchPlaceholder: "Search history",
     actions: {
       loadMore: "Load more",
+      clearSearch: "Clear search",
     },
   },
   statusBar: {
@@ -1380,7 +1385,6 @@ export const en = {
     },
   },
   rootError: {
-    kicker: "Something went wrong",
     title: "Paseo ran into a problem.",
     body: "Try again to reload the app. If this keeps happening, include the details below when you report it.",
     details: "Details",
@@ -1880,6 +1884,7 @@ export const en = {
       editor: "Editor",
       shortcuts: "Shortcuts",
       integrations: "Integrations",
+      notifications: "Notifications",
       permissions: "Permissions",
       diagnostics: "Diagnostics",
       about: "About",
@@ -1888,6 +1893,21 @@ export const en = {
       title: "Editor",
       vimKeybindings: "Vim keybindings",
       vimHint: "Applies to source files on web and desktop.",
+    },
+    notifications: {
+      title: "Notifications",
+      permission: "Notification permission",
+      refreshAccessibility: "Refresh notification permission",
+      playSound: "Play sound",
+      playSoundHint: "Play a sound when a desktop notification arrives",
+      test: "Test notification",
+      testHint: "Send a notification using these settings",
+      permissionRequired: "Allow notification access before testing",
+      send: "Send",
+      sending: "Sending...",
+      sentTitle: "Test notification sent",
+      sentDescription: "Paseo handed the notification to the operating system.",
+      sendFailedTitle: "Unable to send test notification",
     },
     hostSections: {
       projects: "Projects",
@@ -2183,17 +2203,14 @@ export const en = {
     },
     permissions: {
       title: "Permissions",
-      notifications: "Notifications",
       microphone: "Microphone",
       refresh: "Refresh",
       refreshing: "Refreshing...",
       refreshAccessibility: "Refresh desktop permissions",
-      test: "Test",
       actions: {
         granted: "Granted",
         request: "Request",
         requesting: "Requesting...",
-        busySuffix: "{{label}}...",
       },
     },
     host: {

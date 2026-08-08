@@ -289,8 +289,13 @@ export const ru: TranslationResources = {
   sessions: {
     title: "История",
     empty: "Сеансов пока нет",
+    noMatches: "Нет подходящих сеансов",
+    tooManyMatches: "Слишком много совпадений — уточните запрос",
+    hostLoadFailed: "{{host}}: Не удалось загрузить историю",
+    searchPlaceholder: "Поиск по истории",
     actions: {
       loadMore: "Загрузить больше",
+      clearSearch: "Очистить поиск",
     },
   },
   statusBar: {
@@ -1401,7 +1406,6 @@ export const ru: TranslationResources = {
     },
   },
   rootError: {
-    kicker: "Что-то пошло не так",
     title: "В Paseo возникла проблема.",
     body: "Попробуйте снова перезагрузить приложение. Если это повторяется, приложите приведенные ниже подробности к отчету.",
     details: "Подробности",
@@ -1905,6 +1909,7 @@ export const ru: TranslationResources = {
       editor: "Редактор",
       shortcuts: "Ярлыки",
       integrations: "Интеграции",
+      notifications: "Уведомления",
       permissions: "Разрешения",
       diagnostics: "Диагностика",
       about: "О",
@@ -1913,6 +1918,21 @@ export const ru: TranslationResources = {
       title: "Редактор",
       vimKeybindings: "Клавиши Vim",
       vimHint: "Применяется к исходным файлам в веб- и настольной версии.",
+    },
+    notifications: {
+      title: "Уведомления",
+      permission: "Разрешение на уведомления",
+      refreshAccessibility: "Обновить разрешение на уведомления",
+      playSound: "Воспроизводить звук",
+      playSoundHint: "Воспроизводит звук при получении уведомления на компьютере",
+      test: "Проверить уведомление",
+      testHint: "Отправляет уведомление с текущими настройками",
+      permissionRequired: "Разрешите доступ к уведомлениям перед проверкой",
+      send: "Отправить",
+      sending: "Отправка...",
+      sentTitle: "Тестовое уведомление отправлено",
+      sentDescription: "Paseo передал уведомление операционной системе.",
+      sendFailedTitle: "Не удалось отправить тестовое уведомление",
     },
     hostSections: {
       projects: "Проекты",
@@ -2212,17 +2232,14 @@ export const ru: TranslationResources = {
     },
     permissions: {
       title: "Разрешения",
-      notifications: "Уведомления",
       microphone: "Микрофон",
       refresh: "Обновить",
       refreshing: "Освежающий...",
       refreshAccessibility: "Обновить разрешения рабочего стола",
-      test: "Тест",
       actions: {
         granted: "Предоставленный",
         request: "Запрос",
         requesting: "Запрос...",
-        busySuffix: "{{label}}...",
       },
     },
     host: {

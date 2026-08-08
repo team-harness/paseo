@@ -290,8 +290,13 @@ export const ja: TranslationResources = {
   sessions: {
     title: "履歴",
     empty: "セッションがまだありません",
+    noMatches: "一致するセッションはありません",
+    tooManyMatches: "一致が多すぎます — 検索条件を絞ってください",
+    hostLoadFailed: "{{host}}: 履歴を読み込めませんでした",
+    searchPlaceholder: "履歴を検索",
     actions: {
       loadMore: "さらに読み込む",
+      clearSearch: "検索をクリア",
     },
   },
   statusBar: {
@@ -1385,7 +1390,6 @@ export const ja: TranslationResources = {
     },
   },
   rootError: {
-    kicker: "問題が発生しました",
     title: "Paseo で問題が発生しました。",
     body: "アプリを再読み込みするにはもう一度お試しください。繰り返し発生する場合は、以下の詳細を添えて報告してください。",
     details: "詳細",
@@ -1887,6 +1891,7 @@ export const ja: TranslationResources = {
       editor: "エディター",
       shortcuts: "ショートカット",
       integrations: "連携",
+      notifications: "通知",
       permissions: "権限",
       diagnostics: "診断",
       about: "アプリ情報",
@@ -1895,6 +1900,21 @@ export const ja: TranslationResources = {
       title: "エディター",
       vimKeybindings: "Vim キーバインド",
       vimHint: "Web とデスクトップのソースファイルに適用されます。",
+    },
+    notifications: {
+      title: "通知",
+      permission: "通知の権限",
+      refreshAccessibility: "通知の権限を更新",
+      playSound: "サウンドを再生",
+      playSoundHint: "デスクトップ通知が届いたときにサウンドを再生します",
+      test: "通知をテスト",
+      testHint: "現在の設定でテスト通知を送信します",
+      permissionRequired: "テストする前に通知へのアクセスを許可してください",
+      send: "送信",
+      sending: "送信中...",
+      sentTitle: "テスト通知を送信しました",
+      sentDescription: "Paseo が通知をオペレーティングシステムに渡しました。",
+      sendFailedTitle: "テスト通知を送信できません",
     },
     hostSections: {
       projects: "プロジェクト",
@@ -2193,17 +2213,14 @@ export const ja: TranslationResources = {
     },
     permissions: {
       title: "権限",
-      notifications: "通知",
       microphone: "マイク",
       refresh: "更新",
       refreshing: "更新中...",
       refreshAccessibility: "デスクトップの権限を更新",
-      test: "テスト",
       actions: {
         granted: "許可済み",
         request: "許可を求める",
         requesting: "許可を求めています...",
-        busySuffix: "{{label}}...",
       },
     },
     host: {

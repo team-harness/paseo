@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `dc19b45f23208e3530e4b737b3815d5e4578d708`，同步于 2026-08-08。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `dc19b45f23208e3530e4b737b3815d5e4578d708`）。
+- 最近同步基线：`upstream/main` = `1e0ce69c548ea0d266ed96fae58210816d5ff9fa`，同步于 2026-08-09。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `1e0ce69c548ea0d266ed96fae58210816d5ff9fa`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-09: `upstream/main` `1e0ce69c5` / `v0.3.0`
+
+- 合入上游跨 Host 会话历史搜索、Provider 原生运行选项与精确 MCP 授权、持久化 Hub CLI 登录、Kimi usage 与推理等级修复、Claude 权限通知摘要、桌面通知声音恢复、崩溃页可读性和触屏侧栏调整。
+- 会话历史同时保留 fork 的显式 Host 集合筛选与上游不可达 Host 反馈；协议及服务端同时发布 fork 的 `composerMessageHistory` 与上游 `agentHistorySearch` capability。Codex provider 采用上游 sandbox/MCP 配置传递，并保留 fork 的跨进程唯一 foreground turn id 和 usage accounting。
+- 上游没有提供 Status Bar/usage ledger、多 Host 汇总、Threadshare 分享、Host 常用 Prompt、跨 File/Changes Review Comments、Assistant 时间、固定签名分发或独立 Android APK 构建的等价能力；这些 fork 功能继续保留。
 
 ### 2026-08-08: `upstream/main` `dc19b45f2` / `v0.3.0-beta.3`
 

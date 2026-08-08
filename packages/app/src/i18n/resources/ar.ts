@@ -284,8 +284,13 @@ export const ar: TranslationResources = {
   sessions: {
     title: "السجل",
     empty: "لا توجد جلسات بعد",
+    noMatches: "لا توجد جلسات مطابقة",
+    tooManyMatches: "نتائج كثيرة جدًا — ضيّق نطاق البحث",
+    hostLoadFailed: "{{host}}: تعذر تحميل السجل",
+    searchPlaceholder: "البحث في السجل",
     actions: {
       loadMore: "تحميل المزيد",
+      clearSearch: "مسح البحث",
     },
   },
   statusBar: {
@@ -1369,7 +1374,6 @@ export const ar: TranslationResources = {
     },
   },
   rootError: {
-    kicker: "حدث خطأ",
     title: "واجه Paseo مشكلة.",
     body: "جرّب مرة أخرى لإعادة تحميل التطبيق. إذا استمر حدوث ذلك، فأرفق التفاصيل أدناه عند الإبلاغ عنه.",
     details: "التفاصيل",
@@ -1868,6 +1872,7 @@ export const ar: TranslationResources = {
       editor: "المحرر",
       shortcuts: "الاختصارات",
       integrations: "التكامل",
+      notifications: "الإشعارات",
       permissions: "الأذونات",
       diagnostics: "التشخيص",
       about: "عن",
@@ -1876,6 +1881,21 @@ export const ar: TranslationResources = {
       title: "المحرر",
       vimKeybindings: "اختصارات Vim",
       vimHint: "تنطبق على ملفات المصدر في الويب وسطح المكتب.",
+    },
+    notifications: {
+      title: "الإشعارات",
+      permission: "إذن الإشعارات",
+      refreshAccessibility: "تحديث إذن الإشعارات",
+      playSound: "تشغيل صوت",
+      playSoundHint: "تشغيل صوت عند وصول إشعار سطح مكتب",
+      test: "اختبار الإشعار",
+      testHint: "إرسال إشعار باستخدام هذه الإعدادات",
+      permissionRequired: "اسمح بالوصول إلى الإشعارات قبل الاختبار",
+      send: "إرسال",
+      sending: "جارٍ الإرسال...",
+      sentTitle: "تم إرسال إشعار الاختبار",
+      sentDescription: "سلّم Paseo الإشعار إلى نظام التشغيل.",
+      sendFailedTitle: "تعذر إرسال إشعار الاختبار",
     },
     hostSections: {
       projects: "المشاريع",
@@ -2171,17 +2191,14 @@ export const ar: TranslationResources = {
     },
     permissions: {
       title: "الأذونات",
-      notifications: "إشعارات",
       microphone: "ميكروفون",
       refresh: "ينعش",
       refreshing: "منعش...",
       refreshAccessibility: "تحديث أذونات سطح المكتب",
-      test: "امتحان",
       actions: {
         granted: "ممنوح",
         request: "طلب",
         requesting: "جارٍ الطلب...",
-        busySuffix: "{{label}}...",
       },
     },
     host: {

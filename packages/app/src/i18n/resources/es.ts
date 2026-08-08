@@ -292,8 +292,13 @@ export const es: TranslationResources = {
   sessions: {
     title: "Historial",
     empty: "Aún no hay sesiones",
+    noMatches: "No hay sesiones que coincidan",
+    tooManyMatches: "Demasiadas coincidencias: acota la búsqueda",
+    hostLoadFailed: "{{host}}: No se pudo cargar el historial",
+    searchPlaceholder: "Buscar en el historial",
     actions: {
       loadMore: "Cargar más",
+      clearSearch: "Borrar búsqueda",
     },
   },
   statusBar: {
@@ -1414,7 +1419,6 @@ export const es: TranslationResources = {
     },
   },
   rootError: {
-    kicker: "Algo salió mal",
     title: "Paseo tuvo un problema.",
     body: "Vuelve a intentarlo para recargar la app. Si sigue ocurriendo, incluye los detalles de abajo al reportarlo.",
     details: "Detalles",
@@ -1916,6 +1920,7 @@ export const es: TranslationResources = {
       editor: "Editor",
       shortcuts: "Atajos",
       integrations: "Integraciones",
+      notifications: "Notificaciones",
       permissions: "Permisos",
       diagnostics: "Diagnóstico",
       about: "Acerca de",
@@ -1924,6 +1929,21 @@ export const es: TranslationResources = {
       title: "Editor",
       vimKeybindings: "Atajos de Vim",
       vimHint: "Se aplica a archivos fuente en web y escritorio.",
+    },
+    notifications: {
+      title: "Notificaciones",
+      permission: "Permiso de notificaciones",
+      refreshAccessibility: "Actualizar permiso de notificaciones",
+      playSound: "Reproducir sonido",
+      playSoundHint: "Reproduce un sonido cuando llega una notificación de escritorio",
+      test: "Probar notificación",
+      testHint: "Envía una notificación con esta configuración",
+      permissionRequired: "Permite el acceso a las notificaciones antes de probar",
+      send: "Enviar",
+      sending: "Enviando...",
+      sentTitle: "Notificación de prueba enviada",
+      sentDescription: "Paseo entregó la notificación al sistema operativo.",
+      sendFailedTitle: "No se pudo enviar la notificación de prueba",
     },
     hostSections: {
       projects: "Proyectos",
@@ -2226,17 +2246,14 @@ export const es: TranslationResources = {
     },
     permissions: {
       title: "Permisos",
-      notifications: "Notificaciones",
       microphone: "Micrófono",
       refresh: "Refrescar",
       refreshing: "Refrescante...",
       refreshAccessibility: "Actualizar permisos de escritorio",
-      test: "Prueba",
       actions: {
         granted: "Otorgada",
         request: "Pedido",
         requesting: "Solicitando...",
-        busySuffix: "{{label}}...",
       },
     },
     host: {

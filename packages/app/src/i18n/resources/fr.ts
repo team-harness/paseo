@@ -291,8 +291,13 @@ export const fr: TranslationResources = {
   sessions: {
     title: "Historique",
     empty: "Aucune séance pour l'instant",
+    noMatches: "Aucune séance correspondante",
+    tooManyMatches: "Trop de résultats — affinez la recherche",
+    hostLoadFailed: "{{host}} : Impossible de charger l'historique",
+    searchPlaceholder: "Rechercher dans l'historique",
     actions: {
       loadMore: "Charger plus",
+      clearSearch: "Effacer la recherche",
     },
   },
   statusBar: {
@@ -1415,7 +1420,6 @@ export const fr: TranslationResources = {
     },
   },
   rootError: {
-    kicker: "Une erreur s'est produite",
     title: "Paseo a rencontré un problème.",
     body: "Réessayez pour recharger l'application. Si cela continue, joignez les détails ci-dessous au signalement.",
     details: "Détails",
@@ -1918,6 +1922,7 @@ export const fr: TranslationResources = {
       editor: "Éditeur",
       shortcuts: "Raccourcis",
       integrations: "Intégrations",
+      notifications: "Notifications",
       permissions: "Autorisations",
       diagnostics: "Diagnostic",
       about: "À propos",
@@ -1926,6 +1931,21 @@ export const fr: TranslationResources = {
       title: "Éditeur",
       vimKeybindings: "Raccourcis Vim",
       vimHint: "S’applique aux fichiers source sur le web et le bureau.",
+    },
+    notifications: {
+      title: "Notifications",
+      permission: "Autorisation des notifications",
+      refreshAccessibility: "Actualiser l’autorisation des notifications",
+      playSound: "Émettre un son",
+      playSoundHint: "Émet un son lorsqu’une notification de bureau arrive",
+      test: "Tester la notification",
+      testHint: "Envoie une notification avec ces réglages",
+      permissionRequired: "Autorisez l’accès aux notifications avant le test",
+      send: "Envoyer",
+      sending: "Envoi...",
+      sentTitle: "Notification de test envoyée",
+      sentDescription: "Paseo a transmis la notification au système d’exploitation.",
+      sendFailedTitle: "Impossible d’envoyer la notification de test",
     },
     hostSections: {
       projects: "Projets",
@@ -2228,17 +2248,14 @@ export const fr: TranslationResources = {
     },
     permissions: {
       title: "Autorisations",
-      notifications: "Notifications",
       microphone: "Microphone",
       refresh: "Rafraîchir",
       refreshing: "Rafraîchissant...",
       refreshAccessibility: "Actualiser les autorisations du bureau",
-      test: "Test",
       actions: {
         granted: "Accordé",
         request: "Demande",
         requesting: "Demander...",
-        busySuffix: "{{label}}...",
       },
     },
     host: {
