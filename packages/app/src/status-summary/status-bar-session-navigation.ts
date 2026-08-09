@@ -82,6 +82,7 @@ export function buildStatusBarSessionList(
         agentHierarchy: input.agentHierarchy,
       });
       const workspaceId = normalizeWorkspaceId(topLevelSnapshot.workspaceId);
+      const primarySnapshot = group === "attention" ? snapshot : topLevelSnapshot;
       items.push({
         key: `${input.serverId}:${group}:${topLevelSnapshot.agentId}`,
         group,
@@ -90,8 +91,8 @@ export function buildStatusBarSessionList(
         primaryTarget: {
           kind: "agent",
           serverId: input.serverId,
-          agentId: topLevelSnapshot.agentId,
-          workspaceId,
+          agentId: primarySnapshot.agentId,
+          workspaceId: normalizeWorkspaceId(primarySnapshot.workspaceId),
         },
         workspaceTarget:
           workspaceId && input.liveWorkspaceIds.has(workspaceId)

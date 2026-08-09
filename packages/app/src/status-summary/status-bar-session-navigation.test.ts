@@ -62,6 +62,7 @@ describe("status bar session navigation", () => {
           agentId: "grandchild",
           parentAgentId: "child",
           attentionReason: "permission",
+          workspaceId: "workspace-grandchild",
         }),
       ],
       runningAgents: [
@@ -108,8 +109,8 @@ describe("status bar session navigation", () => {
     expect(items[0]?.primaryTarget).toEqual({
       kind: "agent",
       serverId: "server-1",
-      agentId: "parent",
-      workspaceId: "workspace-parent",
+      agentId: "grandchild",
+      workspaceId: "workspace-grandchild",
     });
   });
 
