@@ -1,9 +1,7 @@
-import type { ReactNode } from "react";
 import { ActivityIndicator, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown, ChevronRight, CircleAlert } from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
-import { SyncedLoader } from "@/components/synced-loader";
 import { STATUS_BUCKET_LABELS } from "@/hooks/sidebar-status-view-model";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
@@ -14,8 +12,13 @@ import {
 } from "@/utils/project-status-badge-content";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { getStatusDotColor } from "@/utils/status-dot-color";
-import { STATUS_INDICATOR_ALERT_SIZE } from "@/utils/status-indicator-geometry";
-import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
+import {
+  STATUS_INDICATOR_ALERT_SIZE,
+  STATUS_INDICATOR_FILLED_DOT_SIZE,
+} from "@/utils/status-indicator-geometry";
+import { StatusRing } from "@/components/status-ring";
+import { getStatusRingOffset } from "@/components/status-ring/geometry";
+import type { SidebarSurfaceBackdrop } from "@/styles/surface-backdrop";
 
 // Every surfaced status shares one badge shell, so the badge never changes size or position
 // between states. Only the thing inside it changes.
@@ -29,19 +32,14 @@ const STATUS_BADGE_OFFSET = -4;
 // odd size measured 1.5 device px right and down at 3x, ~3px of asymmetry between opposite gaps).
 // Even sizes divide the shell into whole pixels and land dead center with no correction.
 //
-// Needs-input fills the badge shell while passive failed/attention states stay smaller.
-const STATUS_BADGE_DOT_SIZE = 6;
-// SyncedLoader clamps its dot size at 2px, so sizes 5-10 all render the same 5x8 dot grid.
-const STATUS_BADGE_LOADER_SIZE = 7;
-// The dot-comet reads a hair right inside the round badge; this optical nudge centers it.
-const STATUS_BADGE_LOADER_NUDGE_X = -0.67;
+// The filled alert occupies the full badge shell so needs-input remains more prominent than
+// the passive status dots.
 // Matches the workspace title's lineHeight (sidebar-workspace-row-content's
 // workspaceBranchText) so the icon centers on the title rather than floating above it.
 const LEADING_SLOT_HEIGHT = 20;
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
-const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -49,9 +47,6 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
 const needsInputColorMapping = (theme: Theme) => ({
   color: theme.colors.surface0,
   fill: getStatusDotColor({ theme, bucket: "needs_input" }) ?? undefined,
-});
-const syncedLoaderColorMapping = (theme: Theme) => ({
-  color: getStatusDotColor({ theme, bucket: "running" }) ?? undefined,
 });
 
 /**
@@ -74,7 +69,7 @@ export function ProjectLeadingVisual({
   statusBucket: SidebarStateBucket | null;
   projectViewKey: string;
   /** The row's current background, so the status badge can knock out of it. */
-  backdrop: SurfaceBackdrop;
+  backdrop: SidebarSurfaceBackdrop;
   chevron?: "expand" | "collapse" | null;
   showChevron?: boolean;
   isArchiving?: boolean;
@@ -108,9 +103,9 @@ export function ProjectLeadingVisual({
 
 // The project icon (the lettered box) is what marks a row as a *project* rather than a
 // workspace, so it always stays and status annotates it instead of replacing it. Every
-// surfaced bucket lands in the identical corner badge — a synchronized loader for running,
-// an amber alert glyph for needs_input, colored dots for failed/attention, and nothing for
-// done — so the badge reads as one fixed shell and only its contents change.
+// surfaced bucket lands in the identical corner badge — a ring for running, an amber alert
+// glyph for needs_input, colored dots for failed/attention, and nothing for done — so the badge
+// reads as one fixed shell and only its contents change.
 export function ProjectStatusIndicator({
   iconDataUri,
   displayName,
@@ -126,7 +121,7 @@ export function ProjectStatusIndicator({
   projectViewKey: string;
   statusBucket: SidebarStateBucket | null;
   /** The row's current background, so the status badge can knock out of it. */
-  backdrop: SurfaceBackdrop;
+  backdrop: SidebarSurfaceBackdrop;
   loading?: boolean;
   loadingAccessibilityLabel?: string;
   testID?: string;
@@ -134,14 +129,14 @@ export function ProjectStatusIndicator({
   const placeholderInitial = projectIconPlaceholderLabelFromDisplayName(displayName)
     .charAt(0)
     .toUpperCase();
-  const badgeContent = getProjectStatusBadgeContent(statusBucket);
+  const badgeBucket = loading ? "running" : statusBucket;
+  const badgeContent = getProjectStatusBadgeContent(badgeBucket);
   const accessibilityLabel = getProjectStatusAccessibilityLabel({
     loading,
     loadingAccessibilityLabel,
     statusBucket,
   });
   const indicatorTestID = getProjectStatusIndicatorTestID({ loading, statusBucket, testID });
-  const statusBadge = renderProjectStatusBadge({ loading, badgeContent, backdrop });
 
   return (
     <View
@@ -156,7 +151,13 @@ export function ProjectStatusIndicator({
           placeholderInitial={placeholderInitial}
           projectViewKey={projectViewKey}
         />
-        {statusBadge}
+        {badgeContent === null || badgeBucket === null ? null : (
+          <ProjectStatusBadge
+            content={badgeContent}
+            statusBucket={badgeBucket}
+            backdrop={backdrop}
+          />
+        )}
       </View>
     </View>
   );
@@ -193,74 +194,52 @@ function getProjectStatusIndicatorTestID({
   return "project-icon-only";
 }
 
-function renderProjectStatusBadge({
-  loading,
-  badgeContent,
+function ProjectStatusBadge({
+  content,
+  statusBucket,
   backdrop,
 }: {
-  loading: boolean;
-  badgeContent: ProjectStatusBadgeContent | null;
-  backdrop: SurfaceBackdrop;
-}): ReactNode {
-  if (loading) {
+  content: ProjectStatusBadgeContent;
+  statusBucket: SidebarStateBucket;
+  backdrop: SidebarSurfaceBackdrop;
+}) {
+  // Running skips the shell. The ring is wider than the 12pt shell and carries its own knockout,
+  // so nesting it inside would clip it against the very thing that was meant to separate it from
+  // the icon. It anchors to the same corner instead, growing around the centre the dot had.
+  if (content.kind === "dot" && content.bucket === "running") {
     return (
-      <ProjectStatusBadge backdrop={backdrop}>
-        <View testID="sidebar-status-visual-loading-spinner">
-          <ThemedActivityIndicator size={8} uniProps={foregroundMutedColorMapping} />
-        </View>
-      </ProjectStatusBadge>
+      <View
+        role="status"
+        accessibilityLabel={STATUS_BUCKET_LABELS[statusBucket]}
+        style={styles.statusRingAnchor}
+        testID="project-status-badge"
+      >
+        <StatusRing backdrop={backdrop} />
+      </View>
     );
   }
-  if (badgeContent === null) return null;
-  return (
-    <ProjectStatusBadge backdrop={backdrop}>
-      {renderProjectStatusBadgeContent(badgeContent)}
-    </ProjectStatusBadge>
-  );
-}
-
-function ProjectStatusBadge({
-  children,
-  backdrop,
-}: {
-  children: ReactNode;
-  backdrop: SurfaceBackdrop;
-}) {
   return (
     <View
       style={[styles.statusBadge, getStatusBadgeBackdropStyle(backdrop)]}
       testID="project-status-badge"
     >
-      {children}
+      {content.kind === "alert" ? (
+        <ThemedCircleAlert size={STATUS_INDICATOR_ALERT_SIZE} uniProps={needsInputColorMapping} />
+      ) : (
+        <View testID="project-status-dot" style={getStatusDotColorStyle(content.bucket)} />
+      )}
     </View>
   );
 }
 
-function renderProjectStatusBadgeContent(content: ProjectStatusBadgeContent): ReactNode {
-  switch (content.kind) {
-    case "loader":
-      return (
-        <View style={styles.runningLoaderNudge} testID="sidebar-status-visual-synced-loader">
-          <ThemedSyncedLoader size={STATUS_BADGE_LOADER_SIZE} uniProps={syncedLoaderColorMapping} />
-        </View>
-      );
-    case "alert":
-      return (
-        <ThemedCircleAlert size={STATUS_INDICATOR_ALERT_SIZE} uniProps={needsInputColorMapping} />
-      );
-    case "dot":
-      return <View testID="project-status-dot" style={getStatusDotColorStyle(content.bucket)} />;
-  }
-}
-
-function getStatusBadgeBackdropStyle(backdrop: SurfaceBackdrop): ViewStyle {
+function getStatusBadgeBackdropStyle(backdrop: SidebarSurfaceBackdrop): ViewStyle {
   switch (backdrop) {
+    case "surfaceSidebar":
+      return styles.statusBadgeOnSidebar;
     case "surfaceSidebarHover":
       return styles.statusBadgeOnSidebarHover;
     case "surface2":
       return styles.statusBadgeOnSurface2;
-    default:
-      return styles.statusBadgeOnSidebar;
   }
 }
 
@@ -305,8 +284,8 @@ const styles = StyleSheet.create((theme) => {
   // so this badge can't drift from the status dots everywhere else.
   const statusDot = (bucket: ProjectStatusBadgeDotBucket) =>
     ({
-      width: STATUS_BADGE_DOT_SIZE,
-      height: STATUS_BADGE_DOT_SIZE,
+      width: STATUS_INDICATOR_FILLED_DOT_SIZE,
+      height: STATUS_INDICATOR_FILLED_DOT_SIZE,
       borderRadius: theme.borderRadius.full,
       backgroundColor: getStatusDotColor({ theme, bucket }) ?? undefined,
     }) as const;
@@ -347,8 +326,11 @@ const styles = StyleSheet.create((theme) => {
       justifyContent: "center",
       overflow: "hidden",
     },
-    runningLoaderNudge: {
-      transform: [{ translateX: STATUS_BADGE_LOADER_NUDGE_X }],
+    // Same corner as the shell, re-centred for the wider ring.
+    statusRingAnchor: {
+      position: "absolute",
+      right: getStatusRingOffset(STATUS_BADGE_OFFSET, STATUS_BADGE_SIZE),
+      bottom: getStatusRingOffset(STATUS_BADGE_OFFSET, STATUS_BADGE_SIZE),
     },
     statusBadgeOnSidebar: { backgroundColor: theme.colors.surfaceSidebar },
     statusBadgeOnSidebarHover: { backgroundColor: theme.colors.surfaceSidebarHover },

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { getProjectStatusBadgeContent } from "./project-status-badge-content";
 
 describe("getProjectStatusBadgeContent", () => {
-  it("shows the synchronized loader while working", () => {
-    expect(getProjectStatusBadgeContent("running")).toEqual({ kind: "loader" });
+  it("surfaces the running bucket for the status ring", () => {
+    expect(getProjectStatusBadgeContent("running")).toEqual({ kind: "dot", bucket: "running" });
   });
 
   it("shows the alert when input is needed", () => {

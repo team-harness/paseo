@@ -1906,7 +1906,7 @@ export const AssistantMessage = memo(function AssistantMessage({
 
         return (
           <View key={node.key} style={styles.list_item} dataSet={markdownCopyDataSet.li}>
-            <Text style={iconStyle} dataSet={markdownCopyDataSet.ignore}>
+            <Text style={iconStyle} dataSet={markdownCopyDataSet.listMarker}>
               {marker}
             </Text>
             <MarkdownListItemContent contentStyle={contentStyle}>

@@ -55,8 +55,8 @@ vi.mock("react-native-unistyles", () => ({
   withUnistyles: <T,>(component: T) => component,
 }));
 
-vi.mock("@/components/synced-loader", () => ({
-  SyncedLoader: () => <span data-testid="synced-loader" />,
+vi.mock("@/components/status-ring", () => ({
+  StatusRing: () => <span data-testid="status-ring" />,
 }));
 
 vi.mock("lucide-react-native", () => ({
@@ -122,16 +122,16 @@ describe("WorkspaceTabIcon", () => {
     container = null;
   });
 
-  it("uses the synced loader for a running agent", () => {
+  it("uses the status ring for a running agent", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
 
     act(() => {
-      root?.render(<WorkspaceTabIcon presentation={presentation("running")} />);
+      root?.render(<WorkspaceTabIcon presentation={presentation("running")} backdrop="surface0" />);
     });
 
-    expect(container.querySelector('[data-testid="synced-loader"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="status-ring"]')).not.toBeNull();
     expect(
       container
         .querySelector('[data-testid="workspace-tab-running-indicator"]')
@@ -139,9 +139,9 @@ describe("WorkspaceTabIcon", () => {
     ).toBe("Agent running");
 
     act(() => {
-      root?.render(<WorkspaceTabIcon presentation={presentation("failed")} />);
+      root?.render(<WorkspaceTabIcon presentation={presentation("failed")} backdrop="surface0" />);
     });
 
-    expect(container.querySelector('[data-testid="synced-loader"]')).toBeNull();
+    expect(container.querySelector('[data-testid="status-ring"]')).toBeNull();
   });
 });

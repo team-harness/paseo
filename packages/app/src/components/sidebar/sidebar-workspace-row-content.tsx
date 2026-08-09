@@ -1,13 +1,11 @@
 import { memo, useCallback, useId, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Text, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { CircleAlert, Folder, FolderGit2, Monitor } from "lucide-react-native";
 import { ProjectStatusIndicator } from "@/components/sidebar/project-leading-visual";
-import { SyncedLoader } from "@/components/synced-loader";
-import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
+import type { SidebarSurfaceBackdrop } from "@/styles/surface-backdrop";
 import {
   WorkspaceMetaRow,
   type WorkspaceServiceSummary,
@@ -23,12 +21,14 @@ import {
 import { useAppSettings } from "@/hooks/use-settings";
 import type { Theme } from "@/styles/theme";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
-import { getStatusDotColor, isEmphasizedStatusDotBucket } from "@/utils/status-dot-color";
+import { getStatusDotColor } from "@/utils/status-dot-color";
 import {
   STATUS_INDICATOR_ALERT_SIZE,
   STATUS_INDICATOR_DOT_SIZE,
+  STATUS_INDICATOR_FILLED_DOT_SIZE,
 } from "@/utils/status-indicator-geometry";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
+import { StatusRing } from "@/components/status-ring";
 import { resolveSidebarWorkspacePrimaryLabel } from "@/components/sidebar/sidebar-workspace-title";
 
 // The scrim spans more than the kebab so the fade starts left of the diff stat. Solid from
@@ -36,22 +36,12 @@ import { resolveSidebarWorkspacePrimaryLabel } from "@/components/sidebar/sideba
 const SCRIM_WIDTH = 48;
 const SCRIM_SOLID_OFFSET = "55%";
 
-const DEFAULT_STATUS_DOT_SIZE = 7;
-const EMPHASIZED_STATUS_DOT_SIZE = 9;
-const DEFAULT_STATUS_DOT_OFFSET = 0;
-const EMPHASIZED_STATUS_DOT_OFFSET = -1;
-
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const needsInputColorMapping = (theme: Theme) => ({
   color: theme.colors.surface0,
   fill: getStatusDotColor({ theme, bucket: "needs_input" }) ?? undefined,
 });
-const syncedLoaderColorMapping = (theme: Theme) => ({
-  color: getStatusDotColor({ theme, bucket: "running" }) ?? undefined,
-});
-const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
-const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const ThemedMonitor = withUnistyles(Monitor);
 const ThemedFolder = withUnistyles(Folder);
 const ThemedFolderGit2 = withUnistyles(FolderGit2);
@@ -154,7 +144,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   secondaryLabel?: string | null;
   serviceSummary?: WorkspaceServiceSummary | null;
   /** The row's current background, so the project status badge can knock out of it. */
-  backdrop: SurfaceBackdrop;
+  backdrop: SidebarSurfaceBackdrop;
   isHovered: boolean;
   isLoading: boolean;
   isCreating?: boolean;
@@ -242,6 +232,10 @@ function WorkspaceStatusIndicator({
   loadingAccessibilityLabel: string;
   reserveIdleSpace?: boolean;
 }) {
+  // Busy is the only status that moves, and it is the ring rather than a dot for the same
+  // reason it is a dot elsewhere: every status in the sidebar sits in this one slot, so busy
+  // has to fill it without displacing anything. A row starting up and a row working are both
+  // busy, so they share the ring and differ only in testID.
   if (loading) {
     return (
       <View
@@ -250,9 +244,7 @@ function WorkspaceStatusIndicator({
         style={styles.workspaceStatusDot}
         testID="workspace-status-indicator-loading"
       >
-        <View testID="sidebar-status-visual-loading-spinner">
-          <ThemedLoadingSpinner size={8} uniProps={foregroundMutedColorMapping} />
-        </View>
+        <StatusRing />
       </View>
     );
   }
@@ -265,9 +257,7 @@ function WorkspaceStatusIndicator({
         style={styles.workspaceStatusDot}
         testID="workspace-status-indicator-running"
       >
-        <View testID="sidebar-status-visual-synced-loader">
-          <ThemedSyncedLoader size={11} uniProps={syncedLoaderColorMapping} />
-        </View>
+        <StatusRing />
       </View>
     );
   }
@@ -321,13 +311,6 @@ function WorkspaceStatusIndicator({
   else KindIcon = ThemedFolder;
 
   const dotColorStyle = getStatusDotColorStyle(bucket);
-  const statusDotSize = isEmphasizedStatusDotBucket(bucket)
-    ? EMPHASIZED_STATUS_DOT_SIZE
-    : DEFAULT_STATUS_DOT_SIZE;
-  const statusDotOffset =
-    statusDotSize === EMPHASIZED_STATUS_DOT_SIZE
-      ? EMPHASIZED_STATUS_DOT_OFFSET
-      : DEFAULT_STATUS_DOT_OFFSET;
   return (
     <View
       role="status"
@@ -336,40 +319,13 @@ function WorkspaceStatusIndicator({
       testID={`workspace-status-indicator-${bucket}`}
     >
       <KindIcon size={14} uniProps={foregroundMutedColorMapping} />
-      {dotColorStyle ? (
-        <StatusDotOverlay
-          dotColorStyle={dotColorStyle}
-          size={statusDotSize}
-          offset={statusDotOffset}
-        />
-      ) : null}
+      {dotColorStyle ? <StatusDotOverlay dotColorStyle={dotColorStyle} /> : null}
     </View>
   );
 }
 
-function StatusDotOverlay({
-  dotColorStyle,
-  size,
-  offset,
-}: {
-  dotColorStyle: ViewStyle;
-  size: number;
-  offset: number;
-}) {
-  const overlayStyle = useMemo(
-    () => [
-      styles.statusDotOverlay,
-      dotColorStyle,
-      {
-        width: size,
-        height: size,
-        right: offset,
-        bottom: offset,
-      },
-    ],
-    [dotColorStyle, offset, size],
-  );
-  return <View style={overlayStyle} />;
+function StatusDotOverlay({ dotColorStyle }: { dotColorStyle: ViewStyle }) {
+  return <View style={[styles.statusDotOverlay, dotColorStyle]} />;
 }
 
 function getStatusDotColorStyle(bucket: SidebarStateBucket) {
@@ -620,18 +576,22 @@ const styles = StyleSheet.create((theme) => ({
   },
   statusDotOverlay: {
     position: "absolute",
+    right: 0,
+    bottom: 0,
+    width: STATUS_INDICATOR_DOT_SIZE,
+    height: STATUS_INDICATOR_DOT_SIZE,
     borderRadius: theme.borderRadius.full,
     borderWidth: 1,
   },
   standaloneStatusDot: {
-    width: STATUS_INDICATOR_DOT_SIZE,
-    height: STATUS_INDICATOR_DOT_SIZE,
+    width: STATUS_INDICATOR_FILLED_DOT_SIZE,
+    height: STATUS_INDICATOR_FILLED_DOT_SIZE,
     borderRadius: theme.borderRadius.full,
     backgroundColor: getStatusDotColor({ theme, bucket: "attention" }) ?? undefined,
   },
   idleStatusDot: {
-    width: 8,
-    height: 8,
+    width: STATUS_INDICATOR_FILLED_DOT_SIZE,
+    height: STATUS_INDICATOR_FILLED_DOT_SIZE,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.foregroundExtraMuted,
     opacity: 0.3,

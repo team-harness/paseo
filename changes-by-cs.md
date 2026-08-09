@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `1e0ce69c548ea0d266ed96fae58210816d5ff9fa`，同步于 2026-08-09。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `1e0ce69c548ea0d266ed96fae58210816d5ff9fa`）。
+- 最近同步基线：`upstream/main` = `02c4bc76a6cdd0f0a2665cc85ff4702e6b28f169`，同步于 2026-08-10。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `02c4bc76a6cdd0f0a2665cc85ff4702e6b28f169`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-10: `upstream/main` `02c4bc76a` / `v0.3.1`
+
+- 合入上游运行状态环与轻量状态点、可取消快捷键与快捷键搜索、Pure black 主题、移动端会话重命名、Host 切换时保留当前项目、Hub execution 独立 workspace 生命周期、共享 worktree 增量 Git fetch、文件监听与 daemon worker 抗停滞、macOS 本机 LAN 直连恢复，以及 Add Project 入口收敛。
+- 侧边栏项目/工作区与工作区聊天 Tab 的运行状态采用上游 `StatusRing`；它已提供清晰的动态运行反馈和统一的 surface knockout，因此下线 fork 在这些位置重复维护的 `SyncedLoader` 路径。脱离项目分组的项目次级文字、加载状态无障碍语义和 needs-input 强调继续保留。
+- 上游仍没有提供 Status Bar/usage ledger、多 Host 汇总、Threadshare 分享、Host 常用 Prompt、跨 File/Changes Review Comments、Assistant 时间、固定签名分发或独立 Android APK 构建的等价能力；这些 fork 功能继续保留。
 
 ### 2026-08-09: `upstream/main` `1e0ce69c5` / `v0.3.0`
 
@@ -173,7 +179,7 @@
 
 - 底部全局 Status Bar 展示 token、费用、运行/需要注意/最近会话，并提供会话导航。
 - 按 host 获取 `status.summary`；客户端可合并多个已连接 host 的信息，并在会话/历史项显示 host。状态栏的 Pin 直接复用侧边栏 workspace 的 `pinnedAt`、列表投影、完整 workspace entry 和 `setWorkspacePinned` API，因此两处展示信息及置顶/取消置顶行为一致。
-- 会话以一级 Agent 聚合；子 Agent 的运行或等待状态汇总到根 Agent，避免大量子 Agent 淹没列表。
+- 会话以一级 Agent 聚合；子 Agent 的运行或等待状态汇总到根 Agent，避免大量子 Agent 淹没列表。需要注意的聚合行仍展示根 Agent，但点击后进入真正持有提醒的子 Agent 及其 workspace。
 - Provider 子 Agent 可以跨越父 Agent 的 turn 继续异步运行；父 Agent 进入 `idle`、`error` 或 turn canceled 时不得据此终止子项。子项只由 Provider 的真实终态事件或显式 runtime closure（close、reload、archive）路径收敛，并在运行期间继续贡献 workspace activity。
 - 清除“需要注意”成功后，客户端会重新拉取该 Host 的权威 `status.summary`；即使增量推送丢失，Status Bar 也不会长期停留在旧的“需要注意”状态。
 - 历史只显示当前已加载集合中的一级、非 `closed` Agent；支持刷新、workspace Pin 和紧凑/桌面布局。
@@ -341,9 +347,9 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 
 ### 8. 脱离项目分组的侧边栏行保留项目名
 
-**状态**：fork 修复。提交：`f548d71e0`。
+**状态**：项目上下文为 fork 修复；运行状态视觉已迁移到上游实现。提交：`f548d71e0`。
 
-**行为**：工作区标题继续遵循用户选择的 Title/Branch name 偏好。状态分组、侧边栏 Pinned 区和顶部状态栏 Pinned 面板中的工作区脱离了项目父行，因此在主标题下显示项目名；普通项目分组内的子行仍保持单行。侧边栏和工作区聊天 Tab 的运行中状态统一使用 fork 的 `SyncedLoader`，不使用容易与完成状态混淆的静态圆点。
+**行为**：工作区标题继续遵循用户选择的 Title/Branch name 偏好。状态分组、侧边栏 Pinned 区和顶部状态栏 Pinned 面板中的工作区脱离了项目父行，因此在主标题下显示项目名；普通项目分组内的子行仍保持单行。侧边栏和工作区聊天 Tab 的运行中状态统一使用上游 `StatusRing`，不使用容易与完成状态混淆的静态圆点。
 
 **关键文件**：
 
@@ -358,10 +364,10 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - 不要通过重置 `workspaceTitleSource` 修复项目上下文；用户选择 Branch name 时，分支仍是主标题。
 - 脱离项目分组的行必须把项目名渲染为可见次级文字。项目图标和 accessibility label 不能代替可见文字。
 - 次级文字保持单行截断，不能撑宽窄侧边栏或移动端布局。
-- 运行中指示器在侧边栏与工作区聊天 Tab 中必须保持相同的 `SyncedLoader` 形态、状态色和无障碍语义；不要随上游静态圆点回退。
+- 运行中指示器在侧边栏与工作区聊天 Tab 中必须保持相同的 `StatusRing` 形态、状态色和无障碍语义；不要回退为静态圆点或重新维护 fork 专用动画路径。
 - 必跑：`status-bar-running-sessions.test.tsx`，以及 `sidebar-model-b.spec.ts` 的状态分组场景和 `sidebar-workspace-pin-shortcut.spec.ts` 的 Pinned 场景。
 
-**最近同步判断**：2026-08-07 合入上游 `ef6d7b3b9` 后，采用 checks 显示偏好、运行中 Service 摘要和统一状态色；脱离项目分组的项目名继续位于 Meta Row 首项。侧边栏和工作区聊天 Tab 的运行中状态均保留 fork 的 `SyncedLoader`，并使用上游统一的 running 状态色，没有恢复静态或呼吸圆点。
+**最近同步判断**：2026-08-10 合入上游 `02c4bc76a` 后，采用上游 `StatusRing` 替代侧边栏和工作区聊天 Tab 的 fork `SyncedLoader`；脱离项目分组的项目名继续位于 Meta Row 首项，加载、运行、needs-input 和其他静态状态保持各自无障碍语义。
 
 ### 9. 常用 Prompt 集合
 
