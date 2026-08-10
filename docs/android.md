@@ -57,22 +57,30 @@ without downloads:
 npm run build:android-apk -- --offline
 ```
 
-Changing Expo, React Native, Gradle plugins, Android tool versions, or npm dependencies can require a
-connected build again. Clearing the SDK, Gradle, or Maven caches also forces downloads.
+Changing Expo, React Native, Gradle plugins, Android tool versions, or native npm dependencies can
+require a connected build again. Clearing the SDK, Gradle, or Maven caches also forces downloads.
 
 The first run creates a release keystore and credentials under `packages/app/.secrets/`; keep that
 directory private and back it up. Every later build must use the same keystore or Android will reject
 an in-place upgrade.
 
-For a retry after only adding a missing dependency to the local cache, preserve the generated native
-project and its incremental outputs:
+The default command fingerprints the resolved Expo prebuild config, prebuild tool versions, Android
+autolinking results, referenced config assets, custom config plugins, and installed React Native
+package versions. It reuses `packages/app/android` when that fingerprint matches, while still
+rebuilding JavaScript workspace dependencies. A fingerprint change, missing cache metadata, or an
+incomplete generated project runs `expo prebuild --clean`, applies release signing, and records the
+new fingerprint only after generation succeeds. Ordinary TypeScript and server changes do not
+invalidate the native project.
+
+For an emergency retry after only adding a missing dependency to the local cache, bypass the
+fingerprint check and preserve the generated native project:
 
 ```bash
 npm run build:android-apk -- --offline --reuse-native-project
 ```
 
-Use this only while `packages/app/android` still matches the current app config and dependencies. The
-default command regenerates that directory with `expo prebuild --clean` for a reproducible release.
+Use this only after confirming `packages/app/android` matches the current app config and native
+dependencies. It is a forced override; scheduled releases use the default automatic cache check.
 
 The artifact filename gets a `-dirty` suffix when Git reports local changes. A release build may
 ignore unrelated untracked files after you inspect `git status --short` and confirm none of them are
@@ -93,8 +101,8 @@ checks all three values before it reports success.
 The scheduled release uploads the APK and verifies its public OSS URL through the bucket CNAME
 `openweb.bzy.ai` before deleting the local release APK, checksum sidecar, and Gradle APK output.
 Aliyun OSS rejects APK downloads through its default bucket endpoint. The cleanup keeps the release
-keystore, Android SDK, Gradle/Maven caches, and generated native project so the next build does not
-repeat downloads.
+keystore, Android SDK, Gradle/Maven caches, generated native project, and its fingerprint metadata so
+the next build does not repeat downloads or clean prebuild without a native input change.
 
 `mise install` only lays down the command-line tools. Install the rest and create an emulator. On Apple Silicon:
 

@@ -126,7 +126,7 @@
    - 没有未跟踪文件时，运行 `npm run build:android-apk -- --offline`；
    - 只有确认不参与 APK 构建的文档等文件时，可运行 `npm run build:android-apk -- --offline --ignore-untracked`；
    - 存在未跟踪的应用源码、配置、依赖或其他构建输入时，禁止忽略，先提交或使用干净 checkout。
-2. 默认让脚本执行干净的 Expo prebuild，不使用旧 generated Android project。只有为当前同一提交补齐缓存后重试时，才允许追加 `--reuse-native-project`。若离线构建因本轮依赖或工具链变化缺少缓存，先确认本机代理，再执行一次联网构建补齐 SDK、Gradle 与 Maven 缓存，随后必须重新以 `--offline` 构建成功。
+2. 默认命令会计算 native 配置指纹：覆盖 Expo prebuild 配置与生成工具版本、Android autolinking 结果、配置引用资源、自定义 config plugin 和已安装 React Native package 版本。指纹命中且 generated Android project 完整时复用 `packages/app/android`；指纹变化、元数据缺失或工程不完整时自动执行干净的 Expo prebuild。`--reuse-native-project` 仅作为人工确认工程仍有效后的强制覆盖，不用于常规定时发布。若离线构建因本轮依赖或工具链变化缺少缓存，先确认本机代理，再执行一次联网构建补齐 SDK、Gradle 与 Maven 缓存，随后必须重新以 `--offline` 构建成功。
 3. 构建过程禁止启动模拟器、执行 `adb install`，也禁止运行任何 Paseo daemon start/stop/restart 命令。构建后再次检查端口 `6767` 的 PID 和健康状态，PID 改变或健康检查失败时立即中止发布。
 4. 交付前必须全部验证：
    - 产物位于 `artifacts/android/Paseo-<version>-<commit>-android.apk`，版本和 commit 与本轮发布一致，文件名不得包含 `-dirty`；

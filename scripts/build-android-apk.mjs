@@ -10,6 +10,11 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import { verifyAndroidMetroBundle } from "./verify-android-metro-bundle.mjs";
+import {
+  createNativeProjectFingerprint,
+  getNativeProjectCacheStatus,
+  writeNativeProjectCache,
+} from "./android-native-project-cache.mjs";
 
 const require = createRequire(import.meta.url);
 const { getNativeReleaseVersion } = require("../packages/app/native-release-version");
@@ -33,6 +38,14 @@ const ANDROID_CMAKE_VERSION = "3.22.1";
 const GRADLE_HTTP_ARGS = [
   "-Dorg.gradle.internal.http.connectionTimeout=30000",
   "-Dorg.gradle.internal.http.socketTimeout=120000",
+];
+const NATIVE_GENERATOR_PACKAGES = [
+  "expo",
+  "@expo/cli",
+  "@expo/prebuild-config",
+  "@expo/config-plugins",
+  "expo-modules-autolinking",
+  "react-native",
 ];
 
 function parseArgs(argv) {
@@ -129,6 +142,17 @@ async function capture(command, args, options = {}) {
     ...options,
   });
   return stdout.trim();
+}
+
+async function captureJson(command, args, options = {}) {
+  const output = await capture(command, args, options);
+  try {
+    return JSON.parse(output);
+  } catch (error) {
+    throw new Error(`Command returned invalid JSON: ${command} ${args.join(" ")}`, {
+      cause: error,
+    });
+  }
 }
 
 function mergeNoProxy(current) {
@@ -474,6 +498,41 @@ async function patchReleaseSigning() {
   await writeFile(buildGradlePath, contents);
 }
 
+async function computeNativeProjectFingerprint(env) {
+  const expo = path.join(REPO_ROOT, "node_modules", ".bin", "expo");
+  const autolinking = path.join(REPO_ROOT, "node_modules", ".bin", "expo-modules-autolinking");
+  const snapshotEnv = { ...env, FORCE_COLOR: "0", NO_COLOR: "1" };
+  const [expoConfig, expoModulesConfig, reactNativeConfig] = await Promise.all([
+    captureJson(expo, ["config", "--type", "prebuild", "--json"], {
+      cwd: APP_DIR,
+      env: snapshotEnv,
+    }),
+    captureJson(autolinking, ["resolve", "--platform", "android", "--json"], {
+      cwd: APP_DIR,
+      env: snapshotEnv,
+    }),
+    captureJson(autolinking, ["react-native-config", "--platform", "android", "--json"], {
+      cwd: APP_DIR,
+      env: snapshotEnv,
+    }),
+  ]);
+  const nativeGeneratorVersions = {};
+  for (const packageName of NATIVE_GENERATOR_PACKAGES) {
+    const packageJsonPath = require.resolve(`${packageName}/package.json`);
+    const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
+    nativeGeneratorVersions[packageName] = packageJson.version;
+  }
+
+  return createNativeProjectFingerprint({
+    appDir: APP_DIR,
+    expoConfig,
+    expoModulesConfig,
+    nativeGeneratorVersions,
+    reactNativeConfig,
+    repoRoot: REPO_ROOT,
+  });
+}
+
 async function sha256(filePath) {
   const contents = await readFile(filePath);
   return createHash("sha256").update(contents).digest("hex");
@@ -502,20 +561,38 @@ async function main() {
   console.log("Verifying the Android Metro module graph...");
   await verifyAndroidMetroBundle();
 
-  if (reuseNativeProject) {
-    await access(path.join(ANDROID_DIR, "gradlew"));
-    console.log("Reusing the existing generated Android project.");
-  } else {
-    console.log("Building app workspace dependencies...");
-    await run("npm", ["run", "build:app-deps"], { env });
+  console.log("Building app workspace dependencies...");
+  await run("npm", ["run", "build:app-deps"], { env });
 
-    console.log("Generating the Android project...");
-    await run(
-      path.join(REPO_ROOT, "node_modules", ".bin", "expo"),
-      ["prebuild", "--platform", "android", "--clean"],
-      { cwd: APP_DIR, env },
-    );
-    await patchReleaseSigning();
+  if (reuseNativeProject) {
+    await Promise.all([
+      access(path.join(ANDROID_DIR, "gradlew")),
+      access(path.join(ANDROID_DIR, "settings.gradle")),
+      access(path.join(ANDROID_DIR, "app", "build.gradle")),
+    ]);
+    console.log("Force-reusing the existing generated Android project.");
+  } else {
+    console.log("Checking the generated Android project cache...");
+    const nativeProjectFingerprint = await computeNativeProjectFingerprint(env);
+    const cacheStatus = await getNativeProjectCacheStatus({
+      androidDir: ANDROID_DIR,
+      fingerprint: nativeProjectFingerprint,
+    });
+    if (cacheStatus.hit) {
+      console.log("Reusing the generated Android project: native inputs match.");
+    } else {
+      console.log(`Regenerating the Android project: ${cacheStatus.reason}.`);
+      await run(
+        path.join(REPO_ROOT, "node_modules", ".bin", "expo"),
+        ["prebuild", "--platform", "android", "--clean"],
+        { cwd: APP_DIR, env },
+      );
+      await patchReleaseSigning();
+      await writeNativeProjectCache({
+        androidDir: ANDROID_DIR,
+        fingerprint: nativeProjectFingerprint,
+      });
+    }
   }
 
   console.log("Building the signed release APK...");
