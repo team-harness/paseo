@@ -200,7 +200,7 @@
 - 上游若只实现 UI 而无相同的 daemon summary/usage ledger，不能直接替换服务端链路。
 - 必跑：status-summary 相关 Vitest、`packages/app/e2e/browser/status-bar-running-sessions.spec.ts`、`npm run typecheck`。
 
-**设计与审计依据**：`.codestable/roadmap/global-status-bar/` 和 `.codestable/features/` 下的 status-bar / status-summary 产物。
+**长期依据**：usage 持久化与 provider normalization 由 `docs/data-model.md` 承接；协议、服务端与 UI 行为以本节列出的代码、目标测试和主要提交为准。
 
 ### 2. 计划任务选择已有 Agent
 
