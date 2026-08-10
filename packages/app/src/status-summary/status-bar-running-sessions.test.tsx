@@ -584,6 +584,7 @@ describe("status bar running sessions", () => {
 
     expect(container?.querySelector('[data-testid="global-status-bar-row-running"]')).toBeNull();
     expect(container?.querySelector('[data-testid="global-status-bar-row-attention"]')).toBeNull();
+    expect(container?.querySelector('[data-testid="status-bar-errors-trigger"]')).toBeNull();
     expect(container?.querySelector('[data-testid="status-bar-sessions-trigger"]')).not.toBeNull();
     expect(
       container?.querySelector('[data-testid="status-bar-sessions-attention-count"]'),
@@ -689,7 +690,7 @@ describe("status bar running sessions", () => {
     expect(runtimeState.refreshStatusSummary).toHaveBeenCalledTimes(2);
   });
 
-  it("prioritizes actionable attention rows and labels session status", () => {
+  it("opens failed sessions from the conditional error trigger", () => {
     const permission = snapshot({
       agentId: "agent-permission",
       status: "idle",
@@ -727,21 +728,73 @@ describe("status bar running sessions", () => {
     expect(container?.querySelector('[data-testid="global-status-bar-row-errors"]')).toBeNull();
     act(() => {
       container
-        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-sessions-trigger"]')
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-errors-trigger"]')
         ?.click();
     });
 
-    const rows = Array.from(
+    expect(container?.querySelector('[data-testid="status-bar-errors-panel"]')).not.toBeNull();
+    const errorRows = Array.from(
       container?.querySelectorAll('[data-testid^="status-bar-session-row-"]') ?? [],
     ).map((row) => row.getAttribute("data-testid"));
-    expect(rows.slice(0, 3)).toEqual([
+    expect(errorRows).toEqual(["status-bar-session-row-agent-error"]);
+    expect(container?.textContent).toContain("statusBar.sessions.status.error");
+
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>(
+          '[data-testid="status-bar-session-row-agent-error"] button',
+        )
+        ?.click();
+    });
+    expect(navigationSpies.navigateToAgent).toHaveBeenCalledWith({
+      serverId: "server-1",
+      agentId: "agent-error",
+      workspaceId: null,
+    });
+
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-sessions-trigger"]')
+        ?.click();
+    });
+    const sessionRows = Array.from(
+      container?.querySelectorAll('[data-testid^="status-bar-session-row-"]') ?? [],
+    ).map((row) => row.getAttribute("data-testid"));
+    expect(sessionRows.slice(0, 3)).toEqual([
       "status-bar-session-row-agent-permission",
       "status-bar-session-row-agent-error",
       "status-bar-session-row-agent-finished",
     ]);
     expect(container?.textContent).toContain("statusBar.sessions.status.permission");
-    expect(container?.textContent).toContain("statusBar.sessions.status.error");
     expect(container?.textContent).toContain("statusBar.sessions.status.finished");
+  });
+
+  it("opens failed sessions in a compact sheet", () => {
+    const error = snapshot({
+      agentId: "agent-error",
+      status: "error",
+      stateBucket: "failed",
+      attentionReason: "error",
+    });
+    const view = readyView();
+    view.needsAttentionAgents = [error];
+    view.summary.activity.needsAttentionAgents = view.needsAttentionAgents;
+    view.summary.activity.counts.error = 1;
+    runtimeState.compact = true;
+
+    act(() => {
+      root?.render(renderStatusBar(view));
+    });
+    act(() => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-errors-trigger"]')
+        ?.click();
+    });
+
+    expect(container?.querySelector('[data-testid="status-bar-errors-sheet"]')).not.toBeNull();
+    expect(
+      container?.querySelector('[data-testid="status-bar-session-row-agent-error"]'),
+    ).not.toBeNull();
   });
 
   it("merges session rows from ready hosts and pins through their owning host", async () => {

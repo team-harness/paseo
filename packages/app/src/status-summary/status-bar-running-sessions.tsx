@@ -88,6 +88,12 @@ const compactTriggerStyle = ({ pressed }: { pressed: boolean }) => [
   pressed ? styles.triggerPressed : null,
 ];
 
+const compactErrorTriggerStyle = ({ pressed }: { pressed: boolean }) => [
+  styles.trigger,
+  styles.errorTrigger,
+  pressed ? styles.triggerPressed : null,
+];
+
 const desktopTriggerStyle = ({
   pressed,
   hovered,
@@ -98,6 +104,21 @@ const desktopTriggerStyle = ({
   open: boolean;
 }) => [
   styles.trigger,
+  hovered || open ? styles.triggerHovered : null,
+  pressed ? styles.triggerPressed : null,
+];
+
+const desktopErrorTriggerStyle = ({
+  pressed,
+  hovered,
+  open,
+}: {
+  pressed: boolean;
+  hovered: boolean;
+  open: boolean;
+}) => [
+  styles.trigger,
+  styles.errorTrigger,
   hovered || open ? styles.triggerHovered : null,
   pressed ? styles.triggerPressed : null,
 ];
@@ -215,11 +236,9 @@ function InteractiveRunningSessionsTrigger({
 }: StatusBarRunningSessionsTriggerProps) {
   const isCompact = useIsCompactFormFactor();
   const pathname = usePathname();
-  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const runtime = getHostRuntimeStore();
-  const [open, setOpen] = useState(false);
-  const sheetHeader = useMemo(() => ({ title: t("statusBar.sessions.title") }), [t]);
+  const [openPanel, setOpenPanel] = useState<StatusBarSessionPanel | null>(null);
   const sessions = useSessionStore((state) => state.sessions);
   const sessionSources = useMemo(
     () =>
@@ -270,18 +289,24 @@ function InteractiveRunningSessionsTrigger({
     [sessionSources, sessions],
   );
   const hasItems = items.length > 0;
+  const errorItems = useMemo(() => items.filter(isFailedSessionItem), [items]);
+  const hasErrorItems = errorItems.length > 0;
   const attentionCount = items.filter((item) => item.group === "attention").length;
   const runningCount = items.filter((item) => item.group === "running").length;
 
   useEffect(() => {
-    setOpen(false);
+    setOpenPanel(null);
   }, [pathname, serverId]);
 
   useEffect(() => {
-    if (!hasItems) {
-      setOpen(false);
+    const activePanelHasItems =
+      openPanel === null ||
+      (openPanel === "sessions" && hasItems) ||
+      (openPanel === "errors" && hasErrorItems);
+    if (!activePanelHasItems) {
+      setOpenPanel(null);
     }
-  }, [hasItems]);
+  }, [hasErrorItems, hasItems, openPanel]);
 
   const refreshSessions = useCallback(() => {
     const refreshes = sessionSources.flatMap((source) => {
@@ -293,20 +318,29 @@ function InteractiveRunningSessionsTrigger({
     return Promise.allSettled(refreshes);
   }, [queryClient, runtime, sessionSources]);
 
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      const shouldOpen = hasItems && nextOpen;
-      setOpen(shouldOpen);
+  const handlePanelOpenChange = useCallback(
+    ({ panel, open }: { panel: StatusBarSessionPanel; open: boolean }) => {
+      const panelHasItems = panel === "errors" ? hasErrorItems : hasItems;
+      const shouldOpen = panelHasItems && open;
+      setOpenPanel(shouldOpen ? panel : null);
       if (shouldOpen) {
         void refreshSessions();
       }
     },
-    [hasItems, refreshSessions],
+    [hasErrorItems, hasItems, refreshSessions],
+  );
+  const handleErrorsOpenChange = useCallback(
+    (open: boolean) => handlePanelOpenChange({ panel: "errors", open }),
+    [handlePanelOpenChange],
+  );
+  const handleSessionsOpenChange = useCallback(
+    (open: boolean) => handlePanelOpenChange({ panel: "sessions", open }),
+    [handlePanelOpenChange],
   );
 
   const handleNavigate = useCallback(
     (target: StatusBarSessionTarget) => {
-      setOpen(false);
+      setOpenPanel(null);
       void refreshSessions();
       if (isCompact) {
         requestAnimationFrame(() => {
@@ -318,22 +352,84 @@ function InteractiveRunningSessionsTrigger({
     },
     [isCompact, refreshSessions],
   );
-  const handleCompactOpen = useCallback(() => {
-    handleOpenChange(true);
-  }, [handleOpenChange]);
-  const handleClose = useCallback(() => {
-    handleOpenChange(false);
-  }, [handleOpenChange]);
 
   if (!hasItems) {
     return null;
   }
 
-  const triggerBody = (
+  return (
+    <>
+      {hasErrorItems ? (
+        <StatusBarSessionListTrigger
+          isCompact={isCompact}
+          items={errorItems}
+          mode="errors"
+          open={openPanel === "errors"}
+          onNavigate={handleNavigate}
+          onOpenChange={handleErrorsOpenChange}
+          workspacePinSources={workspacePinSources}
+        />
+      ) : null}
+      <StatusBarSessionListTrigger
+        attentionCount={attentionCount}
+        isCompact={isCompact}
+        items={items}
+        mode="sessions"
+        open={openPanel === "sessions"}
+        runningCount={runningCount}
+        onNavigate={handleNavigate}
+        onOpenChange={handleSessionsOpenChange}
+        workspacePinSources={workspacePinSources}
+      />
+    </>
+  );
+}
+
+type StatusBarSessionPanel = "errors" | "sessions";
+
+function StatusBarSessionListTrigger({
+  attentionCount,
+  isCompact,
+  items,
+  mode,
+  open,
+  runningCount,
+  onNavigate,
+  onOpenChange,
+  workspacePinSources,
+}: {
+  attentionCount?: number;
+  isCompact: boolean;
+  items: StatusBarSessionListItem[];
+  mode: StatusBarSessionPanel;
+  open: boolean;
+  runningCount?: number;
+  onNavigate: (target: StatusBarSessionTarget) => void;
+  onOpenChange: (open: boolean) => void;
+  workspacePinSources: StatusBarWorkspacePinSource[];
+}) {
+  const { t } = useTranslation();
+  const isErrors = mode === "errors";
+  const title = t(isErrors ? "statusBar.rows.errors" : "statusBar.sessions.title");
+  const sheetHeader = useMemo(() => ({ title }), [title]);
+  const testIDPrefix = isErrors ? "status-bar-errors" : "status-bar-sessions";
+  const triggerBody = isErrors ? (
+    <ErrorTriggerContent count={items.length} label={t("statusBar.rows.errors")} />
+  ) : (
     <TriggerContent
       attentionCount={attentionCount}
       runningCount={runningCount}
       label={t("statusBar.sessions.trigger")}
+    />
+  );
+  const handleCompactOpen = useCallback(() => onOpenChange(true), [onOpenChange]);
+  const handleClose = useCallback(() => onOpenChange(false), [onOpenChange]);
+  const list = (
+    <StatusBarSessionsList
+      groupLabel={isErrors ? t("statusBar.rows.errors") : undefined}
+      items={items}
+      onNavigate={onNavigate}
+      workspacePinSources={workspacePinSources}
     />
   );
 
@@ -342,10 +438,10 @@ function InteractiveRunningSessionsTrigger({
       <>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={t("statusBar.sessions.title")}
+          accessibilityLabel={title}
           onPress={handleCompactOpen}
-          style={compactTriggerStyle}
-          testID="status-bar-sessions-trigger"
+          style={isErrors ? compactErrorTriggerStyle : compactTriggerStyle}
+          testID={`${testIDPrefix}-trigger`}
         >
           {triggerBody}
         </Pressable>
@@ -354,25 +450,21 @@ function InteractiveRunningSessionsTrigger({
           visible={open}
           onClose={handleClose}
           snapPoints={COMPACT_SNAP_POINTS}
-          testID="status-bar-sessions-sheet"
+          testID={`${testIDPrefix}-sheet`}
         >
-          <StatusBarSessionsList
-            items={items}
-            onNavigate={handleNavigate}
-            workspacePinSources={workspacePinSources}
-          />
+          {list}
         </AdaptiveModalSheet>
       </>
     );
   }
 
   return (
-    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
         accessibilityRole="button"
-        accessibilityLabel={t("statusBar.sessions.title")}
-        style={desktopTriggerStyle}
-        testID="status-bar-sessions-trigger"
+        accessibilityLabel={title}
+        style={isErrors ? desktopErrorTriggerStyle : desktopTriggerStyle}
+        testID={`${testIDPrefix}-trigger`}
       >
         {triggerBody}
       </DropdownMenuTrigger>
@@ -382,15 +474,33 @@ function InteractiveRunningSessionsTrigger({
         width={360}
         maxHeight={420}
         scrollable
-        testID="status-bar-sessions-panel"
+        testID={`${testIDPrefix}-panel`}
       >
-        <StatusBarSessionsList
-          items={items}
-          onNavigate={handleNavigate}
-          workspacePinSources={workspacePinSources}
-        />
+        {list}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function isFailedSessionItem(item: StatusBarSessionListItem): boolean {
+  const { snapshot } = item;
+  return (
+    snapshot.stateBucket === "failed" ||
+    snapshot.status === "error" ||
+    snapshot.attentionReason === "error"
+  );
+}
+
+function ErrorTriggerContent({ count, label }: { count: number; label: string }) {
+  return (
+    <>
+      <Text style={styles.triggerLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text style={styles.triggerErrorValue} numberOfLines={1}>
+        {count}
+      </Text>
+    </>
   );
 }
 
@@ -631,10 +741,12 @@ function TriggerMetric({
 }
 
 function StatusBarSessionsList({
+  groupLabel,
   items,
   onNavigate,
   workspacePinSources,
 }: {
+  groupLabel?: string;
   items: StatusBarSessionListItem[];
   onNavigate: (target: StatusBarSessionTarget) => void;
   workspacePinSources: StatusBarWorkspacePinSource[];
@@ -648,12 +760,14 @@ function StatusBarSessionsList({
     );
   }
 
-  const groups = groupItems(items);
+  const groups = groupLabel ? [{ kind: "attention" as const, items }] : groupItems(items);
   return (
     <View style={styles.list} testID="status-bar-sessions-list">
       {groups.map((group) => (
         <View key={group.kind} style={styles.group}>
-          <Text style={styles.groupLabel}>{getStatusBarSessionGroupLabel(group.kind, t)}</Text>
+          <Text style={styles.groupLabel}>
+            {groupLabel ?? getStatusBarSessionGroupLabel(group.kind, t)}
+          </Text>
           <View style={styles.groupRows}>
             {group.items.map((item) => (
               <StatusBarSessionRow
@@ -1108,6 +1222,10 @@ const styles = StyleSheet.create((theme) => ({
   triggerHovered: {
     borderColor: theme.colors.borderAccent,
   },
+  errorTrigger: {
+    minWidth: 0,
+    borderColor: theme.colors.statusDanger,
+  },
   triggerPressed: {
     opacity: theme.opacity[50],
   },
@@ -1129,6 +1247,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   triggerAttentionValue: {
     color: theme.colors.statusWarning,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+  },
+  triggerErrorValue: {
+    color: theme.colors.statusDanger,
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
   },
