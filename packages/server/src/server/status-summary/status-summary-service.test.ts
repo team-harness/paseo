@@ -183,6 +183,7 @@ describe("StatusSummaryService", () => {
     expect(summary.activity.runningAgents.map((item) => item.agentId)).toEqual(["running"]);
     expect(summary.activity.needsAttentionAgents.map((item) => item.agentId)).toEqual([
       "permission",
+      "failed",
       "done",
       "old-done",
     ]);

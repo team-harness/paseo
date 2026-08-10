@@ -173,6 +173,7 @@ function buildActivity(agents: ManagedAgent[], now: Date): HostStatusSummaryPayl
       needsAttentionAgents.push(snapshot);
     } else if (snapshot.stateBucket === "failed") {
       counts.error += 1;
+      needsAttentionAgents.push(snapshot);
     } else if (agent.lifecycle === "initializing" || snapshot.stateBucket === "running") {
       counts.running += 1;
       runningAgents.push(snapshot);

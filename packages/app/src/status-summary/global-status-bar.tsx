@@ -133,7 +133,9 @@ function StatusBarReadyContent({
     [hostServerIds, workspacePinningByServerId],
   );
   const historyHostServerIds = isMultiHost ? hostServerIds : undefined;
-  let rows = view.primaryRows.filter((row) => row.id !== "running" && row.id !== "attention");
+  let rows = view.primaryRows.filter(
+    (row) => row.id !== "running" && row.id !== "attention" && row.id !== "errors",
+  );
   if (isCompact) {
     rows = rows.filter((row) => COMPACT_ROW_IDS.has(row.id));
   }

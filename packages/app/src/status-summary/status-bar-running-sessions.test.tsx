@@ -714,12 +714,17 @@ describe("status bar running sessions", () => {
     const view = readyView();
     view.needsAttentionAgents = [finished, error, permission];
     view.runningAgents = [];
+    view.primaryRows = view.primaryRows.map((row) =>
+      row.id === "errors" ? { ...row, value: "1", tone: "danger" } : row,
+    );
     view.summary.activity.needsAttentionAgents = view.needsAttentionAgents;
     view.summary.activity.runningAgents = [];
+    view.summary.activity.counts.error = 1;
 
     act(() => {
       root?.render(renderStatusBar(view));
     });
+    expect(container?.querySelector('[data-testid="global-status-bar-row-errors"]')).toBeNull();
     act(() => {
       container
         ?.querySelector<HTMLButtonElement>('[data-testid="status-bar-sessions-trigger"]')
