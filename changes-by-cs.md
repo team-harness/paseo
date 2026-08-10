@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `02c4bc76a6cdd0f0a2665cc85ff4702e6b28f169`，同步于 2026-08-10。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `02c4bc76a6cdd0f0a2665cc85ff4702e6b28f169`）。
+- 最近同步基线：`upstream/main` = `29ae25d7aa44dadc91cfc77cd4c64d475bd18d8c`，同步于 2026-08-11。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `29ae25d7aa44dadc91cfc77cd4c64d475bd18d8c`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-11: `upstream/main` `29ae25d7a` / `v0.3.1`
+
+- 合入上游原生 SVG 项目图标、Hub 多文件 workflow 与 TypeScript SDK、自定义文件监听器、Command Center 工作区文件搜索、文件管理器上下文操作、语音输入重试恢复、Hub daemon hostname 和 Composer 控件 tooltip。
+- 随上游下线已经退役的 Chat rooms 与 Agent loops，包括对应 CLI、协议服务和持久化模型；普通 Agent 会话、计划任务与 fork 的完整 Composer 消息历史继续保留。
+- 上游仍没有提供 Status Bar/usage ledger、多 Host 汇总、Threadshare 分享、Host 常用 Prompt、跨 File/Changes Review Comments、Assistant 时间、固定签名分发或独立 Android APK 构建的等价能力；这些 fork 功能继续保留。
 
 ### 2026-08-10: `upstream/main` `02c4bc76a` / `v0.3.1`
 

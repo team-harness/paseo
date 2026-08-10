@@ -15,7 +15,10 @@ import type {
 } from "../agent/provider-snapshot-manager.js";
 import { ProviderSnapshotManager } from "../agent/provider-snapshot-manager.js";
 import type { SessionOptions } from "../session.js";
-import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import type {
+  HubExecutionAgentValidationIssue,
+  SessionOutboundMessage,
+} from "@getpaseo/protocol/messages";
 import { asInternals, createStub } from "./class-mocks.js";
 
 // ---------------------------------------------------------------------------
@@ -39,7 +42,11 @@ export function asAgentManager(stub: {
 export function asAgentStorage(stub: {
   [K in keyof SessionOptions["agentStorage"]]?: unknown;
 }): SessionOptions["agentStorage"] {
-  return createStub<SessionOptions["agentStorage"]>(stub);
+  return createStub<SessionOptions["agentStorage"]>({
+    listByProviderSession: async () => [],
+    listByWorkspace: async () => [],
+    ...stub,
+  });
 }
 
 export function asDownloadTokenStore(): SessionOptions["downloadTokenStore"] {
@@ -50,16 +57,8 @@ export function asPushTokenStore(): SessionOptions["pushTokenStore"] {
   return createStub<SessionOptions["pushTokenStore"]>({});
 }
 
-export function asChatService(): SessionOptions["chatService"] {
-  return createStub<SessionOptions["chatService"]>({});
-}
-
 export function asScheduleService(): SessionOptions["scheduleService"] {
   return createStub<SessionOptions["scheduleService"]>({});
-}
-
-export function asLoopService(): SessionOptions["loopService"] {
-  return createStub<SessionOptions["loopService"]>({});
 }
 
 export function asCheckoutDiffManager(stub: {
@@ -174,6 +173,9 @@ export interface ProviderSnapshotManagerSpies {
   getAgentManagerProviderState: ReturnType<typeof vi.fn<[], AgentManagerProviderState>>;
   listProviders: ReturnType<typeof vi.fn<[unknown], Promise<ProviderSnapshotEntry[]>>>;
   getProvider: ReturnType<typeof vi.fn<[unknown], Promise<ProviderSnapshotEntry>>>;
+  validateAgentConfiguration: ReturnType<
+    typeof vi.fn<[unknown], Promise<HubExecutionAgentValidationIssue[]>>
+  >;
   listModels: ReturnType<typeof vi.fn<[unknown], Promise<AgentModelDefinition[]>>>;
   listModes: ReturnType<typeof vi.fn<[unknown], Promise<AgentMode[]>>>;
   resolveCreateConfig: ReturnType<typeof vi.fn<[unknown], Promise<ResolvedProviderCreateConfig>>>;
@@ -209,6 +211,9 @@ export function createProviderSnapshotManagerStub(): {
   const getProvider = vi.fn<[unknown], Promise<ProviderSnapshotEntry>>(async () => {
     throw new Error("createProviderSnapshotManagerStub: getProvider not stubbed");
   });
+  const validateAgentConfiguration = vi.fn<[unknown], Promise<HubExecutionAgentValidationIssue[]>>(
+    async () => [],
+  );
   const listModels = vi.fn<[unknown], Promise<AgentModelDefinition[]>>(async () => []);
   const listModes = vi.fn<[unknown], Promise<AgentMode[]>>(async () => []);
   const resolveCreateConfig = vi.fn<[unknown], Promise<ResolvedProviderCreateConfig>>(async () => ({
@@ -237,6 +242,7 @@ export function createProviderSnapshotManagerStub(): {
     getAgentManagerProviderState,
     listProviders,
     getProvider,
+    validateAgentConfiguration,
     listModels,
     listModes,
     resolveCreateConfig,
@@ -262,6 +268,7 @@ export function createProviderSnapshotManagerStub(): {
     getAgentManagerProviderState,
     listProviders,
     getProvider,
+    validateAgentConfiguration,
     listModels,
     listModes,
     resolveCreateConfig,

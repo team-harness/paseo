@@ -54,9 +54,7 @@ import {
   asAgentStorage,
   asDownloadTokenStore,
   asPushTokenStore,
-  asChatService,
   asScheduleService,
-  asLoopService,
   asCheckoutDiffManager,
   asDaemonConfigStore,
   asStatusSummaryService,
@@ -693,9 +691,7 @@ function createSessionForWorkspaceTests(
       },
       workspaceRegistry,
       filesystem: { isDirectory: async () => true },
-      chatService: asChatService(),
       scheduleService: asScheduleService(),
-      loopService: asLoopService(),
       checkoutDiffManager: asCheckoutDiffManager({
         subscribe: async () => ({
           initial: { cwd: "/tmp", files: [], error: null },
@@ -958,9 +954,7 @@ test("create_agent_request keeps requested child cwd when grouped under an exist
         agentStorage,
         projectRegistry,
         workspaceRegistry,
-        chatService: asChatService(),
         scheduleService: asScheduleService(),
-        loopService: asLoopService(),
         checkoutDiffManager: asCheckoutDiffManager({
           subscribe: async () => ({
             initial: { cwd: child, files: [], error: null },
@@ -1113,9 +1107,7 @@ test("create_agent_request launches from an exact subdirectory in a created work
       agentStorage,
       projectRegistry,
       workspaceRegistry,
-      chatService: asChatService(),
       scheduleService: asScheduleService(),
-      loopService: asLoopService(),
       checkoutDiffManager: asCheckoutDiffManager({
         subscribe: async () => ({
           initial: { cwd: child, files: [], error: null },
@@ -1253,9 +1245,7 @@ test("create_agent_request does not title an existing workspace from the agent p
         agentStorage,
         projectRegistry,
         workspaceRegistry,
-        chatService: asChatService(),
         scheduleService: asScheduleService(),
-        loopService: asLoopService(),
         checkoutDiffManager: asCheckoutDiffManager({
           subscribe: async () => ({
             initial: { cwd, files: [], error: null },
@@ -1585,9 +1575,7 @@ test("archive emits an authoritative agent_update upsert for subscribed clients"
           remove: async () => {},
         };
       })(),
-      chatService: asChatService(),
       scheduleService: asScheduleService(),
-      loopService: asLoopService(),
       checkoutDiffManager: asCheckoutDiffManager({
         subscribe: async () => ({
           initial: { cwd: REPO_CWD, files: [], error: null },
@@ -1948,9 +1936,7 @@ test("close_items_request archives agents and kills terminals in one batch", asy
           remove: async () => {},
         };
       })(),
-      chatService: asChatService(),
       scheduleService: asScheduleService(),
-      loopService: asLoopService(),
       checkoutDiffManager: asCheckoutDiffManager({
         subscribe: async () => ({
           initial: { cwd: "/tmp", files: [], error: null },
@@ -2136,9 +2122,7 @@ test("close_items_request archives stored agents that are not currently loaded",
           remove: async () => {},
         };
       })(),
-      chatService: asChatService(),
       scheduleService: asScheduleService(),
-      loopService: asLoopService(),
       checkoutDiffManager: asCheckoutDiffManager({
         subscribe: async () => ({
           initial: { cwd: "/tmp", files: [], error: null },
@@ -2286,9 +2270,7 @@ test("close_items_request continues after an archive failure", async () => {
           remove: async () => {},
         };
       })(),
-      chatService: asChatService(),
       scheduleService: asScheduleService(),
-      loopService: asLoopService(),
       checkoutDiffManager: asCheckoutDiffManager({
         subscribe: async () => ({
           initial: { cwd: "/tmp", files: [], error: null },
@@ -3533,9 +3515,7 @@ test("workspace update stream keeps persisted workspace visible after agents sto
         archive: async () => {},
         remove: async () => {},
       },
-      chatService: asChatService(),
       scheduleService: asScheduleService(),
-      loopService: asLoopService(),
       checkoutDiffManager: asCheckoutDiffManager({
         subscribe: async () => ({
           initial: { cwd: "/tmp", files: [], error: null },
