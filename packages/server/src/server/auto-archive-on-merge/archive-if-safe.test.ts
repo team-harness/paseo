@@ -109,6 +109,7 @@ function createHarness(overrides?: {
     getAutoArchivedChangeRequestUrl: vi.fn(
       async () => overrides?.autoArchivedChangeRequestUrl ?? null,
     ),
+    beginWorkspaceArchive: vi.fn(async () => null),
     archiveWorkspaceRecord: vi.fn(),
     markWorkspaceArchiving: vi.fn(),
     clearWorkspaceArchiving: vi.fn(),
@@ -321,6 +322,7 @@ function createRealOutcomeHarness(input: {
     listActiveWorkspaces: async () =>
       active.filter((workspace) => !input.archivedWorkspaceIds.has(workspace.workspaceId)),
     getAutoArchivedChangeRequestUrl: async () => null,
+    beginWorkspaceArchive: async () => null,
     archiveWorkspaceRecord: async (workspaceId: string) => {
       input.archivedWorkspaceIds.add(workspaceId);
       const index = active.findIndex((workspace) => workspace.workspaceId === workspaceId);

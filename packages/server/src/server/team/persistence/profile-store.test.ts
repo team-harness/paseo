@@ -59,6 +59,7 @@ function startIntent(): TeamMissionStartIntent {
     idempotencyKey: "start-key-storage",
     requestFingerprint: "start-fingerprint-storage",
     expectedTeamRevision: 1,
+    workspaceId: profile.workspaceId,
     missionId: "mission-storage",
     chatRoomId: "room-storage",
     teamName: profile.name,
@@ -138,6 +139,7 @@ describe("TeamProfileStore", () => {
 
     expect(created).toEqual({
       storageRevision: 1,
+      persistenceAttentions: [],
       profile: {
         ...teamProfile(),
         revision: 1,

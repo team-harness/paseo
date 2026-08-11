@@ -312,7 +312,7 @@ describe("Team profile v2 RPC schemas", () => {
 });
 
 describe("Team Mission v2 RPC schemas", () => {
-  it("starts a Mission from a task contract and Team revision", () => {
+  it("keeps the old Mission start shape and additively accepts a target workspace", () => {
     const request = {
       type: "team.mission.start.request" as const,
       requestId: "req-mission-start",
@@ -325,6 +325,9 @@ describe("Team Mission v2 RPC schemas", () => {
     };
 
     expect(TeamMissionStartRequestSchema.parse(request)).toEqual(request);
+    expect(
+      TeamMissionStartRequestSchema.parse({ ...request, workspaceId: "wks-delivery" }),
+    ).toEqual({ ...request, workspaceId: "wks-delivery" });
   });
 
   it("round-trips list, inspect, cancel and durable attention resolution", () => {

@@ -1609,7 +1609,7 @@ export class VoiceAssistantWebSocketServer {
         promptLibrary: true,
         // COMPAT(teamMissions): added in v0.3.0-beta.3, remove after 2027-02-08 once
         // the app and daemon floors both understand Team Mission snapshots.
-        ...(this.teamRuntime ? { teamMissions: true } : {}),
+        ...(this.teamRuntime ? { teamMissions: true, globalTeamProfiles: true } : {}),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
         // COMPAT(agentThinkingUpdate): added in v0.2.4, remove gate after 2027-01-28.

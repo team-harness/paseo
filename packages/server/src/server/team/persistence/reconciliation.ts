@@ -86,34 +86,7 @@ export class TeamPersistenceReconciler {
 
   async reconcile(): Promise<TeamPersistenceReconciliationResult> {
     const actions: TeamPersistenceRecoveryAction[] = [];
-    const failedStarts = new Set<string>();
     const failedFinishes = new Set<string>();
-
-    for (const profile of await this.profiles.list()) {
-      const intent = profile.startIntent;
-      if (!intent || intent.stage !== "reserved") {
-        continue;
-      }
-      try {
-        await this.transactions.commitMissionStart({
-          teamId: profile.profile.id,
-          missionId: intent.missionId,
-          intentId: intent.intentId,
-        });
-      } catch (error) {
-        failedStarts.add(profile.profile.id);
-        this.logger.warn(
-          { err: error, teamId: profile.profile.id, missionId: intent.missionId },
-          "failed to reconcile Mission start",
-        );
-        actions.push({
-          kind: "persistence_attention",
-          teamId: profile.profile.id,
-          missionId: intent.missionId,
-          code: "start_reconciliation_failed",
-        });
-      }
-    }
 
     for (const mission of await this.missions.list()) {
       const intent = mission.finishIntent;
@@ -172,7 +145,7 @@ export class TeamPersistenceReconciler {
     const finalMissions = await this.missions.list();
     actions.push(
       ...collectExternalArchiveActions(finalProfiles, finalMissions),
-      ...collectExternalStartActions(finalProfiles, failedStarts),
+      ...collectExternalStartActions(finalProfiles, finalMissions),
       ...collectExternalFinishActions(finalMissions, failedFinishes),
       ...collectPersistenceLinkActions(finalProfiles, finalMissions),
       ...collectOutboxActions(finalMissions),
@@ -208,6 +181,19 @@ function collectPersistenceLinkActions(
   const actions: TeamPersistenceRecoveryAction[] = [];
 
   for (const profile of profiles) {
+    const intent = profile.startIntent;
+    if (!intent) continue;
+    const mission = missionsById.get(intent.missionId);
+    if (!mission || mission.mission.workspaceId === intent.workspaceId) continue;
+    actions.push({
+      kind: "persistence_attention",
+      teamId: profile.profile.id,
+      missionId: intent.missionId,
+      code: "start_intent_mission_workspace_mismatch",
+    });
+  }
+
+  for (const profile of profiles) {
     const missionId = profile.profile.activeMissionId;
     if (!missionId) continue;
     referencedMissionIds.add(missionId);
@@ -229,14 +215,6 @@ function collectPersistenceLinkActions(
         code: "active_mission_team_mismatch",
       });
       continue;
-    }
-    if (mission.mission.workspaceId !== profile.profile.workspaceId) {
-      actions.push({
-        kind: "persistence_attention",
-        teamId: profile.profile.id,
-        missionId,
-        code: "active_mission_workspace_mismatch",
-      });
     }
   }
 
@@ -297,27 +275,20 @@ function collectArchiveMissionLinkActions(
         },
       ];
     }
-    if (mission.mission.workspaceId !== profile.profile.workspaceId) {
-      return [
-        {
-          kind: "persistence_attention" as const,
-          teamId: profile.profile.id,
-          missionId,
-          code: "archive_mission_workspace_mismatch" as const,
-        },
-      ];
-    }
     return [];
   });
 }
 
 function collectExternalStartActions(
   profiles: StoredTeamProfile[],
-  failedTeamIds: ReadonlySet<string>,
+  missions: StoredMission[],
 ): TeamPersistenceRecoveryAction[] {
+  const missionsById = indexMissions(missions);
   return profiles.flatMap((profile) => {
     const intent = profile.startIntent;
-    if (!intent || profile.archiveIntent || failedTeamIds.has(profile.profile.id)) return [];
+    if (!intent || profile.archiveIntent) return [];
+    const mission = missionsById.get(intent.missionId);
+    if (mission && mission.mission.workspaceId !== intent.workspaceId) return [];
     return [
       {
         kind: "resume_mission_start" as const,
@@ -428,10 +399,7 @@ function isTerminalMission(mission: StoredMission): boolean {
 }
 
 function missionMatchesProfile(mission: StoredMission, profile: StoredTeamProfile): boolean {
-  return (
-    mission.mission.teamId === profile.profile.id &&
-    mission.mission.workspaceId === profile.profile.workspaceId
-  );
+  return mission.mission.teamId === profile.profile.id;
 }
 
 function compareRecoveryActions(

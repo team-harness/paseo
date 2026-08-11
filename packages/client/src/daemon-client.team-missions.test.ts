@@ -183,6 +183,14 @@ test("hello advertises the per-socket Team Missions capability", async () => {
   expect(hello.capabilities?.[CLIENT_CAPS.teamMissions]).toBe(true);
 });
 
+test("detects whether the daemon supports host-global Team profiles", async () => {
+  const modern = await connectedClient({ teamMissions: true, globalTeamProfiles: true });
+  const legacy = await connectedClient({ teamMissions: true });
+
+  expect(modern.client.supportsGlobalTeamProfiles()).toBe(true);
+  expect(legacy.client.supportsGlobalTeamProfiles()).toBe(false);
+});
+
 test("a daemon without the capability is rejected locally without sending a mutation", async () => {
   const { client, mock } = await connectedClient({});
   const sentBefore = mock.sent.length;
@@ -255,6 +263,7 @@ test("the SDK sends all Team profile and Mission correlated RPCs", async () => {
         client.startTeamMission({
           idempotencyKey: "idem-start",
           teamId: team.id,
+          workspaceId: team.workspaceId,
           expectedTeamRevision: 1,
           objective: mission.objective,
           constraints: [],
@@ -301,6 +310,9 @@ test("the SDK sends all Team profile and Mission correlated RPCs", async () => {
     const pending = entry.invoke();
     const request = sentSessionMessage(mock.sent.at(-1)!);
     expect(request.type).toBe(entry.type);
+    if (entry.type === "team.mission.start.request") {
+      expect(request.workspaceId).toBe(team.workspaceId);
+    }
     const responseType = entry.type.replace(/\.request$/, ".response");
     mock.message({
       type: responseType,

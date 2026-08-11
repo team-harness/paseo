@@ -7,6 +7,7 @@ import type { TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 import type { AgentManager } from "../../../agent/agent-manager.js";
 import type { AgentStorage } from "../../../agent/agent-storage.js";
+import { workspaceLifecycleCoordinator } from "../../../workspace-lifecycle-coordinator.js";
 import {
   buildProviderRegistry,
   type BuildProviderRegistryOptions,
@@ -102,6 +103,9 @@ export async function installPaseoTeamRuntimeAdapter(
     recovery: new TeamPersistenceReconciler({ profiles, missions, logger: options.logger }),
     rooms,
     participants,
+    workspaces: {
+      isActive: async (workspaceId) => (await options.resolveWorkspaceCwd(workspaceId)) !== null,
+    },
     capabilities: new PaseoProviderCapabilityResolver({
       registry: buildProviderRegistry(options.logger, options.providerRegistryOptions),
       toolIds: options.runtime.toolIds ?? [],
@@ -184,6 +188,14 @@ export async function installPaseoTeamRuntimeAdapter(
     service: collaboration,
     logger: options.logger,
   });
+  const unregisterWorkspaceArchivePreparation =
+    workspaceLifecycleCoordinator.registerArchivePreparation(async (workspaceId) => {
+      const terminalMissions = await service.prepareWorkspaceArchive(workspaceId);
+      for (const mission of terminalMissions) {
+        await scheduler.reconcileMission(mission.id);
+        await leases.releaseMission({ missionId: mission.id });
+      }
+    });
   let agentToolsStopped = false;
   const unsubscribeParticipantChanges = options.agentManager.onAgentRecordChange(async (change) => {
     if (agentToolsStopped) return;
@@ -203,6 +215,7 @@ export async function installPaseoTeamRuntimeAdapter(
     stop: () => {
       if (agentToolsStopped) return;
       agentToolsStopped = true;
+      unregisterWorkspaceArchivePreparation();
       unsubscribeParticipantChanges();
       turnFacts.stop();
       recipientAttention.stop();

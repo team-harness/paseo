@@ -4,6 +4,8 @@ import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import {
   composeWorkspaceStructure,
   selectHasHydratedWorkspaces,
+  selectHasLiveWorkspaces,
+  selectLiveWorkspaceIds,
   selectHydratedWorkspaceServerIds,
   selectHasWorkspaces,
   selectProjectOrder,
@@ -68,6 +70,22 @@ export function useHasHydratedWorkspaces(serverId: string | null): boolean {
     useSessionStore,
     (state) => selectHasHydratedWorkspaces(state, serverId),
     workspaceEqualityFns.identity,
+  );
+}
+
+export function useHasLiveWorkspaces(serverId: string | null): boolean {
+  return useStoreWithEqualityFn(
+    useSessionStore,
+    (state) => selectHasLiveWorkspaces(state, serverId),
+    workspaceEqualityFns.identity,
+  );
+}
+
+export function useLiveWorkspaceIds(serverId: string | null): string[] {
+  return useStoreWithEqualityFn(
+    useSessionStore,
+    (state) => selectLiveWorkspaceIds(state, serverId),
+    workspaceEqualityFns.deep,
   );
 }
 

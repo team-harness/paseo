@@ -1860,6 +1860,7 @@ describe("handlePaseoWorktreeArchiveRequest worktree scope", () => {
         agentStorage: createAgentStorageStub(),
         findWorkspaceIdForCwd: vi.fn(async () => workspaceA),
         listActiveWorkspaces,
+        beginWorkspaceArchive: vi.fn(async () => null),
         archiveWorkspaceRecord: createArchiveWorkspaceRecordMutator(
           activeWorkspaces,
           archivedWorkspaceRecords,
@@ -1933,6 +1934,7 @@ describe("handlePaseoWorktreeArchiveRequest worktree scope", () => {
           cwd === created.worktreePath ? workspaceId : null,
         ),
         listActiveWorkspaces: vi.fn(async () => activeWorkspaces),
+        beginWorkspaceArchive: vi.fn(async () => null),
         archiveWorkspaceRecord: vi.fn(async (id: string) => {
           archivedWorkspaceRecords.push(id);
           if (activeWorkspaces[0]?.workspaceId === id) {
@@ -2009,6 +2011,7 @@ describe("handlePaseoWorktreeArchiveRequest worktree scope", () => {
           cwd === sharedCwd ? workspaceA : null,
         ),
         listActiveWorkspaces: vi.fn(async () => activeWorkspaces),
+        beginWorkspaceArchive: vi.fn(async () => null),
         archiveWorkspaceRecord: vi.fn(async (id: string) => {
           archivedWorkspaceRecords.push(id);
           if (activeWorkspaces[0]?.workspaceId === id) {
@@ -2083,6 +2086,7 @@ describe("handlePaseoWorktreeArchiveRequest worktree scope", () => {
       agentStorage: createAgentStorageStub(),
       findWorkspaceIdForCwd: vi.fn(async (cwd: string) => (cwd === sharedCwd ? workspaceA : null)),
       listActiveWorkspaces,
+      beginWorkspaceArchive: vi.fn(async () => null),
       archiveWorkspaceRecord: createArchiveWorkspaceRecordMutator(
         activeWorkspaces,
         archivedWorkspaceRecords,

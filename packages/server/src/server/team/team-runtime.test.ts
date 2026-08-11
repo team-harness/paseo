@@ -37,7 +37,7 @@ describe("TeamRuntime v2 façade", () => {
     });
   });
 
-  test("advertises teamMissions only after startup reconciliation settles", async () => {
+  test("advertises global Team profiles only after startup reconciliation settles", async () => {
     let releaseReconciliation: (() => void) | null = null;
     const service = new FakeTeamRuntimeService(
       new Promise<void>((resolve) => {
@@ -55,7 +55,7 @@ describe("TeamRuntime v2 façade", () => {
     await starting;
 
     expect(runtime.isReady()).toBe(true);
-    expect(runtime.serverFeatures()).toEqual({ teamMissions: true });
+    expect(runtime.serverFeatures()).toEqual({ teamMissions: true, globalTeamProfiles: true });
     const session = runtime.sessionDeps();
     expect(session).not.toBeNull();
     await expect(
@@ -151,6 +151,7 @@ describe("TeamRuntime v2 façade", () => {
       idempotencyKey: "mission-operation-1",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      workspaceId: "workspace-delivery",
       objective: "Deliver the requested change",
       constraints: ["Keep the transport correlation outside the business fingerprint"],
       acceptanceCriteria: ["A retry returns the same Mission"],

@@ -23,6 +23,7 @@ const mutedSpinner = (theme: Theme) => ({ color: theme.colors.foregroundMuted })
 
 export interface TeamPanelProps {
   serverId: string;
+  workspaceId: string | null;
   teamId: string;
   selectedMissionId?: string | null;
   onOpenAgent?: (agentId: string) => void;
@@ -31,6 +32,7 @@ export interface TeamPanelProps {
 /** A Team tab is the selected Mission room; profile and plan controls live in settings. */
 export function TeamPanel({
   serverId,
+  workspaceId,
   teamId,
   selectedMissionId = null,
   onOpenAgent,
@@ -120,7 +122,8 @@ export function TeamPanel({
     );
   }
 
-  const workspace = workspaces?.get(view.team.workspaceId);
+  const creationWorkspace = workspaces?.get(view.team.workspaceId);
+  const canStartMission = workspaceId !== null && view.canStartMission;
   return (
     <View style={styles.body} testID="team-panel">
       <TeamRoom
@@ -130,7 +133,7 @@ export function TeamPanel({
         readOnly={view.readOnly}
         onOpenAgent={onOpenAgent}
         onOpenSettings={openSettings}
-        onStartMission={view.canStartMission ? openMissionStart : undefined}
+        onStartMission={canStartMission ? openMissionStart : undefined}
         settingsAttentionCount={view.settingsAttentionCount}
       />
       <TeamSettingsSheet
@@ -139,24 +142,26 @@ export function TeamPanel({
         mission={view.mission}
         visible={settingsOpen}
         onClose={closeSettings}
-        onEditProfile={workspace ? openProfileEdit : undefined}
-        onStartMission={view.canStartMission ? openMissionStart : undefined}
+        onEditProfile={creationWorkspace ? openProfileEdit : undefined}
+        onStartMission={canStartMission ? openMissionStart : undefined}
         onOpenAgent={onOpenAgent}
         onSelectMission={selectMission}
       />
-      <MissionStartSheet
-        serverId={serverId}
-        workspaceId={view.team.workspaceId}
-        selectedTeamId={view.team.id}
-        visible={missionStartOpen}
-        onClose={closeMissionStart}
-        onStarted={missionStarted}
-      />
-      {workspace ? (
+      {workspaceId ? (
+        <MissionStartSheet
+          serverId={serverId}
+          workspaceId={workspaceId}
+          selectedTeamId={view.team.id}
+          visible={missionStartOpen}
+          onClose={closeMissionStart}
+          onStarted={missionStarted}
+        />
+      ) : null}
+      {creationWorkspace ? (
         <TeamProfileFormSheet
           serverId={serverId}
           workspaceId={view.team.workspaceId}
-          cwd={workspace.workspaceDirectory}
+          cwd={creationWorkspace.workspaceDirectory}
           profile={view.team}
           visible={profileEditOpen}
           onClose={closeProfileEdit}

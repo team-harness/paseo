@@ -638,6 +638,7 @@ function createConvergenceFixture(directory: string, seed: number) {
     recovery: new TeamPersistenceReconciler({ profiles, missions, logger }),
     rooms: { createMissionRoom: async () => undefined } satisfies TeamRoomPort,
     participants,
+    workspaces: { isActive: async () => true },
     capabilities,
     events: { publishTeam: async () => undefined, publishMission: async () => undefined },
     clock: { now },

@@ -2188,7 +2188,7 @@ export class TeamCollaborationService {
     const missionIsLinked =
       storedTeam.profile.activeMissionId === mission.id ||
       storedTeam.startIntent?.missionId === mission.id;
-    if (storedTeam.profile.workspaceId !== mission.workspaceId || !missionIsLinked) {
+    if (!missionIsLinked) {
       throw new TeamApplicationError(
         "mission_team_mismatch",
         `Mission ${mission.id} does not belong to Team ${storedTeam.profile.id}`,

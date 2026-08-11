@@ -31,9 +31,18 @@ export function SidebarWorkspaceTeamRows({
   const replica = useSessionStore(
     (state) => state.sessions[workspace.serverId]?.teamMissionsReplica,
   );
+  const workspaces = useSessionStore((state) => state.sessions[workspace.serverId]?.workspaces);
+  const liveWorkspaceIds = useMemo(
+    () =>
+      [...(workspaces?.values() ?? [])]
+        .filter((candidate) => candidate.archivingAt === null)
+        .map((candidate) => candidate.id),
+    [workspaces],
+  );
   const rows = useMemo(
-    () => (replica ? selectWorkspaceTeamRows(replica, workspace.workspaceId) : []),
-    [replica, workspace.workspaceId],
+    () =>
+      replica ? selectWorkspaceTeamRows(replica, workspace.workspaceId, liveWorkspaceIds) : [],
+    [liveWorkspaceIds, replica, workspace.workspaceId],
   );
 
   // A read that failed is not a workspace with no teams. Saying nothing there

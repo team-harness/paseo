@@ -4,9 +4,11 @@ import { createProjectViewKey } from "@/projects/workspace-structure";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
   composeWorkspaceStructure,
+  selectHasLiveWorkspaces,
   selectHasWorkspaces,
   selectHydratedWorkspaceServerIds,
   selectProjectOrder,
+  selectLiveWorkspaceIds,
   selectRecommendedProjectPaths,
   selectWorkspace,
   selectWorkspaceDirectory,
@@ -555,6 +557,36 @@ describe("selectHasWorkspaces", () => {
     expect(tracked.current).toBe(before);
 
     tracked.stop();
+  });
+});
+
+describe("selectHasLiveWorkspaces", () => {
+  it("does not count a workspace that is already archiving", () => {
+    initializeWorkspaces([
+      createWorkspace({ id: "workspace-archiving", archivingAt: "2026-08-11T00:00:00.000Z" }),
+    ]);
+
+    expect(selectHasLiveWorkspaces(useSessionStore.getState(), SERVER_ID)).toBe(false);
+
+    useSessionStore
+      .getState()
+      .mergeWorkspaces(SERVER_ID, [createWorkspace({ id: "workspace-live" })]);
+    expect(selectHasLiveWorkspaces(useSessionStore.getState(), SERVER_ID)).toBe(true);
+  });
+});
+
+describe("selectLiveWorkspaceIds", () => {
+  it("returns only live workspace IDs in stable order", () => {
+    initializeWorkspaces([
+      createWorkspace({ id: "workspace-z" }),
+      createWorkspace({ id: "workspace-archiving", archivingAt: "2026-08-11T00:00:00.000Z" }),
+      createWorkspace({ id: "workspace-a" }),
+    ]);
+
+    expect(selectLiveWorkspaceIds(useSessionStore.getState(), SERVER_ID)).toEqual([
+      "workspace-a",
+      "workspace-z",
+    ]);
   });
 });
 
