@@ -36,7 +36,9 @@ leaf.
 `/h/[serverId]` is the host home route. The host index restores the last
 remembered workspace for that host after the remembered selection has hydrated
 and the workspace has not been proven missing. If there is no restorable
-workspace, it goes to global `/open-project`.
+workspace, it shows the host-level Team list when global Team profiles have
+hydrated and at least one active Team exists; otherwise it goes to global
+`/open-project`. This host surface must not manufacture a workspace.
 
 This restore is based on the last navigated workspace, not current connection
 status. Do not redirect to another online host just because the remembered host
@@ -88,10 +90,15 @@ targets.
   host before the feature: whether a daemon has teams comes from a handshake
   that lands after the connection, so before then it reads as false for every
   daemon — answering "too old to have teams" there is wrong while it connects
-  and permanently wrong for a host that never does.
+  and permanently wrong for a host that never does. An active Team resolves only
+  through its hydrated Mission workspace. An idle Team uses a live creation
+  workspace, then the first stable live workspace; with none, render the Team on
+  its host route so settings remain reachable and Mission start stays disabled.
 
-Both paths converge on `navigateToAgent()`. Do not make notification routing
-guess a workspace, and do not add a workspace to the stable agent URL format.
+Agent paths converge on `navigateToAgent()`. Team paths either converge on
+`navigateToWorkspace()` or remain host-level. Do not make notification routing
+guess a workspace, and do not add a workspace to the stable agent or Team URL
+format.
 
 ## Params
 

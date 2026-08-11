@@ -3823,6 +3823,7 @@ function createFixture(
     recovery: new TeamPersistenceReconciler({ profiles, missions, logger }),
     rooms,
     participants,
+    workspaces: { isActive: async () => true },
     capabilities,
     events: { publishTeam: async () => undefined, publishMission: async () => undefined },
     clock: { now: () => clockState.current },

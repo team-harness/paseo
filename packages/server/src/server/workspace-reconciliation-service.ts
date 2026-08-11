@@ -1,11 +1,13 @@
 import { statSync, watch as watchPath } from "node:fs";
 import type { ProjectCheckoutLitePayload } from "@getpaseo/protocol/messages";
 import type pino from "pino";
-import type {
-  ProjectRegistry,
-  WorkspaceRegistry,
-  PersistedProjectRecord,
-  PersistedWorkspaceRecord,
+import {
+  isWorkspaceRecordAvailable,
+  type ProjectRegistry,
+  type WorkspaceRegistry,
+  type PersistedProjectRecord,
+  type PersistedWorkspaceRecord,
+  type WorkspaceArchiveIntent,
 } from "./workspace-registry.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import { areEquivalentPaths } from "../utils/path.js";
@@ -16,6 +18,10 @@ import {
 } from "./workspace-registry-model.js";
 import { workspaceIdsForProjects } from "./workspace-directory.js";
 import { deriveProjectKey } from "./project-key.js";
+import {
+  type WorkspaceLifecyclePort,
+  workspaceLifecycleCoordinator,
+} from "./workspace-lifecycle-coordinator.js";
 
 const DEFAULT_RESCAN_INTERVAL_MS = 5 * 60_000;
 const DEFAULT_DEBOUNCE_MS = 100;
@@ -90,7 +96,9 @@ export interface WorkspaceReconciliationServiceOptions {
   workspaceGitService?: Pick<WorkspaceGitService, "getCheckout">;
   onProjectUpdate?: (update: ProjectUpdate) => void;
   onWorkspaceArchived?: (workspaceId: string) => void | Promise<void>;
+  archiveMissingWorkspace?: (workspaceId: string, requestId: string) => Promise<void>;
   onWorkspacesChanged?: (workspaceIds: string[]) => Promise<void>;
+  workspaceLifecycle?: WorkspaceLifecyclePort;
   watchProjectRoot?: ProjectRootWatch;
   clock?: ReconciliationClock;
   rescanIntervalMs?: number;
@@ -121,7 +129,11 @@ export class WorkspaceReconciliationService {
   private readonly workspaceGitService: Pick<WorkspaceGitService, "getCheckout"> | null;
   private readonly onProjectUpdate: ((update: ProjectUpdate) => void) | null;
   private readonly onWorkspaceArchived: ((workspaceId: string) => void | Promise<void>) | null;
+  private readonly archiveMissingWorkspace:
+    | ((workspaceId: string, requestId: string) => Promise<void>)
+    | null;
   private readonly onWorkspacesChanged: ((workspaceIds: string[]) => Promise<void>) | null;
+  private readonly workspaceLifecycle: WorkspaceLifecyclePort;
   private readonly watchProjectRoot: ProjectRootWatch;
   private readonly clock: ReconciliationClock;
   private readonly rescanIntervalMs: number;
@@ -144,7 +156,9 @@ export class WorkspaceReconciliationService {
     this.workspaceGitService = options.workspaceGitService ?? null;
     this.onProjectUpdate = options.onProjectUpdate ?? null;
     this.onWorkspaceArchived = options.onWorkspaceArchived ?? null;
+    this.archiveMissingWorkspace = options.archiveMissingWorkspace ?? null;
     this.onWorkspacesChanged = options.onWorkspacesChanged ?? null;
+    this.workspaceLifecycle = options.workspaceLifecycle ?? workspaceLifecycleCoordinator;
     this.watchProjectRoot = options.watchProjectRoot ?? watchProjectRoot;
     this.clock = options.clock ?? systemClock;
     this.rescanIntervalMs = options.rescanIntervalMs ?? DEFAULT_RESCAN_INTERVAL_MS;
@@ -198,7 +212,12 @@ export class WorkspaceReconciliationService {
     ]);
     const workspacesByProject = new Map<string, PersistedWorkspaceRecord[]>();
     for (const workspace of workspaces) {
-      if (workspace.archivedAt || this.inspectDirectory(workspace.cwd) !== "directory") continue;
+      if (
+        !isWorkspaceRecordAvailable(workspace) ||
+        this.inspectDirectory(workspace.cwd) !== "directory"
+      ) {
+        continue;
+      }
       const siblings = workspacesByProject.get(workspace.projectId) ?? [];
       siblings.push(workspace);
       workspacesByProject.set(workspace.projectId, siblings);
@@ -222,7 +241,7 @@ export class WorkspaceReconciliationService {
     const allWorkspaces = await this.workspaceRegistry.list();
 
     const activeProjects = allProjects.filter((p) => !p.archivedAt);
-    const activeWorkspaces = allWorkspaces.filter((w) => !w.archivedAt);
+    const activeWorkspaces = allWorkspaces.filter(isWorkspaceRecordAvailable);
     const workspaceDirectoryStates = activeWorkspaces.map((workspace) => ({
       workspace,
       state: this.inspectDirectory(workspace.cwd),
@@ -242,9 +261,23 @@ export class WorkspaceReconciliationService {
       .map(({ workspace }) => workspace);
     await Promise.all(
       missingWorkspaces.map(async (workspace) => {
-        const timestamp = new Date().toISOString();
-        await this.workspaceRegistry.archive(workspace.workspaceId, timestamp);
-        await this.onWorkspaceArchived?.(workspace.workspaceId);
+        const requestId = `workspace-reconciliation:${workspace.workspaceId}`;
+        if (this.archiveMissingWorkspace) {
+          await this.archiveMissingWorkspace(workspace.workspaceId, requestId);
+        } else {
+          await this.workspaceLifecycle.serialize([workspace.workspaceId], async () => {
+            const timestamp = new Date().toISOString();
+            const beginArchive = this.workspaceRegistry.beginArchive;
+            if (!beginArchive) {
+              throw new Error("Durable workspace archive intent adapter is required");
+            }
+            const intent: WorkspaceArchiveIntent = { requestId, requestedAt: timestamp };
+            await beginArchive.call(this.workspaceRegistry, workspace.workspaceId, intent);
+            await this.workspaceLifecycle.prepareForArchive(workspace.workspaceId);
+            await this.workspaceRegistry.archive(workspace.workspaceId, timestamp);
+            await this.onWorkspaceArchived?.(workspace.workspaceId);
+          });
+        }
         changes.push({
           kind: "workspace_archived",
           workspaceId: workspace.workspaceId,

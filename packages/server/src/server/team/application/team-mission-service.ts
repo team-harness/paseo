@@ -23,6 +23,7 @@ import {
   validateTeamReadyForMission,
 } from "../domain/team-profile-validation.js";
 import {
+  MissionStartConflictError,
   MissionLeadReplacementConflictError,
   MissionRevisionConflictError,
   MissionStorageRevisionConflictError,
@@ -49,8 +50,13 @@ import type {
   TeamRecoveryPort,
   TeamRoomPort,
   TeamRuntimeEventPort,
+  TeamWorkspaceAvailabilityPort,
 } from "./ports.js";
 import { TeamOperationCoordinator } from "./team-operation-coordinator.js";
+import {
+  type WorkspaceLifecyclePort,
+  workspaceLifecycleCoordinator,
+} from "../../workspace-lifecycle-coordinator.js";
 
 const DEFAULT_WORKSPACE_AUDIT_POLICY = {
   revision: 1,
@@ -127,6 +133,7 @@ export interface StartMissionInput {
   idempotencyKey: string;
   teamId: string;
   expectedTeamRevision: number;
+  workspaceId?: string;
   objective: string;
   constraints: string[];
   acceptanceCriteria: string[];
@@ -182,11 +189,13 @@ export interface TeamMissionServiceOptions {
   recovery: TeamRecoveryPort;
   rooms: TeamRoomPort;
   participants: TeamParticipantPort;
+  workspaces: TeamWorkspaceAvailabilityPort;
   capabilities: ProviderCapabilityResolver;
   events: TeamRuntimeEventPort;
   clock: TeamClockPort;
   ids: TeamIdentityPort;
   operations?: TeamOperationCoordinator;
+  workspaceLifecycle?: WorkspaceLifecyclePort;
   persistenceFaultInjector?: TeamPersistenceFaultInjector;
   finishQuiescence: TeamMissionFinishQuiescencePort;
 }
@@ -197,12 +206,14 @@ export class TeamMissionService {
   private readonly recovery: TeamRecoveryPort;
   private readonly rooms: TeamRoomPort;
   private readonly participants: TeamParticipantPort;
+  private readonly workspaces: TeamWorkspaceAvailabilityPort;
   private readonly capabilities: ProviderCapabilityResolver;
   private readonly events: TeamRuntimeEventPort;
   private readonly clock: TeamClockPort;
   private readonly ids: TeamIdentityPort;
   private readonly transactions: TeamMissionPersistenceTransactions;
   private readonly operations: TeamOperationCoordinator;
+  private readonly workspaceLifecycle: WorkspaceLifecyclePort;
   private readonly finishQuiescence: TeamMissionFinishQuiescencePort;
 
   constructor(options: TeamMissionServiceOptions) {
@@ -211,11 +222,13 @@ export class TeamMissionService {
     this.recovery = options.recovery;
     this.rooms = options.rooms;
     this.participants = options.participants;
+    this.workspaces = options.workspaces;
     this.capabilities = options.capabilities;
     this.events = options.events;
     this.clock = options.clock;
     this.ids = options.ids;
     this.operations = options.operations ?? new TeamOperationCoordinator();
+    this.workspaceLifecycle = options.workspaceLifecycle ?? workspaceLifecycleCoordinator;
     this.finishQuiescence = options.finishQuiescence;
     this.transactions = new TeamMissionPersistenceTransactions({
       profiles: options.profiles,
@@ -337,10 +350,31 @@ export class TeamMissionService {
   }
 
   async archiveTeam(input: ArchiveTeamInput): Promise<TeamV2> {
-    const archiving = await this.serializeTeamLifecycle(input.teamId, () =>
-      this.beginTeamArchiveWithinLifecycle(input),
+    let workspaceIds = await this.teamLifecycleWorkspaceIds(await this.requireTeam(input.teamId));
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const result = await this.workspaceLifecycle.serialize(workspaceIds, async () => {
+        const lockedWorkspaceIds = new Set(workspaceIds);
+        const prepared = await this.serializeTeamLifecycle(input.teamId, async () => {
+          const current = await this.requireTeam(input.teamId);
+          const currentWorkspaceIds = await this.teamLifecycleWorkspaceIds(current);
+          if (currentWorkspaceIds.some((workspaceId) => !lockedWorkspaceIds.has(workspaceId))) {
+            return { kind: "retry" as const, workspaceIds: currentWorkspaceIds };
+          }
+          return {
+            kind: "ready" as const,
+            profile: await this.beginTeamArchiveWithinLifecycle(input),
+          };
+        });
+        if (prepared.kind === "retry") return prepared;
+        return { kind: "done" as const, team: await this.resumeTeamArchive(prepared.profile) };
+      });
+      if (result.kind === "done") return result.team;
+      workspaceIds = result.workspaceIds;
+    }
+    throw new TeamApplicationError(
+      "team_archive_workspace_changed",
+      `Team ${input.teamId} Mission workspace changed while archive was acquiring its fence`,
     );
-    return this.resumeTeamArchive(archiving);
   }
 
   private async beginTeamArchiveWithinLifecycle(
@@ -369,8 +403,7 @@ export class TeamMissionService {
       (attention) =>
         attention.missionId === currentMissionId &&
         (attention.code === "active_mission_missing" ||
-          attention.code === "active_mission_team_mismatch" ||
-          attention.code === "active_mission_workspace_mismatch"),
+          attention.code === "active_mission_team_mismatch"),
     )?.missionId;
     const missionId = abandonActiveMissionId ? null : currentMissionId;
     const missionFinishIntent: TeamMissionFinishIntent | null = missionId
@@ -409,17 +442,47 @@ export class TeamMissionService {
   }
 
   async startMission(input: StartMissionInput): Promise<TeamMission> {
-    return this.serializeTeamLifecycle(input.teamId, () => this.startMissionWithinLifecycle(input));
+    const initialTeam = await this.requireTeam(input.teamId);
+    const workspaceId = normalizeMissionWorkspaceId(
+      input.workspaceId ?? initialTeam.profile.workspaceId,
+    );
+    return this.workspaceLifecycle.serialize([workspaceId], () =>
+      this.serializeTeamLifecycle(input.teamId, () =>
+        this.startMissionWithinLifecycle(input, workspaceId),
+      ),
+    );
   }
 
-  private async startMissionWithinLifecycle(input: StartMissionInput): Promise<TeamMission> {
-    const requestFingerprint = fingerprint("team.mission.start", input);
-    const started = await this.missions.findStartedMission({
-      teamId: input.teamId,
-      idempotencyKey: input.idempotencyKey,
-      requestFingerprint,
-    });
+  private async startMissionWithinLifecycle(
+    input: StartMissionInput,
+    lockedWorkspaceId: string,
+  ): Promise<TeamMission> {
     const storedTeam = await this.requireTeam(input.teamId);
+    const effectiveWorkspaceId = normalizeMissionWorkspaceId(
+      input.workspaceId ?? storedTeam.profile.workspaceId,
+    );
+    if (effectiveWorkspaceId !== lockedWorkspaceId) {
+      throw new TeamApplicationError(
+        "mission_start_workspace_conflict",
+        `Mission start workspace changed from ${lockedWorkspaceId} to ${effectiveWorkspaceId}`,
+      );
+    }
+    const normalizedInput = { ...input, workspaceId: effectiveWorkspaceId };
+    const requestFingerprint = fingerprint("team.mission.start", normalizedInput);
+    let started: StoredMission | null;
+    try {
+      started = await this.missions.findStartedMission({
+        teamId: input.teamId,
+        idempotencyKey: input.idempotencyKey,
+        requestFingerprint,
+      });
+    } catch (error) {
+      if (!(error instanceof MissionStartConflictError)) throw error;
+      throw new TeamApplicationError(
+        "mission_start_conflict",
+        `Mission start key ${input.idempotencyKey} has a different request`,
+      );
+    }
     if (started) {
       assertMissionBelongsToTeam(storedTeam, started);
       const pending = storedTeam.startIntent;
@@ -428,6 +491,9 @@ export class TeamMissionService {
         pending.requestFingerprint === requestFingerprint &&
         pending.missionId === started.mission.id
       ) {
+        if (!isTerminalMission(started.mission)) {
+          await this.requireActiveWorkspace(effectiveWorkspaceId);
+        }
         return this.resumeMissionStart(storedTeam);
       }
       return started.mission;
@@ -439,8 +505,10 @@ export class TeamMissionService {
           `Mission start key ${input.idempotencyKey} has a different request`,
         );
       }
+      await this.requireActiveWorkspace(effectiveWorkspaceId);
       return this.resumeMissionStart(storedTeam);
     }
+    await this.requireActiveWorkspace(effectiveWorkspaceId);
     const readiness = validateTeamReadyForMission(storedTeam.profile);
     if (!readiness.ok) {
       throw new TeamApplicationError("team_not_ready", `Team ${input.teamId} is not active`);
@@ -465,6 +533,7 @@ export class TeamMissionService {
       idempotencyKey: input.idempotencyKey,
       requestFingerprint,
       expectedTeamRevision: input.expectedTeamRevision,
+      workspaceId: effectiveWorkspaceId,
       missionId,
       chatRoomId: this.ids.next("room"),
       teamName: storedTeam.profile.name,
@@ -502,6 +571,83 @@ export class TeamMissionService {
       this.beginCancelMissionWithinLifecycle(input),
     );
     return this.resumeMissionFinish(finishing);
+  }
+
+  async prepareWorkspaceArchive(workspaceId: string): Promise<TeamMission[]> {
+    const terminalMissions: TeamMission[] = [];
+    const candidatesById = new Map(
+      (await this.missions.list())
+        .filter(
+          (stored) =>
+            stored.mission.workspaceId === workspaceId && !isTerminalMission(stored.mission),
+        )
+        .map((stored) => [stored.mission.id, stored]),
+    );
+    for (const profile of await this.profiles.list()) {
+      const intent = profile.startIntent;
+      if (!intent || intent.workspaceId !== workspaceId || candidatesById.has(intent.missionId)) {
+        continue;
+      }
+      const materialized = await this.serializeTeamLifecycle(profile.profile.id, async () => {
+        const current = await this.requireTeam(profile.profile.id);
+        const currentIntent = current.startIntent;
+        if (
+          !currentIntent ||
+          currentIntent.intentId !== intent.intentId ||
+          currentIntent.workspaceId !== workspaceId
+        ) {
+          return null;
+        }
+        const existing = await this.missions.get(currentIntent.missionId);
+        if (existing) return existing;
+        return (
+          await this.transactions.commitMissionStart({
+            teamId: current.profile.id,
+            intentId: currentIntent.intentId,
+            missionId: currentIntent.missionId,
+          })
+        ).mission;
+      });
+      if (materialized && !isTerminalMission(materialized.mission)) {
+        candidatesById.set(materialized.mission.id, materialized);
+      }
+    }
+    const candidates = [...candidatesById.values()];
+    for (const candidate of candidates) {
+      let stored = await this.requireMission(candidate.mission.id);
+      if (isTerminalMission(stored.mission)) {
+        terminalMissions.push(stored.mission);
+        continue;
+      }
+      if (!stored.finishIntent) {
+        stored = await this.serializeTeamLifecycle(stored.mission.teamId, async () => {
+          const current = await this.requireMission(candidate.mission.id);
+          if (isTerminalMission(current.mission) || current.finishIntent) return current;
+          const now = this.clock.now();
+          const intent: TeamMissionFinishIntent = {
+            intentId: this.ids.next("finish"),
+            idempotencyKey: `workspace-archive:${workspaceId}:${current.mission.id}`,
+            requestFingerprint: fingerprint("team.mission.workspace.archive", {
+              workspaceId,
+              missionId: current.mission.id,
+            }),
+            completionEventId: this.ids.next("event"),
+            kind: "canceled",
+            reason: `Workspace ${workspaceId} archived`,
+            stage: "requested",
+            requestedAt: now,
+            updatedAt: now,
+          };
+          return this.missions.beginFinish({
+            missionId: current.mission.id,
+            expectedRevision: current.mission.revision,
+            intent,
+          });
+        });
+      }
+      terminalMissions.push(await this.resumeMissionFinish(stored));
+    }
+    return terminalMissions;
   }
 
   private async beginCancelMissionWithinLifecycle(
@@ -661,6 +807,14 @@ export class TeamMissionService {
         this.beginAttentionCancelWithinLifecycle(input),
       );
       return this.resumeMissionFinish(finishing);
+    }
+    if (input.resolution.kind === "replace_lead") {
+      return this.workspaceLifecycle.serialize([stored.mission.workspaceId], async () => {
+        await this.requireActiveWorkspace(stored.mission.workspaceId);
+        return this.serializeTeamLifecycle(stored.mission.teamId, () =>
+          this.resolveAttentionWithinLifecycle(input),
+        );
+      });
     }
     return this.serializeTeamLifecycle(stored.mission.teamId, () =>
       this.resolveAttentionWithinLifecycle(input),
@@ -1205,7 +1359,10 @@ export class TeamMissionService {
           if (!profile?.archiveIntent) continue;
           attemptedAction = true;
           try {
-            await this.resumeTeamArchive(profile);
+            await this.workspaceLifecycle.serialize(
+              await this.teamLifecycleWorkspaceIds(profile),
+              () => this.resumeTeamArchive(profile),
+            );
           } catch {
             blockedActions.add(actionKey);
           }
@@ -1236,15 +1393,22 @@ export class TeamMissionService {
   ): Promise<"missing" | "blocked" | "resumed"> {
     const profile = await this.profiles.get(action.teamId);
     if (!profile?.startIntent) return "missing";
-    if (await this.isMissionStartRecoveryBlocked(action.missionId, action.intentId)) {
-      return "blocked";
-    }
-    await this.serializeTeamLifecycle(action.teamId, async () => {
-      const current = await this.requireTeam(action.teamId);
-      if (current.startIntent?.intentId !== action.intentId) return;
-      await this.resumeMissionStart(current);
+    const workspaceId = profile.startIntent.workspaceId;
+    return this.workspaceLifecycle.serialize([workspaceId], async () => {
+      if (!(await this.workspaces.isActive(workspaceId))) {
+        await this.prepareWorkspaceArchive(workspaceId);
+        return "resumed";
+      }
+      if (await this.isMissionStartRecoveryBlocked(action.missionId, action.intentId)) {
+        return "blocked";
+      }
+      await this.serializeTeamLifecycle(action.teamId, async () => {
+        const current = await this.requireTeam(action.teamId);
+        if (current.startIntent?.intentId !== action.intentId) return;
+        await this.resumeMissionStart(current);
+      });
+      return "resumed";
     });
-    return "resumed";
   }
 
   private async isMissionStartRecoveryBlocked(
@@ -1277,9 +1441,15 @@ export class TeamMissionService {
         continue;
       }
       try {
-        await this.serializeTeamLifecycle(mission.mission.teamId, () =>
-          this.resumeLeadReplacement(mission),
-        );
+        await this.workspaceLifecycle.serialize([mission.mission.workspaceId], async () => {
+          if (!(await this.workspaces.isActive(mission.mission.workspaceId))) {
+            await this.prepareWorkspaceArchive(mission.mission.workspaceId);
+            return;
+          }
+          await this.serializeTeamLifecycle(mission.mission.teamId, () =>
+            this.resumeLeadReplacement(mission),
+          );
+        });
       } catch {
         // The persisted binding and replacement intent remain replayable.
       }
@@ -1341,15 +1511,22 @@ export class TeamMissionService {
       ),
     );
     for (const action of actions) {
-      if (action.kind !== "persistence_attention" || action.code !== "team_profile_missing") {
+      if (
+        action.kind !== "persistence_attention" ||
+        (action.code !== "team_profile_missing" &&
+          action.code !== "start_intent_mission_workspace_mismatch")
+      ) {
         continue;
       }
       try {
+        const profileMissing = action.code === "team_profile_missing";
         await this.recordRecoveryAttention({
           missionId: action.missionId,
-          attentionId: `persistence:team_profile_missing:${action.missionId}`,
+          attentionId: `persistence:${action.code}:${action.missionId}`,
           kind: "ownership_violation",
-          summary: "Team profile is missing for this Mission",
+          summary: profileMissing
+            ? "Team profile is missing for this Mission"
+            : "Mission workspace does not match its durable start intent",
         });
       } catch {
         // A Mission-level persistence failure remains scoped to this action.
@@ -1369,7 +1546,6 @@ export class TeamMissionService {
         const profile = await this.profiles.get(stored.mission.teamId);
         if (
           !profile ||
-          profile.profile.workspaceId !== stored.mission.workspaceId ||
           (profile.profile.activeMissionId !== stored.mission.id &&
             profile.startIntent?.missionId !== stored.mission.id)
         ) {
@@ -1641,6 +1817,7 @@ export class TeamMissionService {
         return (await this.requireMission(missionId)).mission;
       }
       const persistedMission = await this.missions.get(intent.missionId);
+      assertMissionMatchesStartWorkspace(persistedMission, intent);
       if (persistedMission && isTerminalMission(persistedMission.mission)) {
         await this.profiles.clearActiveMission({
           teamId: profile.profile.id,
@@ -1732,7 +1909,7 @@ export class TeamMissionService {
       agentId: intent.leadAgentId,
       teamId: profile.profile.id,
       missionId: intent.missionId,
-      workspaceId: profile.profile.workspaceId,
+      workspaceId: intent.workspaceId,
       memberId: lead.memberId,
       role: lead.role,
       mentionHandle: lead.mentionHandle,
@@ -2025,6 +2202,25 @@ export class TeamMissionService {
     return mission;
   }
 
+  private async requireActiveWorkspace(workspaceId: string): Promise<void> {
+    if (await this.workspaces.isActive(workspaceId)) return;
+    throw new TeamApplicationError(
+      "workspace_not_found",
+      `Workspace ${workspaceId} does not exist or is archived`,
+    );
+  }
+
+  private async teamLifecycleWorkspaceIds(profile: StoredTeamProfile): Promise<string[]> {
+    const workspaceIds = new Set<string>();
+    if (profile.startIntent) workspaceIds.add(profile.startIntent.workspaceId);
+    for (const missionId of [profile.profile.activeMissionId, profile.archiveIntent?.missionId]) {
+      if (!missionId) continue;
+      const mission = await this.missions.get(missionId);
+      if (mission) workspaceIds.add(mission.mission.workspaceId);
+    }
+    return [...workspaceIds].toSorted();
+  }
+
   private async serializeTeamLifecycle<T>(teamId: string, operation: () => Promise<T>): Promise<T> {
     return this.operations.serialize(teamId, operation);
   }
@@ -2278,15 +2474,27 @@ function assertRosterMutationAllowed(
 }
 
 function assertMissionBelongsToTeam(team: StoredTeamProfile, mission: StoredMission): void {
-  if (
-    mission.mission.teamId !== team.profile.id ||
-    mission.mission.workspaceId !== team.profile.workspaceId
-  ) {
+  if (mission.mission.teamId !== team.profile.id) {
     throw new TeamApplicationError(
       "mission_team_conflict",
       `Mission ${mission.mission.id} does not belong to Team ${team.profile.id}`,
     );
   }
+}
+
+function assertMissionMatchesStartWorkspace(
+  mission: StoredMission | null,
+  intent: NonNullable<StoredTeamProfile["startIntent"]>,
+): void {
+  if (!mission || mission.mission.workspaceId === intent.workspaceId) return;
+  throw new TeamApplicationError(
+    "mission_start_workspace_conflict",
+    `Mission ${intent.missionId} targets workspace ${mission.mission.workspaceId}, but its start intent targets ${intent.workspaceId}`,
+  );
+}
+
+function normalizeMissionWorkspaceId(workspaceId: string): string {
+  return workspaceId.trim();
 }
 
 function requireAttention(mission: TeamMission, attentionId: string) {

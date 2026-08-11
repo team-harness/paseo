@@ -39,6 +39,10 @@ export interface TeamClockPort {
   now(): string;
 }
 
+export interface TeamWorkspaceAvailabilityPort {
+  isActive(workspaceId: string): Promise<boolean>;
+}
+
 export interface ProviderCapabilityResolver {
   resolve(executionProfile: TeamExecutionProfile): Promise<MissionMemberRuntimeSnapshot>;
 }

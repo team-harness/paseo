@@ -6,7 +6,11 @@ import type pino from "pino";
 
 import type { ManagedAgent, ProviderAvailability } from "../../agent/agent-manager.js";
 import type { WebSocketRuntimeDiagnosticSnapshot } from "../../websocket/runtime-metrics.js";
-import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "../../workspace-registry.js";
+import {
+  isWorkspaceRecordAvailable,
+  type PersistedProjectRecord,
+  type PersistedWorkspaceRecord,
+} from "../../workspace-registry.js";
 import { execCommand } from "../../../utils/spawn.js";
 import type { DaemonRuntimeConfig } from "./daemon-session.js";
 
@@ -188,7 +192,7 @@ async function collectWorkspaceEntries(
     options.listWorkspaces(),
   ]);
   const activeProjects = projects.filter((project) => !project.archivedAt);
-  const activeWorkspaces = workspaces.filter((workspace) => !workspace.archivedAt);
+  const activeWorkspaces = workspaces.filter(isWorkspaceRecordAvailable);
   return [
     { label: "Projects", value: `${activeProjects.length} active / ${projects.length} total` },
     {

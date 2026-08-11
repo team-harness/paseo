@@ -23,11 +23,15 @@ describe("resolveCreateAgentIntent", () => {
     });
   });
 
-  it("defaults an agent caller to its workspace without creating one", async () => {
+  it("resolves an agent caller's workspace authoritatively without creating one", async () => {
     let createCount = 0;
+    const resolvedWorkspaceIds: string[] = [];
     const intent = await resolveCreateAgentIntent({
       caller: { id: "parent-agent", cwd: "/parent", workspaceId: "workspace-parent" },
-      resolveWorkspace: async (workspaceId) => ({ workspaceId, cwd: "/unused" }),
+      resolveWorkspace: async (workspaceId) => {
+        resolvedWorkspaceIds.push(workspaceId);
+        return { workspaceId, cwd: "/authoritative-parent" };
+      },
       createWorkspace: async () => {
         createCount += 1;
         return { workspaceId: "workspace-created", cwd: "/created" };
@@ -35,8 +39,9 @@ describe("resolveCreateAgentIntent", () => {
     });
 
     expect(intent.workspaceId).toBe("workspace-parent");
-    expect(intent.cwd).toBe("/parent");
+    expect(intent.cwd).toBe("/authoritative-parent");
     expect(intent.parentAgentId).toBe("parent-agent");
+    expect(resolvedWorkspaceIds).toEqual(["workspace-parent"]);
     expect(createCount).toBe(0);
   });
 
@@ -66,7 +71,7 @@ describe("resolveCreateAgentIntent", () => {
 
     expect(intent).toEqual({
       workspaceId: "workspace-parent",
-      cwd: "/parent",
+      cwd: "/unused",
       parentAgentId: null,
       labels: {},
     });

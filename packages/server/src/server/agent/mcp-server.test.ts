@@ -236,6 +236,7 @@ function buildAgentStorageSpies() {
     upsert: vi.fn().mockResolvedValue(undefined),
     applySnapshot: vi.fn(),
     list: vi.fn().mockResolvedValue([]),
+    listByWorkspace: vi.fn().mockResolvedValue([]),
     remove: vi.fn(),
   };
 }
@@ -579,6 +580,10 @@ class BoundaryAgentManagerFake {
 
 class BoundaryAgentStorageFake {
   public async list(): Promise<StoredAgentRecord[]> {
+    return [];
+  }
+
+  public async listByWorkspace(): Promise<StoredAgentRecord[]> {
     return [];
   }
 }
@@ -2720,6 +2725,7 @@ describe("create_agent MCP tool", () => {
         >,
         findWorkspaceIdForCwd: vi.fn(async () => "ws-archive-tool-worktree"),
         listActiveWorkspaces,
+        beginWorkspaceArchive: vi.fn(async () => null),
         archiveWorkspaceRecord,
         emitWorkspaceUpdatesForWorkspaceIds,
         markWorkspaceArchiving,
@@ -2833,6 +2839,7 @@ describe("create_agent MCP tool", () => {
         >,
         findWorkspaceIdForCwd: vi.fn(async () => "ws-mcp-A"),
         listActiveWorkspaces,
+        beginWorkspaceArchive: vi.fn(async () => null),
         archiveWorkspaceRecord,
         emitWorkspaceUpdatesForWorkspaceIds: vi.fn(async () => undefined),
         markWorkspaceArchiving: vi.fn(),
@@ -2910,6 +2917,7 @@ describe("create_agent MCP tool", () => {
         >,
         findWorkspaceIdForCwd: vi.fn(async () => "ws-archive-mcp"),
         listActiveWorkspaces: vi.fn(async () => []),
+        beginWorkspaceArchive: vi.fn(async () => null),
         archiveWorkspaceRecord: vi.fn(async () => undefined),
         emitWorkspaceUpdatesForWorkspaceIds: vi.fn(async () => undefined),
         markWorkspaceArchiving: vi.fn(),

@@ -37,29 +37,46 @@ function replica(profiles: readonly TeamV2[], missions: readonly TeamMission[] =
 }
 
 describe("the Teams a workspace shows in the sidebar", () => {
-  it("lists active Teams that belong to this workspace", () => {
+  it("places an active Team under its Mission workspace", () => {
     const rows = selectWorkspaceTeamRows(
-      replica([team(), team({ id: "team-2", workspaceId: "ws-2" })], [mission()]),
-      "ws-1",
+      replica([team()], [mission({ workspaceId: "ws-2" })]),
+      "ws-2",
+      ["ws-1", "ws-2"],
     );
 
     expect(rows).toEqual([{ teamId: "team-1", name: "Disk usage", statusBucket: "running" }]);
   });
 
   it("drops an archived Team", () => {
-    expect(selectWorkspaceTeamRows(replica([team({ lifecycle: "archived" })]), "ws-1")).toEqual([]);
+    expect(
+      selectWorkspaceTeamRows(replica([team({ lifecycle: "archived" })]), "ws-1", ["ws-1"]),
+    ).toEqual([]);
   });
 
   it("keeps an active Team that has no Mission yet", () => {
-    expect(selectWorkspaceTeamRows(replica([team({ activeMissionId: null })]), "ws-1")).toEqual([
+    expect(
+      selectWorkspaceTeamRows(replica([team({ activeMissionId: null })]), "ws-1", ["ws-1"]),
+    ).toEqual([{ teamId: "team-1", name: "Disk usage", statusBucket: null }]);
+  });
+
+  it("does not place an active Team until its Mission is hydrated", () => {
+    expect(selectWorkspaceTeamRows(replica([team()]), "ws-1", ["ws-1"])).toEqual([]);
+  });
+
+  it("places an idle Team in the stable first live workspace when its creation workspace is gone", () => {
+    const idle = team({ activeMissionId: null, workspaceId: "ws-archived" });
+
+    expect(selectWorkspaceTeamRows(replica([idle]), "ws-a", ["ws-z", "ws-a"])).toEqual([
       { teamId: "team-1", name: "Disk usage", statusBucket: null },
     ]);
+    expect(selectWorkspaceTeamRows(replica([idle]), "ws-z", ["ws-z", "ws-a"])).toEqual([]);
   });
 
   it("uses the active Mission state instead of member Agent activity", () => {
     const rows = selectWorkspaceTeamRows(
       replica([team()], [mission({ status: "needs_attention" })]),
       "ws-1",
+      ["ws-1"],
     );
 
     expect(rows[0]?.statusBucket).toBe("needs_input");
@@ -73,6 +90,7 @@ describe("the Teams a workspace shows in the sidebar", () => {
         team({ id: "c", name: "Alpha", activeMissionId: null }),
       ]),
       "ws-1",
+      ["ws-1"],
     );
 
     expect(rows.map((row) => row.teamId)).toEqual(["a", "c", "b"]);

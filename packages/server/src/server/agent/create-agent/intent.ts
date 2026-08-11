@@ -58,7 +58,7 @@ async function resolvePlacement(input: {
     if (!input.caller.workspaceId) {
       throw new Error(`Caller agent ${input.caller.id} has no workspace`);
     }
-    return { workspaceId: input.caller.workspaceId, cwd: input.caller.cwd };
+    return input.resolveWorkspace(input.caller.workspaceId);
   }
   return input.createWorkspace();
 }

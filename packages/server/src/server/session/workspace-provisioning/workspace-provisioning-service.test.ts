@@ -144,6 +144,41 @@ test("re-opening an active workspace by exact path returns the same record witho
   expect(await workspaceRegistry.list()).toHaveLength(1);
 });
 
+test("does not provision a replacement while the matching workspace archive is pending", async () => {
+  const repo = path.join(tmpDir, "repo-pending-archive");
+  gitRoots.add(repo);
+  const existing = await provisioning.findOrCreateWorkspaceForDirectory(repo);
+  await workspaceRegistry.beginArchive(existing.workspaceId, {
+    requestId: "archive-pending",
+    requestedAt: ARCHIVED_AT,
+  });
+
+  await expect(provisioning.findOrCreateWorkspaceForDirectory(repo)).rejects.toThrow(
+    "Workspace archive in progress",
+  );
+  await expect(provisioning.createWorkspaceForDirectory(repo)).rejects.toThrow(
+    "Workspace archive in progress",
+  );
+  expect(await workspaceRegistry.list()).toHaveLength(1);
+});
+
+test("rejects an explicit import into a workspace whose archive is pending", async () => {
+  const repo = path.join(tmpDir, "repo-pending-import");
+  gitRoots.add(repo);
+  const existing = await provisioning.findOrCreateWorkspaceForDirectory(repo);
+  await workspaceRegistry.beginArchive(existing.workspaceId, {
+    requestId: "archive-pending-import",
+    requestedAt: ARCHIVED_AT,
+  });
+
+  await expect(
+    provisioning.runInImportWorkspace(
+      { cwd: repo, requestedWorkspaceId: existing.workspaceId },
+      async () => "unreachable",
+    ),
+  ).rejects.toThrow(`Workspace not found: ${existing.workspaceId}`);
+});
+
 test("re-opening a path prefers its active workspace over an archived duplicate", async () => {
   const repo = path.join(tmpDir, "repo");
   gitRoots.add(repo);
@@ -476,6 +511,18 @@ test("resolveOrCreateWorkspaceIdForCreateAgent returns a created worktree's id w
 });
 
 test("resolveOrCreateWorkspaceIdForCreateAgent honors an explicitly requested workspace id", async () => {
+  await workspaceRegistry.upsert(
+    createPersistedWorkspaceRecord({
+      workspaceId: "ws-requested",
+      projectId: "project-requested",
+      cwd: path.join(tmpDir, "x"),
+      kind: "directory",
+      displayName: "x",
+      createdAt: "2026-08-11T00:00:00.000Z",
+      updatedAt: "2026-08-11T00:00:00.000Z",
+    }),
+  );
+
   const id = await provisioning.resolveOrCreateWorkspaceIdForCreateAgent({
     createdWorktree: null,
     requestedWorkspaceId: "ws-requested",
@@ -484,7 +531,7 @@ test("resolveOrCreateWorkspaceIdForCreateAgent honors an explicitly requested wo
   });
 
   expect(id).toBe("ws-requested");
-  expect(await workspaceRegistry.list()).toHaveLength(0);
+  expect(await workspaceRegistry.list()).toHaveLength(1);
 });
 
 test("resolveOrCreateWorkspaceIdForCreateAgent creates a titled workspace when nothing is provided", async () => {

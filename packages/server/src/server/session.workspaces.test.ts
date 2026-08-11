@@ -74,6 +74,8 @@ import {
   type PersistedWorkspaceRecord,
   type WorkspaceMutation,
 } from "./workspace-registry.js";
+import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
+import { workspaceLifecycleCoordinator } from "./workspace-lifecycle-coordinator.js";
 
 const REPO_CWD = path.resolve("/tmp/repo");
 const UNREGISTERED_CWD = path.resolve("/tmp/unregistered");
@@ -555,6 +557,7 @@ function createSessionForWorkspaceTests(
     github?: ForgeService;
     paseoHome?: string;
     worktreesRoot?: string;
+    workspaceSetupRuntime?: WorkspaceSetupRuntime;
     renameCurrentBranch?: (
       cwd: string,
       newName: string,
@@ -733,6 +736,7 @@ function createSessionForWorkspaceTests(
       providerSnapshotManager,
       statusSummaryService: asStatusSummaryService(),
       terminalManager: options.terminalManager ?? null,
+      workspaceSetupRuntime: options.workspaceSetupRuntime,
     }),
   );
   return session;
@@ -3691,8 +3695,12 @@ test("archiving the last workspace emits a remove carrying the now-empty project
 
 test("project.remove.request archives active workspaces and removes the project record", async () => {
   const emitted: SessionOutboundMessage[] = [];
+  const archiveEvents: string[] = [];
+  const setupStarted = deferred<void>();
+  const workspaceSetupRuntime = new WorkspaceSetupRuntime();
   const session = createSessionForWorkspaceTests({
     onMessage: (message) => emitted.push(message),
+    workspaceSetupRuntime,
   });
   const project = createPersistedProjectRecord({
     projectId: "proj-remove-with-workspace",
@@ -3716,6 +3724,21 @@ test("project.remove.request archives active workspaces and removes the project 
   const workspaces = new Map<string, PersistedWorkspaceRecord>([
     [workspace.workspaceId, workspace],
   ]);
+  workspaceSetupRuntime.start(workspace.workspaceId, async (signal) => {
+    archiveEvents.push(`setup-start:${workspace.workspaceId}`);
+    setupStarted.resolve(undefined);
+    await new Promise<void>((resolve) => {
+      signal.addEventListener(
+        "abort",
+        () => {
+          archiveEvents.push(`setup-stop:${workspace.workspaceId}`);
+          resolve();
+        },
+        { once: true },
+      );
+    });
+  });
+  await setupStarted.promise;
 
   session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
   session.projectRegistry.list = async () => Array.from(projects.values());
@@ -3725,10 +3748,24 @@ test("project.remove.request archives active workspaces and removes the project 
   session.workspaceRegistry.get = async (workspaceId: string) =>
     workspaces.get(workspaceId) ?? null;
   session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.workspaceRegistry.beginArchive = async (workspaceId, intent) => {
+    const existing = workspaces.get(workspaceId);
+    if (!existing || existing.archivedAt || existing.archiveIntent) return existing ?? null;
+    archiveEvents.push(`begin:${workspaceId}`);
+    const updated = { ...existing, archiveIntent: intent, updatedAt: intent.requestedAt };
+    workspaces.set(workspaceId, updated);
+    return updated;
+  };
   session.workspaceRegistry.archive = async (workspaceId: string, archivedAt: string) => {
     const existing = workspaces.get(workspaceId);
     if (!existing) return;
-    workspaces.set(workspaceId, { ...existing, updatedAt: archivedAt, archivedAt });
+    archiveEvents.push(`archive:${workspaceId}`);
+    workspaces.set(workspaceId, {
+      ...existing,
+      updatedAt: archivedAt,
+      archivedAt,
+      archiveIntent: null,
+    });
   };
   session.workspaceUpdatesSubscription = {
     subscriptionId: "sub-project-remove",
@@ -3759,18 +3796,51 @@ test("project.remove.request archives active workspaces and removes the project 
     return descriptors;
   };
 
-  await session.handleMessage({
+  const lifecycleFenceEntered = deferred<void>();
+  const releaseLifecycleFence = deferred<void>();
+  const heldLifecycleFence = workspaceLifecycleCoordinator.serialize(
+    [workspace.workspaceId],
+    async () => {
+      lifecycleFenceEntered.resolve(undefined);
+      await releaseLifecycleFence.promise;
+    },
+  );
+  await lifecycleFenceEntered.promise;
+  const archiveFenceRequested = deferred<void>();
+  const serialize = workspaceLifecycleCoordinator.serialize.bind(workspaceLifecycleCoordinator);
+  const serializeSpy = vi
+    .spyOn(workspaceLifecycleCoordinator, "serialize")
+    .mockImplementation((workspaceIds, operation) => {
+      archiveFenceRequested.resolve(undefined);
+      return serialize(workspaceIds, operation);
+    });
+
+  const removeProject = session.handleMessage({
     type: "project.remove.request",
     projectId: project.projectId,
     requestId: "req-remove-project",
   });
+  await archiveFenceRequested.promise;
+  const archiveEventsBeforeFenceRelease = [...archiveEvents];
+  releaseLifecycleFence.resolve(undefined);
+  await heldLifecycleFence;
+  await removeProject;
+  serializeSpy.mockRestore();
 
+  expect(archiveEventsBeforeFenceRelease).toEqual(["setup-start:ws-project-remove"]);
   expect(projects.has(project.projectId)).toBe(false);
   expect(workspaces.get(workspace.workspaceId)).toEqual({
     ...workspace,
     updatedAt: expect.any(String),
     archivedAt: expect.any(String),
+    archiveIntent: null,
   });
+  expect(archiveEvents).toEqual([
+    "setup-start:ws-project-remove",
+    "begin:ws-project-remove",
+    "setup-stop:ws-project-remove",
+    "archive:ws-project-remove",
+  ]);
   expect(findByType(emitted, "project.remove.response")?.payload).toEqual({
     requestId: "req-remove-project",
     projectId: project.projectId,
@@ -5755,8 +5825,13 @@ test("archive_workspace_request hides non-destructive workspace records", async 
     if (isSessionOutboundMessage(message)) emitted.push(message);
   };
   session.workspaceRegistry.get = async () => workspace;
+  session.workspaceRegistry.beginArchive = async (_workspaceId, intent) => {
+    workspace.archiveIntent = intent;
+    return workspace;
+  };
   session.workspaceRegistry.archive = async (_workspaceId: string, archivedAt: string) => {
     workspace.archivedAt = archivedAt;
+    workspace.archiveIntent = null;
   };
   session.workspaceRegistry.list = async () => [workspace];
   session.projectRegistry.archive = async () => {};
@@ -5856,8 +5931,13 @@ test("archive_workspace_request archives a worktree-kind workspace and removes t
   };
   session.workspaceRegistry.get = async () => workspace;
   session.workspaceRegistry.list = async () => [workspace];
+  session.workspaceRegistry.beginArchive = async (_workspaceId, intent) => {
+    workspace.archiveIntent = intent;
+    return workspace;
+  };
   session.workspaceRegistry.archive = async (_id: string, archivedAt: string) => {
     workspace.archivedAt = archivedAt;
+    workspace.archiveIntent = null;
   };
   session.projectRegistry.list = async () => [project];
 
@@ -8947,6 +9027,92 @@ test("failed local create_agent_request does not schedule workspace title genera
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("create_agent_request rejects a workspace with a durable archive intent", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => emitted.push(message),
+  });
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-archive-pending",
+    projectId: "proj-archive-pending",
+    cwd: REPO_CWD,
+    kind: "directory",
+    displayName: "repo",
+    createdAt: "2026-08-11T00:00:00.000Z",
+    updatedAt: "2026-08-11T00:00:00.000Z",
+    archiveIntent: {
+      requestId: "archive-pending",
+      requestedAt: "2026-08-11T00:00:00.000Z",
+    },
+  });
+  session.workspaceRegistry.get = async () => workspace;
+
+  await session.handleMessage({
+    type: "create_agent_request",
+    requestId: "req-create-archive-pending",
+    workspaceId: workspace.workspaceId,
+    config: { provider: "codex", cwd: REPO_CWD },
+    attachments: [],
+  });
+
+  expect(findByType(emitted, "status")?.payload).toMatchObject({
+    status: "agent_create_failed",
+    requestId: "req-create-archive-pending",
+    error: `Workspace ${workspace.workspaceId} not found`,
+  });
+});
+
+test("caller child-agent creation revalidates a workspace with a durable archive intent", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-caller-archive-pending",
+    projectId: "proj-caller-archive-pending",
+    cwd: REPO_CWD,
+    kind: "directory",
+    displayName: "repo",
+    createdAt: "2026-08-11T00:00:00.000Z",
+    updatedAt: "2026-08-11T00:00:00.000Z",
+    archiveIntent: {
+      requestId: "archive-caller-pending",
+      requestedAt: "2026-08-11T00:00:00.000Z",
+    },
+  });
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => emitted.push(message),
+    agentManager: {
+      getAgent: (agentId: string) =>
+        agentId === "agent-parent"
+          ? ({ id: agentId, cwd: REPO_CWD, workspaceId: workspace.workspaceId } as ManagedAgent)
+          : null,
+      createAgent: vi.fn(),
+    },
+    workspaceRegistry: {
+      initialize: async () => {},
+      existsOnDisk: async () => true,
+      list: async () => [workspace],
+      get: async () => workspace,
+      update: async () => workspace,
+      upsert: async () => {},
+      archive: async () => {},
+      remove: async () => {},
+    },
+  });
+
+  await session.handleMessage({
+    type: "create_agent_request",
+    requestId: "req-create-caller-archive-pending",
+    callerAgentId: "agent-parent",
+    config: { provider: "codex", cwd: REPO_CWD },
+    attachments: [],
+  });
+
+  expect(findByType(emitted, "status")?.payload).toMatchObject({
+    status: "agent_create_failed",
+    requestId: "req-create-caller-archive-pending",
+    error: `Workspace ${workspace.workspaceId} not found`,
+  });
 });
 
 test("workspace auto-name keeps a manual title written before the scheduled title lands", async () => {

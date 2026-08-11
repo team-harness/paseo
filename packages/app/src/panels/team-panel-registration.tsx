@@ -37,7 +37,7 @@ function useTeamPanelDescriptor(
 }
 
 function TeamPanelHost() {
-  const { serverId, target, openTab } = usePaneContext();
+  const { serverId, workspaceId, target, openTab } = usePaneContext();
   invariant(target.kind === "team", "TeamPanel requires team target");
   // A member's conversation is an ordinary agent tab. The panel knows who was
   // pressed; only the pane knows where a tab goes.
@@ -45,7 +45,14 @@ function TeamPanelHost() {
     (agentId: string) => openTab({ kind: "agent", agentId }),
     [openTab],
   );
-  return <TeamPanel serverId={serverId} teamId={target.teamId} onOpenAgent={openAgent} />;
+  return (
+    <TeamPanel
+      serverId={serverId}
+      workspaceId={workspaceId}
+      teamId={target.teamId}
+      onOpenAgent={openAgent}
+    />
+  );
 }
 
 export const teamPanelRegistration: PanelRegistration<"team"> = {

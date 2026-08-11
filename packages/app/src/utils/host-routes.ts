@@ -404,6 +404,15 @@ export function buildHostRootRoute(serverId: string) {
   return `/h/${encodeSegment(normalized)}` as const;
 }
 
+export function buildHostTeamRoute(serverId: string, teamId: string) {
+  const base = buildHostRootRoute(serverId);
+  const normalizedTeamId = trimNonEmpty(teamId);
+  if (base === "/" || !normalizedTeamId) {
+    return "/" as const;
+  }
+  return `${base}/team/${encodeSegment(normalizedTeamId)}` as const;
+}
+
 export function buildHostOpenProjectRoute(serverId: string) {
   const base = buildHostRootRoute(serverId);
   if (base === "/") {

@@ -36,6 +36,7 @@ function revision(value: string | undefined, flag: string): number {
 
 export interface MissionStartOptions extends TeamCommandOptions {
   expectedTeamRevision?: string;
+  workspace?: string;
   objective?: string;
   constraint?: string[];
   acceptance?: string[];
@@ -55,6 +56,9 @@ export async function runMissionStartCommand(
   }
   const { client } = await connectTeamClient(options.host);
   try {
+    const workspaceId = client.supportsGlobalTeamProfiles()
+      ? required(options.workspace, "--workspace")
+      : null;
     const payload = await client.startTeamMission({
       idempotencyKey: options.idempotencyKey?.trim() || newIdempotencyKey(),
       teamId,
@@ -62,6 +66,7 @@ export async function runMissionStartCommand(
       objective: required(options.objective, "--objective"),
       constraints: (options.constraint ?? []).map((value) => value.trim()).filter(Boolean),
       acceptanceCriteria,
+      ...(workspaceId === null ? {} : { workspaceId }),
     });
     if (!payload.mission) throw toTeamResponseError("start the Mission", payload);
     return { type: "single", data: toMissionRow(payload.mission), schema: missionSchema };

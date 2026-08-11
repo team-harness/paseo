@@ -14,7 +14,7 @@ import {
 import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import { SortablePager } from "./pagination/sortable-pager.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "./workspace-registry.js";
-import { resolveProjectDisplayName } from "./workspace-registry.js";
+import { isWorkspaceRecordAvailable, resolveProjectDisplayName } from "./workspace-registry.js";
 import {
   deriveTerminalActivityStatusBucket,
   type TerminalActivity,
@@ -138,7 +138,10 @@ export function workspaceIdsOnCheckout(
 ): string[] {
   const resolvedCwd = resolve(cwd);
   return Array.from(workspaces)
-    .filter((workspace) => !workspace.archivedAt && resolve(workspace.cwd) === resolvedCwd)
+    .filter(
+      (workspace) =>
+        isWorkspaceRecordAvailable(workspace) && resolve(workspace.cwd) === resolvedCwd,
+    )
     .map((workspace) => workspace.workspaceId);
 }
 
@@ -227,7 +230,8 @@ export class WorkspaceDirectory {
       persistedProjects.filter((project) => project.archivedAt).map((project) => project.projectId),
     );
     const activeRecords = persistedWorkspaces.filter(
-      (workspace) => !workspace.archivedAt && !archivedProjectIds.has(workspace.projectId),
+      (workspace) =>
+        isWorkspaceRecordAvailable(workspace) && !archivedProjectIds.has(workspace.projectId),
     );
     const descriptorsByWorkspaceId = new Map<string, WorkspaceDescriptorPayload>();
     const workspaceIds = options.workspaceIds ? new Set(options.workspaceIds) : null;
@@ -557,7 +561,7 @@ export class WorkspaceDirectory {
     ]);
     const projectIdsWithActiveWorkspaces = new Set(
       persistedWorkspaces
-        .filter((workspace) => !workspace.archivedAt)
+        .filter(isWorkspaceRecordAvailable)
         .map((workspace) => workspace.projectId),
     );
     return persistedProjects

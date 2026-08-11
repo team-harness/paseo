@@ -6,11 +6,13 @@ import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 const mocked = vi.hoisted(() => ({
   supported: true,
+  globalTeamProfiles: false,
   profiles: new Map<string, TeamV2>(),
 }));
 
 vi.mock("@/runtime/host-features", () => ({
-  useHostFeature: () => mocked.supported,
+  useHostFeature: (_serverId: string, feature: string) =>
+    feature === "globalTeamProfiles" ? mocked.globalTeamProfiles : mocked.supported,
 }));
 
 vi.mock("@/stores/session-store", () => ({
@@ -48,7 +50,28 @@ describe("workspace Team actions", () => {
   afterEach(() => {
     cleanup();
     mocked.supported = true;
+    mocked.globalTeamProfiles = false;
     mocked.profiles = new Map();
+  });
+
+  it("offers all active Team profiles when the host advertises global profiles", () => {
+    mocked.globalTeamProfiles = true;
+    mocked.profiles = new Map([
+      ["team-a", team("team-a", "workspace-a")],
+      ["team-b", team("team-b", "workspace-b")],
+    ]);
+    const { result } = renderHook(() =>
+      useWorkspaceTeamActions({
+        serverId: "server-a",
+        workspaceId: "workspace-a",
+        persistenceKey: "server-a:workspace-a",
+        workspaceDirectory: "/work/a",
+        routeFocused: true,
+        openWorkspaceTabFocused: vi.fn(),
+      }),
+    );
+
+    expect(result.current.profiles.map((profile) => profile.id)).toEqual(["team-a", "team-b"]);
   });
 
   it("opens Team profile and Mission forms from one capability and only focuses the Team tab", () => {

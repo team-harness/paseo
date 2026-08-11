@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef } from "react";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 
 import { HostRouteBootstrapBoundary } from "@/components/host-route-bootstrap-boundary";
+import { TeamPanel } from "@/components/teams/team-panel";
 import { resolveTeamRoute } from "@/navigation/team-route-resolution";
 import { TeamRouteResolutionView } from "@/navigation/team-route-resolution-view";
 import { useHostRuntimeSnapshot, useHosts, getHostRuntimeStore } from "@/runtime/host-runtime";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useSessionStore } from "@/stores/session-store";
+import { useLiveWorkspaceIds } from "@/stores/session-store-hooks";
 import { buildHostRootRoute } from "@/utils/host-routes";
 
 export default function HostTeamRoute() {
@@ -31,27 +33,39 @@ function HostTeamRouteContent() {
   const supported = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.teamMissions === true,
   );
+  const globalTeamProfilesSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.globalTeamProfiles === true,
+  );
   const hydrated = useSessionStore(
     (state) => state.sessions[serverId]?.teamMissionsReplica.status === "ready",
   );
-  const workspaceId = useSessionStore(
-    (state) =>
-      state.sessions[serverId]?.teamMissionsReplica.profiles.get(teamId)?.workspaceId ?? null,
+  const profile = useSessionStore(
+    (state) => state.sessions[serverId]?.teamMissionsReplica.profiles.get(teamId) ?? null,
   );
+  const missionWorkspaceId = useSessionStore((state) => {
+    const replica = state.sessions[serverId]?.teamMissionsReplica;
+    const missionId = replica?.profiles.get(teamId)?.activeMissionId;
+    return missionId ? (replica?.missions.get(missionId)?.workspaceId ?? null) : null;
+  });
+  const liveWorkspaceIds = useLiveWorkspaceIds(serverId);
 
   const resolution = resolveTeamRoute({
     serverId,
     teamId,
     supported,
+    globalTeamProfilesSupported,
     connectionStatus,
     hydrated,
-    workspaceId,
+    activeMissionId: profile?.activeMissionId,
+    missionWorkspaceId,
+    creationWorkspaceId: profile?.workspaceId,
+    liveWorkspaceIds,
   });
 
   useEffect(() => {
-    // A team URL carries no workspace, so this route exists only to find one
-    // and hand off. Each outcome fires once: re-running the navigation on every
-    // store tick appends deck entries the user never asked for.
+    // A Team URL carries no workspace. A Mission hands off to its workspace;
+    // an idle Team with no live workspace stays on this host route. Each
+    // navigation outcome fires once so store ticks do not append deck entries.
     let key: string | null = null;
     if (resolution.kind === "resolved") key = `workspace:${resolution.workspaceId}`;
     else if (resolution.kind === "invalid") key = "invalid";
@@ -96,6 +110,10 @@ function HostTeamRouteContent() {
         onBack={handleBack}
       />
     );
+  }
+
+  if (resolution.kind === "hostLevel") {
+    return <TeamPanel serverId={serverId} workspaceId={null} teamId={teamId} />;
   }
 
   return null;

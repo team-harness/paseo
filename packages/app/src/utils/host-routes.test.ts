@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildHostAgentDetailRoute,
   buildHostRootRoute,
+  buildHostTeamRoute,
   buildHostWorkspaceOpenRoute,
   buildHostWorkspaceRoute,
   buildNewWorkspaceRoute,
@@ -90,6 +91,12 @@ describe("workspace route parsing", () => {
 
   it("builds host root routes", () => {
     expect(buildHostRootRoute("local")).toBe("/h/local");
+  });
+
+  it("builds host-level Team routes without a workspace segment", () => {
+    expect(buildHostTeamRoute("local host", "team/alpha")).toBe(
+      "/h/local%20host/team/team%2Falpha",
+    );
   });
 
   it("parses workspace open intent from pathname query", () => {

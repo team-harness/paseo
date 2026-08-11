@@ -5214,6 +5214,10 @@ export class DaemonClient {
     return this.lastServerInfoMessage?.features?.teamMissions === true;
   }
 
+  supportsGlobalTeamProfiles(): boolean {
+    return this.lastServerInfoMessage?.features?.globalTeamProfiles === true;
+  }
+
   async createTeamProfile(options: CreateTeamProfileOptions): Promise<TeamProfileCreatePayload> {
     this.requireTeamMissionsSupport();
     const { requestId, ...params } = options;

@@ -92,10 +92,31 @@ const PersistedWorkspaceRecordSchema = z.object({
     .nullable()
     .optional()
     .transform((value) => value ?? null),
+  // COMPAT(workspaceArchiveIntent): added in v0.3.0-beta.3, remove optional parsing after 2027-02-11.
+  archiveIntent: z
+    .object({
+      requestId: z.string().min(1),
+      requestedAt: z.string().min(1),
+    })
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
 });
 
 export type PersistedProjectRecord = z.infer<typeof PersistedProjectRecordSchema>;
 export type PersistedWorkspaceRecord = z.infer<typeof PersistedWorkspaceRecordSchema>;
+export type WorkspaceArchiveIntent = NonNullable<PersistedWorkspaceRecord["archiveIntent"]>;
+
+export function isWorkspaceRecordAvailable(workspace: PersistedWorkspaceRecord): boolean {
+  return (
+    workspace.archivedAt === null &&
+    (workspace.archiveIntent === null || workspace.archiveIntent === undefined)
+  );
+}
+
+export function isWorkspaceRecordArchiveReference(workspace: PersistedWorkspaceRecord): boolean {
+  return workspace.archivedAt === null;
+}
 
 export interface WorkspaceMutation {
   kind: "upsert" | "archive" | "remove";
@@ -106,6 +127,8 @@ export interface WorkspaceMutation {
 
 export interface WorkspaceMutationContext {
   expectsInitialAgent?: boolean;
+  /** Explicit recovery path allowed to clear terminal workspace lifecycle fields. */
+  restoreArchivedRecord?: boolean;
 }
 
 export interface WorkspaceArchiveContext {
@@ -151,6 +174,10 @@ export interface WorkspaceRegistry {
     updater: (record: PersistedWorkspaceRecord) => PersistedWorkspaceRecord,
   ): Promise<PersistedWorkspaceRecord | null>;
   upsert(record: PersistedWorkspaceRecord, context?: WorkspaceMutationContext): Promise<void>;
+  beginArchive?(
+    workspaceId: string,
+    intent: WorkspaceArchiveIntent,
+  ): Promise<PersistedWorkspaceRecord | null>;
   archive(
     workspaceId: string,
     archivedAt: string,
@@ -228,7 +255,14 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
     }
     const next = this.schema.parse(updater(existing));
     this.cache.set(id, next);
-    await this.enqueuePersist();
+    try {
+      await this.enqueuePersist();
+    } catch (error) {
+      if (this.cache.get(id) === next) {
+        this.cache.set(id, existing);
+      }
+      throw error;
+    }
     return next;
   }
 
@@ -441,6 +475,7 @@ export class FileBackedWorkspaceRegistry
   extends FileBackedRegistry<PersistedWorkspaceRecord>
   implements WorkspaceRegistry
 {
+  private lifecycleMutationQueue: Promise<void> = Promise.resolve();
   private readonly mutationListeners = new Set<
     (mutation: WorkspaceMutation) => void | Promise<void>
   >();
@@ -466,7 +501,16 @@ export class FileBackedWorkspaceRegistry
     workspaceId: string,
     updater: (record: PersistedWorkspaceRecord) => PersistedWorkspaceRecord,
   ): Promise<PersistedWorkspaceRecord | null> {
-    const workspace = await super.update(workspaceId, updater);
+    const workspace = await this.serializeLifecycleMutation(() =>
+      super.update(workspaceId, (current) => {
+        const candidate = updater(current);
+        return {
+          ...candidate,
+          archivedAt: current.archivedAt,
+          archiveIntent: current.archiveIntent,
+        };
+      }),
+    );
     if (workspace) {
       await this.notifyMutation({ kind: "upsert", workspaceId, workspace });
     }
@@ -477,13 +521,51 @@ export class FileBackedWorkspaceRegistry
     record: PersistedWorkspaceRecord,
     context?: WorkspaceMutationContext,
   ): Promise<void> {
-    await super.upsert(record);
+    const workspace = await this.serializeLifecycleMutation(async () => {
+      const existing = await super.get(record.workspaceId);
+      const candidate =
+        existing && !context?.restoreArchivedRecord
+          ? {
+              ...record,
+              archivedAt: existing.archivedAt,
+              archiveIntent: existing.archiveIntent,
+            }
+          : record;
+      if (existing) {
+        return (await super.update(record.workspaceId, () => candidate))!;
+      }
+      await super.upsert(candidate);
+      return candidate;
+    });
     await this.notifyMutation({
       kind: "upsert",
-      workspaceId: record.workspaceId,
-      workspace: record,
+      workspaceId: workspace.workspaceId,
+      workspace,
       ...(context?.expectsInitialAgent ? { expectsInitialAgent: true } : {}),
     });
+  }
+
+  async beginArchive(
+    workspaceId: string,
+    intent: WorkspaceArchiveIntent,
+  ): Promise<PersistedWorkspaceRecord | null> {
+    let created = false;
+    const workspace = await this.serializeLifecycleMutation(async () => {
+      const existing = await this.get(workspaceId);
+      if (!existing || existing.archivedAt || existing.archiveIntent) {
+        return existing;
+      }
+      created = true;
+      return super.update(workspaceId, (current) => ({
+        ...current,
+        archiveIntent: intent,
+        updatedAt: intent.requestedAt,
+      }));
+    });
+    if (created && workspace) {
+      await this.notifyMutation({ kind: "upsert", workspaceId, workspace });
+    }
+    return workspace;
   }
 
   override async archive(
@@ -491,26 +573,45 @@ export class FileBackedWorkspaceRegistry
     archivedAt: string,
     context?: WorkspaceArchiveContext,
   ): Promise<void> {
-    const workspace = await super.update(workspaceId, (existing) => ({
-      ...existing,
-      updatedAt: archivedAt,
-      archivedAt,
-      ...(context?.autoArchivedChangeRequestUrl
-        ? { autoArchivedChangeRequestUrl: context.autoArchivedChangeRequestUrl }
-        : {}),
-    }));
+    const workspace = await this.serializeLifecycleMutation(() =>
+      super.update(workspaceId, (existing) => ({
+        ...existing,
+        updatedAt: archivedAt,
+        archivedAt,
+        archiveIntent: null,
+        ...(context?.autoArchivedChangeRequestUrl
+          ? { autoArchivedChangeRequestUrl: context.autoArchivedChangeRequestUrl }
+          : {}),
+      })),
+    );
     if (!workspace) return;
     await this.notifyMutation({ kind: "archive", workspaceId, workspace });
   }
 
   override async remove(workspaceId: string): Promise<void> {
-    const workspace = await this.removeIfPresent(workspaceId);
+    const workspace = await this.serializeLifecycleMutation(() =>
+      this.removeIfPresent(workspaceId),
+    );
     if (!workspace) return;
     await this.notifyMutation({ kind: "remove", workspaceId, workspace: null });
   }
 
   private async notifyMutation(mutation: WorkspaceMutation): Promise<void> {
     await Promise.all([...this.mutationListeners].map((listener) => listener(mutation)));
+  }
+
+  private async serializeLifecycleMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.lifecycleMutationQueue;
+    let release!: () => void;
+    this.lifecycleMutationQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
   }
 }
 
@@ -556,6 +657,7 @@ export function createPersistedWorkspaceRecord(input: {
   archivedAt?: string | null;
   autoArchivedChangeRequestUrl?: string | null;
   pinnedAt?: string | null;
+  archiveIntent?: WorkspaceArchiveIntent | null;
 }): PersistedWorkspaceRecord {
   return PersistedWorkspaceRecordSchema.parse({
     ...input,
@@ -568,6 +670,7 @@ export function createPersistedWorkspaceRecord(input: {
     archivedAt: input.archivedAt ?? null,
     autoArchivedChangeRequestUrl: input.autoArchivedChangeRequestUrl ?? null,
     pinnedAt: input.pinnedAt ?? null,
+    archiveIntent: input.archiveIntent ?? null,
   });
 }
 
