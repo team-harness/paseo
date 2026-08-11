@@ -1,0 +1,27 @@
+diff --git a/README.md b/README.md
+index 9b95cee..1092371 100644
+--- a/README.md
++++ b/README.md
+@@ -1,3 +1,10 @@
+ # Verify Sandbox
+
+ A tiny repo for the agent-teams verification run.
++
++## Inventory
++
++- `README.md` — this file: project overview and file inventory.
++- `math.js` — arithmetic helpers.
++
++Verified by role mention.
+diff --git a/math.js b/math.js
+index 7d65831..56035dc 100644
+--- a/math.js
++++ b/math.js
+@@ -1,3 +1,7 @@
+ export function add(a, b) {
+   return a + b;
+ }
++
++export function subtract(a, b) {
++  return a - b;
++}

@@ -1,0 +1,45 @@
+{
+  "id": "f501e3d1-d455-409b-8ac7-1445c06f2356",
+  "name": "Verify Squad",
+  "workspaceId": "wks_62092b6937ec67a4",
+  "chatRoomId": "27fa823a-6701-47b9-b738-91a17f86247b",
+  "leadAgentId": "5fc1734b-8986-4d99-a39f-faed57c4375e",
+  "members": [
+    {
+      "agentId": "5fc1734b-8986-4d99-a39f-faed57c4375e",
+      "role": "lead",
+      "joinedAt": "2026-08-07T02:46:31.759Z",
+      "leftAt": null,
+      "state": "active",
+      "removalReason": null
+    },
+    {
+      "agentId": "d1069716-8a1a-4a66-bcae-40861b12b0c1",
+      "role": "docs",
+      "joinedAt": "2026-08-07T02:46:31.759Z",
+      "leftAt": null,
+      "state": "active",
+      "removalReason": null
+    },
+    {
+      "agentId": "e734a751-25c9-4342-b18a-42a74471ee6c",
+      "role": "code",
+      "joinedAt": "2026-08-07T02:46:31.759Z",
+      "leftAt": null,
+      "state": "active",
+      "removalReason": null
+    }
+  ],
+  "lifecycle": "active",
+  "revision": 5,
+  "idempotencyKey": "cli-89078e95-deea-4416-b34d-40d5e59bc2db",
+  "requestFingerprint": "d6178fac5077e891f72810acd2e2161e831a25981965491035eedb6807e9f0d2",
+  "creationPlan": null,
+  "creationStage": null,
+  "templateId": null,
+  "createdAt": "2026-08-07T02:46:31.759Z",
+  "updatedAt": "2026-08-07T02:46:32.233Z",
+  "archivedAt": null,
+  "failedCleanupAt": null,
+  "pendingRecruitments": null
+}

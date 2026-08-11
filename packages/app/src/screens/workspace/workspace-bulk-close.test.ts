@@ -33,6 +33,15 @@ function makeFileTab(path: string): WorkspaceTabDescriptor {
   };
 }
 
+function makeTeamTab(teamId: string): WorkspaceTabDescriptor {
+  return {
+    key: `team_${teamId}`,
+    tabId: `team_${teamId}`,
+    kind: "team",
+    target: { kind: "team", teamId },
+  };
+}
+
 describe("workspace bulk close helpers", () => {
   it("classifies agent, terminal, and passive tabs for shared bulk close handling", () => {
     const groups = classifyBulkClosableTabs([
@@ -67,6 +76,17 @@ describe("workspace bulk close helpers", () => {
     expect(buildBulkCloseConfirmationMessage(groups)).toBe(
       "This will archive 1 agent(s) and close 1 tab(s).",
     );
+  });
+
+  it("always treats a Team tab as layout-only", () => {
+    const groups = classifyBulkClosableTabs([makeTeamTab("team-a")]);
+
+    expect(groups.archiveAgentTabs).toEqual([]);
+    expect(groups.layoutOnlyAgentTabs).toEqual([]);
+    expect(groups.terminalTabs).toEqual([]);
+    expect(groups.otherTabs).toEqual([
+      { tabId: "team_team-a", target: { kind: "team", teamId: "team-a" } },
+    ]);
   });
 
   it("describes mixed destructive bulk close operations in the confirmation copy", () => {

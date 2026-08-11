@@ -34,6 +34,7 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 import type { SidebarSurfaceBackdrop } from "@/styles/surface-backdrop";
+import { SidebarWorkspaceTeamRows } from "@/components/sidebar/sidebar-team-rows";
 import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop";
 import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
@@ -1205,6 +1206,7 @@ function WorkspaceRowInner({
                 />
               </SidebarWorkspaceRowContent>
             </SidebarWorkspaceContextMenu>
+            <SidebarWorkspaceTeamRows workspace={workspace} />
           </View>
         );
       }}

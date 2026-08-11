@@ -30,6 +30,8 @@ import {
   Plus,
   SquarePen,
   SquareTerminal,
+  Target,
+  Users,
   X,
 } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -109,12 +111,16 @@ const ThemedGlobe = withUnistyles(Globe);
 const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedRows2 = withUnistyles(Rows2);
 const ThemedPlus = withUnistyles(Plus);
+const ThemedTarget = withUnistyles(Target);
+const ThemedUsers = withUnistyles(Users);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 const AGENT_ICON = <ThemedSquarePen size={14} uniProps={mutedColorMapping} />;
 const TERMINAL_ICON = <ThemedSquareTerminal size={14} uniProps={mutedColorMapping} />;
 const BROWSER_ICON = <ThemedGlobe size={14} uniProps={mutedColorMapping} />;
+const TEAM_ICON = <ThemedUsers size={14} uniProps={mutedColorMapping} />;
+const MISSION_ICON = <ThemedTarget size={14} uniProps={mutedColorMapping} />;
 
 const DRAFT_TARGET: PinnedTabTarget = { kind: "draft" };
 const TERMINAL_TARGET: PinnedTabTarget = { kind: "terminal" };
@@ -172,16 +178,77 @@ function PinnableProfileMenuItem({ profile, disabled, onLaunch }: PinnableProfil
 interface WorkspaceInlineAddTabButtonProps {
   shortcutKeys: ShortcutKey[][] | null;
   onCreateAgentTab: () => void;
+  onCreateTeam: () => void;
+  onStartMission: () => void;
+  showCreateTeam: boolean;
+  showStartMission: boolean;
   onLayout: (event: LayoutChangeEvent) => void;
 }
 
 function WorkspaceInlineAddTabButton({
   shortcutKeys,
   onCreateAgentTab,
+  onCreateTeam,
+  onStartMission,
+  showCreateTeam,
+  showStartMission,
   onLayout,
 }: WorkspaceInlineAddTabButtonProps) {
   const { t } = useTranslation();
   const tooltipText = t("workspace.tabs.actions.newAgent");
+
+  if (showCreateTeam || showStartMission) {
+    return (
+      <View style={styles.inlineAddButton} onLayout={onLayout}>
+        <DropdownMenu>
+          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+            <TooltipTrigger asChild triggerRefProp="triggerRef">
+              <DropdownMenuTrigger
+                testID="workspace-new-agent-tab-inline"
+                accessibilityRole="button"
+                accessibilityLabel={t("workspace.tabs.actions.moreActions")}
+                style={inlineAddActionButtonStyle}
+              >
+                <ThemedPlus size={14} uniProps={mutedColorMapping} />
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="center" offset={8}>
+              <Text style={styles.newTabTooltipText}>
+                {t("workspace.tabs.actions.moreActions")}
+              </Text>
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent side="bottom" align="start" offset={4} minWidth={180}>
+            <DropdownMenuItem
+              testID="workspace-new-tab-inline-agent"
+              leading={AGENT_ICON}
+              onSelect={onCreateAgentTab}
+            >
+              {t("workspace.tabs.actions.newAgent")}
+            </DropdownMenuItem>
+            {showCreateTeam ? (
+              <DropdownMenuItem
+                testID="workspace-new-tab-inline-team"
+                leading={TEAM_ICON}
+                onSelect={onCreateTeam}
+              >
+                {t("teams.v2.actions.newTeam")}
+              </DropdownMenuItem>
+            ) : null}
+            {showStartMission ? (
+              <DropdownMenuItem
+                testID="workspace-new-tab-inline-mission"
+                leading={MISSION_ICON}
+                onSelect={onStartMission}
+              >
+                {t("teams.v2.actions.startMission")}
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.inlineAddButton} onLayout={onLayout}>
@@ -210,23 +277,31 @@ function WorkspaceInlineAddTabButton({
 
 interface WorkspaceTabRowExtrasProps {
   onCreateAgentTab: () => void;
+  onCreateTeam: () => void;
+  onStartMission: () => void;
   onCreateTerminal: () => void;
   onCreateBrowser: () => void;
   onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
   onEditProfiles: () => void;
   normalizedServerId: string;
   showCreateBrowserTab: boolean;
+  showCreateTeam: boolean;
+  showStartMission: boolean;
   terminalDisabled: boolean;
 }
 
 function WorkspaceTabRowExtras({
   onCreateAgentTab,
+  onCreateTeam,
+  onStartMission,
   onCreateTerminal,
   onCreateBrowser,
   onCreateTerminalWithProfile,
   onEditProfiles,
   normalizedServerId,
   showCreateBrowserTab,
+  showCreateTeam,
+  showStartMission,
   terminalDisabled,
 }: WorkspaceTabRowExtrasProps) {
   const { t } = useTranslation();
@@ -281,6 +356,24 @@ function WorkspaceTabRowExtras({
             leading={AGENT_ICON}
             onSelect={onCreateAgentTab}
           />
+          {showCreateTeam ? (
+            <DropdownMenuItem
+              testID="workspace-new-tab-menu-team"
+              leading={TEAM_ICON}
+              onSelect={onCreateTeam}
+            >
+              {t("teams.v2.actions.newTeam")}
+            </DropdownMenuItem>
+          ) : null}
+          {showStartMission ? (
+            <DropdownMenuItem
+              testID="workspace-new-tab-menu-mission"
+              leading={MISSION_ICON}
+              onSelect={onStartMission}
+            >
+              {t("teams.v2.actions.startMission")}
+            </DropdownMenuItem>
+          ) : null}
           <PinnableMenuItem
             testID="workspace-new-tab-menu-terminal"
             target={TERMINAL_TARGET}
@@ -427,9 +520,13 @@ interface WorkspaceDesktopTabsRowProps {
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
   onCreateDraftTab: (input: { paneId?: string }) => void;
+  onCreateTeam: () => void;
+  onStartMission: () => void;
   onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfileInput }) => void;
   onCreateBrowserTab: (input: { paneId?: string }) => void;
   showCreateBrowserTab?: boolean;
+  showCreateTeam?: boolean;
+  showStartMission?: boolean;
   disableCreateTerminal?: boolean;
   isWaitingOnTerminalReadiness?: boolean;
   onReorderTabs: (nextTabs: WorkspaceTabDescriptor[]) => void;
@@ -773,9 +870,13 @@ export function WorkspaceDesktopTabsRow({
   onCloseTabsToRight,
   onCloseOtherTabs,
   onCreateDraftTab,
+  onCreateTeam,
+  onStartMission,
   onCreateTerminalTab,
   onCreateBrowserTab,
   showCreateBrowserTab = false,
+  showCreateTeam = false,
+  showStartMission = false,
   disableCreateTerminal = false,
   isWaitingOnTerminalReadiness = false,
   onReorderTabs,
@@ -1056,18 +1157,26 @@ export function WorkspaceDesktopTabsRow({
         <WorkspaceInlineAddTabButton
           shortcutKeys={newTabKeys}
           onCreateAgentTab={handleCreateAgentTab}
+          onCreateTeam={onCreateTeam}
+          onStartMission={onStartMission}
+          showCreateTeam={showCreateTeam}
+          showStartMission={showStartMission}
           onLayout={handleInlineAddButtonLayout}
         />
       </ScrollView>
       <View style={styles.tabsActions} onLayout={handleTabsActionsLayout}>
         <WorkspaceTabRowExtras
           onCreateAgentTab={handleCreateAgentTab}
+          onCreateTeam={onCreateTeam}
+          onStartMission={onStartMission}
           onCreateTerminal={handleCreateTerminal}
           onCreateBrowser={handleCreateBrowser}
           onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
           onEditProfiles={handleEditProfiles}
           normalizedServerId={normalizedServerId}
           showCreateBrowserTab={showCreateBrowserTab}
+          showCreateTeam={showCreateTeam}
+          showStartMission={showStartMission}
           terminalDisabled={terminalDisabled}
         />
         {showPaneSplitActions ? (

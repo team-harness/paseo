@@ -207,6 +207,12 @@ import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import type { Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type pino from "pino";
+import type { TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
+import {
+  isTeamMissionsRequest,
+  teamMissionsUnavailableResponse,
+  type TeamRuntimeSessionDeps,
+} from "./team/team-runtime.js";
 import { ScheduleService } from "./schedule/service.js";
 import {
   createGitHubService,
@@ -431,6 +437,12 @@ const nodeSessionFileSystem: SessionFileSystem = {
 // Stub types for features under development (modules not yet available)
 type AgentMcpTransportFactory = () => Promise<unknown>;
 
+function normalizeTeamRuntime(
+  runtime: TeamRuntimeSessionDeps | null | undefined,
+): TeamRuntimeSessionDeps | null {
+  return runtime ?? null;
+}
+
 export interface SessionOptions {
   clientId: string;
   scopes: readonly string[];
@@ -454,6 +466,8 @@ export interface SessionOptions {
   workspaceRegistry: WorkspaceRegistry;
   directorySync?: DirectorySyncService;
   filesystem?: SessionFileSystem;
+  /** Present only after Team Missions startup reconciliation has completed. */
+  teamRuntime?: TeamRuntimeSessionDeps | null;
   scheduleService: ScheduleService;
   checkoutDiffManager: CheckoutDiffManager;
   github?: ForgeService;
@@ -713,6 +727,9 @@ export class Session {
   private readonly hubExecutionController: HubExecutionController | null;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
+  private readonly teamRuntime: TeamRuntimeSessionDeps | null;
+  private readonly teamMissionRoomSubscriptions = new Set<string>();
+  private unsubscribeTeamMissionRoomMessages: (() => void) | null = null;
 
   constructor(options: SessionOptions) {
     const {
@@ -738,6 +755,7 @@ export class Session {
       workspaceRegistry,
       directorySync,
       filesystem,
+      teamRuntime,
       scheduleService,
       checkoutDiffManager,
       github,
@@ -794,6 +812,8 @@ export class Session {
       clientId: this.clientId,
       sessionId: this.sessionId,
     });
+    this.teamRuntime = normalizeTeamRuntime(teamRuntime);
+    this.unsubscribeTeamMissionRoomMessages = this.subscribeToTeamMissionRoomMessages();
     this.workspaceFilesSession = new WorkspaceFilesSession({
       host: {
         emit: (msg, source) => this.emitForSource(msg, source),
@@ -1087,6 +1107,14 @@ export class Session {
     this.sessionLogger.trace({}, "agent.session.lifecycle.created");
   }
 
+  private subscribeToTeamMissionRoomMessages(): (() => void) | null {
+    if (!this.teamRuntime) return null;
+    return this.teamRuntime.onMissionRoomMessage((event) => {
+      if (!this.teamMissionRoomSubscriptions.has(event.missionId)) return;
+      this.emit({ type: "team.mission.message.posted", payload: event });
+    });
+  }
+
   updateAppVersion(appVersion: string | null): void {
     if (appVersion && appVersion !== this.appVersion) {
       this.appVersion = appVersion;
@@ -1227,6 +1255,29 @@ export class Session {
       if (capabilities.has(CLIENT_CAPS.projectUpdates)) {
         this.onMessageToSource(source, message);
       }
+    }
+  }
+
+  emitTeamProfileSnapshot(team: TeamV2): void {
+    this.emitTeamMissionsSnapshot({ type: "team.profile.snapshot", payload: { team } });
+  }
+
+  emitTeamMissionSnapshot(mission: TeamMission): void {
+    this.emitTeamMissionsSnapshot({ type: "team.mission.snapshot", payload: { mission } });
+  }
+
+  private emitTeamMissionsSnapshot(
+    message: Extract<
+      SessionOutboundMessage,
+      { type: "team.profile.snapshot" | "team.mission.snapshot" }
+    >,
+  ): void {
+    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
+      if (this.supports(CLIENT_CAPS.teamMissions)) this.emit(message);
+      return;
+    }
+    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
+      if (capabilities.has(CLIENT_CAPS.teamMissions)) this.onMessageToSource(source, message);
     }
   }
 
@@ -1905,6 +1956,7 @@ export class Session {
       this.promptLibrarySession.dispatch(msg) ??
       this.dispatchPluginDirectoryMessage(msg) ??
       this.dispatchPluginMessage(msg) ??
+      this.dispatchTeamMessage(msg, source) ??
       this.dispatchTerminalMessage(msg) ??
       this.dispatchScheduleMessage(msg) ??
       this.dispatchMiscMessage(msg);
@@ -2012,6 +2064,27 @@ export class Session {
     return pluginRuntime.subscribe((pluginId) => {
       this.emit({ type: "status", payload: { status: "plugin_catalog_changed", pluginId } });
     });
+  }
+
+  private dispatchTeamMessage(
+    msg: SessionInboundMessage,
+    source?: object,
+  ): Promise<void> | undefined {
+    if (!isTeamMissionsRequest(msg)) return undefined;
+    if (!this.teamRuntime) {
+      this.emitForSource(
+        teamMissionsUnavailableResponse(msg, "Team Missions is not enabled on this host."),
+        source,
+      );
+      return Promise.resolve();
+    }
+    return this.teamRuntime
+      .handleRequest(msg, {
+        actorId: this.clientId,
+        subscribeMissionRoom: (missionId) => this.teamMissionRoomSubscriptions.add(missionId),
+        unsubscribeMissionRoom: (missionId) => this.teamMissionRoomSubscriptions.delete(missionId),
+      })
+      .then((response) => this.emitForSource(response, source));
   }
 
   private dispatchVoiceAndControlMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -7195,6 +7268,9 @@ export class Session {
   public async cleanup(): Promise<void> {
     this.sessionLogger.trace({}, "agent.session.lifecycle.cleanup");
     this.isCleanedUp = true;
+    this.unsubscribeTeamMissionRoomMessages?.();
+    this.unsubscribeTeamMissionRoomMessages = null;
+    this.teamMissionRoomSubscriptions.clear();
 
     if (this.unsubscribeAgentEvents) {
       this.unsubscribeAgentEvents();

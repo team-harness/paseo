@@ -13,6 +13,10 @@ import type { AgentClient, AgentProvider } from "../agent/agent-sdk-types.js";
 import { createTestAgentClients } from "./fake-agent-client.js";
 import type { PushNotificationSender } from "../push/index.js";
 import type { AgentProfile } from "@getpaseo/protocol/messages";
+import type {
+  TeamMissionsRuntimeOptions,
+  TeamPersistenceFaultInjector,
+} from "../team/team-runtime.js";
 
 interface TestPaseoDaemonOptions {
   daemonVersion?: string;
@@ -47,6 +51,8 @@ interface TestPaseoDaemonOptions {
   webUi?: PaseoDaemonConfig["webUi"];
   trustedProxies?: PaseoDaemonConfig["trustedProxies"];
   agentProfiles?: AgentProfile[];
+  teamMissionsRuntime?: TeamMissionsRuntimeOptions;
+  teamPersistenceFaultInjector?: TeamPersistenceFaultInjector;
 }
 
 export interface TestPaseoDaemon {
@@ -101,6 +107,8 @@ export async function createTestPaseoDaemon(
         daemonStatusRpc: options.daemonStatusRpcCapability,
         relayConfig: options.relayConfigCapability,
       },
+      teamMissionsRuntime: options.teamMissionsRuntime,
+      teamPersistenceFaultInjector: options.teamPersistenceFaultInjector,
     });
     try {
       await startDaemonWithTimeout(daemon, TEST_DAEMON_START_TIMEOUT_MS);
