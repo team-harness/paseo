@@ -17,11 +17,12 @@ export class PaseoTeamRoomAdapter implements TeamRoomPort, TeamMessagePort {
       messageId: input.messageId,
       missionId: input.missionId,
       roomId: input.roomId,
-      author: { kind: "agent", id: input.senderAgentId },
+      author: input.author,
       body: input.body,
-      replyToMessageId: null,
+      replyToMessageId: input.replyToMessageId,
+      mentionAgentIds: input.mentionAgentIds,
     });
-    return { messageId: posted.message.id, cursor: posted.cursor };
+    return { message: posted.message, cursor: posted.cursor };
   }
 
   async read(input: Parameters<TeamMessagePort["read"]>[0]) {

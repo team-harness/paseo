@@ -1017,6 +1017,20 @@ export class OmpAgentSession implements AgentSession {
     return { turnId };
   }
 
+  async steerActiveTurn(
+    prompt: AgentPromptInput,
+    options: { expectedTurnId: string },
+  ): Promise<"delivered" | "not_steerable" | "stale_turn"> {
+    if (this.activeTurnId !== options.expectedTurnId) return "stale_turn";
+    try {
+      const payload = convertPromptInput(prompt, { model: this.state.model });
+      this.runtimeSession.steer(payload.text, payload.images);
+      return "delivered";
+    } catch {
+      return "not_steerable";
+    }
+  }
+
   subscribe(callback: (event: AgentStreamEvent) => void): () => void {
     this.subscribers.add(callback);
     return () => {

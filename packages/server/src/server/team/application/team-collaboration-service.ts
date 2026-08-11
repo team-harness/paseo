@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
 import type {
@@ -35,8 +36,13 @@ import {
 import {
   MissionRevisionConflictError,
   MissionStore,
+  MissionStorageRevisionConflictError,
   type MissionRecoveryState,
 } from "../persistence/mission-store.js";
+import {
+  MissionRoomMessageConflictError,
+  type MissionRoomMessageEvent,
+} from "../persistence/mission-room-store.js";
 import { TeamProfileStore } from "../persistence/profile-store.js";
 import type {
   MissionAcceptedTurnFact,
@@ -65,6 +71,7 @@ import {
 } from "./assignment-replan.js";
 import { planMissionQualityGates } from "./quality-gate-assignments.js";
 import { TeamApplicationError } from "./team-mission-service.js";
+import { resolveMentionedParticipants } from "./team-room-mentions.js";
 import {
   TeamOperationCoordinator,
   type TeamOperationPermit,
@@ -213,6 +220,22 @@ export interface SendTeamMessageResult {
   senderMemberId: string;
   recipientMemberId: string;
   mentionHandle: string;
+}
+
+export interface PostHumanRoomMessageInput {
+  missionId: string;
+  actorId: string;
+  idempotencyKey: string;
+  body: string;
+  replyToMessageId?: string | null;
+}
+
+export interface PostAgentRoomReplyInput {
+  callerAgentId: string;
+  missionId: string;
+  idempotencyKey: string;
+  replyToMessageId: string;
+  body: string;
 }
 
 export interface ReportAssignmentInput {
@@ -812,6 +835,185 @@ export class TeamCollaborationService {
     };
   }
 
+  async postHumanRoomMessage(input: PostHumanRoomMessageInput): Promise<MissionRoomMessageEvent> {
+    const initial = await this.requireOpenMissionForRoomMessage(input.missionId);
+    return this.operations.serialize(initial.mission.teamId, () =>
+      this.serializeMessageMutation(input.missionId, async () => {
+        const body = input.body.trim();
+        if (!body) {
+          throw new TeamApplicationError("empty_team_message", "Team message body is required");
+        }
+
+        const current = await this.requireOpenMissionForRoomMessage(input.missionId);
+        const mentionedParticipants = resolveMentionedParticipants(current.mission, body);
+        const roster = current.mission.rosterSnapshots.find(
+          (candidate) => candidate.revision === current.mission.activeRosterSnapshotRevision,
+        );
+        if (!roster) {
+          throw new TeamApplicationError(
+            "active_roster_not_found",
+            `Mission ${input.missionId} has no active roster snapshot`,
+          );
+        }
+        const mentionAgentIds = mentionedParticipants.map((participant) => participant.agentId);
+        const rosterMembersById = new Map(
+          roster.members.map((member) => [member.memberId, member] as const),
+        );
+        const mentionedMembers = mentionedParticipants.map((participant) => {
+          const member = rosterMembersById.get(participant.memberId);
+          if (!member) {
+            throw new TeamApplicationError(
+              "mission_member_not_found",
+              `Member ${participant.memberId} is absent from the active Mission roster`,
+            );
+          }
+          return { member, participant };
+        });
+        const roomMessageId = humanRoomMessageId(input.missionId, input.idempotencyKey);
+        const requestFingerprint = JSON.stringify({
+          missionId: input.missionId,
+          actorId: input.actorId,
+          body,
+          replyToMessageId: input.replyToMessageId ?? null,
+          recipientMemberIds: mentionedMembers.map(({ member }) => member.memberId),
+        });
+
+        if (mentionedMembers.length > 0) {
+          let persisted = current;
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            const existing = persisted.recipientAttentionOutbox.filter(
+              (candidate) =>
+                candidate.origin === "human_mention" &&
+                candidate.idempotencyKey === input.idempotencyKey,
+            );
+            if (existing.some((candidate) => candidate.requestFingerprint !== requestFingerprint)) {
+              throw new TeamApplicationError(
+                "team_message_idempotency_conflict",
+                `Message key ${input.idempotencyKey} already belongs to a different request`,
+              );
+            }
+            if (existing.length > 0) break;
+            const createdAt = this.options.clock.now();
+            try {
+              persisted = await this.options.missions.updateRecoveryState({
+                missionId: input.missionId,
+                expectedStorageRevision: persisted.storageRevision,
+                update: (recovery) => ({
+                  ...recovery,
+                  recipientAttentionOutbox: [
+                    ...recovery.recipientAttentionOutbox,
+                    ...mentionedMembers.map(({ member, participant }) => ({
+                      origin: "human_mention" as const,
+                      deliveryId: humanMentionDeliveryId(roomMessageId, member.memberId),
+                      idempotencyKey: input.idempotencyKey,
+                      requestFingerprint,
+                      roomMessageId,
+                      actorId: input.actorId,
+                      replyToMessageId: input.replyToMessageId ?? null,
+                      mentionAgentIds,
+                      recipientMemberId: member.memberId,
+                      bindingEpoch: participant.bindingEpoch,
+                      mentionHandle: member.mentionHandle,
+                      body,
+                      roomPostedAt: null,
+                      roomCursor: null,
+                      attempts: 0,
+                      createdAt,
+                      successorDeliveryId: null,
+                      state: "pending" as const,
+                      lastAttemptAt: null,
+                      nextEligibleAt: createdAt,
+                      acknowledgedAt: null,
+                      canceledAt: null,
+                      cancelReason: null,
+                    })),
+                  ],
+                }),
+              });
+              break;
+            } catch (error) {
+              if (!(error instanceof MissionStorageRevisionConflictError) || attempt === 2) {
+                throw error;
+              }
+              persisted = await this.requireOpenMissionForRoomMessage(input.missionId);
+            }
+          }
+          this.indexPendingRecipientMission(persisted);
+        }
+
+        const posted = await this.options.messages.post({
+          messageId: roomMessageId,
+          missionId: input.missionId,
+          roomId: current.mission.chatRoomId,
+          author: { kind: "human", id: input.actorId },
+          body,
+          replyToMessageId: input.replyToMessageId,
+          mentionAgentIds,
+        });
+        if (mentionedMembers.length > 0) {
+          await this.markRoomMessagePosted(input.missionId, roomMessageId, posted.cursor);
+          for (const { member } of mentionedMembers) {
+            await this.processRecipientAttention(
+              input.missionId,
+              humanMentionDeliveryId(roomMessageId, member.memberId),
+            );
+          }
+          await this.refreshPendingRecipientMission(input.missionId);
+        }
+        return { missionId: input.missionId, message: posted.message, cursor: posted.cursor };
+      }),
+    );
+  }
+
+  async postAgentRoomReply(input: PostAgentRoomReplyInput): Promise<MissionRoomMessageEvent> {
+    const initial = await this.requireParticipant(input);
+    return this.operations.serialize(initial.team.id, () =>
+      this.serializeMessageMutation(input.missionId, async () => {
+        const context = await this.requireParticipant(input);
+        assertMissionDispatchOpen(context.storedMission);
+        const body = input.body.trim();
+        if (!body) {
+          throw new TeamApplicationError("empty_team_message", "Team message body is required");
+        }
+        if (parseTeamMentionTokens(body).length > 0) {
+          throw new TeamApplicationError(
+            "additional_mentions_not_allowed",
+            "chat_post replies to the room without notifying Members; remove mentions from body",
+          );
+        }
+        try {
+          const posted = await this.options.messages.post({
+            messageId: agentRoomReplyMessageId(
+              input.missionId,
+              input.callerAgentId,
+              input.idempotencyKey,
+            ),
+            missionId: input.missionId,
+            roomId: context.mission.chatRoomId,
+            author: { kind: "agent", id: context.callerParticipant.agentId },
+            body,
+            replyToMessageId: input.replyToMessageId,
+          });
+          await this.acknowledgeHumanMentionReply({
+            missionId: input.missionId,
+            recipientMemberId: context.callerMember.memberId,
+            replyToMessageId: input.replyToMessageId,
+            idempotencyKey: input.idempotencyKey,
+          });
+          return { missionId: input.missionId, message: posted.message, cursor: posted.cursor };
+        } catch (error) {
+          if (error instanceof MissionRoomMessageConflictError) {
+            throw new TeamApplicationError(
+              "team_message_idempotency_conflict",
+              `Message key ${input.idempotencyKey} already belongs to a different room reply`,
+            );
+          }
+          throw error;
+        }
+      }),
+    );
+  }
+
   async sendTeamMessage(input: SendTeamMessageInput): Promise<SendTeamMessageResult> {
     const initial = await this.requireParticipant(input);
     return this.operations.serialize(initial.team.id, () =>
@@ -927,6 +1129,12 @@ export class TeamCollaborationService {
           await this.processRecipientAttention(input.missionId, delivery.deliveryId);
         }
         await this.refreshPendingRecipientMission(input.missionId);
+        if (delivery.origin === "human_mention") {
+          throw new TeamApplicationError(
+            "team_message_idempotency_conflict",
+            `Message key ${input.idempotencyKey} belongs to a human room message`,
+          );
+        }
         return {
           deliveryId: delivery.deliveryId,
           messageId: delivery.roomMessageId,
@@ -1142,6 +1350,7 @@ export class TeamCollaborationService {
           ],
           recipientAttentionOutbox: state.recipientAttentionOutbox.map((delivery) =>
             delivery.recipientMemberId === context.callerMember.memberId &&
+            delivery.origin !== "human_mention" &&
             delivery.roomCursor !== null &&
             delivery.roomCursor <= nextCursor &&
             (delivery.state === "pending" || delivery.state === "notified")
@@ -1161,6 +1370,55 @@ export class TeamCollaborationService {
     });
     this.indexPendingRecipientMission(updated);
     return page;
+  }
+
+  private async acknowledgeHumanMentionReply(input: {
+    missionId: string;
+    recipientMemberId: string;
+    replyToMessageId: string;
+    idempotencyKey: string;
+  }): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const current = await this.options.missions.get(input.missionId);
+      if (!current) return;
+      const delivery = current.recipientAttentionOutbox.find(
+        (candidate) =>
+          candidate.origin === "human_mention" &&
+          candidate.roomMessageId === input.replyToMessageId &&
+          candidate.recipientMemberId === input.recipientMemberId &&
+          input.idempotencyKey === `${candidate.deliveryId}:ack` &&
+          (candidate.state === "pending" || candidate.state === "notified"),
+      );
+      if (!delivery) return;
+      try {
+        const acknowledgedAt = this.options.clock.now();
+        const updated = await this.options.missions.updateRecoveryState({
+          missionId: input.missionId,
+          expectedStorageRevision: current.storageRevision,
+          update: (state) => ({
+            ...state,
+            recipientAttentionOutbox: state.recipientAttentionOutbox.map((candidate) =>
+              candidate.deliveryId === delivery.deliveryId &&
+              (candidate.state === "pending" || candidate.state === "notified")
+                ? {
+                    ...candidate,
+                    state: "acknowledged" as const,
+                    lastAttemptAt: candidate.lastAttemptAt ?? acknowledgedAt,
+                    nextEligibleAt: null,
+                    acknowledgedAt,
+                    canceledAt: null,
+                    cancelReason: null,
+                  }
+                : candidate,
+            ),
+          }),
+        });
+        this.indexPendingRecipientMission(updated);
+        return;
+      } catch (error) {
+        if (!(error instanceof MissionStorageRevisionConflictError) || attempt === 2) throw error;
+      }
+    }
   }
 
   async reconcilePendingMessages(): Promise<PendingMessageRecoveryResult> {
@@ -1382,6 +1640,8 @@ export class TeamCollaborationService {
     const outcome = await this.options.recipientAttention.attempt({
       deliveryId: delivery.deliveryId,
       missionId,
+      origin: delivery.origin === "human_mention" ? "human_mention" : "agent_message",
+      roomMessageId: delivery.roomMessageId,
       recipientAgentId: participant.agentId,
       bindingEpoch: participant.bindingEpoch,
       attempt: nextAttempt,
@@ -1797,7 +2057,8 @@ export class TeamCollaborationService {
       hasMissionDispatchStopped(beforePost) ||
       !currentDelivery ||
       currentDelivery.state === "canceled" ||
-      currentDelivery.state === "acknowledged"
+      currentDelivery.state === "acknowledged" ||
+      currentDelivery.roomPostedAt !== null
     ) {
       return;
     }
@@ -1805,29 +2066,53 @@ export class TeamCollaborationService {
       messageId: delivery.roomMessageId,
       missionId,
       roomId,
-      senderAgentId: delivery.senderAgentId,
+      author:
+        delivery.origin === "human_mention"
+          ? { kind: "human", id: delivery.actorId }
+          : { kind: "agent", id: delivery.senderAgentId },
       body: delivery.body,
+      ...(delivery.origin === "human_mention"
+        ? {
+            replyToMessageId: delivery.replyToMessageId,
+            mentionAgentIds: delivery.mentionAgentIds,
+          }
+        : { replyToMessageId: null }),
     });
-    const current = await this.options.missions.get(missionId);
-    if (!current) return;
-    await this.options.missions.updateRecoveryState({
-      missionId,
-      expectedStorageRevision: current.storageRevision,
-      update: (state) => ({
-        ...state,
-        recipientAttentionOutbox: state.recipientAttentionOutbox.map((candidate) =>
-          candidate.deliveryId === delivery.deliveryId &&
-          candidate.state !== "canceled" &&
-          candidate.roomPostedAt === null
-            ? {
-                ...candidate,
-                roomPostedAt: this.options.clock.now(),
-                roomCursor: posted.cursor,
-              }
-            : candidate,
-        ),
-      }),
-    });
+    await this.markRoomMessagePosted(missionId, delivery.roomMessageId, posted.cursor);
+  }
+
+  private async markRoomMessagePosted(
+    missionId: string,
+    roomMessageId: string,
+    roomCursor: number,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const current = await this.options.missions.get(missionId);
+      if (!current) return;
+      try {
+        await this.options.missions.updateRecoveryState({
+          missionId,
+          expectedStorageRevision: current.storageRevision,
+          update: (state) => ({
+            ...state,
+            recipientAttentionOutbox: state.recipientAttentionOutbox.map((candidate) =>
+              candidate.roomMessageId === roomMessageId &&
+              candidate.state !== "canceled" &&
+              candidate.roomPostedAt === null
+                ? {
+                    ...candidate,
+                    roomPostedAt: this.options.clock.now(),
+                    roomCursor,
+                  }
+                : candidate,
+            ),
+          }),
+        });
+        return;
+      } catch (error) {
+        if (!(error instanceof MissionStorageRevisionConflictError) || attempt === 2) throw error;
+      }
+    }
   }
 
   private async serializeMessageMutation<T>(missionId: string, operation: () => Promise<T>) {
@@ -1862,6 +2147,20 @@ export class TeamCollaborationService {
       );
     }
     return context;
+  }
+
+  private async requireOpenMissionForRoomMessage(missionId: string): Promise<StoredMission> {
+    const stored = await this.options.missions.get(missionId);
+    if (!stored) {
+      throw new TeamApplicationError("mission_not_found", `Mission ${missionId} does not exist`);
+    }
+    if (isTerminalMission(stored.mission) || hasMissionDispatchStopped(stored)) {
+      throw new TeamApplicationError(
+        "mission_messages_closed",
+        `Mission ${missionId} no longer accepts messages`,
+      );
+    }
+    return stored;
   }
 
   private async requireParticipant(input: {
@@ -3107,6 +3406,31 @@ function projectAssignmentReplanAttention(input: {
 
 function addMilliseconds(timestamp: string, milliseconds: number): string {
   return new Date(Date.parse(timestamp) + milliseconds).toISOString();
+}
+
+function humanRoomMessageId(missionId: string, idempotencyKey: string): string {
+  return `human-room:${createHash("sha256")
+    .update(`${missionId}\0${idempotencyKey}`)
+    .digest("hex")
+    .slice(0, 32)}`;
+}
+
+function humanMentionDeliveryId(roomMessageId: string, memberId: string): string {
+  return `${roomMessageId}:mention:${createHash("sha256")
+    .update(memberId)
+    .digest("hex")
+    .slice(0, 16)}`;
+}
+
+function agentRoomReplyMessageId(
+  missionId: string,
+  callerAgentId: string,
+  idempotencyKey: string,
+): string {
+  return `agent-room:${createHash("sha256")
+    .update(`${missionId}\0${callerAgentId}\0${idempotencyKey}`)
+    .digest("hex")
+    .slice(0, 32)}`;
 }
 
 function isTerminalAcceptedTurnFact<Fact extends { outcome: AcceptedTurnFact["outcome"] }>(

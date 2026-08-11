@@ -4,6 +4,7 @@ import type {
   TeamExecutionProfile,
   TeamMission,
   TeamRoomMessage,
+  TeamRoomMessageAuthor,
   TeamV2,
 } from "@getpaseo/protocol/team/v2-types";
 
@@ -85,9 +86,11 @@ export interface TeamMessagePort {
     messageId: string;
     missionId: string;
     roomId: string;
-    senderAgentId: string;
+    author: TeamRoomMessageAuthor;
     body: string;
-  }): Promise<{ messageId: string; cursor: number }>;
+    replyToMessageId?: string | null;
+    mentionAgentIds?: readonly string[];
+  }): Promise<{ message: TeamRoomMessage; cursor: number }>;
   read(input: {
     missionId: string;
     roomId: string;
@@ -123,20 +126,13 @@ export interface TeamRecipientAttentionPort {
   attempt(input: {
     deliveryId: string;
     missionId: string;
+    origin: "agent_message" | "human_mention";
+    roomMessageId: string;
     recipientAgentId: string;
     bindingEpoch: number;
     attempt: number;
   }): Promise<TeamRecipientAttentionAttempt>;
   onEligibilityChange(listener: (agentId: string) => Promise<void>): void;
-}
-
-export interface TeamRoomMentionWakePort {
-  wake(input: {
-    messageId: string;
-    missionId: string;
-    recipientAgentId: string;
-    bindingEpoch: number;
-  }): Promise<void>;
 }
 
 export interface TeamRuntimeEventPort {

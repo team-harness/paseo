@@ -510,6 +510,12 @@ type ActiveManagedAgent =
 type LiveManagedAgent = ActiveManagedAgent;
 /** `null` removes the label; a string sets it. Absent keys are left alone. */
 export type AgentLabelPatch = Record<string, string | null>;
+export type AgentActiveTurnDeliveryStatus =
+  | "delivered"
+  | "not_running"
+  | "not_steerable"
+  | "stale_turn"
+  | "unsupported";
 
 function attachManagedTurnIdentity(
   agent: ActiveManagedAgent,
@@ -1152,6 +1158,22 @@ export class AgentManager {
   getAgent(id: string): ManagedAgent | null {
     const agent = this.agents.get(id);
     return agent ? { ...agent } : null;
+  }
+
+  async steerActiveTurn(input: {
+    agentId: string;
+    prompt: AgentPromptInput;
+    clientMessageId: string;
+  }): Promise<{ status: AgentActiveTurnDeliveryStatus; turnId: string | null }> {
+    const agent = this.requireSessionAgent(input.agentId);
+    const turnId = agent.activeForegroundTurnId;
+    if (!turnId) return { status: "not_running", turnId: null };
+    if (!agent.session.steerActiveTurn) return { status: "unsupported", turnId };
+    const status = await agent.session.steerActiveTurn(input.prompt, {
+      expectedTurnId: turnId,
+      clientMessageId: input.clientMessageId,
+    });
+    return { status, turnId };
   }
 
   async waitForAgentClose(agentId: string): Promise<void> {
