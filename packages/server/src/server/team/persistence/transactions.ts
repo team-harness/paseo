@@ -293,7 +293,7 @@ function missionFromStartIntent(
   return {
     id: intent.missionId,
     teamId: profile.profile.id,
-    workspaceId: profile.profile.workspaceId,
+    workspaceId: intent.workspaceId,
     objective: intent.objective,
     constraints: intent.constraints,
     acceptanceCriteria: intent.acceptanceCriteria,
@@ -337,6 +337,12 @@ function assertMissionMatchesIntent(
       `start key resolved Mission ${mission.mission.id}, expected ${intent.missionId}`,
     );
   }
+  if (mission.mission.workspaceId !== intent.workspaceId) {
+    throw new TeamPersistenceTransactionConflictError(
+      profile.profile.id,
+      `start intent targets workspace ${intent.workspaceId}, but Mission ${mission.mission.id} targets ${mission.mission.workspaceId}`,
+    );
+  }
 }
 
 function assertMissionBelongsToProfile(profile: StoredTeamProfile, mission: StoredMission): void {
@@ -344,12 +350,6 @@ function assertMissionBelongsToProfile(profile: StoredTeamProfile, mission: Stor
     throw new TeamPersistenceTransactionConflictError(
       profile.profile.id,
       `Mission ${mission.mission.id} belongs to ${mission.mission.teamId}`,
-    );
-  }
-  if (mission.mission.workspaceId !== profile.profile.workspaceId) {
-    throw new TeamPersistenceTransactionConflictError(
-      profile.profile.id,
-      `Mission ${mission.mission.id} belongs to workspace ${mission.mission.workspaceId}`,
     );
   }
 }

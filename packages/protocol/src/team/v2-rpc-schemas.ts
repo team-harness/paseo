@@ -116,6 +116,9 @@ export const TeamMissionStartRequestSchema = z.object({
   idempotencyKey: z.string().min(1),
   teamId: z.string().min(1),
   expectedTeamRevision: z.number().int().nonnegative(),
+  // COMPAT(globalTeamProfiles): added in v0.3.1, remove optional after 2027-02-11
+  // once every supported client sends the Mission workspace explicitly.
+  workspaceId: z.string().min(1).optional(),
   objective: z.string().min(1),
   constraints: z.array(z.string().min(1)),
   acceptanceCriteria: z.array(z.string().min(1)).min(1),

@@ -55,6 +55,7 @@ function startIntent(): TeamMissionStartIntent {
     idempotencyKey: "start-key-reconcile",
     requestFingerprint: "start-fingerprint-reconcile",
     expectedTeamRevision: 1,
+    workspaceId: profile.workspaceId,
     missionId: "mission-reconcile",
     chatRoomId: "room-reconcile",
     teamName: profile.name,
@@ -163,10 +164,10 @@ describe("TeamPersistenceReconciler", () => {
           teamId: "team-reconcile",
           missionId: "mission-reconcile",
           intentId: "start-team-reconcile",
-          stage: stage === "reserved" ? "mission_written" : stage,
+          stage,
         },
       ]);
-      expect(await missions.list()).toHaveLength(1);
+      expect(await missions.list()).toHaveLength(stage === "reserved" ? 0 : 1);
     },
   );
 
@@ -460,7 +461,7 @@ describe("TeamPersistenceReconciler", () => {
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  test("isolates a corrupt Team profile while a healthy Team start advances", async () => {
+  test("isolates a corrupt Team profile while a healthy Team start remains recoverable", async () => {
     await createActiveMission(profiles, missions);
     const healthyProfile = {
       ...teamProfile(),
@@ -512,9 +513,9 @@ describe("TeamPersistenceReconciler", () => {
       teamId: "team-healthy",
       missionId: "mission-healthy",
       intentId: "start-team-healthy",
-      stage: "mission_written",
+      stage: "reserved",
     });
-    expect(await missions.get("mission-healthy")).not.toBeNull();
+    expect(await missions.get("mission-healthy")).toBeNull();
   });
 
   test("surfaces a nonterminal Mission that is no longer active on its Team", async () => {
@@ -536,41 +537,72 @@ describe("TeamPersistenceReconciler", () => {
     ]);
   });
 
-  test.each([
-    ["teamId", "team-other", "active_mission_team_mismatch"],
-    ["workspaceId", "workspace-other", "active_mission_workspace_mismatch"],
-  ] as const)("rejects an active Mission with the wrong %s", async (field, value, code) => {
+  test.each([["teamId", "team-other", "active_mission_team_mismatch"]] as const)(
+    "rejects an active Mission with the wrong %s",
+    async (field, value, code) => {
+      await createActiveMission(profiles, missions);
+      const missionPath = join(rootDirectory, "missions", "mission-reconcile.json");
+      const stored = JSON.parse(await readFile(missionPath, "utf8"));
+      stored.mission[field] = value;
+      await writeFile(missionPath, JSON.stringify(stored), "utf8");
+
+      const result = await createReconciler(profiles, missions).reconcile();
+
+      expect(result.actions).toContainEqual({
+        kind: "persistence_attention",
+        teamId: "team-reconcile",
+        missionId: "mission-reconcile",
+        code,
+      });
+      expect((await profiles.get("team-reconcile"))?.profile.activeMissionId).toBe(
+        "mission-reconcile",
+      );
+      expect((await profiles.get("team-reconcile"))?.persistenceAttentions).toEqual([
+        {
+          attentionId: `mission-reconcile:${code}`,
+          missionId: "mission-reconcile",
+          code,
+          detectedAt: NOW,
+        },
+      ]);
+    },
+  );
+
+  test("keeps an active Mission linked when it runs outside the Team creation workspace", async () => {
     await createActiveMission(profiles, missions);
     const missionPath = join(rootDirectory, "missions", "mission-reconcile.json");
     const stored = JSON.parse(await readFile(missionPath, "utf8"));
-    stored.mission[field] = value;
+    stored.mission.workspaceId = "workspace-other";
+    await writeFile(missionPath, JSON.stringify(stored), "utf8");
+
+    await expect(createReconciler(profiles, missions).reconcile()).resolves.toEqual({
+      actions: [],
+    });
+  });
+
+  test("fences start recovery when the Mission workspace differs from its intent", async () => {
+    await createMissionWrittenStart(profiles, missions);
+    const missionPath = join(rootDirectory, "missions", "mission-reconcile.json");
+    const stored = JSON.parse(await readFile(missionPath, "utf8"));
+    stored.mission.workspaceId = "workspace-other";
     await writeFile(missionPath, JSON.stringify(stored), "utf8");
 
     const result = await createReconciler(profiles, missions).reconcile();
 
-    expect(result.actions).toContainEqual({
-      kind: "persistence_attention",
-      teamId: "team-reconcile",
-      missionId: "mission-reconcile",
-      code,
-    });
-    expect((await profiles.get("team-reconcile"))?.profile.activeMissionId).toBe(
-      "mission-reconcile",
-    );
-    expect((await profiles.get("team-reconcile"))?.persistenceAttentions).toEqual([
+    expect(result.actions).toEqual([
       {
-        attentionId: `mission-reconcile:${code}`,
+        kind: "persistence_attention",
+        teamId: "team-reconcile",
         missionId: "mission-reconcile",
-        code,
-        detectedAt: NOW,
+        code: "start_intent_mission_workspace_mismatch",
       },
     ]);
+    expect(result.actions).not.toContainEqual(
+      expect.objectContaining({ kind: "resume_mission_start" }),
+    );
   });
 
-  test.each([
-    ["teamId", "team-other", "archive_mission_team_mismatch"],
-    ["workspaceId", "workspace-other", "archive_mission_workspace_mismatch"],
-  ] as const)(
+  test.each([["teamId", "team-other", "archive_mission_team_mismatch"]] as const)(
     "does not resume Team archive when its Mission has the wrong %s",
     async (field, value, code) => {
       await createActiveMission(profiles, missions);

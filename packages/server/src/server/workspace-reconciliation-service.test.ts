@@ -20,6 +20,7 @@ import {
   WorkspaceReconciliationService,
 } from "./workspace-reconciliation-service.js";
 import { deriveProjectKey } from "./project-key.js";
+import { WorkspaceLifecycleCoordinator } from "./workspace-lifecycle-coordinator.js";
 
 function canonicalLocalProjectKey(rootPath: string): string {
   return deriveProjectKey({
@@ -84,10 +85,17 @@ function createTestRegistries() {
     upsert: async (record: PersistedWorkspaceRecord) => {
       workspaces.set(record.workspaceId, record);
     },
+    beginArchive: async (id, intent) => {
+      const existing = workspaces.get(id);
+      if (!existing || existing.archivedAt || existing.archiveIntent) return existing ?? null;
+      const updated = { ...existing, archiveIntent: intent, updatedAt: intent.requestedAt };
+      workspaces.set(id, updated);
+      return updated;
+    },
     archive: async (id: string, archivedAt: string) => {
       const existing = workspaces.get(id);
       if (existing) {
-        workspaces.set(id, { ...existing, archivedAt, updatedAt: archivedAt });
+        workspaces.set(id, { ...existing, archivedAt, archiveIntent: null, updatedAt: archivedAt });
       }
     },
     remove: async (id: string) => {
@@ -330,10 +338,26 @@ describe("WorkspaceReconciliationService", () => {
         updatedAt: timestamp,
       }),
     );
+    const lifecycle = new WorkspaceLifecycleCoordinator();
+    const lifecycleEvents: string[] = [];
+    lifecycle.registerArchivePreparation(async (workspaceId) => {
+      lifecycleEvents.push(`prepare:${workspaceId}`);
+    });
+    const beginArchive = workspaceRegistry.beginArchive?.bind(workspaceRegistry);
+    workspaceRegistry.beginArchive = async (...args) => {
+      lifecycleEvents.push(`begin:${args[0]}`);
+      return beginArchive?.(...args) ?? null;
+    };
+    const archiveWorkspace = workspaceRegistry.archive.bind(workspaceRegistry);
+    workspaceRegistry.archive = async (...args) => {
+      lifecycleEvents.push(`archive:${args[0]}`);
+      return archiveWorkspace(...args);
+    };
     const service = new WorkspaceReconciliationService({
       projectRegistry,
       workspaceRegistry,
       logger: createTestLogger(),
+      workspaceLifecycle: lifecycle,
     });
 
     const metadataResult = await service.reconcileGitMetadata();
@@ -365,6 +389,7 @@ describe("WorkspaceReconciliationService", () => {
       },
     ]);
     expect(workspaces.get("w1")?.archivedAt).toEqual(expect.any(String));
+    expect(lifecycleEvents).toEqual(["begin:w1", "prepare:w1", "archive:w1"]);
   });
 
   test("reads fresh checkout facts on every metadata pass", async () => {
@@ -648,6 +673,48 @@ describe("WorkspaceReconciliationService", () => {
     expect(workspaces.get("w1")?.archivedAt).toEqual(expect.any(String));
   });
 
+  test("delegates missing workspace teardown to the centralized archive saga", async () => {
+    const { projects, workspaces, projectRegistry, workspaceRegistry } = createTestRegistries();
+    projects.set(
+      "p1",
+      createPersistedProjectRecord({
+        projectId: "p1",
+        rootPath: "/tmp/does-not-exist-centralized-archive",
+        kind: "non_git",
+        displayName: "ghost",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+    workspaces.set(
+      "w1",
+      createPersistedWorkspaceRecord({
+        workspaceId: "w1",
+        projectId: "p1",
+        cwd: "/tmp/does-not-exist-centralized-archive",
+        kind: "directory",
+        displayName: "ghost",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+    const calls: string[] = [];
+    const service = new WorkspaceReconciliationService({
+      projectRegistry,
+      workspaceRegistry,
+      logger: createTestLogger(),
+      archiveMissingWorkspace: async (workspaceId, requestId) => {
+        calls.push(`${workspaceId}:${requestId}`);
+        await workspaceRegistry.archive(workspaceId, "2026-08-11T00:00:00.000Z");
+      },
+    });
+
+    await service.runOnce();
+
+    expect(calls).toEqual(["w1:workspace-reconciliation:w1"]);
+    expect(workspaces.get("w1")?.archivedAt).toBe("2026-08-11T00:00:00.000Z");
+  });
+
   test("keeps a project active after all its workspaces are archived", async () => {
     const { projects, workspaces, projectRegistry, workspaceRegistry } = createTestRegistries();
 
@@ -705,6 +772,7 @@ describe("WorkspaceReconciliationService", () => {
       createdAt: timestamp,
       updatedAt: expect.any(String),
       archivedAt: expect.any(String),
+      archiveIntent: null,
       autoArchivedChangeRequestUrl: null,
     });
     expect(projects.get("p1")).toEqual(project);

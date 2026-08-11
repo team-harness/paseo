@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -11,6 +11,7 @@ import { TeamProfileStore } from "./profile-store.js";
 import type { TeamMissionFinishIntent, TeamMissionStartIntent } from "./schemas.js";
 import {
   TeamMissionPersistenceTransactions,
+  TeamPersistenceTransactionConflictError,
   type TeamPersistenceFaultPoint,
 } from "./transactions.js";
 
@@ -53,6 +54,7 @@ function startIntent(): TeamMissionStartIntent {
     idempotencyKey: "start-key-transaction",
     requestFingerprint: "start-fingerprint-transaction",
     expectedTeamRevision: 1,
+    workspaceId: profile.workspaceId,
     missionId: "mission-transaction",
     chatRoomId: "room-transaction",
     teamName: profile.name,
@@ -193,6 +195,37 @@ describe("TeamMissionPersistenceTransactions", () => {
     },
   );
 
+  test("materializes the Mission from the intent workspace instead of the Team creation workspace", async () => {
+    const stores = createStores(profileDirectory, missionDirectory);
+    await createProfile(stores.profiles);
+
+    const persisted = await new TeamMissionPersistenceTransactions(stores).beginMissionStart({
+      teamId: "team-transaction",
+      intent: { ...startIntent(), workspaceId: "workspace-delivery" },
+    });
+
+    expect(persisted.profile.profile.workspaceId).toBe("workspace-transaction");
+    expect(persisted.mission.mission.workspaceId).toBe("workspace-delivery");
+  });
+
+  test("rejects recovery when the durable Mission workspace differs from its start intent", async () => {
+    const stores = createStores(profileDirectory, missionDirectory);
+    await createProfile(stores.profiles);
+    const transaction = new TeamMissionPersistenceTransactions(stores);
+    await transaction.beginMissionStart({
+      teamId: "team-transaction",
+      intent: startIntent(),
+    });
+    const missionPath = join(missionDirectory, "mission-transaction.json");
+    const stored = JSON.parse(await readFile(missionPath, "utf8"));
+    stored.mission.workspaceId = "workspace-other";
+    await writeFile(missionPath, JSON.stringify(stored), "utf8");
+
+    await expect(
+      transaction.beginMissionStart({ teamId: "team-transaction", intent: startIntent() }),
+    ).rejects.toBeInstanceOf(TeamPersistenceTransactionConflictError);
+  });
+
   test("replays Mission start after the Lead participant write", async () => {
     const stores = createStores(profileDirectory, missionDirectory);
     await beginMissionWritten(stores.profiles, stores.missions);
@@ -294,6 +327,10 @@ describe("TeamMissionPersistenceTransactions", () => {
         to,
       });
     }
+    await restarted.missions.prepareFinishEvidence({
+      missionId: "mission-transaction",
+      intentId: "finish-mission-transaction",
+    });
     const terminal = await new TeamMissionPersistenceTransactions(restarted).commitMissionFinish({
       teamId: "team-transaction",
       missionId: "mission-transaction",
@@ -328,6 +365,10 @@ describe("TeamMissionPersistenceTransactions", () => {
         to,
       });
     }
+    await stores.missions.prepareFinishEvidence({
+      missionId: "mission-transaction",
+      intentId: "finish-mission-transaction",
+    });
     const crashing = new TeamMissionPersistenceTransactions({
       ...stores,
       faultInjector: throwOnceAt("after_mission_finalize"),

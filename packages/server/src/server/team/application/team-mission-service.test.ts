@@ -10,9 +10,15 @@ import type {
 import type { MissionAttentionItem, TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
+import { archiveByScope, type ArchiveDependencies } from "../../workspace-archive-service.js";
+import {
+  type WorkspaceLifecyclePort,
+  WorkspaceLifecycleCoordinator,
+} from "../../workspace-lifecycle-coordinator.js";
 import { MissionStore } from "../persistence/mission-store.js";
 import { TeamProfileStore } from "../persistence/profile-store.js";
 import { TeamPersistenceReconciler } from "../persistence/reconciliation.js";
+import type { TeamMissionStartIntent } from "../persistence/schemas.js";
 import type {
   TeamPersistenceFaultInjector,
   TeamPersistenceFaultPoint,
@@ -122,6 +128,233 @@ describe("TeamMissionService lifecycle", () => {
     });
     expect(mission.participants).toHaveLength(1);
     expect((await fixture.profiles.get(team.id))?.profile.activeMissionId).toBe(mission.id);
+  });
+
+  test("starts a global Team Mission in the requested active workspace", async () => {
+    const fixture = createFixture(rootDirectory, {
+      activeWorkspaceIds: ["workspace-sdk", "workspace-delivery"],
+    });
+    const team = await createTeam(fixture.service);
+
+    const mission = await fixture.service.startMission({
+      idempotencyKey: "start-cross-workspace",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      workspaceId: "workspace-delivery",
+      objective: "Deliver from another workspace",
+      constraints: [],
+      acceptanceCriteria: ["The Lead runs in the requested workspace"],
+    });
+
+    expect(mission.workspaceId).toBe("workspace-delivery");
+    expect(fixture.leadWorkspaces).toEqual(["workspace-delivery"]);
+    expect((await fixture.profiles.get(team.id))?.profile.workspaceId).toBe("workspace-sdk");
+  });
+
+  test("rejects an unknown workspace before persisting Mission or runtime side effects", async () => {
+    const fixture = createFixture(rootDirectory);
+    const team = await createTeam(fixture.service);
+
+    await expect(
+      fixture.service.startMission({
+        idempotencyKey: "start-missing-workspace",
+        teamId: team.id,
+        expectedTeamRevision: team.revision,
+        workspaceId: "workspace-missing",
+        objective: "Do not start",
+        constraints: [],
+        acceptanceCriteria: ["No Mission is persisted"],
+      }),
+    ).rejects.toMatchObject({ code: "workspace_not_found" });
+
+    expect(await fixture.missions.list()).toEqual([]);
+    expect(fixture.effects).toEqual([]);
+    expect((await fixture.profiles.get(team.id))?.startIntent).toBeNull();
+  });
+
+  test("normalizes omitted and explicit creation workspaces before idempotency comparison", async () => {
+    const fixture = createFixture(rootDirectory);
+    const team = await createTeam(fixture.service);
+    const request = {
+      idempotencyKey: "start-normalized-workspace",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      objective: "Normalize the effective workspace",
+      constraints: [],
+      acceptanceCriteria: ["One Mission exists"],
+    };
+
+    const first = await fixture.service.startMission(request);
+    const replay = await fixture.service.startMission({
+      ...request,
+      workspaceId: " workspace-sdk ",
+    });
+
+    expect(replay.id).toBe(first.id);
+    expect(await fixture.missions.list()).toHaveLength(1);
+    expect(fixture.effects).toEqual(["room:room-1:mission_written", "lead:agent-1:room_created"]);
+  });
+
+  test("rejects a replay key that changes the effective workspace", async () => {
+    const fixture = createFixture(rootDirectory, {
+      activeWorkspaceIds: ["workspace-sdk", "workspace-delivery"],
+    });
+    const team = await createTeam(fixture.service);
+    const request = {
+      idempotencyKey: "start-workspace-conflict",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      objective: "Keep one workspace per start key",
+      constraints: [],
+      acceptanceCriteria: ["A changed workspace conflicts"],
+    };
+    await fixture.service.startMission({ ...request, workspaceId: "workspace-sdk" });
+
+    await expect(
+      fixture.service.startMission({ ...request, workspaceId: "workspace-delivery" }),
+    ).rejects.toMatchObject({ code: "mission_start_conflict" });
+    expect(await fixture.missions.list()).toHaveLength(1);
+    expect(fixture.leadWorkspaces).toEqual(["workspace-sdk"]);
+  });
+
+  test("rejects start without side effects when real workspace archive wins the lifecycle fence", async () => {
+    const workspaceLifecycle = new WorkspaceLifecycleCoordinator();
+    let active = true;
+    let archiveIntentClaimed = false;
+    let releaseArchiveClaim!: () => void;
+    let markArchiveClaimEntered!: () => void;
+    const archiveClaimGate = new Promise<void>((resolve) => {
+      releaseArchiveClaim = resolve;
+    });
+    const archiveClaimEntered = new Promise<void>((resolve) => {
+      markArchiveClaimEntered = resolve;
+    });
+    const fixture = createFixture(rootDirectory, {
+      workspaceLifecycle,
+      isWorkspaceActive: () => active && !archiveIntentClaimed,
+    });
+    const team = await createTeam(fixture.service);
+    const unregister = workspaceLifecycle.registerArchivePreparation(async (workspaceId) => {
+      await fixture.service.prepareWorkspaceArchive(workspaceId);
+    });
+    const archive = archiveByScope(
+      createMissionArchiveDependencies({
+        workspaceLifecycle,
+        isActive: () => active,
+        beginWorkspaceArchive: async () => {
+          archiveIntentClaimed = true;
+          markArchiveClaimEntered();
+          await archiveClaimGate;
+          return null;
+        },
+        archiveWorkspaceRecord: async () => {
+          active = false;
+          archiveIntentClaimed = false;
+        },
+      }),
+      {
+        scope: { kind: "workspace", workspaceId: "workspace-sdk" },
+        requestId: "archive-wins-start",
+      },
+    );
+    await archiveClaimEntered;
+    const start = fixture.service.startMission({
+      idempotencyKey: "archive-wins-start",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      workspaceId: "workspace-sdk",
+      objective: "Do not outlive the workspace",
+      constraints: [],
+      acceptanceCriteria: ["No Mission is created"],
+    });
+    releaseArchiveClaim();
+    await archive;
+    unregister();
+
+    await expect(start).rejects.toMatchObject({ code: "workspace_not_found" });
+    expect(await fixture.missions.list()).toEqual([]);
+    expect(fixture.effects).toEqual([]);
+  });
+
+  test("finishes start before real workspace archive claims its intent when start wins the fence", async () => {
+    const workspaceLifecycle = new WorkspaceLifecycleCoordinator();
+    let active = true;
+    let archiveIntentClaimed = false;
+    let releaseWorkspaceCheck!: () => void;
+    let markWorkspaceCheckEntered!: () => void;
+    let markArchiveFenceRequested!: () => void;
+    const workspaceCheckGate = new Promise<void>((resolve) => {
+      releaseWorkspaceCheck = resolve;
+    });
+    const workspaceCheckEntered = new Promise<void>((resolve) => {
+      markWorkspaceCheckEntered = resolve;
+    });
+    const archiveFenceRequested = new Promise<void>((resolve) => {
+      markArchiveFenceRequested = resolve;
+    });
+    const fixture = createFixture(rootDirectory, {
+      workspaceLifecycle,
+      beforeWorkspaceActiveCheck: async () => {
+        markWorkspaceCheckEntered();
+        await workspaceCheckGate;
+      },
+      isWorkspaceActive: () => active && !archiveIntentClaimed,
+    });
+    const team = await createTeam(fixture.service);
+    const unregister = workspaceLifecycle.registerArchivePreparation(async (workspaceId) => {
+      await fixture.service.prepareWorkspaceArchive(workspaceId);
+    });
+    const start = fixture.service.startMission({
+      idempotencyKey: "start-wins-archive",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      objective: "Finish start before archive cleanup",
+      constraints: [],
+      acceptanceCriteria: ["The Mission is canceled before teardown"],
+    });
+    await workspaceCheckEntered;
+    const archiveLifecycle: WorkspaceLifecyclePort = {
+      serialize: (workspaceIds, operation) => {
+        markArchiveFenceRequested();
+        return workspaceLifecycle.serialize(workspaceIds, operation);
+      },
+      serializeBackingDirectories: (backingDirectories, operation) =>
+        workspaceLifecycle.serializeBackingDirectories(backingDirectories, operation),
+      prepareForArchive: (workspaceId) => workspaceLifecycle.prepareForArchive(workspaceId),
+    };
+    const archive = archiveByScope(
+      createMissionArchiveDependencies({
+        workspaceLifecycle: archiveLifecycle,
+        isActive: () => active,
+        beginWorkspaceArchive: async () => {
+          archiveIntentClaimed = true;
+          return null;
+        },
+        archiveWorkspaceRecord: async () => {
+          active = false;
+          archiveIntentClaimed = false;
+        },
+      }),
+      {
+        scope: { kind: "workspace", workspaceId: "workspace-sdk" },
+        requestId: "start-wins-archive",
+      },
+    );
+    await archiveFenceRequested;
+    const intentClaimedBeforeStartFinished = archiveIntentClaimed;
+    releaseWorkspaceCheck();
+    const started = await start;
+    await archive;
+    unregister();
+    const terminal = await fixture.service.inspectMission(started.id);
+
+    expect(intentClaimedBeforeStartFinished).toBe(false);
+    expect(terminal).toMatchObject({ id: started.id, status: "canceled" });
+    expect(fixture.effects).toEqual([
+      "room:room-1:mission_written",
+      "lead:agent-1:room_created",
+      "archive:agent-1",
+    ]);
   });
 
   test("persists one scoped Attention for repeated scheduler recovery failures", async () => {
@@ -633,6 +866,55 @@ describe("TeamMissionService lifecycle", () => {
     expect(archived).toMatchObject({ lifecycle: "archived", activeMissionId: null });
     expect((await fixture.missions.get(mission.id))?.mission.status).toBe("canceled");
     expect(fixture.effects).toEqual(["archive:agent-1"]);
+  });
+
+  test("prepares workspace archive by canceling its Mission without archiving the Team", async () => {
+    const fixture = createFixture(rootDirectory, {
+      activeWorkspaceIds: ["workspace-sdk", "workspace-delivery"],
+    });
+    const team = await createTeam(fixture.service);
+    const mission = await fixture.service.startMission({
+      idempotencyKey: "start-before-workspace-archive",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      workspaceId: "workspace-delivery",
+      objective: "Cancel work before workspace teardown",
+      constraints: [],
+      acceptanceCriteria: ["The Team remains reusable"],
+    });
+    fixture.effects.length = 0;
+
+    const terminal = await fixture.service.prepareWorkspaceArchive("workspace-delivery");
+
+    expect(terminal).toMatchObject([{ id: mission.id, status: "canceled" }]);
+    expect((await fixture.profiles.get(team.id))?.profile).toMatchObject({
+      lifecycle: "active",
+      activeMissionId: null,
+      workspaceId: "workspace-sdk",
+    });
+    expect(fixture.effects).toEqual(["archive:agent-1"]);
+  });
+
+  test("prepares workspace archive by canceling a profile-only pending Mission start", async () => {
+    const fixture = createFixture(rootDirectory);
+    const team = await createTeam(fixture.service);
+    await fixture.profiles.beginMissionStart({
+      teamId: team.id,
+      intent: pendingMissionStartIntent(team),
+    });
+    expect(await fixture.missions.list()).toEqual([]);
+
+    const terminal = await fixture.service.prepareWorkspaceArchive("workspace-sdk");
+
+    expect(terminal).toMatchObject([
+      { id: "mission-pending-archive", workspaceId: "workspace-sdk", status: "canceled" },
+    ]);
+    expect(await fixture.profiles.get(team.id)).toMatchObject({
+      profile: { lifecycle: "active", activeMissionId: null },
+      startIntent: null,
+    });
+    expect(fixture.effects).toEqual(["archive:agent-pending-archive"]);
+    expect(fixture.leadWorkspaces).toEqual([]);
   });
 
   test("archives a Team whose active Mission is durably marked missing", async () => {
@@ -3221,6 +3503,47 @@ function addLeadUnavailableAttention(missions: MissionStore, mission: TeamMissio
   });
 }
 
+function createMissionArchiveDependencies(input: {
+  workspaceLifecycle: WorkspaceLifecyclePort;
+  isActive: () => boolean;
+  beginWorkspaceArchive: NonNullable<ArchiveDependencies["beginWorkspaceArchive"]>;
+  archiveWorkspaceRecord: ArchiveDependencies["archiveWorkspaceRecord"];
+}): ArchiveDependencies {
+  return {
+    github: {} as ArchiveDependencies["github"],
+    workspaceGitService: {
+      getSnapshot: async () => null,
+    } as ArchiveDependencies["workspaceGitService"],
+    agentManager: {
+      listAgents: () => [],
+      getAgent: () => null,
+      archiveAgent: async () => ({ archivedAt: NOW }),
+      archiveSnapshot: async () => ({}),
+    } as ArchiveDependencies["agentManager"],
+    agentStorage: {
+      listByWorkspace: async () => [],
+    } as ArchiveDependencies["agentStorage"],
+    findWorkspaceIdForCwd: async () => "workspace-sdk",
+    listActiveWorkspaces: async () =>
+      input.isActive()
+        ? [
+            {
+              workspaceId: "workspace-sdk",
+              cwd: "/tmp/workspace-sdk",
+              kind: "local_checkout" as const,
+            },
+          ]
+        : [],
+    beginWorkspaceArchive: input.beginWorkspaceArchive,
+    archiveWorkspaceRecord: input.archiveWorkspaceRecord,
+    emitWorkspaceUpdatesForWorkspaceIds: async () => undefined,
+    markWorkspaceArchiving: () => undefined,
+    clearWorkspaceArchiving: () => undefined,
+    killTerminalsForWorkspace: async () => undefined,
+    workspaceLifecycle: input.workspaceLifecycle,
+  };
+}
+
 function createFixture(
   rootDirectory: string,
   options?: {
@@ -3232,12 +3555,16 @@ function createFixture(
     failArchiveOnce?: boolean;
     failArchiveAgentIds?: string[];
     beforeCapabilityResolve?: () => Promise<void>;
+    beforeWorkspaceActiveCheck?: () => Promise<void>;
     beforeLeadCreate?: () => Promise<void>;
     beforeArchive?: () => Promise<void>;
     operations?: TeamOperationCoordinator;
     finishQuiescence?: TeamMissionFinishQuiescencePort;
     persistenceFaultInjector?: TeamPersistenceFaultInjector;
     failTerminalMissionPublishOnce?: boolean;
+    activeWorkspaceIds?: string[];
+    isWorkspaceActive?: (workspaceId: string) => boolean;
+    workspaceLifecycle?: WorkspaceLifecyclePort;
   },
 ) {
   const logger = createTestLogger();
@@ -3252,6 +3579,7 @@ function createFixture(
     now: () => NOW,
   });
   const effects: string[] = [];
+  const leadWorkspaces: string[] = [];
   const roomNames: string[] = [];
   const liveAgents = options?.liveAgents ?? new Set<string>();
   const roomsDeleted: string[] = [];
@@ -3283,6 +3611,7 @@ function createFixture(
       await options?.beforeLeadCreate?.();
       const stage = (await profiles.get(input.teamId))?.startIntent?.stage;
       effects.push(`lead:${input.agentId}:${stage}`);
+      leadWorkspaces.push(input.workspaceId);
       if (failLead) {
         failLead = false;
         throw new Error("simulated Lead creation crash");
@@ -3359,6 +3688,16 @@ function createFixture(
         },
       },
       operations: options?.operations ?? (serviceCount === 0 ? operations : undefined),
+      workspaces: {
+        isActive: async (workspaceId) => {
+          await options?.beforeWorkspaceActiveCheck?.();
+          return (
+            options?.isWorkspaceActive?.(workspaceId) ??
+            (options?.activeWorkspaceIds ?? ["workspace-sdk"]).includes(workspaceId)
+          );
+        },
+      },
+      workspaceLifecycle: options?.workspaceLifecycle,
       persistenceFaultInjector: options?.persistenceFaultInjector,
       finishQuiescence: options?.finishQuiescence ?? {
         prepareEvidence: async () => undefined,
@@ -3372,6 +3711,7 @@ function createFixture(
     profiles,
     missions,
     effects,
+    leadWorkspaces,
     roomNames,
     roomsDeleted,
     liveAgents,
@@ -3425,6 +3765,51 @@ async function createTeam(service: TeamMissionService) {
     lead: LEAD,
     members: [MEMBER],
   });
+}
+
+function pendingMissionStartIntent(team: TeamV2): TeamMissionStartIntent {
+  return {
+    intentId: "start-pending-archive",
+    idempotencyKey: "start-pending-archive",
+    requestFingerprint: "team.mission.start:pending-archive",
+    expectedTeamRevision: team.revision,
+    workspaceId: "workspace-sdk",
+    missionId: "mission-pending-archive",
+    chatRoomId: "room-pending-archive",
+    teamName: team.name,
+    leadAgentId: "agent-pending-archive",
+    bindingEpoch: 1,
+    objective: "Do not resume after workspace archive",
+    constraints: [],
+    acceptanceCriteria: ["The pending start terminates without creating a Lead"],
+    rosterSnapshot: {
+      revision: 1,
+      teamRevision: team.revision,
+      leadMemberId: team.leadMemberId,
+      reason: "initial",
+      skills: structuredClone(team.skills),
+      members: team.members.map((member) => ({
+        ...structuredClone(member),
+        runtimeSnapshot: {
+          providerAvailable: true,
+          toolIds: ["team_status"],
+          capabilityIds: ["structured-tools"],
+        },
+      })),
+      createdAt: NOW,
+    },
+    workspaceAuditPolicy: {
+      revision: 1,
+      includeTrackedPaths: true,
+      includeNonIgnoredUntrackedPaths: true,
+      includeDeclaredArtifactPaths: true,
+      excludeGitignoredPathsByDefault: true,
+      excludedPathPrefixes: [".git"],
+    },
+    stage: "reserved",
+    requestedAt: NOW,
+    updatedAt: NOW,
+  };
 }
 
 async function settlesWithin(promise: Promise<unknown>, milliseconds: number): Promise<boolean> {

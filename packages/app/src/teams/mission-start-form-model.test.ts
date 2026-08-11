@@ -38,13 +38,14 @@ function team(overrides: Partial<TeamV2> = {}): TeamV2 {
   };
 }
 
-function open(selectedTeam: TeamV2 | null = team()) {
+function open(selectedTeam: TeamV2 | null = team(), globalTeamProfiles = false) {
   let row = 0;
   let key = 0;
   return openMissionStartForm({
     serverId: "server-a",
     workspaceId: "workspace-a",
     access: "supported",
+    globalTeamProfiles,
     selectedTeam,
     teams: selectedTeam ? [selectedTeam] : [],
     newRowKey: () => `row-${++row}`,
@@ -83,6 +84,34 @@ describe("Mission start form model", () => {
     form.setConstraint("row-2", "No legacy fallback");
     form.removeConstraint("row-3");
     expect(form.getState().constraints).toEqual([{ key: "row-2", value: "No legacy fallback" }]);
+  });
+
+  it("offers host-global Teams and binds the request to the current workspace", () => {
+    const selected = team({ workspaceId: "workspace-b" });
+    const form = open(selected, true);
+    form.setObjective("Ship it");
+    form.setAcceptanceCriterion("row-1", "All checks pass");
+
+    expect(form.getState().teamOptions.map((option) => option.teamId)).toEqual(["team-a"]);
+    expect(form.prepareSubmission()).toMatchObject({
+      teamId: "team-a",
+      workspaceId: "workspace-a",
+    });
+  });
+
+  it("keeps creation-workspace filtering and the old request shape without the feature", () => {
+    const form = open(null, false);
+    form.applyTeams({
+      serverId: "server-a",
+      workspaceId: "workspace-a",
+      teams: [team(), team({ id: "team-b", workspaceId: "workspace-b" })],
+    });
+    form.selectTeam("team-a");
+    form.setObjective("Ship it");
+    form.setAcceptanceCriterion("row-1", "All checks pass");
+
+    expect(form.getState().teamOptions.map((option) => option.teamId)).toEqual(["team-a"]);
+    expect(form.prepareSubmission()).not.toHaveProperty("workspaceId");
   });
 
   it("ignores late lists from another host or workspace", () => {

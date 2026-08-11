@@ -153,6 +153,7 @@ export function createTeamCommand(): Command {
         .description("Start a Mission from a Team profile")
         .argument("<team-id>", "Team ID")
         .requiredOption("--expected-team-revision <revision>", "Expected Team profile revision")
+        .option("--workspace <id>", "Mission workspace; required for global Team profiles")
         .requiredOption("--objective <text>", "Mission objective")
         .option("--constraint <text>", "Mission constraint; repeat", collect)
         .requiredOption("--acceptance <text>", "Acceptance criterion; repeat", collect),

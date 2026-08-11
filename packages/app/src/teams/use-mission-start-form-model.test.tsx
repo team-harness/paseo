@@ -46,6 +46,7 @@ function snapshot(selected: TeamV2): MissionStartFormSnapshot {
     serverId: "server-a",
     workspaceId: "workspace-a",
     access: "supported",
+    globalTeamProfiles: false,
     selectedTeam: selected,
     teams: [selected],
     newRowKey: () => `row-${++row}`,

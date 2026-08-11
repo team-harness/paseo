@@ -34,6 +34,7 @@ export function useWorkspaceTeamActions(input: {
   openWorkspaceTabFocused: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
 }): WorkspaceTeamActions {
   const supported = useHostFeature(input.serverId, "teamMissions");
+  const globalTeamProfiles = useHostFeature(input.serverId, "globalTeamProfiles");
   const profileMap = useSessionStore(
     (state) => state.sessions[input.serverId]?.teamMissionsReplica.profiles,
   );
@@ -42,10 +43,11 @@ export function useWorkspaceTeamActions(input: {
       supported
         ? [...(profileMap?.values() ?? [])].filter(
             (profile) =>
-              profile.workspaceId === input.workspaceId && profile.lifecycle !== "archived",
+              profile.lifecycle !== "archived" &&
+              (globalTeamProfiles || profile.workspaceId === input.workspaceId),
           )
         : [],
-    [input.workspaceId, profileMap, supported],
+    [globalTeamProfiles, input.workspaceId, profileMap, supported],
   );
   const [newTeamVisible, setNewTeamVisible] = useState(false);
   const [missionTarget, setMissionTarget] = useState<{

@@ -31,7 +31,11 @@ import {
   requireActiveWorkspaceForArchive,
   type ArchiveDependencies,
 } from "../../workspace-archive-service.js";
-import { createAgentCommand, type CreateAgentFromMcpInput } from "../create-agent/create.js";
+import {
+  createAgentCommand,
+  type CreateAgentCommandDependencies,
+  type CreateAgentFromMcpInput,
+} from "../create-agent/create.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "../../voice-types.js";
 import type { FirstAgentContext } from "../../messages.js";
 import { everyMsToFiveFieldCron } from "@getpaseo/protocol/schedule/cadence";
@@ -71,10 +75,11 @@ import {
 } from "../lifecycle-command.js";
 import type { ForgeService } from "../../../services/forge-service.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
-import type {
-  PersistedWorkspaceRecord,
-  ProjectRegistry,
-  WorkspaceRegistry,
+import {
+  isWorkspaceRecordAvailable,
+  type PersistedWorkspaceRecord,
+  type ProjectRegistry,
+  type WorkspaceRegistry,
 } from "../../workspace-registry.js";
 import { resolveWorktreeSourceCwd } from "../../workspace-source.js";
 import type { WorkspaceScriptsService } from "../../session/workspace-scripts/workspace-scripts-service.js";
@@ -109,6 +114,7 @@ export interface PaseoToolHostDependencies {
   scheduleService?: ScheduleService | null;
   providerSnapshotManager: ProviderSnapshotManager;
   daemonConfigStore?: Pick<DaemonConfigStore, "get">;
+  runInWorkspaceLifecycle?: CreateAgentCommandDependencies["runInWorkspaceLifecycle"];
   github?: ForgeService;
   workspaceGitService?: Pick<
     WorkspaceGitService,
@@ -116,6 +122,7 @@ export interface PaseoToolHostDependencies {
   >;
   findWorkspaceIdForCwd?: ArchiveDependencies["findWorkspaceIdForCwd"];
   listActiveWorkspaces?: ArchiveDependencies["listActiveWorkspaces"];
+  beginWorkspaceArchive?: ArchiveDependencies["beginWorkspaceArchive"];
   archiveWorkspaceRecord?: ArchiveDependencies["archiveWorkspaceRecord"];
   emitWorkspaceUpdatesForWorkspaceIds?: ArchiveDependencies["emitWorkspaceUpdatesForWorkspaceIds"];
   workspaceRegistry?: Pick<WorkspaceRegistry, "get" | "list" | "upsert">;
@@ -1358,7 +1365,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         throw new Error("Workspace registry is not configured");
       }
       const workspaces = (await options.workspaceRegistry.list())
-        .filter((workspace) => !workspace.archivedAt)
+        .filter(isWorkspaceRecordAvailable)
         .map(toWorkspaceAutomationSummary);
       return {
         content: [],
@@ -1457,6 +1464,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           worktreesRoot: options.worktreesRoot,
           terminalManager,
           providerSnapshotManager,
+          runInWorkspaceLifecycle:
+            options.runInWorkspaceLifecycle ?? (async (_workspaceId, operation) => operation()),
           createPaseoWorktree: options.createPaseoWorktree,
           ...(options.ensureWorkspaceForCreate
             ? { ensureWorkspaceForCreate: options.ensureWorkspaceForCreate }
@@ -3191,6 +3200,9 @@ function archiveWorktreeDependencies(
   if (!options.archiveWorkspaceRecord) {
     throw new Error("Workspace registry archiver is required to archive worktrees");
   }
+  if (!options.beginWorkspaceArchive) {
+    throw new Error("Workspace archive intent writer is required to archive worktrees");
+  }
   if (!options.findWorkspaceIdForCwd) {
     throw new Error("Workspace resolver is required to archive worktrees");
   }
@@ -3215,6 +3227,7 @@ function archiveWorktreeDependencies(
     agentStorage: context.agentStorage,
     findWorkspaceIdForCwd: options.findWorkspaceIdForCwd,
     listActiveWorkspaces: options.listActiveWorkspaces,
+    beginWorkspaceArchive: options.beginWorkspaceArchive,
     archiveWorkspaceRecord: options.archiveWorkspaceRecord,
     emitWorkspaceUpdatesForWorkspaceIds: options.emitWorkspaceUpdatesForWorkspaceIds,
     markWorkspaceArchiving: options.markWorkspaceArchiving,

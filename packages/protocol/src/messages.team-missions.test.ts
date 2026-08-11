@@ -289,7 +289,7 @@ describe("Team Missions session unions", () => {
 });
 
 describe("Team Missions capability compatibility", () => {
-  it("adds one server feature and one per-socket client capability", () => {
+  it("adds Team Mission server features and one per-socket client capability", () => {
     expect(CLIENT_CAPS.teamMissions).toBe("team_missions");
     expect(
       WSHelloMessageSchema.safeParse({
@@ -304,9 +304,9 @@ describe("Team Missions capability compatibility", () => {
       ServerInfoStatusPayloadSchema.parse({
         status: "server_info",
         serverId: "new-daemon",
-        features: { teamMissions: true },
-      }).features?.teamMissions,
-    ).toBe(true);
+        features: { teamMissions: true, globalTeamProfiles: true },
+      }).features,
+    ).toMatchObject({ teamMissions: true, globalTeamProfiles: true });
   });
 
   it("lets a new client parse an old daemon that omits the feature", () => {
@@ -316,6 +316,7 @@ describe("Team Missions capability compatibility", () => {
       features: {},
     });
     expect(parsed.features?.teamMissions).toBeUndefined();
+    expect(parsed.features?.globalTeamProfiles).toBeUndefined();
   });
 
   it("lets an old client parser ignore the new server feature", () => {
@@ -329,7 +330,7 @@ describe("Team Missions capability compatibility", () => {
       LegacyServerInfoSchema.safeParse({
         status: "server_info",
         serverId: "new-daemon",
-        features: { teamMissions: true },
+        features: { teamMissions: true, globalTeamProfiles: true },
       }).success,
     ).toBe(true);
   });

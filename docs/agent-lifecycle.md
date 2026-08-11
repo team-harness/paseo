@@ -67,22 +67,27 @@ A watched child that closes before its finish event also notifies the caller so 
 
 ## Teams
 
-A Team is a reusable profile, not a group of permanently running agents. Its Member profiles carry a
-Role, Level, Skills, execution profile, and stable mention handle. The Lead uses those facts plus the
-Mission objective to create dynamic Workstreams and Assignment ownership. There is no stored
-responsibility field.
+A Team is a reusable host-global profile, not a group of permanently running agents. Its Member
+profiles carry a Role, Level, Skills, execution profile, and stable mention handle. The Lead uses those
+facts plus the Mission objective to create dynamic Workstreams and Assignment ownership. There is no
+stored responsibility field. The Team's creation workspace is only a default Mission context.
 
-Starting a Mission freezes the Team roster and provider capabilities. The daemon provisions the Lead
-Participant first, then provisions assignees and reviewers only when their Assignment becomes ready.
-Each Participant binding records `(memberId, bindingEpoch, agentId)` so a replacement cannot inherit an
-accepted turn or report from the previous binding. Mission tools resolve identity from that snapshot on
-every call.
+Starting a Mission selects one active workspace and freezes the Team roster and provider capabilities.
+The daemon provisions the Lead Participant in that workspace first, then provisions assignees and
+reviewers there only when their Assignment becomes ready. Each Participant binding records
+`(memberId, bindingEpoch, agentId)` so a replacement cannot inherit an accepted turn or report from the
+previous binding. Mission tools resolve identity from that snapshot on every call.
 
 A missing, archived, or hard-deleted Participant suspends affected work through durable Attention. The
 Lead can replan or bind a replacement; already accepted work keeps its original binding and evidence.
 Completing, canceling, or failing a Mission archives its Participants after terminal turn and workspace
 evidence settles. The Team profile remains available for another Mission. Archiving the Team is a
 separate explicit action and first converges any active Mission.
+
+Archiving a workspace first converges every Mission bound to it, archives their Participants, and
+releases workspace leases. It does not archive the reusable Team profile. Mission start and workspace
+archive use the same workspace-first lifecycle fence, so a new Participant cannot appear after archive
+cleanup has started.
 
 Closing a Team tab or a Team-owned Participant tab is layout-only. It does not cancel a Mission,
 archive the Team, or archive the Participant. Use the Mission and Team lifecycle controls for those

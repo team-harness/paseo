@@ -46,6 +46,7 @@ function openFilled(access: "checking_host" | "supported" | "upgrade_required" =
     serverId: "server-a",
     workspaceId: "workspace-a",
     access,
+    globalTeamProfiles: false,
     selectedTeam: selected,
     teams: [selected],
     newRowKey: () => `row-${++row}`,

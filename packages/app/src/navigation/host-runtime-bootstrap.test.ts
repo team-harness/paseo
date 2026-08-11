@@ -3,6 +3,7 @@ import {
   resolveStartupBlocker,
   resolveStartupNavigationReady,
   resolveHostIndexRoute,
+  resolveHostIndexRouteDecision,
   resolveStartupRoute,
   shouldRunStartupGiveUpTimer,
   startHostRuntimeBootstrap,
@@ -391,5 +392,70 @@ describe("resolveHostIndexRoute", () => {
         workspaceSelectionStatus: "unknown",
       }),
     ).toEqual("/open-project");
+  });
+});
+
+describe("resolveHostIndexRouteDecision", () => {
+  it("renders host-level Teams when the host has no live workspace", () => {
+    expect(
+      resolveHostIndexRouteDecision({
+        serverId: "server-saved",
+        workspaceSelection: null,
+        workspaceSelectionStatus: "missing",
+        hasHydratedWorkspaces: true,
+        hasLiveWorkspaces: false,
+        globalTeamProfilesSupported: true,
+        teamProfilesStatus: "ready",
+        activeTeamCount: 1,
+      }),
+    ).toEqual({ kind: "renderTeams" });
+  });
+
+  it("waits for global Teams before leaving a zero-workspace host", () => {
+    expect(
+      resolveHostIndexRouteDecision({
+        serverId: "server-saved",
+        workspaceSelection: null,
+        workspaceSelectionStatus: "missing",
+        hasHydratedWorkspaces: true,
+        hasLiveWorkspaces: false,
+        globalTeamProfilesSupported: true,
+        teamProfilesStatus: "pending",
+        activeTeamCount: 0,
+      }),
+    ).toEqual({ kind: "loading" });
+  });
+
+  it("waits for workspace hydration before deciding a global Team host is empty", () => {
+    expect(
+      resolveHostIndexRouteDecision({
+        serverId: "server-saved",
+        workspaceSelection: null,
+        workspaceSelectionStatus: "unknown",
+        hasHydratedWorkspaces: false,
+        hasLiveWorkspaces: false,
+        globalTeamProfilesSupported: true,
+        teamProfilesStatus: "pending",
+        activeTeamCount: 0,
+      }),
+    ).toEqual({ kind: "loading" });
+  });
+
+  it("still restores a remembered workspace before hydration", () => {
+    expect(
+      resolveHostIndexRouteDecision({
+        serverId: "server-saved",
+        workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
+        workspaceSelectionStatus: "unknown",
+        hasHydratedWorkspaces: false,
+        hasLiveWorkspaces: false,
+        globalTeamProfilesSupported: true,
+        teamProfilesStatus: "pending",
+        activeTeamCount: 0,
+      }),
+    ).toEqual({
+      kind: "redirect",
+      href: "/h/server-saved/workspace/workspace-a",
+    });
   });
 });

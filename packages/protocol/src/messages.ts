@@ -3403,6 +3403,9 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(teamMissions): added in v0.3.0-beta.3, remove after 2027-02-08
         // once every supported daemon exposes the Team Missions runtime.
         teamMissions: z.boolean().optional(),
+        // COMPAT(globalTeamProfiles): added in v0.3.1, remove after 2027-02-11
+        // once every supported daemon separates Team identity from Mission workspace placement.
+        globalTeamProfiles: z.boolean().optional(),
       })
       .optional(),
   })

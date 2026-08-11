@@ -133,6 +133,8 @@ import {
 } from "./workspace-registry-model.js";
 import { resolveWorkspaceIdForPath } from "./resolve-workspace-id-for-path.js";
 import {
+  isWorkspaceRecordAvailable,
+  isWorkspaceRecordArchiveReference,
   resolveProjectDisplayName,
   resolveWorkspaceDisplayName,
   resolveWorkspaceName,
@@ -140,6 +142,7 @@ import {
   type PersistedWorkspaceRecord,
   type ProjectMutation,
   type ProjectRegistry,
+  type WorkspaceArchiveIntent,
   type WorkspaceMutation,
   type WorkspaceRegistry,
 } from "./workspace-registry.js";
@@ -248,6 +251,7 @@ import {
   handleWorkspaceSetupStatusRequest as handleWorkspaceSetupStatusRequestMessage,
 } from "./worktree-session.js";
 import { archiveByScope, type ActiveWorkspaceRef } from "./workspace-archive-service.js";
+import { workspaceLifecycleCoordinator } from "./workspace-lifecycle-coordinator.js";
 import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
 
 function resolveWorkspaceSetupRuntime(
@@ -1017,6 +1021,8 @@ export class Session {
       archiveAgentForClose: (agentId) => this.archiveAgentForClose(agentId),
       findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
       listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
+      beginWorkspaceArchive: (workspaceId, intent) =>
+        this.beginWorkspaceArchive(workspaceId, intent),
       archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
       emit: (message) => this.emit(message),
       emitAgentRemove: (agentId) => this.agentUpdates.removeAgent(agentId),
@@ -1332,7 +1338,7 @@ export class Session {
     await Promise.all(
       Array.from(new Set(workspaceIds)).map(async (workspaceId) => {
         const workspace = await this.workspaceRegistry.get(workspaceId);
-        if (workspace && !workspace.archivedAt) {
+        if (workspace && isWorkspaceRecordAvailable(workspace)) {
           await this.workspaceGitObserver.syncObserverForWorkspace(workspace);
         }
       }),
@@ -1585,7 +1591,7 @@ export class Session {
       return;
     }
     const currentWorkspace = await this.workspaceRegistry.get(mutation.workspaceId);
-    if (!currentWorkspace || currentWorkspace.archivedAt) {
+    if (!currentWorkspace || !isWorkspaceRecordAvailable(currentWorkspace)) {
       this.workspaceGitObserver.removeForWorkspaceId(mutation.workspaceId);
       return;
     }
@@ -3081,43 +3087,60 @@ export class Session {
         .filter((workspace) => !workspace.archivedAt)
         .map((workspace) => workspace.workspaceId);
 
-      if (activeWorkspaceIds.length > 0) {
-        this.markWorkspaceArchiving(activeWorkspaceIds, new Date().toISOString());
-        await this.emitWorkspaceUpdatesForWorkspaceIds(activeWorkspaceIds);
-      }
-
       const removedWorkspaceIds: string[] = [];
-      try {
-        for (const workspaceId of activeWorkspaceIds) {
-          await archiveWorkspaceContents(
-            {
-              agentManager: this.agentManager,
-              agentStorage: this.agentStorage,
-              killTerminalsForWorkspace: (id) =>
-                this.terminalController.killTerminalsForWorkspace(id),
-              sessionLogger: this.sessionLogger,
-            },
-            workspaceId,
-          );
-          await this.archiveWorkspaceRecord(workspaceId);
-          removedWorkspaceIds.push(workspaceId);
+      const archiveRequestedAt = new Date().toISOString();
+      await workspaceLifecycleCoordinator.serialize(activeWorkspaceIds, async () => {
+        for (const workspaceId of activeWorkspaceIds.toSorted()) {
+          await this.beginWorkspaceArchive(workspaceId, {
+            requestId: `project-remove:${requestId}:${workspaceId}`,
+            requestedAt: archiveRequestedAt,
+          });
+        }
+      });
+      await Promise.all(
+        activeWorkspaceIds
+          .toSorted()
+          .map((workspaceId) => this.workspaceSetupRuntime.stop(workspaceId)),
+      );
+      await workspaceLifecycleCoordinator.serialize(activeWorkspaceIds, async () => {
+        if (activeWorkspaceIds.length > 0) {
+          this.markWorkspaceArchiving(activeWorkspaceIds, archiveRequestedAt);
+          await this.emitWorkspaceUpdatesForWorkspaceIds(activeWorkspaceIds);
         }
 
-        await this.projectRegistry.remove(resolvedProjectId);
-        await removeProjectCustomIcon({
-          paseoHome: this.paseoHome,
-          projectId: resolvedProjectId,
-        }).catch((error) => {
-          this.sessionLogger.warn(
-            { err: error, projectId: resolvedProjectId },
-            "Failed to clean up removed project icon",
-          );
-        });
-      } finally {
-        if (activeWorkspaceIds.length > 0) {
-          this.clearWorkspaceArchiving(activeWorkspaceIds);
+        try {
+          for (const workspaceId of activeWorkspaceIds.toSorted()) {
+            await workspaceLifecycleCoordinator.prepareForArchive(workspaceId);
+            await archiveWorkspaceContents(
+              {
+                agentManager: this.agentManager,
+                agentStorage: this.agentStorage,
+                killTerminalsForWorkspace: (id) =>
+                  this.terminalController.killTerminalsForWorkspace(id),
+                sessionLogger: this.sessionLogger,
+              },
+              workspaceId,
+            );
+            await this.archiveWorkspaceRecord(workspaceId);
+            removedWorkspaceIds.push(workspaceId);
+          }
+
+          await this.projectRegistry.remove(resolvedProjectId);
+          await removeProjectCustomIcon({
+            paseoHome: this.paseoHome,
+            projectId: resolvedProjectId,
+          }).catch((error) => {
+            this.sessionLogger.warn(
+              { err: error, projectId: resolvedProjectId },
+              "Failed to clean up removed project icon",
+            );
+          });
+        } finally {
+          if (activeWorkspaceIds.length > 0) {
+            this.clearWorkspaceArchiving(activeWorkspaceIds);
+          }
         }
-      }
+      });
 
       const updateIds =
         removedWorkspaceIds.length > 0
@@ -3448,6 +3471,14 @@ export class Session {
           paseoHome: this.paseoHome,
           worktreesRoot: this.worktreesRoot,
           providerSnapshotManager: this.providerSnapshotManager,
+          runInWorkspaceLifecycle: (workspaceId, operation) =>
+            workspaceLifecycleCoordinator.serialize([workspaceId], async () => {
+              const workspace = await this.workspaceRegistry.get(workspaceId);
+              if (!workspace || !isWorkspaceRecordAvailable(workspace)) {
+                throw new Error(`Workspace ${workspaceId} not found`);
+              }
+              return operation();
+            }),
         },
         {
           kind: "session",
@@ -3558,7 +3589,7 @@ export class Session {
           return { workspaceId, cwd: createdWorktree.workspace.cwd };
         }
         const workspace = await this.workspaceRegistry.get(workspaceId);
-        if (!workspace || workspace.archivedAt) {
+        if (!workspace || !isWorkspaceRecordAvailable(workspace)) {
           throw new Error(`Workspace ${workspaceId} not found`);
         }
         return { workspaceId, cwd: workspace.cwd };
@@ -4234,6 +4265,8 @@ export class Session {
         agentStorage: this.agentStorage,
         findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
         listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
+        beginWorkspaceArchive: (workspaceId, intent) =>
+          this.beginWorkspaceArchive(workspaceId, intent),
         archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
         emit: (message) => this.emit(message),
         emitWorkspaceUpdatesForWorkspaceIds: (workspaceIds) =>
@@ -4434,7 +4467,7 @@ export class Session {
     const placementsByWorkspaceId = new Map<string, ProjectPlacementPayload>();
 
     const pairs = persistedWorkspaces.flatMap((workspace) => {
-      if (workspace.archivedAt) return [];
+      if (!isWorkspaceRecordAvailable(workspace)) return [];
       const project = activeProjects.get(workspace.projectId);
       if (!project) return [];
       return [{ workspace, project }];
@@ -5045,16 +5078,14 @@ export class Session {
 
   private async listActiveWorkspaceRefs(): Promise<ActiveWorkspaceRef[]> {
     const workspaces = await this.workspaceRegistry.list();
-    return workspaces
-      .filter((workspace) => !workspace.archivedAt)
-      .map((workspace) => ({
-        workspaceId: workspace.workspaceId,
-        cwd: workspace.cwd,
-        kind: workspace.kind,
-        worktreeRoot: workspace.worktreeRoot,
-        isPaseoOwnedWorktree: workspace.isPaseoOwnedWorktree,
-        mainRepoRoot: workspace.mainRepoRoot,
-      }));
+    return workspaces.filter(isWorkspaceRecordArchiveReference).map((workspace) => ({
+      workspaceId: workspace.workspaceId,
+      cwd: workspace.cwd,
+      kind: workspace.kind,
+      worktreeRoot: workspace.worktreeRoot,
+      isPaseoOwnedWorktree: workspace.isPaseoOwnedWorktree,
+      mainRepoRoot: workspace.mainRepoRoot,
+    }));
   }
 
   private async archiveWorkspaceRecord(workspaceId: string, archivedAt?: string): Promise<void> {
@@ -5086,6 +5117,58 @@ export class Session {
     }
 
     await this.teardownArchivedWorkspace(existingWorkspace.workspaceId);
+  }
+
+  private async beginWorkspaceArchive(
+    workspaceId: string,
+    intent: WorkspaceArchiveIntent,
+  ): Promise<PersistedWorkspaceRecord | null> {
+    if (!this.workspaceRegistry.beginArchive) {
+      throw new Error("Durable workspace archive intent adapter is required");
+    }
+    return this.workspaceRegistry.beginArchive(workspaceId, intent);
+  }
+
+  private async archiveWorkspaceById(
+    workspaceId: string,
+    requestId: string,
+    stopWorkspaceSetup: boolean,
+  ): Promise<void> {
+    await archiveByScope(
+      {
+        paseoHome: this.paseoHome,
+        paseoWorktreesBaseRoot: this.worktreesRoot,
+        github: this.github,
+        workspaceGitService: this.workspaceGitService,
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
+        getWorkspace: (candidateWorkspaceId) => this.workspaceRegistry.get(candidateWorkspaceId),
+        listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
+        beginWorkspaceArchive: (candidateWorkspaceId, intent) =>
+          this.beginWorkspaceArchive(candidateWorkspaceId, intent),
+        archiveWorkspaceRecord: (candidateWorkspaceId) =>
+          this.archiveWorkspaceRecord(candidateWorkspaceId),
+        emitWorkspaceUpdatesForWorkspaceIds: (workspaceIds) =>
+          this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds),
+        markWorkspaceArchiving: (workspaceIds, archivingAt) =>
+          this.markWorkspaceArchiving(workspaceIds, archivingAt),
+        clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
+        killTerminalsForWorkspace: (candidateWorkspaceId) =>
+          this.terminalController.killTerminalsForWorkspace(candidateWorkspaceId),
+        ...(stopWorkspaceSetup
+          ? {
+              stopWorkspaceSetup: (candidateWorkspaceId: string) =>
+                this.workspaceSetupRuntime.stop(candidateWorkspaceId),
+            }
+          : {}),
+        sessionLogger: this.sessionLogger,
+      },
+      {
+        scope: { kind: "workspace", workspaceId },
+        requestId,
+      },
+    );
   }
 
   private async teardownArchivedWorkspace(workspaceId: string): Promise<void> {
@@ -6310,7 +6393,13 @@ export class Session {
         emit: (message) => this.emit(message),
         sessionLogger: this.sessionLogger,
         terminalManager: this.terminalManager,
-        archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
+        archiveWorkspaceRecord: async (workspaceId) => {
+          await this.archiveWorkspaceById(
+            workspaceId,
+            `workspace-setup-failure:${workspaceId}`,
+            false,
+          );
+        },
         serviceProxy: this.serviceProxy,
         scriptRuntimeStore: this.scriptRuntimeStore,
         getDaemonTcpPort: this.getDaemonTcpPort,
@@ -6346,33 +6435,7 @@ export class Session {
         throw new Error(`Workspace not found: ${request.workspaceId}`);
       }
 
-      await archiveByScope(
-        {
-          paseoHome: this.paseoHome,
-          paseoWorktreesBaseRoot: this.worktreesRoot,
-          github: this.github,
-          workspaceGitService: this.workspaceGitService,
-          agentManager: this.agentManager,
-          agentStorage: this.agentStorage,
-          findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
-          getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
-          listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
-          archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
-          emitWorkspaceUpdatesForWorkspaceIds: (workspaceIds) =>
-            this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds),
-          markWorkspaceArchiving: (workspaceIds, archivingAt) =>
-            this.markWorkspaceArchiving(workspaceIds, archivingAt),
-          clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
-          killTerminalsForWorkspace: (workspaceId) =>
-            this.terminalController.killTerminalsForWorkspace(workspaceId),
-          stopWorkspaceSetup: (workspaceId) => this.workspaceSetupRuntime.stop(workspaceId),
-          sessionLogger: this.sessionLogger,
-        },
-        {
-          scope: { kind: "workspace", workspaceId: existing.workspaceId },
-          requestId: request.requestId,
-        },
-      );
+      await this.archiveWorkspaceById(existing.workspaceId, request.requestId, true);
 
       const archivedWorkspace = await this.workspaceRegistry.get(request.workspaceId);
       const archivedAt = archivedWorkspace?.archivedAt ?? new Date().toISOString();
@@ -6443,7 +6506,7 @@ export class Session {
       const clearedAgentIds: string[] = [];
       try {
         const workspace = await this.workspaceRegistry.get(requestedWorkspaceId);
-        if (!workspace || workspace.archivedAt) {
+        if (!workspace || !isWorkspaceRecordAvailable(workspace)) {
           throw new Error(`Workspace not found: ${requestedWorkspaceId}`);
         }
 
