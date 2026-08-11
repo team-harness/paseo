@@ -257,6 +257,9 @@ startup reconciliation finishes. `server_info.features.globalTeamProfiles` addit
 profiles are host-global and Mission start accepts an explicit workspace. Clients that do not see
 `teamMissions` require a host upgrade; there is no second Team protocol. New clients omit the explicit
 Mission workspace for daemons without `globalTeamProfiles`, preserving the creation-workspace behavior.
+Only daemons with `globalTeamProfiles` allow an idle profile whose creation workspace is no longer live
+to fall back to another live workspace or the host route. Clients keep profiles from older daemons bound
+to their creation workspace.
 
 Startup mounts the Agent MCP route, binds the HTTP listener, and installs the bound MCP URL before
 Team reconciliation can wake a recovered Participant. WebSocket capability exposure happens after
