@@ -56,6 +56,8 @@ export async function runMissionStartCommand(
   }
   const { client } = await connectTeamClient(options.host);
   try {
+    // COMPAT(globalTeamProfiles): added in v0.3.1, require --workspace unconditionally and
+    // remove workspace omission after 2027-02-11 once the daemon floor is >= v0.3.1.
     const workspaceId = client.supportsGlobalTeamProfiles()
       ? required(options.workspace, "--workspace")
       : null;
