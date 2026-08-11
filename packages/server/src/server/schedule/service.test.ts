@@ -136,6 +136,7 @@ function createScheduleService(options: TestScheduleServiceOptions): ScheduleSer
             Array.from(workspaces.values()).find((workspace) => workspace.cwd === cwd)
               ?.workspaceId ?? null,
           listActiveWorkspaces,
+          beginWorkspaceArchive: async () => null,
           archiveWorkspaceRecord: async (id) => {
             const workspace = workspaces.get(id);
             if (workspace) {
@@ -242,6 +243,7 @@ async function createRegistryBackedScheduleWorkspaceDeps(rootDir: string): Promi
                     cwd: workspace.cwd,
                     kind: workspace.kind,
                   })),
+              beginWorkspaceArchive: (id, intent) => workspaceRegistry.beginArchive(id, intent),
               archiveWorkspaceRecord: async (id) => {
                 await workspaceRegistry.archive(id, new Date().toISOString());
               },

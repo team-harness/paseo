@@ -7,10 +7,15 @@ import {
   runMissionStartCommand,
 } from "./mission.js";
 
-const { connectToDaemon, client } = vi.hoisted(() => ({
+const { connectToDaemon, client, serverFeatures } = vi.hoisted(() => ({
   connectToDaemon: vi.fn(),
+  serverFeatures: { teamMissions: true, globalTeamProfiles: true } as {
+    teamMissions: boolean;
+    globalTeamProfiles?: boolean;
+  },
   client: {
-    getLastServerInfoMessage: () => ({ features: { teamMissions: true } }),
+    getLastServerInfoMessage: () => ({ features: serverFeatures }),
+    supportsGlobalTeamProfiles: () => serverFeatures.globalTeamProfiles === true,
     startTeamMission: vi.fn(),
     listTeamMissions: vi.fn(),
     inspectTeamMission: vi.fn(),
@@ -45,6 +50,7 @@ const mission = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  serverFeatures.globalTeamProfiles = true;
   connectToDaemon.mockResolvedValue(client);
 });
 
@@ -56,6 +62,7 @@ describe("Mission commands", () => {
       "team-1",
       {
         expectedTeamRevision: "4",
+        workspace: "workspace-1",
         objective: "Ship the CLI",
         constraint: ["No fallback"],
         acceptance: ["CLI tests pass", "Typecheck passes"],
@@ -68,10 +75,45 @@ describe("Mission commands", () => {
       idempotencyKey: "start-key",
       teamId: "team-1",
       expectedTeamRevision: 4,
+      workspaceId: "workspace-1",
       objective: "Ship the CLI",
       constraints: ["No fallback"],
       acceptanceCriteria: ["CLI tests pass", "Typecheck passes"],
     });
+  });
+
+  it("requires an explicit workspace when the daemon exposes global Team profiles", async () => {
+    await expect(
+      runMissionStartCommand(
+        "team-1",
+        {
+          expectedTeamRevision: "4",
+          objective: "Ship the CLI",
+          acceptance: ["CLI tests pass"],
+        },
+        null as never,
+      ),
+    ).rejects.toMatchObject({ code: "MISSING_OPTION", message: "--workspace is required" });
+    expect(client.startTeamMission).not.toHaveBeenCalled();
+  });
+
+  it("keeps the old Mission request shape for a daemon without global Team profiles", async () => {
+    delete serverFeatures.globalTeamProfiles;
+    client.startTeamMission.mockResolvedValue({ mission, error: null, errorCode: null });
+
+    await runMissionStartCommand(
+      "team-1",
+      {
+        expectedTeamRevision: "4",
+        objective: "Ship the CLI",
+        acceptance: ["CLI tests pass"],
+      },
+      null as never,
+    );
+
+    expect(client.startTeamMission).toHaveBeenCalledWith(
+      expect.not.objectContaining({ workspaceId: expect.anything() }),
+    );
   });
 
   it("lists, inspects and cancels through the v2 SDK", async () => {

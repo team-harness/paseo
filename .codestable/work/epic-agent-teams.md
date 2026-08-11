@@ -1,9 +1,9 @@
 ---
 epic: ../epics/agent-teams.md
 phase: acceptance
-approved_revision: 075d13827cf8aa470b484f6a99d5ba444a0ea70c115333efb6b01b1d1d798104
+approved_revision: e13c92a152e546753556eebe03d9c239bd22125c425df1ff938ba2e1c0e10b3c
 current_item: null
-next_action: 等待 owner 最终验收；接受后更新永久 Epic 终态、清理执行游标并按 remote_publish 策略发布
+next_action: 运行 Agent Teams v2 集成验证与 fresh final acceptance review
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -33,6 +33,7 @@ remote_publish: final
 - [x] V2-ITEM-8 Team 聊天与设置 UI
 - [x] V2-ITEM-9 CLI、运行时启用与确定性 E2E
 - [x] V2-ITEM-10 真实协同、QA、文档与最终验收
+- [x] V2-ITEM-11 全局 Team 与 Mission workspace 归属
 
 ## Agent Teams v2 规划证据
 
@@ -98,6 +99,8 @@ remote_publish: final
 - V2-ITEM-9 实现与证据：CLI 提供 `team profile create/list/inspect/update/archive` 与 `team mission start/list/inspect/cancel`；production runtime 在 HTTP listener 绑定并注入 Agent MCP URL后启动 reconciliation，ready 后才广告 `teamMissions`。`assignment_report` 对无关 Mission CAS 变化有界 rebase，Assignment revision 或 Participant binding 变化拒绝，残余 Mission CAS 返回 typed code。确定性真实 daemon E2E **1/1 passed**，覆盖 lazy provision、agent-scoped Team tools、两 delivery 真并行、独立 review、dependency-gated integration、final verification、Participant archive、exactly-once side effect、重启快照与第二 Mission list/inspect/cancel；CAS 定向回归 **47/47 passed**，protocol/client/CLI 单测 **146/146 passed**，真实 CLI binary 集成通过。原始输出进入 `audits/agent-teams-v2-runtime/`。
 - V2-ITEM-10 fresh 证据：候选基线 `3e9daa79e` 上，真实 Codex 的 `parallel_delivery` 与 `recovery_dependency` 两种固定任务形状各连续 3 次达标，六次总分均为 **8**、五维无零且 Delivery=2。并行形状三次 `maxParallelAssignments=3`；恢复依赖形状三次 `after_lead_participant_write` 故障注入均生效，启动幂等重放后收敛。六次 validation violation、scope conflict、rework、accepted-turn replay、unresolved report 与 unresolved Attention 均为 0，verification 全通过；测试侧无重试。证据校验器已经对真实观测到的 contract amendment 链、required review、两种 final Workstream 依赖形态建立精确 DAG 与反例门。六份 `allowlisted_v1` manifest、六份 sanitized provider JSONL 与两份 Vitest run log 进入 `audits/agent-teams-v2-real-provider/`；自由文本与 workspace/tool/chat/verification 内容只持久化 digest、bytes 或 count。正式 architecture/data-model/agent-lifecycle/testing/glossary/protocol docs 已收敛到 v2 首发模型。
 - V2-ITEM-10 final acceptance：fresh managed reviewer 首轮发现 runtime 顶层 reconciliation 错误被吞、App 用冻结 provider snapshot 隐藏可用 replacement Lead 两项 important；两项均以鉴别性红测修复。runtime 原 reviewer 随后发现 unreadable pending Mission 会越过动作隔离并放大为 daemon 启动失败；修复把 profile/Mission 读取、block 判定与 replay 收进统一动作边界，真实双 Team 文件存储回归证明坏 Mission 保留、健康 Team 继续恢复。最终冻结 target `4ded35f8…97c0d1`（41420 行 / 90 files），fresh final acceptance 与 runtime follow-up 均判定 **0 blocking / 0 important，可合**。最终增量验证：service **66/66 passed**、runtime install **15/15 passed**、App selector **5/5 passed**；全 workspace typecheck、lint、format 与 staged diff check 均通过。
+- 2026-08-11：owner 确认“Team 全局、Mission 绑定 workspace”。V2-ITEM-11 contract review Round 1/2 共发现 workspace archive/start TOCTOU、effective workspace 幂等、版本漂移、零 live workspace 可达性与锁反转风险；修订统一 `workspace fence → Team permit` 顺序，冻结 host-level Team 入口和双向 App/daemon capability 行为。Round 3 同一 reviewer 核对 `e13c92a…e10b3c`（459 行），判定前序 findings 全部 resolved、无 new finding，允许执行。
+- 2026-08-12：V2-ITEM-11 实现与 change review 完成。Team profile 改为 host-global，Mission 冻结显式 `workspaceId`；App/CLI 使用 host-level Team 入口，workspace archive 仅终止绑定 Mission、不归档 Team。Workspace start/archive 统一 `workspace fence → backing fence → Team permit`，durable archive intent 在首次 workspace fence 内 claim，provision/restore 与 zero-record 删除共享 canonical backing fence。定向竞态、完整相关测试、server/full typecheck、全仓 lint、format 与 diff-check 通过；同一 Paseo reviewer `27936051` follow-up 判定 previous blocking resolved，0 blocking / 0 important / 0 minor，允许进入 Epic final acceptance。
 
 ## 临时决策与证据
 

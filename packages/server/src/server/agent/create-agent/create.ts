@@ -43,6 +43,7 @@ export interface CreateAgentCommandDependencies {
   worktreesRoot?: string;
   terminalManager?: TerminalManager | null;
   providerSnapshotManager: Pick<ProviderSnapshotManager, "resolveCreateConfig">;
+  runInWorkspaceLifecycle: <T>(workspaceId: string, operation: () => Promise<T>) => Promise<T>;
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: EnsureWorkspaceForCreate;
@@ -179,48 +180,59 @@ export async function createAgentCommand(
       ? await resolveSessionCreateAgent(dependencies, input)
       : await resolveMcpCreateAgent(dependencies, input);
 
-  const snapshot = await dependencies.agentManager.createAgent(
-    resolved.config,
-    undefined,
-    resolved.createOptions,
-  );
+  const workspaceId = requireResolvedWorkspaceId(resolved.createOptions.workspaceId);
+  return dependencies.runInWorkspaceLifecycle(workspaceId, async () => {
+    const snapshot = await dependencies.agentManager.createAgent(
+      resolved.config,
+      undefined,
+      resolved.createOptions,
+    );
 
-  resolved.setupContinuation?.startAfterAgentCreate({
-    agentId: snapshot.id,
-  });
-
-  let liveSnapshot = snapshot;
-  let initialPromptStarted = false;
-  let initialPromptError: unknown | null = null;
-  if (input.kind === "mcp") {
-    input.onCreated?.({ agentId: snapshot.id, createdWorktree: resolved.createdWorktree ?? null });
-  }
-  if (resolved.prompt !== undefined) {
-    const sendResult = await sendInitialPrompt(dependencies, resolved, snapshot);
-    initialPromptStarted = sendResult.started;
-    liveSnapshot = sendResult.liveSnapshot;
-    initialPromptError = sendResult.error ?? null;
-  }
-
-  if (input.kind === "mcp" && input.notifyOnFinish && input.callerAgentId && initialPromptStarted) {
-    setupFinishNotification({
-      agentManager: dependencies.agentManager,
-      agentStorage: dependencies.agentStorage,
-      childAgentId: snapshot.id,
-      callerAgentId: input.callerAgentId,
-      requireParentOwnership: true,
-      logger: dependencies.logger,
+    resolved.setupContinuation?.startAfterAgentCreate({
+      agentId: snapshot.id,
     });
-  }
 
-  return {
-    snapshot,
-    liveSnapshot,
-    background: resolved.background,
-    initialPromptStarted,
-    initialPromptError,
-    ...(resolved.createdWorktree ? { createdWorktree: resolved.createdWorktree } : {}),
-  };
+    let liveSnapshot = snapshot;
+    let initialPromptStarted = false;
+    let initialPromptError: unknown | null = null;
+    if (input.kind === "mcp") {
+      input.onCreated?.({
+        agentId: snapshot.id,
+        createdWorktree: resolved.createdWorktree ?? null,
+      });
+    }
+    if (resolved.prompt !== undefined) {
+      const sendResult = await sendInitialPrompt(dependencies, resolved, snapshot);
+      initialPromptStarted = sendResult.started;
+      liveSnapshot = sendResult.liveSnapshot;
+      initialPromptError = sendResult.error ?? null;
+    }
+
+    if (
+      input.kind === "mcp" &&
+      input.notifyOnFinish &&
+      input.callerAgentId &&
+      initialPromptStarted
+    ) {
+      setupFinishNotification({
+        agentManager: dependencies.agentManager,
+        agentStorage: dependencies.agentStorage,
+        childAgentId: snapshot.id,
+        callerAgentId: input.callerAgentId,
+        requireParentOwnership: true,
+        logger: dependencies.logger,
+      });
+    }
+
+    return {
+      snapshot,
+      liveSnapshot,
+      background: resolved.background,
+      initialPromptStarted,
+      initialPromptError,
+      ...(resolved.createdWorktree ? { createdWorktree: resolved.createdWorktree } : {}),
+    };
+  });
 }
 
 async function resolveSessionCreateAgent(

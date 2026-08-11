@@ -58,12 +58,15 @@ function OpenMissionStartSheet({
   const profileMap = useSessionStore(
     (state) => state.sessions[serverId]?.teamMissionsReplica.profiles,
   );
+  const globalTeamProfiles = serverInfo?.features?.globalTeamProfiles === true;
   const teams = useMemo(
     () =>
       [...(profileMap?.values() ?? [])].filter(
-        (profile) => profile.workspaceId === workspaceId && profile.lifecycle !== "archived",
+        (profile) =>
+          profile.lifecycle !== "archived" &&
+          (globalTeamProfiles || profile.workspaceId === workspaceId),
       ),
-    [profileMap, workspaceId],
+    [globalTeamProfiles, profileMap, workspaceId],
   );
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
@@ -75,12 +78,13 @@ function OpenMissionStartSheet({
       serverId,
       workspaceId,
       access,
+      globalTeamProfiles,
       selectedTeam,
       teams,
       newRowKey: () => createLocalKey("row"),
       newIdempotencyKey: () => createLocalKey("app"),
     }),
-    [access, selectedTeam, serverId, teams, workspaceId],
+    [access, globalTeamProfiles, selectedTeam, serverId, teams, workspaceId],
   );
   const model = useMissionStartFormModel(snapshot);
   const state = useSyncExternalStore(model.subscribe, model.getState, model.getState);

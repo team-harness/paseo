@@ -12,10 +12,24 @@ import type { ManagedAgent } from "./agent/agent-manager.js";
 import type { AgentStorage, StoredAgentRecord } from "./agent/agent-storage.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import {
+  type WorkspaceLifecyclePort,
+  WorkspaceLifecycleCoordinator,
+} from "./workspace-lifecycle-coordinator.js";
+import {
+  createPersistedWorkspaceRecord,
+  FileBackedProjectRegistry,
+  FileBackedWorkspaceRegistry,
+  type WorkspaceRegistry,
+} from "./workspace-registry.js";
+import { createWorkspaceProvisioningService } from "./session/workspace-provisioning/workspace-provisioning-service.js";
+import type { TerminalManager } from "../terminal/terminal-manager.js";
+import type { TerminalSession } from "../terminal/terminal.js";
+import {
   archiveByScope,
   type ActiveWorkspaceRef,
   type ArchiveDependencies,
   type ArchiveResult,
+  killTerminalsForWorkspace,
   resolveWorkspaceIdAtPath,
 } from "./workspace-archive-service.js";
 
@@ -123,12 +137,14 @@ interface ArchiveDepsInput {
 
 interface ArchiveTestDependencies extends ArchiveDependencies {
   activeWorkspaces: ActiveWorkspaceRef[];
+  archiveIntents: Map<string, { requestId: string; requestedAt: string }>;
   archivedAgentIds: string[];
   archivedSnapshotIds: string[];
 }
 
 function createArchiveDeps(input: ArchiveDepsInput): ArchiveTestDependencies {
   const archivedWorkspaceIds = new Set<string>();
+  const archiveIntents = new Map<string, { requestId: string; requestedAt: string }>();
   const active = [...input.activeWorkspaces];
   const archivedAgentIds: string[] = [];
   const archivedSnapshotIds: string[] = [];
@@ -158,8 +174,15 @@ function createArchiveDeps(input: ArchiveDepsInput): ArchiveTestDependencies {
     findWorkspaceIdForCwd: input.findWorkspaceIdForCwd ?? vi.fn(async () => null),
     listActiveWorkspaces: async () =>
       active.filter((workspace) => !archivedWorkspaceIds.has(workspace.workspaceId)),
+    beginWorkspaceArchive: async (workspaceId, intent) => {
+      if (!archiveIntents.has(workspaceId)) {
+        archiveIntents.set(workspaceId, intent);
+      }
+      return null;
+    },
     archiveWorkspaceRecord: async (workspaceId: string) => {
       archivedWorkspaceIds.add(workspaceId);
+      archiveIntents.delete(workspaceId);
       const index = active.findIndex((workspace) => workspace.workspaceId === workspaceId);
       if (index !== -1) {
         active.splice(index, 1);
@@ -171,6 +194,7 @@ function createArchiveDeps(input: ArchiveDepsInput): ArchiveTestDependencies {
     killTerminalsForWorkspace: vi.fn(async () => {}),
     sessionLogger: createLogger(),
     activeWorkspaces: active,
+    archiveIntents,
     archivedAgentIds,
     archivedSnapshotIds,
   };
@@ -187,7 +211,297 @@ function assertArchiveResult(
   expect(result.removedDirectory).toBe(expected.removedDirectory);
 }
 
+function createArchiveRaceCheckout(
+  worktreePath: string,
+  repoDir: string,
+): Pick<WorkspaceGitService, "getCheckout" | "getSnapshot" | "peekSnapshot"> {
+  const matchesWorktree = createRealpathAwarePathMatcher(worktreePath);
+  return {
+    getCheckout: async (cwd) => {
+      if (existsSync(worktreePath) && matchesWorktree(cwd)) {
+        return {
+          cwd,
+          isGit: true,
+          currentBranch: "provisioning-wins",
+          remoteUrl: null,
+          worktreeRoot: worktreePath,
+          isPaseoOwnedWorktree: true,
+          mainRepoRoot: repoDir,
+        };
+      }
+      if (existsSync(repoDir) && createRealpathAwarePathMatcher(repoDir)(cwd)) {
+        return {
+          cwd,
+          isGit: true,
+          currentBranch: "main",
+          remoteUrl: null,
+          worktreeRoot: repoDir,
+          isPaseoOwnedWorktree: false,
+          mainRepoRoot: null,
+        };
+      }
+      return {
+        cwd,
+        isGit: false,
+        currentBranch: null,
+        remoteUrl: null,
+        worktreeRoot: null,
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      };
+    },
+    getSnapshot: async () => null,
+    peekSnapshot: () => null,
+  } as unknown as Pick<WorkspaceGitService, "getCheckout" | "getSnapshot" | "peekSnapshot">;
+}
+
+function createRegistryBackedArchiveDeps(input: {
+  paseoHome: string;
+  coordinator: WorkspaceLifecycleCoordinator;
+  workspaceRegistry: WorkspaceRegistry;
+}): ArchiveDependencies {
+  const deps = createArchiveDeps({ paseoHome: input.paseoHome, activeWorkspaces: [] });
+  deps.workspaceLifecycle = input.coordinator;
+  deps.getWorkspace = (workspaceId) => input.workspaceRegistry.get(workspaceId);
+  deps.listActiveWorkspaces = async () =>
+    (await input.workspaceRegistry.list()).filter(
+      (workspace) => workspace.archivedAt === null && workspace.archiveIntent === null,
+    );
+  deps.beginWorkspaceArchive = (workspaceId, intent) =>
+    input.workspaceRegistry.beginArchive!(workspaceId, intent);
+  deps.archiveWorkspaceRecord = (workspaceId) =>
+    input.workspaceRegistry.archive(workspaceId, new Date().toISOString());
+  return deps;
+}
+
 describe("archiveByScope", () => {
+  test("fails before cleanup when durable archive intent persistence is unavailable", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const workspaceId = "ws-missing-intent-adapter";
+    const deps = createArchiveDeps({
+      paseoHome: path.join(tempDir, ".paseo"),
+      activeWorkspaces: [{ workspaceId, cwd: repoDir, kind: "local_checkout" }],
+    });
+    deps.stopWorkspaceSetup = vi.fn(async () => {});
+    delete deps.beginWorkspaceArchive;
+
+    await expect(
+      archiveByScope(deps, {
+        scope: { kind: "workspace", workspaceId },
+        requestId: "req-missing-intent-adapter",
+      }),
+    ).rejects.toThrow("Durable workspace archive intent adapter is required");
+
+    expect(deps.markWorkspaceArchiving).not.toHaveBeenCalled();
+    expect(deps.stopWorkspaceSetup).not.toHaveBeenCalled();
+    expect(deps.killTerminalsForWorkspace).not.toHaveBeenCalled();
+    expect(deps.archiveIntents).toEqual(new Map());
+    expect(deps.activeWorkspaces.map((workspace) => workspace.workspaceId)).toEqual([workspaceId]);
+  });
+
+  test("fails before cleanup when durable archive intent persistence fails", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const workspaceId = "ws-intent-write-failure";
+    const coordinator = new WorkspaceLifecycleCoordinator();
+    const prepare = vi.fn(async () => {});
+    const unregister = coordinator.registerArchivePreparation(prepare);
+    const deps = createArchiveDeps({
+      paseoHome: path.join(tempDir, ".paseo"),
+      activeWorkspaces: [{ workspaceId, cwd: repoDir, kind: "local_checkout" }],
+    });
+    deps.workspaceLifecycle = coordinator;
+    deps.stopWorkspaceSetup = vi.fn(async () => {});
+    deps.beginWorkspaceArchive = vi.fn(async () => {
+      throw new Error("intent write failed");
+    });
+
+    await expect(
+      archiveByScope(deps, {
+        scope: { kind: "workspace", workspaceId },
+        requestId: "req-intent-write-failure",
+      }),
+    ).rejects.toThrow("intent write failed");
+    unregister();
+
+    expect(deps.stopWorkspaceSetup).not.toHaveBeenCalled();
+    expect(deps.markWorkspaceArchiving).not.toHaveBeenCalled();
+    expect(deps.killTerminalsForWorkspace).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(deps.activeWorkspaces.map((workspace) => workspace.workspaceId)).toEqual([workspaceId]);
+  });
+
+  test("claims the durable archive intent only after acquiring the workspace lifecycle fence", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const workspaceId = "ws-intent-lifecycle-fence";
+    const coordinator = new WorkspaceLifecycleCoordinator();
+    let releaseLifecycleFence!: () => void;
+    let markLifecycleFenceEntered!: () => void;
+    let markArchiveFenceRequested!: () => void;
+    const lifecycleFenceGate = new Promise<void>((resolve) => {
+      releaseLifecycleFence = resolve;
+    });
+    const lifecycleFenceEntered = new Promise<void>((resolve) => {
+      markLifecycleFenceEntered = resolve;
+    });
+    const archiveFenceRequested = new Promise<void>((resolve) => {
+      markArchiveFenceRequested = resolve;
+    });
+    const heldLifecycleFence = coordinator.serialize([workspaceId], async () => {
+      markLifecycleFenceEntered();
+      await lifecycleFenceGate;
+    });
+    await lifecycleFenceEntered;
+
+    const archiveLifecycle: WorkspaceLifecyclePort = {
+      serialize: (workspaceIds, operation) => {
+        markArchiveFenceRequested();
+        return coordinator.serialize(workspaceIds, operation);
+      },
+      serializeBackingDirectories: (backingDirectories, operation) =>
+        coordinator.serializeBackingDirectories(backingDirectories, operation),
+      prepareForArchive: (candidateWorkspaceId) =>
+        coordinator.prepareForArchive(candidateWorkspaceId),
+    };
+    const deps = createArchiveDeps({
+      paseoHome: path.join(tempDir, ".paseo"),
+      activeWorkspaces: [{ workspaceId, cwd: repoDir, kind: "local_checkout" }],
+    });
+    deps.workspaceLifecycle = archiveLifecycle;
+    const beginWorkspaceArchive = vi.fn(deps.beginWorkspaceArchive!);
+    deps.beginWorkspaceArchive = beginWorkspaceArchive;
+
+    const archive = archiveByScope(deps, {
+      scope: { kind: "workspace", workspaceId },
+      requestId: "req-intent-lifecycle-fence",
+    });
+    await archiveFenceRequested;
+    const claimCountWhileFenceWasHeld = beginWorkspaceArchive.mock.calls.length;
+
+    releaseLifecycleFence();
+    await heldLifecycleFence;
+    await archive;
+
+    expect(claimCountWhileFenceWasHeld).toBe(0);
+    expect(beginWorkspaceArchive).toHaveBeenCalledOnce();
+  });
+
+  test("stops workspace setup outside the lifecycle fence after persisting the archive intent", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const workspaceId = "ws-setup-reentrant-archive";
+    const coordinator = new WorkspaceLifecycleCoordinator();
+    const events: string[] = [];
+    const deps = createArchiveDeps({
+      paseoHome: path.join(tempDir, ".paseo"),
+      activeWorkspaces: [{ workspaceId, cwd: repoDir, kind: "local_checkout" }],
+    });
+    deps.workspaceLifecycle = coordinator;
+
+    const beginWorkspaceArchive = deps.beginWorkspaceArchive!;
+    deps.beginWorkspaceArchive = async (candidateWorkspaceId, intent) => {
+      events.push(`intent:${intent.requestId}`);
+      return beginWorkspaceArchive(candidateWorkspaceId, intent);
+    };
+
+    let stopCalls = 0;
+    deps.stopWorkspaceSetup = async (candidateWorkspaceId) => {
+      stopCalls += 1;
+      events.push(`stop:${stopCalls}`);
+      expect(deps.archiveIntents.get(candidateWorkspaceId)?.requestId).toBe("req-outer");
+      if (stopCalls === 1) {
+        await archiveByScope(deps, {
+          scope: { kind: "workspace", workspaceId: candidateWorkspaceId },
+          requestId: "req-setup-failure",
+        });
+        events.push("nested-complete");
+      }
+    };
+
+    let teardownCalls = 0;
+    let lifecycleProbe = Promise.resolve();
+    deps.killTerminalsForWorkspace = async () => {
+      teardownCalls += 1;
+      events.push(`contents:${teardownCalls}`);
+      if (teardownCalls === 2) {
+        lifecycleProbe = coordinator.serialize([workspaceId], async () => {
+          events.push("lifecycle-probe");
+        });
+        await Promise.resolve();
+        expect(events).not.toContain("lifecycle-probe");
+      }
+    };
+    const archiveWorkspaceRecord = deps.archiveWorkspaceRecord;
+    deps.archiveWorkspaceRecord = async (candidateWorkspaceId) => {
+      events.push(`record:${teardownCalls}`);
+      await archiveWorkspaceRecord(candidateWorkspaceId);
+    };
+
+    await archiveByScope(deps, {
+      scope: { kind: "workspace", workspaceId },
+      requestId: "req-outer",
+    });
+    await lifecycleProbe;
+
+    expect(stopCalls).toBe(2);
+    expect(teardownCalls).toBe(2);
+    expect(events).toEqual([
+      "intent:req-outer",
+      "stop:1",
+      "intent:req-setup-failure",
+      "stop:2",
+      "contents:1",
+      "record:1",
+      "nested-complete",
+      "contents:2",
+      "record:2",
+      "lifecycle-probe",
+    ]);
+  }, 1_000);
+
+  test("prepares Team Missions inside the workspace fence before archiving the record", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const workspaceId = "ws-team-lifecycle";
+    const coordinator = new WorkspaceLifecycleCoordinator();
+    const events: string[] = [];
+    const deps = createArchiveDeps({
+      paseoHome: path.join(tempDir, ".paseo"),
+      activeWorkspaces: [{ workspaceId, cwd: repoDir, kind: "local_checkout" }],
+    });
+    deps.workspaceLifecycle = coordinator;
+    const beginWorkspaceArchive = deps.beginWorkspaceArchive!;
+    deps.beginWorkspaceArchive = async (candidateWorkspaceId, intent) => {
+      events.push(`intent:${candidateWorkspaceId}`);
+      return beginWorkspaceArchive(candidateWorkspaceId, intent);
+    };
+    deps.stopWorkspaceSetup = async (candidateWorkspaceId) => {
+      events.push(`stop:${candidateWorkspaceId}`);
+    };
+    deps.killTerminalsForWorkspace = async (candidateWorkspaceId) => {
+      events.push(`contents:${candidateWorkspaceId}`);
+    };
+    const archiveWorkspaceRecord = deps.archiveWorkspaceRecord;
+    deps.archiveWorkspaceRecord = async (candidateWorkspaceId) => {
+      events.push(`record:${candidateWorkspaceId}`);
+      await archiveWorkspaceRecord(candidateWorkspaceId);
+    };
+    const unregister = coordinator.registerArchivePreparation(async (candidateWorkspaceId) => {
+      events.push(`prepare:${candidateWorkspaceId}`);
+    });
+
+    await archiveByScope(deps, {
+      scope: { kind: "workspace", workspaceId },
+      requestId: "req-team-lifecycle",
+    });
+    unregister();
+
+    expect(events).toEqual([
+      `intent:${workspaceId}`,
+      `stop:${workspaceId}`,
+      `prepare:${workspaceId}`,
+      `contents:${workspaceId}`,
+      `record:${workspaceId}`,
+    ]);
+  });
+
   test("workspace scope archives the record and removes the directory on last reference", async () => {
     const { tempDir, repoDir } = createGitRepo();
     const paseoHome = path.join(tempDir, ".paseo");
@@ -506,7 +820,7 @@ describe("archiveByScope", () => {
     expect(existsSync(localCheckoutDir)).toBe(true);
   });
 
-  test("worktree scope keeps the directory when one record teardown fails", async () => {
+  test("replays a retained archive intent after record finalization fails", async () => {
     const { tempDir, repoDir } = createGitRepo();
     const paseoHome = path.join(tempDir, ".paseo");
     const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "partial-failure");
@@ -516,27 +830,59 @@ describe("archiveByScope", () => {
     const deps = createArchiveDeps({
       paseoHome,
       activeWorkspaces: [
-        { workspaceId: workspaceA, cwd: worktree.worktreePath, kind: "worktree" },
-        { workspaceId: workspaceB, cwd: worktree.worktreePath, kind: "worktree" },
+        {
+          workspaceId: workspaceA,
+          cwd: worktree.worktreePath,
+          kind: "worktree",
+          worktreeRoot: worktree.worktreePath,
+          isPaseoOwnedWorktree: true,
+          mainRepoRoot: repoDir,
+        },
+        {
+          workspaceId: workspaceB,
+          cwd: worktree.worktreePath,
+          kind: "worktree",
+          worktreeRoot: worktree.worktreePath,
+          isPaseoOwnedWorktree: true,
+          mainRepoRoot: repoDir,
+        },
       ],
     });
     const originalArchiveWorkspaceRecord = deps.archiveWorkspaceRecord;
+    let failWorkspaceA = true;
     deps.archiveWorkspaceRecord = async (workspaceId: string) => {
-      if (workspaceId === workspaceA) {
+      if (workspaceId === workspaceA && failWorkspaceA) {
         throw new Error("intentional teardown failure");
       }
       return originalArchiveWorkspaceRecord(workspaceId);
     };
 
-    const result = await archiveByScope(deps, {
-      scope: { kind: "worktree", targetPath: worktree.worktreePath },
+    await expect(
+      archiveByScope(deps, {
+        scope: { kind: "worktree", targetPath: worktree.worktreePath },
+        requestId: "req-partial-failure",
+      }),
+    ).rejects.toThrow("Failed to archive 1 workspace record");
+
+    expect(deps.archiveIntents.get(workspaceA)).toMatchObject({
       requestId: "req-partial-failure",
     });
+    expect(deps.archiveIntents.has(workspaceB)).toBe(false);
+    expect(deps.activeWorkspaces.map((workspace) => workspace.workspaceId)).toEqual([workspaceA]);
+    expect(existsSync(worktree.worktreePath)).toBe(false);
 
-    expect(result.archivedWorkspaceIds).toEqual([workspaceB]);
-    expect(result.archivedWorkspaceIds).not.toContain(workspaceA);
-    expect(result.removedDirectory).toBe(false);
-    expect(existsSync(worktree.worktreePath)).toBe(true);
+    failWorkspaceA = false;
+    const replay = await archiveByScope(deps, {
+      scope: { kind: "workspace", workspaceId: workspaceA },
+      requestId: "req-partial-failure-replay",
+    });
+
+    assertArchiveResult(replay, {
+      archivedWorkspaceIds: [workspaceA],
+      removedDirectory: true,
+    });
+    expect(deps.archiveIntents.has(workspaceA)).toBe(false);
+    expect(deps.activeWorkspaces).toEqual([]);
   });
 
   test("workspace scope with unknown workspace id is a clean no-op", async () => {
@@ -586,6 +932,276 @@ describe("archiveByScope", () => {
       archivedWorkspaceIds: [],
       removedDirectory: true,
     });
+    expect(existsSync(worktree.worktreePath)).toBe(false);
+  });
+
+  test("keeps an owned worktree when provisioning wins the backing-directory fence", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "provisioning-wins");
+    const logger = createLogger();
+    const coordinator = new WorkspaceLifecycleCoordinator();
+    let markArchiveBackingFenceRequested!: () => void;
+    const archiveBackingFenceRequested = new Promise<void>((resolve) => {
+      markArchiveBackingFenceRequested = resolve;
+    });
+    const serializeBackingDirectories = coordinator.serializeBackingDirectories.bind(coordinator);
+    let backingFenceRequests = 0;
+    coordinator.serializeBackingDirectories = function <T>(backingDirectories, operation) {
+      backingFenceRequests += 1;
+      if (backingFenceRequests === 2) markArchiveBackingFenceRequested();
+      return serializeBackingDirectories(backingDirectories, operation) as Promise<T>;
+    };
+    const workspaceRegistry = new FileBackedWorkspaceRegistry(
+      path.join(tempDir, "state", "workspaces.json"),
+      logger,
+    );
+    const projectRegistry = new FileBackedProjectRegistry(
+      path.join(tempDir, "state", "projects.json"),
+      logger,
+    );
+    await Promise.all([workspaceRegistry.initialize(), projectRegistry.initialize()]);
+    const project = await projectRegistry.getOrCreateActiveByRoot({
+      rootPath: repoDir,
+      kind: "git",
+      displayName: "repo",
+      timestamp: "2026-08-11T00:00:00.000Z",
+    });
+    const checkout = createArchiveRaceCheckout(worktree.worktreePath, repoDir);
+    const provisioning = createWorkspaceProvisioningService({
+      workspaceRegistry,
+      projectRegistry,
+      workspaceGitService: checkout,
+      workspaceLifecycle: coordinator,
+      logger,
+    });
+
+    let releaseUpsert!: () => void;
+    let markUpsertEntered!: () => void;
+    const upsertGate = new Promise<void>((resolve) => {
+      releaseUpsert = resolve;
+    });
+    const upsertEntered = new Promise<void>((resolve) => {
+      markUpsertEntered = resolve;
+    });
+    const originalUpsert = workspaceRegistry.upsert.bind(workspaceRegistry);
+    workspaceRegistry.upsert = async (record, context) => {
+      markUpsertEntered();
+      await upsertGate;
+      await originalUpsert(record, context);
+    };
+
+    const provision = provisioning.createWorkspaceForDirectory(
+      worktree.worktreePath,
+      null,
+      project.projectId,
+    );
+    await upsertEntered;
+    const archiveDeps = createRegistryBackedArchiveDeps({
+      paseoHome,
+      coordinator,
+      workspaceRegistry,
+    });
+    const archive = archiveByScope(archiveDeps, {
+      scope: { kind: "worktree", targetPath: worktree.worktreePath },
+      requestId: "req-provisioning-wins",
+    });
+
+    await archiveBackingFenceRequested;
+    releaseUpsert();
+    const [workspace, archiveResult] = await Promise.all([provision, archive]);
+
+    expect(await workspaceRegistry.get(workspace.workspaceId)).toEqual(workspace);
+    expect(archiveResult.removedDirectory).toBe(false);
+    expect(existsSync(worktree.worktreePath)).toBe(true);
+  });
+
+  test("does not provision after a zero-record archive wins the backing-directory fence", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "archive-wins");
+    const logger = createLogger();
+    const coordinator = new WorkspaceLifecycleCoordinator();
+    const workspaceRegistry = new FileBackedWorkspaceRegistry(
+      path.join(tempDir, "state", "workspaces.json"),
+      logger,
+    );
+    const projectRegistry = new FileBackedProjectRegistry(
+      path.join(tempDir, "state", "projects.json"),
+      logger,
+    );
+    await Promise.all([workspaceRegistry.initialize(), projectRegistry.initialize()]);
+    const project = await projectRegistry.getOrCreateActiveByRoot({
+      rootPath: repoDir,
+      kind: "git",
+      displayName: "repo",
+      timestamp: "2026-08-11T00:00:00.000Z",
+    });
+    const baseCheckout = createArchiveRaceCheckout(worktree.worktreePath, repoDir);
+    let markProvisioningObservedCheckout!: () => void;
+    const provisioningObservedCheckout = new Promise<void>((resolve) => {
+      markProvisioningObservedCheckout = resolve;
+    });
+    const checkout = {
+      ...baseCheckout,
+      getCheckout: async (cwd: string) => {
+        const result = await baseCheckout.getCheckout(cwd);
+        if (createRealpathAwarePathMatcher(worktree.worktreePath)(cwd)) {
+          markProvisioningObservedCheckout();
+        }
+        return result;
+      },
+    };
+    const provisioning = createWorkspaceProvisioningService({
+      workspaceRegistry,
+      projectRegistry,
+      workspaceGitService: checkout,
+      workspaceLifecycle: coordinator,
+      logger,
+    });
+    const archiveDeps = createRegistryBackedArchiveDeps({
+      paseoHome,
+      coordinator,
+      workspaceRegistry,
+    });
+    const listActiveWorkspaces = archiveDeps.listActiveWorkspaces;
+    let archiveListCalls = 0;
+    let releaseFinalReferenceCheck!: () => void;
+    let markFinalReferenceCheckEntered!: () => void;
+    const finalReferenceCheckGate = new Promise<void>((resolve) => {
+      releaseFinalReferenceCheck = resolve;
+    });
+    const finalReferenceCheckEntered = new Promise<void>((resolve) => {
+      markFinalReferenceCheckEntered = resolve;
+    });
+    archiveDeps.listActiveWorkspaces = async () => {
+      const active = await listActiveWorkspaces();
+      archiveListCalls += 1;
+      if (archiveListCalls === 2) {
+        markFinalReferenceCheckEntered();
+        await finalReferenceCheckGate;
+      }
+      return active;
+    };
+
+    const archive = archiveByScope(archiveDeps, {
+      scope: { kind: "worktree", targetPath: worktree.worktreePath },
+      requestId: "req-archive-wins",
+    });
+    await finalReferenceCheckEntered;
+    const provision = provisioning.createWorkspaceForDirectory(
+      worktree.worktreePath,
+      null,
+      project.projectId,
+    );
+    await provisioningObservedCheckout;
+    releaseFinalReferenceCheck();
+
+    const archiveResult = await archive;
+    await expect(provision).rejects.toThrow(
+      "Workspace backing directory changed during provisioning",
+    );
+
+    expect(archiveResult.removedDirectory).toBe(true);
+    expect(await workspaceRegistry.list()).toEqual([]);
+    expect(existsSync(worktree.worktreePath)).toBe(false);
+  });
+
+  test("does not restore an archived workspace after its backing directory is deleted", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "archive-beats-restore");
+    const logger = createLogger();
+    const coordinator = new WorkspaceLifecycleCoordinator();
+    let markRestoreBackingFenceRequested!: () => void;
+    const restoreBackingFenceRequested = new Promise<void>((resolve) => {
+      markRestoreBackingFenceRequested = resolve;
+    });
+    const serializeBackingDirectories = coordinator.serializeBackingDirectories.bind(coordinator);
+    let backingFenceRequests = 0;
+    coordinator.serializeBackingDirectories = function <T>(backingDirectories, operation) {
+      backingFenceRequests += 1;
+      if (backingFenceRequests === 2) markRestoreBackingFenceRequested();
+      return serializeBackingDirectories(backingDirectories, operation) as Promise<T>;
+    };
+    const workspaceRegistry = new FileBackedWorkspaceRegistry(
+      path.join(tempDir, "state", "workspaces.json"),
+      logger,
+    );
+    const projectRegistry = new FileBackedProjectRegistry(
+      path.join(tempDir, "state", "projects.json"),
+      logger,
+    );
+    await Promise.all([workspaceRegistry.initialize(), projectRegistry.initialize()]);
+    const project = await projectRegistry.getOrCreateActiveByRoot({
+      rootPath: repoDir,
+      kind: "git",
+      displayName: "repo",
+      timestamp: "2026-08-11T00:00:00.000Z",
+    });
+    const workspace = createPersistedWorkspaceRecord({
+      workspaceId: "ws-archive-beats-restore",
+      projectId: project.projectId,
+      cwd: worktree.worktreePath,
+      kind: "worktree",
+      displayName: "archive-beats-restore",
+      branch: "archive-beats-restore",
+      worktreeRoot: worktree.worktreePath,
+      isPaseoOwnedWorktree: true,
+      mainRepoRoot: repoDir,
+      createdAt: "2026-08-11T00:00:00.000Z",
+      updatedAt: "2026-08-11T00:00:00.000Z",
+      archivedAt: "2026-08-11T00:01:00.000Z",
+    });
+    await workspaceRegistry.upsert(workspace);
+    const provisioning = createWorkspaceProvisioningService({
+      workspaceRegistry,
+      projectRegistry,
+      workspaceGitService: createArchiveRaceCheckout(worktree.worktreePath, repoDir),
+      workspaceLifecycle: coordinator,
+      logger,
+    });
+    const archiveDeps = createRegistryBackedArchiveDeps({
+      paseoHome,
+      coordinator,
+      workspaceRegistry,
+    });
+    const listActiveWorkspaces = archiveDeps.listActiveWorkspaces;
+    let archiveListCalls = 0;
+    let releaseFinalReferenceCheck!: () => void;
+    let markFinalReferenceCheckEntered!: () => void;
+    const finalReferenceCheckGate = new Promise<void>((resolve) => {
+      releaseFinalReferenceCheck = resolve;
+    });
+    const finalReferenceCheckEntered = new Promise<void>((resolve) => {
+      markFinalReferenceCheckEntered = resolve;
+    });
+    archiveDeps.listActiveWorkspaces = async () => {
+      const active = await listActiveWorkspaces();
+      archiveListCalls += 1;
+      if (archiveListCalls === 2) {
+        markFinalReferenceCheckEntered();
+        await finalReferenceCheckGate;
+      }
+      return active;
+    };
+
+    const archive = archiveByScope(archiveDeps, {
+      scope: { kind: "worktree", targetPath: worktree.worktreePath },
+      requestId: "req-archive-beats-restore",
+    });
+    await finalReferenceCheckEntered;
+    const restore = provisioning.ensureWorkspaceRecordUnarchived(workspace);
+    await restoreBackingFenceRequested;
+    releaseFinalReferenceCheck();
+
+    const archiveResult = await archive;
+    await expect(restore).rejects.toThrow(
+      "Workspace backing directory changed during provisioning",
+    );
+
+    expect(archiveResult.removedDirectory).toBe(true);
+    expect(await workspaceRegistry.get(workspace.workspaceId)).toEqual(workspace);
     expect(existsSync(worktree.worktreePath)).toBe(false);
   });
 
@@ -729,6 +1345,202 @@ describe("archiveByScope", () => {
     expect(existsSync(worktree.worktreePath)).toBe(false);
   });
 
+  test("retains the archive intent when stored ownership cannot be enumerated", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const workspaceId = "ws-storage-list-failure";
+    const deps = createArchiveDeps({
+      paseoHome: path.join(tempDir, ".paseo"),
+      activeWorkspaces: [{ workspaceId, cwd: repoDir, kind: "local_checkout" }],
+    });
+    const archiveWorkspaceRecord = vi.fn(deps.archiveWorkspaceRecord);
+    deps.archiveWorkspaceRecord = archiveWorkspaceRecord;
+    deps.agentStorage = {
+      listByWorkspace: vi.fn(async () => {
+        throw new Error("stored ownership unavailable");
+      }),
+    } as Pick<AgentStorage, "listByWorkspace">;
+
+    await expect(
+      archiveByScope(deps, {
+        scope: { kind: "workspace", workspaceId },
+        requestId: "req-storage-list-failure",
+      }),
+    ).rejects.toThrow("Failed to archive 1 workspace record");
+
+    expect(archiveWorkspaceRecord).not.toHaveBeenCalled();
+    expect(deps.archiveIntents.get(workspaceId)).toMatchObject({
+      requestId: "req-storage-list-failure",
+    });
+  });
+
+  test("retains the archive intent when owned runtime teardown fails", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const workspaceId = "ws-runtime-teardown-failure";
+    const agentId = "agent-runtime-teardown-failure";
+    const deps = createArchiveDeps({
+      paseoHome: path.join(tempDir, ".paseo"),
+      activeWorkspaces: [{ workspaceId, cwd: repoDir, kind: "local_checkout" }],
+    });
+    const archiveWorkspaceRecord = vi.fn(deps.archiveWorkspaceRecord);
+    deps.archiveWorkspaceRecord = archiveWorkspaceRecord;
+    deps.agentManager = {
+      listAgents: () => [{ id: agentId, workspaceId }] as ManagedAgent[],
+      getAgent: () => ({ id: agentId }) as ManagedAgent,
+      archiveAgent: vi.fn(async () => {
+        throw new Error("provider close failed");
+      }),
+      archiveSnapshot: vi.fn(async () => ({})),
+    };
+
+    await expect(
+      archiveByScope(deps, {
+        scope: { kind: "workspace", workspaceId },
+        requestId: "req-runtime-teardown-failure",
+      }),
+    ).rejects.toThrow("Failed to archive 1 workspace record");
+
+    expect(deps.killTerminalsForWorkspace).toHaveBeenCalledWith(workspaceId);
+    expect(archiveWorkspaceRecord).not.toHaveBeenCalled();
+    expect(deps.archiveIntents.get(workspaceId)).toMatchObject({
+      requestId: "req-runtime-teardown-failure",
+    });
+  });
+
+  test("retains the archive intent after attempting every terminal enumeration and kill", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const workspaceId = "ws-terminal-teardown-failure";
+    const deps = createArchiveDeps({
+      paseoHome: path.join(tempDir, ".paseo"),
+      activeWorkspaces: [{ workspaceId, cwd: repoDir, kind: "local_checkout" }],
+    });
+    const archiveWorkspaceRecord = vi.fn(deps.archiveWorkspaceRecord);
+    deps.archiveWorkspaceRecord = archiveWorkspaceRecord;
+
+    const terminal = (id: string, terminalWorkspaceId = workspaceId) =>
+      ({ id, workspaceId: terminalWorkspaceId }) as TerminalSession;
+    const getTerminals = vi.fn(async (cwd: string) => {
+      if (cwd === "/unreadable") {
+        throw new Error("terminal enumeration failed");
+      }
+      return [
+        terminal("terminal-fails"),
+        terminal("terminal-closes"),
+        terminal("terminal-other", "ws-other"),
+      ];
+    });
+    const killTerminalAndWait = vi.fn(async (terminalId: string) => {
+      if (terminalId === "terminal-fails") {
+        throw new Error("terminal kill failed");
+      }
+    });
+    const terminalManager = {
+      listDirectories: () => ["/unreadable", "/readable"],
+      getTerminals,
+      killTerminalAndWait,
+    } as unknown as TerminalManager;
+    deps.killTerminalsForWorkspace = (candidateWorkspaceId) =>
+      killTerminalsForWorkspace(
+        {
+          terminalManager,
+          sessionLogger: deps.sessionLogger!,
+        },
+        candidateWorkspaceId,
+      );
+
+    await expect(
+      archiveByScope(deps, {
+        scope: { kind: "workspace", workspaceId },
+        requestId: "req-terminal-teardown-failure",
+      }),
+    ).rejects.toThrow("Failed to archive 1 workspace record");
+
+    expect(getTerminals).toHaveBeenCalledTimes(2);
+    expect(killTerminalAndWait.mock.calls.map(([terminalId]) => terminalId).toSorted()).toEqual([
+      "terminal-closes",
+      "terminal-fails",
+    ]);
+    expect(archiveWorkspaceRecord).not.toHaveBeenCalled();
+    expect(deps.archiveIntents.get(workspaceId)).toMatchObject({
+      requestId: "req-terminal-teardown-failure",
+    });
+  });
+
+  test("keeps every archive intent until the shared backing directory is physically removed", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(
+      repoDir,
+      paseoHome,
+      "archive-intent-delete-fence",
+    );
+    const workspaceA = "ws-delete-fence-a";
+    const workspaceB = "ws-delete-fence-b";
+    const racingWorkspaceId = "ws-delete-fence-racing-create";
+    const deps = createArchiveDeps({
+      paseoHome,
+      activeWorkspaces: [
+        { workspaceId: workspaceA, cwd: worktree.worktreePath, kind: "worktree" },
+        { workspaceId: workspaceB, cwd: worktree.worktreePath, kind: "worktree" },
+      ],
+    });
+
+    let activeWorkspaceListCalls = 0;
+    let racingCreateBlocked = false;
+    const listActiveWorkspaces = deps.listActiveWorkspaces;
+    deps.listActiveWorkspaces = async () => {
+      activeWorkspaceListCalls += 1;
+      const snapshot = await listActiveWorkspaces();
+      if (activeWorkspaceListCalls === 2) {
+        queueMicrotask(() => {
+          if (deps.archiveIntents.has(workspaceA) && deps.archiveIntents.has(workspaceB)) {
+            racingCreateBlocked = true;
+            return;
+          }
+          deps.activeWorkspaces.push({
+            workspaceId: racingWorkspaceId,
+            cwd: worktree.worktreePath,
+            kind: "worktree",
+          });
+        });
+      }
+      return snapshot;
+    };
+
+    const finalizationSnapshots: Array<{
+      workspaceId: string;
+      directoryExists: boolean;
+      ownIntentPresent: boolean;
+    }> = [];
+    const archiveWorkspaceRecord = deps.archiveWorkspaceRecord;
+    deps.archiveWorkspaceRecord = async (workspaceId) => {
+      finalizationSnapshots.push({
+        workspaceId,
+        directoryExists: existsSync(worktree.worktreePath),
+        ownIntentPresent: deps.archiveIntents.has(workspaceId),
+      });
+      await archiveWorkspaceRecord(workspaceId);
+    };
+
+    const result = await archiveByScope(deps, {
+      scope: { kind: "worktree", targetPath: worktree.worktreePath },
+      requestId: "req-archive-intent-delete-fence",
+    });
+
+    expect(result.archivedWorkspaceIds.toSorted()).toEqual([workspaceA, workspaceB]);
+    expect(result.removedDirectory).toBe(true);
+    expect(racingCreateBlocked).toBe(true);
+    expect(deps.activeWorkspaces).not.toContainEqual(
+      expect.objectContaining({ workspaceId: racingWorkspaceId }),
+    );
+    expect(finalizationSnapshots).toHaveLength(2);
+    expect(finalizationSnapshots).toEqual(
+      expect.arrayContaining([
+        { workspaceId: workspaceA, directoryExists: false, ownIntentPresent: true },
+        { workspaceId: workspaceB, directoryExists: false, ownIntentPresent: true },
+      ]),
+    );
+  });
+
   test("archives the durable snapshot when an observed live agent closes before teardown", async () => {
     const { tempDir, repoDir } = createGitRepo();
     const paseoHome = path.join(tempDir, ".paseo");
@@ -748,8 +1560,9 @@ describe("archiveByScope", () => {
       }),
     };
     deps.agentStorage = {
-      list: async () => [{ id: agentId, workspaceId, archivedAt: null }] as StoredAgentRecord[],
-    } as Pick<AgentStorage, "list">;
+      listByWorkspace: async () =>
+        [{ id: agentId, workspaceId, archivedAt: null }] as StoredAgentRecord[],
+    } as Pick<AgentStorage, "listByWorkspace">;
 
     const result = await archiveByScope(deps, {
       scope: { kind: "workspace", workspaceId },

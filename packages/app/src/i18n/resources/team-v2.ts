@@ -1,4 +1,7 @@
 export const teamV2En = {
+  host: {
+    title: "Teams",
+  },
   mission: {
     empty: "No Mission yet",
     start: "Start Mission",
@@ -204,6 +207,7 @@ type DeepPartial<T> = {
 
 function teamV2Locale(overrides: DeepPartial<TeamV2Resources>): TeamV2Resources {
   return {
+    host: { ...teamV2En.host, ...overrides.host },
     mission: { ...teamV2En.mission, ...overrides.mission },
     v2: {
       actions: { ...teamV2En.v2.actions, ...overrides.v2?.actions },
@@ -247,6 +251,9 @@ function teamV2Locale(overrides: DeepPartial<TeamV2Resources>): TeamV2Resources 
 }
 
 export const teamV2ZhCN: TeamV2Resources = {
+  host: {
+    title: "团队",
+  },
   mission: {
     empty: "还没有 Mission",
     start: "启动 Mission",
@@ -431,6 +438,7 @@ export const teamV2ZhCN: TeamV2Resources = {
 };
 
 export const teamV2Es = teamV2Locale({
+  host: { title: "Equipos" },
   mission: { empty: "Aún no hay misión", start: "Iniciar misión" },
   v2: {
     actions: {
@@ -608,6 +616,7 @@ export const teamV2Es = teamV2Locale({
 });
 
 export const teamV2Fr = teamV2Locale({
+  host: { title: "Équipes" },
   mission: { empty: "Aucune mission", start: "Démarrer une mission" },
   v2: {
     actions: {
@@ -785,6 +794,7 @@ export const teamV2Fr = teamV2Locale({
 });
 
 export const teamV2PtBR = teamV2Locale({
+  host: { title: "Equipes" },
   mission: { empty: "Ainda não há missão", start: "Iniciar missão" },
   v2: {
     actions: {
@@ -962,6 +972,7 @@ export const teamV2PtBR = teamV2Locale({
 });
 
 export const teamV2Ja = teamV2Locale({
+  host: { title: "チーム" },
   mission: { empty: "ミッションはまだありません", start: "ミッションを開始" },
   v2: {
     actions: {
@@ -1131,6 +1142,7 @@ export const teamV2Ja = teamV2Locale({
 });
 
 export const teamV2Ko = teamV2Locale({
+  host: { title: "팀" },
   mission: { empty: "아직 미션이 없습니다", start: "미션 시작" },
   v2: {
     actions: {
@@ -1300,6 +1312,7 @@ export const teamV2Ko = teamV2Locale({
 });
 
 export const teamV2Ru = teamV2Locale({
+  host: { title: "Команды" },
   mission: { empty: "Миссии пока нет", start: "Запустить миссию" },
   v2: {
     actions: {
@@ -1469,6 +1482,7 @@ export const teamV2Ru = teamV2Locale({
 });
 
 export const teamV2Ar = teamV2Locale({
+  host: { title: "الفرق" },
   mission: { empty: "لا توجد مهمة بعد", start: "بدء المهمة" },
   v2: {
     actions: {

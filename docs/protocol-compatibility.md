@@ -44,6 +44,12 @@ after its runtime and startup reconciliation are ready. A physical WebSocket als
 feature is absent, the app asks for a host upgrade and does not send Team RPCs or run a fallback
 protocol.
 
+`server_info.features.globalTeamProfiles` is a behavior gate layered on that protocol. With it, the
+App lists every active Team on the host and Mission start sends a workspace; the CLI requires
+`--workspace`. Without it, the App filters profiles by their creation workspace and both clients omit
+the optional request field. The daemon normalizes an omitted workspace to the Team creation workspace,
+so old and explicit-creation requests share one idempotency fingerprint.
+
 ## Every shim is tagged and dated
 
 A shim that exists for old-app or old-daemon support carries a comment naming it, the version it arrived in, and when it can go:

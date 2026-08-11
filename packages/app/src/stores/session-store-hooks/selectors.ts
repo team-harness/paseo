@@ -307,6 +307,23 @@ export function selectHasWorkspaces(state: SessionsSnapshot, serverId: string | 
   return (state.sessions[serverId]?.workspaces?.size ?? 0) > 0;
 }
 
+export function selectHasLiveWorkspaces(state: SessionsSnapshot, serverId: string | null): boolean {
+  if (!serverId) return false;
+  for (const workspace of state.sessions[serverId]?.workspaces?.values() ?? []) {
+    if (workspace.archivingAt === null) return true;
+  }
+  return false;
+}
+
+export function selectLiveWorkspaceIds(state: SessionsSnapshot, serverId: string | null): string[] {
+  if (!serverId) return EMPTY_WORKSPACE_KEYS;
+  const workspaceIds = [...(state.sessions[serverId]?.workspaces?.values() ?? [])]
+    .filter((workspace) => workspace.archivingAt === null)
+    .map((workspace) => workspace.id)
+    .sort();
+  return workspaceIds.length > 0 ? workspaceIds : EMPTY_WORKSPACE_KEYS;
+}
+
 export function selectWorkspaceStatusesForBadges(
   state: SessionsSnapshot,
 ): DesktopBadgeWorkspaceStatus[] {

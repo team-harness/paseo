@@ -963,11 +963,7 @@ function persistenceAttentionId(missionId: string, code: TeamPersistenceAttentio
 }
 
 function isAbandonableActiveMissionAttention(code: TeamPersistenceAttentionCode): boolean {
-  return (
-    code === "active_mission_missing" ||
-    code === "active_mission_team_mismatch" ||
-    code === "active_mission_workspace_mismatch"
-  );
+  return code === "active_mission_missing" || code === "active_mission_team_mismatch";
 }
 
 function resolveArchiveMissionState(

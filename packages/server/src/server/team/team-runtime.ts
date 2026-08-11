@@ -108,7 +108,7 @@ export interface TeamRuntime {
   start(): Promise<void>;
   stop(): void;
   isReady(): boolean;
-  serverFeatures(): { teamMissions?: true };
+  serverFeatures(): { teamMissions?: true; globalTeamProfiles?: true };
   sessionDeps(): TeamRuntimeSessionDeps | null;
   registerAgentTools(callerAgentId: string | undefined, registerTool: RegisterPaseoTool): void;
 }
@@ -206,8 +206,8 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
     return this.state === "ready";
   }
 
-  serverFeatures(): { teamMissions?: true } {
-    return this.isReady() ? { teamMissions: true } : {};
+  serverFeatures(): { teamMissions?: true; globalTeamProfiles?: true } {
+    return this.isReady() ? { teamMissions: true, globalTeamProfiles: true } : {};
   }
 
   sessionDeps(): TeamRuntimeSessionDeps | null {
@@ -308,6 +308,7 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
               idempotencyKey: request.idempotencyKey,
               teamId: request.teamId,
               expectedTeamRevision: request.expectedTeamRevision,
+              workspaceId: request.workspaceId,
               objective: request.objective,
               constraints: request.constraints,
               acceptanceCriteria: request.acceptanceCriteria,

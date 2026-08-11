@@ -5,6 +5,8 @@ import {
   composeWorkspaceStructure,
   createWorkspaceStructureProjectsSelector,
   selectHasHydratedWorkspaces,
+  selectHasLiveWorkspaces,
+  selectLiveWorkspaceIds,
   selectHydratedWorkspaceServerIds,
   selectWorkspaceDirectoryServerIds,
   selectHasWorkspaces,
@@ -69,6 +71,22 @@ export function useHasHydratedWorkspaces(serverId: string | null): boolean {
     useSessionStore,
     (state) => selectHasHydratedWorkspaces(state, serverId),
     workspaceEqualityFns.identity,
+  );
+}
+
+export function useHasLiveWorkspaces(serverId: string | null): boolean {
+  return useStoreWithEqualityFn(
+    useSessionStore,
+    (state) => selectHasLiveWorkspaces(state, serverId),
+    workspaceEqualityFns.identity,
+  );
+}
+
+export function useLiveWorkspaceIds(serverId: string | null): string[] {
+  return useStoreWithEqualityFn(
+    useSessionStore,
+    (state) => selectLiveWorkspaceIds(state, serverId),
+    workspaceEqualityFns.deep,
   );
 }
 

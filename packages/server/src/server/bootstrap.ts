@@ -143,10 +143,14 @@ import type { PaseoToolRuntimeContext } from "./agent/tools/types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
+import { recoverPendingWorkspaceArchives } from "./workspace-archive-recovery.js";
 import {
   FileBackedProjectRegistry,
   FileBackedWorkspaceRegistry,
+  isWorkspaceRecordAvailable,
+  isWorkspaceRecordArchiveReference,
   type WorkspaceArchiveContext,
+  type WorkspaceArchiveIntent,
 } from "./workspace-registry.js";
 import {
   installPaseoTeamRuntime,
@@ -211,6 +215,7 @@ import {
 } from "./auth.js";
 import { createWebUiMiddleware } from "./web-ui.js";
 import { WorkspaceAutoName } from "./workspace-auto-name.js";
+import { workspaceLifecycleCoordinator } from "./workspace-lifecycle-coordinator.js";
 import { createGitMutationService } from "./session/git-mutation/git-mutation-service.js";
 import { workspaceIdsOnCheckout } from "./workspace-directory.js";
 import { configureGitProcessPolicy } from "../utils/run-git-command.js";
@@ -951,6 +956,8 @@ export async function createPaseoDaemon(
     logger,
   });
   logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
+  const beginWorkspaceArchiveExternal = (workspaceId: string, intent: WorkspaceArchiveIntent) =>
+    workspaceRegistry.beginArchive(workspaceId, intent);
   const teardownArchivedWorkspaceRuntime = (workspaceId: string): void => {
     scriptRuntimeStore.removeForWorkspace(workspaceId);
     releaseWorkspaceServicePortPlan(workspaceId);
@@ -963,6 +970,9 @@ export async function createPaseoDaemon(
     workspaceGitService,
     onProjectUpdate: (update) => wsServer?.publishProjectUpdate(update),
     onWorkspaceArchived: teardownArchivedWorkspaceRuntime,
+    archiveMissingWorkspace: async (workspaceId, requestId) => {
+      await archiveWorkspaceByIdExternal(workspaceId, requestId);
+    },
     onWorkspacesChanged: async (workspaceIds) => {
       await fanOutReconciledWorkspaceUpdates({
         sessions: wsServer?.listTrustedSessions() ?? [],
@@ -971,18 +981,18 @@ export async function createPaseoDaemon(
       });
     },
   });
-  await workspaceReconciliation.start();
-  void workspaceReconciliation.reconcileNow().catch((error) => {
-    logger.warn({ err: error }, "Initial workspace reconciliation failed");
-  });
   const teamRuntime = await installPaseoTeamRuntime({
     runtime: dependencies.teamMissionsRuntime ?? { enabled: false },
     persistenceFaultInjector: dependencies.teamPersistenceFaultInjector,
     paseoHome: config.paseoHome,
     agentManager,
     agentStorage,
-    resolveWorkspaceCwd: async (workspaceId) =>
-      (await workspaceRegistry.get(workspaceId))?.cwd ?? null,
+    resolveWorkspaceCwd: async (workspaceId) => {
+      const workspace = await workspaceRegistry.get(workspaceId);
+      return workspace && workspace.archivedAt === null && workspace.archiveIntent === null
+        ? workspace.cwd
+        : null;
+    },
     publishTeamProfile: (team) => {
       for (const session of wsServer?.listTrustedSessions() ?? []) {
         session.emitTeamProfileSnapshot(team);
@@ -1043,16 +1053,14 @@ export async function createPaseoDaemon(
   };
   const listActiveWorkspacesExternal = async (): Promise<ActiveWorkspaceRef[]> => {
     const workspaces = await workspaceRegistry.list();
-    return workspaces
-      .filter((workspace) => !workspace.archivedAt)
-      .map((workspace) => ({
-        workspaceId: workspace.workspaceId,
-        cwd: workspace.cwd,
-        kind: workspace.kind,
-        worktreeRoot: workspace.worktreeRoot,
-        isPaseoOwnedWorktree: workspace.isPaseoOwnedWorktree,
-        mainRepoRoot: workspace.mainRepoRoot,
-      }));
+    return workspaces.filter(isWorkspaceRecordArchiveReference).map((workspace) => ({
+      workspaceId: workspace.workspaceId,
+      cwd: workspace.cwd,
+      kind: workspace.kind,
+      worktreeRoot: workspace.worktreeRoot,
+      isPaseoOwnedWorktree: workspace.isPaseoOwnedWorktree,
+      mainRepoRoot: workspace.mainRepoRoot,
+    }));
   };
   const markWorkspaceArchivingExternal = (workspaceIds: Iterable<string>, archivingAt: string) => {
     const workspaceIdList = Array.from(workspaceIds);
@@ -1120,6 +1128,7 @@ export async function createPaseoDaemon(
     listActiveWorkspaces: listActiveWorkspacesExternal,
     getAutoArchivedChangeRequestUrl: async (workspaceId) =>
       (await workspaceRegistry.get(workspaceId))?.autoArchivedChangeRequestUrl ?? null,
+    beginWorkspaceArchive: beginWorkspaceArchiveExternal,
     archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     markWorkspaceArchiving: markWorkspaceArchivingExternal,
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
@@ -1164,7 +1173,13 @@ export async function createPaseoDaemon(
         emit: emitExternalSessionMessage,
         sessionLogger: logger,
         terminalManager,
-        archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
+        archiveWorkspaceRecord: async (workspaceId) => {
+          await archiveWorkspaceByIdExternal(
+            workspaceId,
+            `workspace-setup-failure:${workspaceId}`,
+            { stopWorkspaceSetup: false },
+          );
+        },
         serviceProxy,
         scriptRuntimeStore,
         getDaemonTcpPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
@@ -1185,12 +1200,24 @@ export async function createPaseoDaemon(
     worktreesRoot: config.worktreesRoot,
     terminalManager,
     providerSnapshotManager,
+    runInWorkspaceLifecycle: (workspaceId, operation) =>
+      workspaceLifecycleCoordinator.serialize([workspaceId], async () => {
+        const workspace = await workspaceRegistry.get(workspaceId);
+        if (!workspace || !isWorkspaceRecordAvailable(workspace)) {
+          throw new Error(`Workspace ${workspaceId} not found`);
+        }
+        return operation();
+      }),
     createPaseoWorktree: createPaseoWorktreeForTools,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateAndBroadcastExternal,
   };
   const createAgent = (input: Parameters<typeof createAgentCommand>[1]) =>
     createAgentCommand(createAgentCommandDependencies, input);
-  const archiveWorkspaceByIdExternal = (workspaceId: string, requestId: string) =>
+  const archiveWorkspaceByIdExternal = (
+    workspaceId: string,
+    requestId: string,
+    options?: { stopWorkspaceSetup?: boolean },
+  ) =>
     archiveByScope(
       {
         paseoHome: config.paseoHome,
@@ -1202,17 +1229,24 @@ export async function createPaseoDaemon(
         findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
         listActiveWorkspaces: listActiveWorkspacesExternal,
         getWorkspace: (workspaceIdToGet) => workspaceRegistry.get(workspaceIdToGet),
+        beginWorkspaceArchive: beginWorkspaceArchiveExternal,
         archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
         emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
         markWorkspaceArchiving: markWorkspaceArchivingExternal,
         clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
         killTerminalsForWorkspace: (workspaceIdToKill) =>
           killTerminalsForWorkspace({ terminalManager, sessionLogger: logger }, workspaceIdToKill),
-        stopWorkspaceSetup: (workspaceIdToStop) => workspaceSetupRuntime.stop(workspaceIdToStop),
+        ...(options?.stopWorkspaceSetup === false
+          ? {}
+          : {
+              stopWorkspaceSetup: (workspaceIdToStop: string) =>
+                workspaceSetupRuntime.stop(workspaceIdToStop),
+            }),
         sessionLogger: logger,
       },
       { scope: { kind: "workspace", workspaceId }, requestId },
     );
+  await workspaceReconciliation.start();
   const hubAgentLifecycle = new CreateAgentLifecycleDispatch({
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
@@ -1225,6 +1259,7 @@ export async function createPaseoDaemon(
       archiveAgentCommand({ agentManager, agentStorage, logger }, agentId),
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
     listActiveWorkspaces: listActiveWorkspacesExternal,
+    beginWorkspaceArchive: beginWorkspaceArchiveExternal,
     archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     emit: emitExternalSessionMessage,
     emitAgentRemove: async () => undefined,
@@ -1301,6 +1336,7 @@ export async function createPaseoDaemon(
         findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
         listActiveWorkspaces: listActiveWorkspacesExternal,
         getWorkspace: (workspaceIdToGet) => workspaceRegistry.get(workspaceIdToGet),
+        beginWorkspaceArchive: beginWorkspaceArchiveExternal,
         archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
         emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
         markWorkspaceArchiving: markWorkspaceArchivingExternal,
@@ -1366,10 +1402,12 @@ export async function createPaseoDaemon(
     scheduleService,
     providerSnapshotManager,
     daemonConfigStore,
+    runInWorkspaceLifecycle: createAgentCommandDependencies.runInWorkspaceLifecycle,
     github,
     workspaceGitService,
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
     listActiveWorkspaces: listActiveWorkspacesExternal,
+    beginWorkspaceArchive: beginWorkspaceArchiveExternal,
     archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
     workspaceRegistry,
@@ -1602,6 +1640,11 @@ export async function createPaseoDaemon(
             daemonConfigStore.onFieldChange("appendSystemPrompt", (value) => {
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
             });
+            await recoverPendingWorkspaceArchives({
+              listWorkspaces: () => workspaceRegistry.list(),
+              archiveWorkspace: archiveWorkspaceByIdExternal,
+            });
+            await workspaceReconciliation.reconcileNow();
             await teamRuntime.start();
             logger.info({ elapsed: elapsed() }, "Team runtime initialized");
             const relayEnabled = config.relayEnabled ?? true;

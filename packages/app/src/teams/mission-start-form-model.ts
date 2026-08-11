@@ -27,10 +27,13 @@ export interface MissionStartRequestInput {
   objective: string;
   constraints: string[];
   acceptanceCriteria: string[];
+  workspaceId?: string;
 }
 
 export interface MissionStartFormState {
   access: TeamMissionsAccess;
+  workspaceId: string;
+  globalTeamProfiles: boolean;
   selectedTeamId: string | null;
   selectedTeamDisplay: string | null;
   selectedTeamRevision: number | null;
@@ -48,6 +51,7 @@ export interface MissionStartFormSnapshot {
   serverId: string;
   workspaceId: string;
   access: TeamMissionsAccess;
+  globalTeamProfiles: boolean;
   selectedTeam: TeamV2 | null;
   teams: readonly TeamV2[];
   newRowKey: () => string;
@@ -85,8 +89,11 @@ function toTeamOption(team: TeamV2): MissionStartTeamOption {
 function optionsForWorkspace(
   teams: readonly TeamV2[],
   workspaceId: string,
+  globalTeamProfiles: boolean,
 ): MissionStartTeamOption[] {
-  return teams.filter((team) => team.workspaceId === workspaceId).map(toTeamOption);
+  return teams
+    .filter((team) => globalTeamProfiles || team.workspaceId === workspaceId)
+    .map(toTeamOption);
 }
 
 function rowsAreComplete(rows: readonly MissionStartFormRow[]): boolean {
@@ -123,6 +130,7 @@ function buildRequest(state: MissionStartFormState): MissionStartRequestInput | 
     objective: state.objective.trim(),
     constraints: state.constraints.map((row) => row.value.trim()),
     acceptanceCriteria: state.acceptanceCriteria.map((row) => row.value.trim()),
+    ...(state.globalTeamProfiles ? { workspaceId: state.workspaceId } : {}),
   };
 }
 
@@ -130,10 +138,16 @@ export function openMissionStartForm(snapshot: MissionStartFormSnapshot): Missio
   const listeners = new Set<() => void>();
   let closed = false;
   let retryPayload: MissionStartRequestInput | null = null;
-  const teamOptions = optionsForWorkspace(snapshot.teams, snapshot.workspaceId);
+  const teamOptions = optionsForWorkspace(
+    snapshot.teams,
+    snapshot.workspaceId,
+    snapshot.globalTeamProfiles,
+  );
   const selectedTeam = snapshot.selectedTeam;
   let state = derive({
     access: snapshot.access,
+    workspaceId: snapshot.workspaceId,
+    globalTeamProfiles: snapshot.globalTeamProfiles,
     selectedTeamId: selectedTeam?.id ?? null,
     selectedTeamDisplay: selectedTeam?.name ?? null,
     selectedTeamRevision: selectedTeam?.revision ?? null,
@@ -184,7 +198,11 @@ export function openMissionStartForm(snapshot: MissionStartFormSnapshot): Missio
     applyTeams(input) {
       if (input.serverId !== snapshot.serverId || input.workspaceId !== snapshot.workspaceId)
         return;
-      const options = optionsForWorkspace(input.teams, snapshot.workspaceId);
+      const options = optionsForWorkspace(
+        input.teams,
+        snapshot.workspaceId,
+        snapshot.globalTeamProfiles,
+      );
       const selected = options.find((option) => option.teamId === state.selectedTeamId);
       publish({
         ...state,

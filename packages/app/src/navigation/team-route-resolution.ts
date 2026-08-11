@@ -5,6 +5,7 @@ export type TeamRouteResolution =
   | { kind: "invalid" }
   | { kind: "unsupported" }
   | { kind: "resolved"; workspaceId: string }
+  | { kind: "hostLevel" }
   | {
       kind: "waitingForHost";
       connectionStatus: Exclude<HostRuntimeConnectionStatus, "online">;
@@ -15,26 +16,41 @@ export type TeamRouteResolution =
 /**
  * Where a `/h/:serverId/team/:teamId` URL should land.
  *
- * A team URL carries no workspace, the same way an agent URL does not, so the
- * route waits for the host and reads the workspace off the team itself.
+ * A Team URL carries no workspace. Active Teams follow their Mission; idle
+ * Teams use their creation workspace or the first remaining live workspace.
  */
 export function resolveTeamRoute(input: {
   serverId: string;
   teamId: string;
   supported: boolean;
+  globalTeamProfilesSupported: boolean;
   connectionStatus: HostRuntimeConnectionStatus;
   hydrated: boolean;
-  workspaceId: string | null | undefined;
+  activeMissionId: string | null | undefined;
+  missionWorkspaceId: string | null | undefined;
+  creationWorkspaceId: string | null | undefined;
+  liveWorkspaceIds: readonly string[];
 }): TeamRouteResolution {
   if (!input.serverId.trim() || !input.teamId.trim()) {
     return { kind: "invalid" };
   }
 
-  // The Team may already be here from a profile snapshot that beat the list. That
-  // is an answer, and waiting past it is a wait for nothing.
-  const workspaceId = normalizeWorkspaceOpaqueId(input.workspaceId);
-  if (workspaceId) {
-    return { kind: "resolved", workspaceId };
+  const creationWorkspaceId = normalizeWorkspaceOpaqueId(input.creationWorkspaceId);
+  const missionWorkspaceId = normalizeWorkspaceOpaqueId(input.missionWorkspaceId);
+  const liveWorkspaceIds = input.liveWorkspaceIds
+    .map(normalizeWorkspaceOpaqueId)
+    .filter((workspaceId): workspaceId is string => workspaceId !== null)
+    .sort();
+
+  if (input.activeMissionId && missionWorkspaceId) {
+    return { kind: "resolved", workspaceId: missionWorkspaceId };
+  }
+
+  if (!input.activeMissionId && creationWorkspaceId) {
+    const workspaceId = liveWorkspaceIds.includes(creationWorkspaceId)
+      ? creationWorkspaceId
+      : (liveWorkspaceIds[0] ?? null);
+    if (workspaceId) return { kind: "resolved", workspaceId };
   }
 
   // Host first. `supported` comes from a handshake that lands after the
@@ -54,6 +70,19 @@ export function resolveTeamRoute(input: {
   // Before the list lands the client holds no teams, and every team looks
   // deleted.
   if (!input.hydrated) {
+    return { kind: "hydrating" };
+  }
+
+  if (
+    input.globalTeamProfilesSupported &&
+    !input.activeMissionId &&
+    creationWorkspaceId &&
+    liveWorkspaceIds.length === 0
+  ) {
+    return { kind: "hostLevel" };
+  }
+
+  if (input.activeMissionId || creationWorkspaceId) {
     return { kind: "hydrating" };
   }
 

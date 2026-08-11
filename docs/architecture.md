@@ -253,8 +253,10 @@ detectable cursor gap.
 Team profile and Mission RPCs use the `team.profile.*` and `team.mission.*` namespaces. The daemon
 publishes `team.profile.snapshot` and `team.mission.snapshot` only to physical sockets that advertise
 the `team_missions` client capability. `server_info.features.teamMissions` is advertised only after
-startup reconciliation finishes. Clients that do not see it require a host upgrade; there is no
-second Team protocol.
+startup reconciliation finishes. `server_info.features.globalTeamProfiles` additionally says that
+profiles are host-global and Mission start accepts an explicit workspace. Clients that do not see
+`teamMissions` require a host upgrade; there is no second Team protocol. New clients omit the explicit
+Mission workspace for daemons without `globalTeamProfiles`, preserving the creation-workspace behavior.
 
 Startup mounts the Agent MCP route, binds the HTTP listener, and installs the bound MCP URL before
 Team reconciliation can wake a recovered Participant. WebSocket capability exposure happens after
@@ -334,15 +336,22 @@ workspace inspection. Core modules do not import Team domain or application impl
 
 ### Profiles and Missions
 
-A Team profile is a reusable roster bound to one workspace. A workspace may have several Team
-profiles, and the user selects one when starting a Mission. Each Member profile contains a Role,
-Level from 1 to 5, one or more Skills, an execution profile, and a stable mention handle. Roles may
-repeat. Creating or editing a profile does not create Agent sessions.
+A Team profile is a reusable host-global roster. Its required `workspaceId` records where the profile
+was created and remains the default for older clients; it is not ownership. Each Member profile
+contains a Role, Level from 1 to 5, one or more Skills, an execution profile, and a stable mention
+handle. Roles may repeat. Creating or editing a profile does not create Agent sessions.
 
-A Mission supplies the objective, constraints, and acceptance criteria for one run. It freezes a
-versioned roster and runtime capability snapshot, creates a Mission room, and provisions the Lead.
-Other Members become participants only when a ready Assignment needs them. Finishing a Mission archives
-its participant sessions but leaves the Team profile available for another Mission.
+A Mission supplies the objective, constraints, acceptance criteria, and workspace for one run. It
+freezes a versioned roster and runtime capability snapshot, creates a Mission room, and provisions the
+Lead in that workspace. Other Members become participants there only when a ready Assignment needs
+them. Finishing a Mission archives its participant sessions but leaves the Team profile available for
+another Mission in any active workspace on the host.
+
+Mission start and workspace archive share a lifecycle fence. Every path acquires workspace fences in
+stable id order before the Team permit, then rechecks workspace and Team state before writing. If start
+wins, archive first converges the Mission and releases its leases; if archive wins, start fails before
+persisting an intent or creating provider side effects. Never acquire a workspace fence while holding a
+Team permit.
 
 The Lead submits a complete Workstream DAG. Workstreams define deliverables, acceptance criteria,
 required and preferred Skills, minimum Level, runtime capabilities, dependencies, review policy,
@@ -394,7 +403,9 @@ task switcher. The settings button beside the composer opens a centered sheet on
 upward sheet on compact layouts. Its five pages are **Team**, **Members**, **Mission**, **Plan &
 Assignments**, and **Attention & Lifecycle**. Profile and Member edits happen there; plan and Assignment
 facts remain read-only. Creating a Team from the workspace Tab `+` adds only the profile, so no Member
-Agent tabs open until the Mission scheduler provisions participants.
+Agent tabs open until the Mission scheduler provisions participants. Active Teams appear under their
+Mission workspace. Idle Teams prefer their creation workspace, then the first live workspace, and also
+remain reachable from the host-level Team surface when the host has no live workspace.
 
 ## Agent lifecycle
 

@@ -165,6 +165,50 @@ export function resolveHostIndexRoute(input: {
   return buildOpenProjectRoute();
 }
 
+export type HostIndexRouteDecision =
+  | { kind: "renderTeams" }
+  | { kind: "loading" }
+  | { kind: "redirect"; href: Href };
+
+export function resolveHostIndexRouteDecision(input: {
+  serverId: string;
+  workspaceSelection: ActiveWorkspaceSelection | null;
+  workspaceSelectionStatus: WorkspaceSelectionStatus;
+  hasHydratedWorkspaces: boolean;
+  hasLiveWorkspaces: boolean;
+  globalTeamProfilesSupported: boolean;
+  teamProfilesStatus: "pending" | "ready" | "failed";
+  activeTeamCount: number;
+}): HostIndexRouteDecision {
+  if (
+    input.workspaceSelection?.serverId === input.serverId &&
+    shouldRestoreWorkspaceSelection(input)
+  ) {
+    return {
+      kind: "redirect",
+      href: buildHostWorkspaceRoute(input.serverId, input.workspaceSelection.workspaceId),
+    };
+  }
+
+  if (
+    !input.hasLiveWorkspaces &&
+    input.globalTeamProfilesSupported &&
+    input.teamProfilesStatus !== "failed"
+  ) {
+    if (!input.hasHydratedWorkspaces || input.teamProfilesStatus === "pending") {
+      return { kind: "loading" };
+    }
+    if (input.activeTeamCount > 0) {
+      return { kind: "renderTeams" };
+    }
+  }
+
+  return {
+    kind: "redirect",
+    href: resolveHostIndexRoute(input),
+  };
+}
+
 function isIndexPathname(pathname: string) {
   return pathname === "/" || pathname === "";
 }
