@@ -23,6 +23,7 @@ import { useAutocomplete } from "@/hooks/use-autocomplete";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { foldRoomMessage } from "@/teams/fold-message";
 import { postRoomMessage, type PostRoomMessageState } from "@/teams/post-room-message";
+import { selectHumanMentionDeliveryReceipt } from "@/teams/team-room-delivery-receipt";
 import {
   applyRoomMentionReplacement,
   findActiveRoomMention,
@@ -455,6 +456,7 @@ function RoomMessage({
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const folded = useMemo(() => foldRoomMessage(message.body), [message.body]);
+  const deliveryReceipt = selectHumanMentionDeliveryReceipt(message);
   const expand = useCallback(() => setExpanded(true), []);
 
   const isHuman = message.author.kind === "human";
@@ -524,6 +526,14 @@ function RoomMessage({
                 : t("teams.room.showMore")}
             </Button>
           </View>
+        ) : null}
+        {deliveryReceipt ? (
+          <Text
+            style={styles.deliveryReceipt}
+            testID={`team-room-message-${message.id}-delivery-receipt`}
+          >
+            {t(deliveryReceipt.translationKey, { count: deliveryReceipt.recipientCount })}
+          </Text>
         ) : null}
       </View>
     </View>
@@ -617,6 +627,10 @@ const styles = StyleSheet.create((theme) => ({
   body: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+  },
+  deliveryReceipt: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   // The app's link color, not the reference design's blue: a mention is a link,
   // and it sits in the same body text as markdown links do.

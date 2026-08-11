@@ -4434,7 +4434,6 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.activeForegroundTurnId === admission.foregroundTurnId
     );
   }
-
   private rememberCodexUserMessageTurn(messageId: string | null | undefined): boolean {
     if (typeof messageId !== "string" || messageId.length === 0) {
       return false;
