@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: active
 created: 2026-08-11
 depends_on: agent-teams
 work: ../work/epic-team-methodologies.md

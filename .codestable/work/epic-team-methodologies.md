@@ -1,13 +1,14 @@
 ---
 epic: ../epics/team-methodologies.md
-phase: planning
-approved_revision: pending
+phase: executing
+approved_revision: 6d5f23c7f52fecc4eb3a4ea5841f9e7a46a0632d7fee9d6fc41e95e92c73e186
 current_item: null
-next_action: owner 确认 proposed Epic、17 个子项契约与执行/提交/发布策略
+active_items: []
+next_action: 执行首个依赖已满足的 TM-ITEM-1，并在交付后串行集成与创建里程碑 commit
 blocked_by: null
-item_progression: pending
-milestone_commit: pending
-remote_publish: pending
+item_progression: parallel
+milestone_commit: authorized
+remote_publish: final
 ---
 
 ## 子项进度
@@ -38,9 +39,10 @@ remote_publish: pending
   portable 构建路径不受该前置阻塞。
 - 2026-08-11：拆解采用 tracer-bullet 边界。Paseo 子项同时拥有 protocol、daemon、App/CLI 与定点证据；
   不按 package 横向拆成不可独立验收的任务。
-- 2026-08-11：建议首次 owner gate 选择 `parallel / authorized / final`。仅 TM-ITEM-9/10/11 作为明确的
-  同时激活批次；TM-ITEM-4→5 保持依赖顺序，TM-ITEM-14→15 因共享 controller CAS/Attention 写路径按
-  该顺序串行激活。确认前策略保持 pending。
+- 2026-08-12：owner 批准永久 Epic、17 个子项契约与 `parallel / authorized / final` 策略；永久 Epic
+  进入 `active`，批准 revision 为 `6d5f23c7f52fecc4eb3a4ea5841f9e7a46a0632d7fee9d6fc41e95e92c73e186`。
+  仅 TM-ITEM-9/10/11 作为明确的同时激活批次；TM-ITEM-4→5 保持依赖顺序，TM-ITEM-14→15 因共享
+  controller CAS/Attention 写路径按该顺序串行激活。
 - 2026-08-11：fresh design review Round 1 核对 Epic `17d98767…84cac` 与游标 `ae14f7fc…0342a`，发现
   package handoff 无 owner、TM-ITEM-11 至 16 缺用户面、版本矩阵未展开和 capability replan 缺真实触发
   证据。修订保持 17 个 ID：TM-ITEM-3/6 闭合 publish→sync，用户面下放各门禁子项，TM-ITEM-5 接管
