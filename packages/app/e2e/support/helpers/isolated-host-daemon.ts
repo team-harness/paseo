@@ -23,6 +23,9 @@ export interface IsolatedHostDaemon {
 
 export interface IsolatedHostDaemonOptions {
   environment?: NodeJS.ProcessEnv;
+  mcpInjectIntoAgents?: boolean;
+  startupTimeoutMs?: number;
+  teamMissionsRuntime?: boolean;
   mutableRelay?: {
     enabled: boolean;
     endpoint?: string;
@@ -47,8 +50,8 @@ async function getAvailablePort(): Promise<number> {
   });
 }
 
-async function waitForServer(port: number, child: ChildProcess): Promise<void> {
-  const deadline = Date.now() + 20_000;
+async function waitForServer(port: number, child: ChildProcess, timeoutMs = 20_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
   let lastError: unknown = null;
 
   while (Date.now() < deadline) {
@@ -94,6 +97,39 @@ async function stopProcess(child: ChildProcess): Promise<void> {
   }
 }
 
+async function writeIsolatedDaemonConfig(
+  paseoHome: string,
+  options: IsolatedHostDaemonOptions,
+): Promise<void> {
+  if (!options.mutableRelay && options.mcpInjectIntoAgents === undefined) return;
+
+  const endpoint =
+    options.mutableRelay?.endpoint ??
+    (process.env.E2E_RELAY_PORT ? `127.0.0.1:${process.env.E2E_RELAY_PORT}` : "127.0.0.1:9");
+  await writeFile(
+    path.join(paseoHome, "config.json"),
+    `${JSON.stringify({
+      version: 1,
+      daemon: {
+        ...(options.mcpInjectIntoAgents !== undefined
+          ? { mcp: { injectIntoAgents: options.mcpInjectIntoAgents } }
+          : {}),
+        ...(options.mutableRelay
+          ? {
+              relay: {
+                enabled: options.mutableRelay.enabled,
+                endpoint,
+                publicEndpoint: endpoint,
+                useTls: false,
+                publicUseTls: false,
+              },
+            }
+          : {}),
+      },
+    })}\n`,
+  );
+}
+
 export async function startIsolatedHostDaemon(
   serverId: string,
   options: IsolatedHostDaemonOptions = {},
@@ -132,26 +168,7 @@ export async function startIsolatedHostDaemon(
       throw error;
     }
   }
-  if (options.mutableRelay) {
-    const endpoint =
-      options.mutableRelay.endpoint ??
-      (process.env.E2E_RELAY_PORT ? `127.0.0.1:${process.env.E2E_RELAY_PORT}` : "127.0.0.1:9");
-    await writeFile(
-      path.join(paseoHome, "config.json"),
-      `${JSON.stringify({
-        version: 1,
-        daemon: {
-          relay: {
-            enabled: options.mutableRelay.enabled,
-            endpoint,
-            publicEndpoint: endpoint,
-            useTls: false,
-            publicUseTls: false,
-          },
-        },
-      })}\n`,
-    );
-  }
+  await writeIsolatedDaemonConfig(paseoHome, options);
   const serverDir = publishedPackageRoot
     ? path.join(publishedPackageRoot, "node_modules", "@getpaseo", "server")
     : path.resolve(__dirname, "../../../../server");
@@ -169,6 +186,8 @@ export async function startIsolatedHostDaemon(
         PASEO_RELAY_ENABLED: options.mutableRelay ? undefined : "0",
         PASEO_NODE_ENV: "development",
         NODE_ENV: "development",
+        // ITEM-4–8 use this explicit test/dev option. Production remains disabled until ITEM-9.
+        PASEO_TEAM_MISSIONS_RUNTIME: options.teamMissionsRuntime ? "1" : undefined,
       }),
       stdio: ["ignore", "ignore", "pipe"],
       detached: false,
@@ -184,7 +203,7 @@ export async function startIsolatedHostDaemon(
     });
 
     try {
-      await waitForServer(port, child);
+      await waitForServer(port, child, options.startupTimeoutMs);
       return child;
     } catch (error) {
       await stopProcess(child);

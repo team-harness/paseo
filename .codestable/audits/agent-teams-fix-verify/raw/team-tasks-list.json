@@ -1,0 +1,40 @@
+{
+  "error": null,
+  "teamId": "f501e3d1-d455-409b-8ac7-1445c06f2356",
+  "revision": 8,
+  "tasks": [
+    {
+      "taskId": "d98cd691-cdfc-4a3a-afb3-99fb87127550",
+      "assigneeAgentId": "d1069716-8a1a-4a66-bcae-40861b12b0c1",
+      "prompt": "任务（docs）：在仓库 /private/tm…",
+      "state": "settled",
+      "acceptedTurnId": "foreground-turn-2",
+      "outcome": "completed",
+      "createdAt": "2026-08-07T02:46:50.276Z",
+      "dispatchedAt": "2026-08-07T02:47:08.800Z",
+      "settledAt": "2026-08-07T02:47:32.191Z"
+    },
+    {
+      "taskId": "e52b3b02-2d80-447c-970f-d1b58f2b6584",
+      "assigneeAgentId": "e734a751-25c9-4342-b18a-42a74471ee6c",
+      "prompt": "任务（code）：在仓库 /private/tm…",
+      "state": "settled",
+      "acceptedTurnId": "foreground-turn-2",
+      "outcome": "completed",
+      "createdAt": "2026-08-07T02:46:54.492Z",
+      "dispatchedAt": "2026-08-07T02:46:54.496Z",
+      "settledAt": "2026-08-07T02:47:33.584Z"
+    }
+  ],
+  "fields": [
+    "acceptedTurnId",
+    "assigneeAgentId",
+    "createdAt",
+    "dispatchedAt",
+    "outcome",
+    "prompt",
+    "settledAt",
+    "state",
+    "taskId"
+  ]
+}

@@ -108,9 +108,13 @@ interface SplitContainerProps {
   onCloseTabsToRight: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   onCreateDraftTab: (input: { paneId?: string }) => void;
+  onCreateTeam: () => void;
+  onStartMission: () => void;
   onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfileInput }) => void;
   onCreateBrowserTab: (input: { paneId?: string }) => void;
   showCreateBrowserTab?: boolean;
+  showCreateTeam?: boolean;
+  showStartMission?: boolean;
   buildPaneContentModel: (input: {
     paneId: string;
     tab: WorkspaceTabDescriptor;
@@ -390,9 +394,13 @@ export function SplitContainer({
   onCloseTabsToRight,
   onCloseOtherTabs,
   onCreateDraftTab,
+  onCreateTeam,
+  onStartMission,
   onCreateTerminalTab,
   onCreateBrowserTab,
   showCreateBrowserTab,
+  showCreateTeam,
+  showStartMission,
   buildPaneContentModel,
   onFocusPane,
   onSplitPane,
@@ -610,9 +618,13 @@ export function SplitContainer({
           onCloseTabsToRight={onCloseTabsToRight}
           onCloseOtherTabs={onCloseOtherTabs}
           onCreateDraftTab={onCreateDraftTab}
+          onCreateTeam={onCreateTeam}
+          onStartMission={onStartMission}
           onCreateTerminalTab={onCreateTerminalTab}
           onCreateBrowserTab={onCreateBrowserTab}
           showCreateBrowserTab={showCreateBrowserTab}
+          showCreateTeam={showCreateTeam}
+          showStartMission={showStartMission}
           buildPaneContentModel={buildPaneContentModel}
           onFocusPane={onFocusPane}
           onSplitPane={onSplitPane}
@@ -816,9 +828,13 @@ function SplitNodeView({
   onCloseTabsToRight,
   onCloseOtherTabs,
   onCreateDraftTab,
+  onCreateTeam,
+  onStartMission,
   onCreateTerminalTab,
   onCreateBrowserTab,
   showCreateBrowserTab,
+  showCreateTeam,
+  showStartMission,
   buildPaneContentModel,
   onFocusPane,
   onSplitPane,
@@ -892,9 +908,13 @@ function SplitNodeView({
             onCloseTabsToRight={onCloseTabsToRight}
             onCloseOtherTabs={onCloseOtherTabs}
             onCreateDraftTab={onCreateDraftTab}
+            onCreateTeam={onCreateTeam}
+            onStartMission={onStartMission}
             onCreateTerminalTab={onCreateTerminalTab}
             onCreateBrowserTab={onCreateBrowserTab}
             showCreateBrowserTab={showCreateBrowserTab}
+            showCreateTeam={showCreateTeam}
+            showStartMission={showStartMission}
             buildPaneContentModel={buildPaneContentModel}
             onFocusPane={onFocusPane}
             onSplitPane={onSplitPane}
@@ -941,9 +961,13 @@ function SplitNodeView({
               onCloseTabsToRight={onCloseTabsToRight}
               onCloseOtherTabs={onCloseOtherTabs}
               onCreateDraftTab={onCreateDraftTab}
+              onCreateTeam={onCreateTeam}
+              onStartMission={onStartMission}
               onCreateTerminalTab={onCreateTerminalTab}
               onCreateBrowserTab={onCreateBrowserTab}
               showCreateBrowserTab={showCreateBrowserTab}
+              showCreateTeam={showCreateTeam}
+              showStartMission={showStartMission}
               buildPaneContentModel={buildPaneContentModel}
               onFocusPane={onFocusPane}
               onSplitPane={onSplitPane}
@@ -1001,9 +1025,13 @@ function SplitPaneView({
   onCloseTabsToRight,
   onCloseOtherTabs,
   onCreateDraftTab,
+  onCreateTeam,
+  onStartMission,
   onCreateTerminalTab,
   onCreateBrowserTab,
   showCreateBrowserTab,
+  showCreateTeam,
+  showStartMission,
   buildPaneContentModel,
   onFocusPane,
   onSplitPane: _onSplitPane,
@@ -1147,9 +1175,13 @@ function SplitPaneView({
             onCloseTabsToRight={handleCloseTabsToRight}
             onCloseOtherTabs={handleCloseOtherTabs}
             onCreateDraftTab={onCreateDraftTab}
+            onCreateTeam={onCreateTeam}
+            onStartMission={onStartMission}
             onCreateTerminalTab={onCreateTerminalTab}
             onCreateBrowserTab={onCreateBrowserTab}
             showCreateBrowserTab={showCreateBrowserTab}
+            showCreateTeam={showCreateTeam}
+            showStartMission={showStartMission}
             onReorderTabs={handleReorderTabs}
             onSplitRight={handleSplitRight}
             onSplitDown={handleSplitDown}

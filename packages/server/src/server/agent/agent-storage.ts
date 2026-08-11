@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { promises as fs, type Dirent } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
@@ -42,6 +43,30 @@ const PERSISTENCE_HANDLE_SCHEMA = z
   .nullable()
   .optional();
 
+/** How many terminal turn facts a record keeps before the oldest roll out. */
+export const TURN_OUTCOME_HISTORY_LIMIT = 100;
+
+const TurnOutcomeSchema = z.object({
+  turnId: z.string(),
+  outcome: z.enum(["completed", "failed", "canceled"]),
+  endedAt: z.string(),
+});
+
+export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
+
+const ActiveTurnSchema = z.object({
+  turnId: z.string(),
+  startedAt: z.string(),
+  daemonRunId: z.string(),
+});
+
+const PromptDispatchIntentSchema = z.object({
+  createdAt: z.string(),
+  ownerToken: z.string().optional(),
+});
+
+export type ActiveTurn = z.infer<typeof ActiveTurnSchema>;
+
 const STORED_AGENT_SCHEMA = z.object({
   id: z.string(),
   provider: z.string(),
@@ -75,6 +100,21 @@ const STORED_AGENT_SCHEMA = z.object({
   internal: z.boolean().optional(),
   archivedAt: z.string().nullable().optional(),
   owner: AgentOwnerSchema.optional(),
+  // A bounded, queryable record of how recent turns ended. The team task ledger
+  // settles an assignment against the outcome of the exact turn the provider
+  // accepted, which it cannot do from `lastStatus` alone.
+  turnOutcomes: z.array(TurnOutcomeSchema).optional(),
+  // The turn currently in flight, stamped with the daemon run that started it.
+  // A turn cannot outlive its daemon, so an entry from an older run is stale and
+  // gets dropped on load — otherwise a ledger would wait on it forever.
+  activeTurn: ActiveTurnSchema.nullable().optional(),
+  // Accepted provider turns resolved at the same boundary as `activeTurn`.
+  acceptedTurnsByClientMessageId: z.record(z.string(), z.string()).optional(),
+  // Written before entering a provider. An intent without an accepted turn is
+  // deliberately unknown after a crash and must never be dispatched again.
+  promptDispatchIntentsByClientMessageId: z
+    .record(z.string(), PromptDispatchIntentSchema)
+    .optional(),
 });
 
 export type SerializableAgentConfig = Pick<
@@ -90,6 +130,11 @@ export type SerializableAgentConfig = Pick<
 >;
 
 export type StoredAgentRecord = z.infer<typeof STORED_AGENT_SCHEMA>;
+
+export type PromptDispatchClaim =
+  | { kind: "claimed"; token: string }
+  | { kind: "accepted"; turnId: string }
+  | { kind: "unknown" };
 export function parseStoredAgentRecord(value: unknown): StoredAgentRecord {
   return STORED_AGENT_SCHEMA.parse(value);
 }
@@ -106,14 +151,152 @@ export class AgentStorage {
   private baseDir: string;
   private loadPromise: Promise<StoredAgentRecord[]> | null = null;
   private logger: Logger;
+  /** Identifies this daemon run so stale active turns can be told apart. */
+  readonly runId: string;
 
-  constructor(baseDir: string, logger: Logger) {
+  constructor(baseDir: string, logger: Logger, options?: { runId?: string }) {
     this.baseDir = baseDir;
     this.logger = logger.child({ module: "agent", component: "agent-storage" });
+    this.runId = options?.runId ?? randomUUID();
   }
 
   async initialize(): Promise<void> {
     await this.load();
+    await this.clearStaleActiveTurns();
+  }
+
+  /**
+   * A turn belongs to the daemon run that started it: the provider process dies
+   * with the daemon, so a turn from an earlier run can never reach a terminal
+   * event. Leaving it in place would make a ledger wait on it forever.
+   */
+  private async clearStaleActiveTurns(): Promise<void> {
+    const stale = Array.from(this.cache.values()).filter(
+      (record) => record.activeTurn && record.activeTurn.daemonRunId !== this.runId,
+    );
+    for (const record of stale) {
+      await this.upsert({ ...record, activeTurn: null });
+      this.logger.debug(
+        { agentId: record.id, turnId: record.activeTurn?.turnId },
+        "cleared active turn from a previous daemon run",
+      );
+    }
+  }
+
+  /** Returns whether the marker actually reached the record. */
+  async setActiveTurn(
+    agentId: string,
+    turn: { turnId: string; startedAt: string } | null,
+    options?: { clientMessageId?: string },
+  ): Promise<boolean> {
+    await this.load();
+    let written = false;
+    await this.queueRecordMutation(agentId, (current) => {
+      if (!current) return null;
+      written = true;
+      const clientMessageId = options?.clientMessageId;
+      return {
+        ...current,
+        activeTurn: turn ? { ...turn, daemonRunId: this.runId } : null,
+        ...(turn && clientMessageId
+          ? {
+              acceptedTurnsByClientMessageId: {
+                ...current.acceptedTurnsByClientMessageId,
+                [clientMessageId]: turn.turnId,
+              },
+            }
+          : {}),
+      };
+    });
+    return written;
+  }
+
+  async getAcceptedTurnId(agentId: string, clientMessageId: string): Promise<string | null> {
+    const record = await this.get(agentId);
+    return record?.acceptedTurnsByClientMessageId?.[clientMessageId] ?? null;
+  }
+
+  async claimPromptDispatch(
+    agentId: string,
+    clientMessageId: string,
+  ): Promise<PromptDispatchClaim | null> {
+    await this.load();
+    let claim: PromptDispatchClaim | null = null;
+    await this.queueRecordMutation(agentId, (current) => {
+      if (!current) return null;
+      const acceptedTurnId = current.acceptedTurnsByClientMessageId?.[clientMessageId];
+      if (acceptedTurnId) {
+        claim = { kind: "accepted", turnId: acceptedTurnId };
+        return current;
+      }
+      if (current.promptDispatchIntentsByClientMessageId?.[clientMessageId]) {
+        claim = { kind: "unknown" };
+        return current;
+      }
+      const token = randomUUID();
+      claim = { kind: "claimed", token };
+      return {
+        ...current,
+        promptDispatchIntentsByClientMessageId: {
+          ...current.promptDispatchIntentsByClientMessageId,
+          [clientMessageId]: { createdAt: new Date().toISOString(), ownerToken: token },
+        },
+      };
+    });
+    return claim;
+  }
+
+  async releasePromptDispatchClaim(
+    agentId: string,
+    clientMessageId: string,
+    ownerToken: string,
+  ): Promise<boolean> {
+    await this.load();
+    let released = false;
+    await this.queueRecordMutation(agentId, (current) => {
+      if (!current) return null;
+      const intent = current.promptDispatchIntentsByClientMessageId?.[clientMessageId];
+      if (!intent || intent.ownerToken !== ownerToken) return current;
+      const remaining = { ...current.promptDispatchIntentsByClientMessageId };
+      delete remaining[clientMessageId];
+      released = true;
+      return {
+        ...current,
+        promptDispatchIntentsByClientMessageId: remaining,
+      };
+    });
+    return released;
+  }
+
+  /**
+   * Appends a terminal turn fact and clears the active turn in one write, so a
+   * reader never sees a turn that is both finished and still in flight.
+   */
+  /** Returns whether the outcome actually reached the record. */
+  async recordTurnOutcome(agentId: string, outcome: TurnOutcome): Promise<boolean> {
+    await this.load();
+    let written = false;
+    await this.queueRecordMutation(agentId, (current) => {
+      if (!current) return null;
+      written = true;
+      const history = [
+        ...(current.turnOutcomes ?? []).filter((entry) => entry.turnId !== outcome.turnId),
+        outcome,
+      ];
+      return {
+        ...current,
+        turnOutcomes: history.slice(-TURN_OUTCOME_HISTORY_LIMIT),
+        activeTurn:
+          current.activeTurn?.turnId === outcome.turnId ? null : (current.activeTurn ?? null),
+      };
+    });
+    return written;
+  }
+
+  async getTurnOutcome(agentId: string, turnId: string): Promise<TurnOutcome | null> {
+    await this.load();
+    const record = await this.get(agentId);
+    return record?.turnOutcomes?.find((entry) => entry.turnId === turnId) ?? null;
   }
 
   async list(): Promise<StoredAgentRecord[]> {
@@ -155,13 +338,47 @@ export class AgentStorage {
     await this.queueRecordWrite(record);
   }
 
+  /**
+   * Updates a record from its current state, inside the write queue.
+   *
+   * Prefer this over `get` + spread + `upsert`: that shape reads outside the
+   * queue, so a write that lands in between is carried away by the stale copy
+   * the caller already holds. Fields the caller does not mention keep whatever
+   * the record has when the queue reaches it.
+   *
+   * Returns the written record, or null if the agent is gone.
+   */
+  async mutate<T extends StoredAgentRecord>(
+    agentId: string,
+    mutate: (current: StoredAgentRecord) => T,
+  ): Promise<T | null> {
+    await this.load();
+    let written: T | null = null;
+    await this.queueRecordMutation(agentId, (current) => {
+      if (!current) return null;
+      written = mutate(current);
+      return written;
+    });
+    return written;
+  }
+
   private queueRecordWrite(record: StoredAgentRecord): Promise<void> {
     return this.queueRecordMutation(record.id, () => record);
   }
 
+  /**
+   * Runs a read-modify-write inside the per-agent write queue, against the
+   * record as it stands when the queue reaches it.
+   *
+   * Reading outside the queue is not safe: two turns settling back to back both
+   * read the record before either write lands, and the second one writes its
+   * stale copy over the first one's result. Carrying fields forward cannot fix
+   * that, because a stale explicit value is indistinguishable from an intended
+   * one.
+   */
   private queueRecordMutation(
     agentId: string,
-    mutate: (existing: StoredAgentRecord | null) => StoredAgentRecord,
+    mutate: (current: StoredAgentRecord | null) => StoredAgentRecord | null,
   ): Promise<void> {
     const prev = this.pendingWrites.get(agentId) ?? Promise.resolve();
     const next = prev.then(async () => {
@@ -170,7 +387,9 @@ export class AgentStorage {
       }
 
       const record = mutate(this.cache.get(agentId) ?? null);
-      await this.writeRecord(record);
+      if (record) {
+        await this.writeRecord(this.carryForwardRecordOnlyFields(record));
+      }
       return undefined;
     });
 
@@ -182,6 +401,47 @@ export class AgentStorage {
 
     this.pendingWrites.set(agentId, tracked);
     return tracked;
+  }
+
+  /**
+   * Some fields live only on the record — a ManagedAgent snapshot knows nothing
+   * about them, so projecting one would drop them. Resolved here, once the write
+   * queue has reached this record and the cache is current, rather than at each
+   * call site: a caller that reads before an earlier queued write lands would
+   * otherwise carry a stale value forward and undo it.
+   *
+   * `undefined` means "not specified, keep what is there"; `null` means "clear
+   * it" and is passed through. Archive status is here for the same reason: a
+   * ManagedAgent snapshot has no idea whether the agent is archived, so a plain
+   * projection would un-archive it on the next ordinary persist.
+   */
+  private carryForwardRecordOnlyFields(record: StoredAgentRecord): StoredAgentRecord {
+    const current = this.cache.get(record.id);
+    if (!current) return record;
+    const merged = { ...record };
+    if (merged.turnOutcomes === undefined && current.turnOutcomes !== undefined) {
+      merged.turnOutcomes = current.turnOutcomes;
+    }
+    if (merged.activeTurn === undefined && current.activeTurn !== undefined) {
+      merged.activeTurn = current.activeTurn;
+    }
+    if (
+      merged.acceptedTurnsByClientMessageId === undefined &&
+      current.acceptedTurnsByClientMessageId !== undefined
+    ) {
+      merged.acceptedTurnsByClientMessageId = current.acceptedTurnsByClientMessageId;
+    }
+    if (
+      merged.promptDispatchIntentsByClientMessageId === undefined &&
+      current.promptDispatchIntentsByClientMessageId !== undefined
+    ) {
+      merged.promptDispatchIntentsByClientMessageId =
+        current.promptDispatchIntentsByClientMessageId;
+    }
+    if (merged.archivedAt === undefined && current.archivedAt !== undefined) {
+      merged.archivedAt = current.archivedAt;
+    }
+    return merged;
   }
 
   private async writeRecord(record: StoredAgentRecord): Promise<void> {
@@ -253,24 +513,18 @@ export class AgentStorage {
         internal: hasInternalOverride ? options?.internal : (agent.internal ?? existing?.internal),
       });
 
-      // Preserve soft-delete/archive status across snapshot flushes. The
-      // projection runs inside the per-agent write queue so it cannot commit a
-      // stale pre-archive record after the archive mutation.
-      if (existing && existing.archivedAt !== undefined) {
-        record.archivedAt = existing.archivedAt;
-      }
+      // Record-only fields are carried forward by queueRecordMutation against
+      // this same current cache entry, so snapshot flushes cannot lose archive
+      // or durable turn state.
       return record;
     });
   }
 
   async setTitle(agentId: string, title: string): Promise<void> {
-    await this.load();
-    await this.waitForPendingWrite(agentId);
-    const record = await this.get(agentId);
-    if (!record) {
+    const written = await this.mutate(agentId, (current) => ({ ...current, title }));
+    if (!written) {
       throw new Error(`Agent ${agentId} not found`);
     }
-    await this.upsert({ ...record, title });
   }
 
   async flush(): Promise<void> {
@@ -420,10 +674,6 @@ export class AgentStorage {
       this.daemonAgentIdsByExecution.delete(key);
     }
     this.daemonExecutionKeysByAgentId.delete(agentId);
-  }
-
-  private async waitForPendingWrite(agentId: string): Promise<void> {
-    await (this.pendingWrites.get(agentId) ?? Promise.resolve()).catch(() => undefined);
   }
 }
 

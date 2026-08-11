@@ -148,6 +148,12 @@ import {
   FileBackedWorkspaceRegistry,
   type WorkspaceArchiveContext,
 } from "./workspace-registry.js";
+import {
+  installPaseoTeamRuntime,
+  type TeamMissionsRuntimeOptions,
+  type TeamPersistenceFaultInjector,
+  type TeamRuntime,
+} from "./team/team-runtime.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { ScheduleService } from "./schedule/service.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
@@ -469,6 +475,7 @@ export interface PaseoDaemon {
   config: PaseoDaemonConfig;
   agentManager: AgentManager;
   agentStorage: AgentStorage;
+  teamRuntime: TeamRuntime;
   terminalManager: TerminalManager;
   serviceProxy: ServiceProxySubsystem;
   scriptRuntimeStore: WorkspaceScriptRuntimeStore;
@@ -487,6 +494,9 @@ export interface PaseoDaemonDependencies {
     daemonStatusRpc?: boolean;
     relayConfig?: boolean;
   };
+  /** Production policy is injected by the daemon worker; tests and dev daemons may override it. */
+  teamMissionsRuntime?: TeamMissionsRuntimeOptions;
+  teamPersistenceFaultInjector?: TeamPersistenceFaultInjector;
 }
 
 function createBootstrapManagedProcessRegistry(
@@ -965,6 +975,33 @@ export async function createPaseoDaemon(
   void workspaceReconciliation.reconcileNow().catch((error) => {
     logger.warn({ err: error }, "Initial workspace reconciliation failed");
   });
+  const teamRuntime = await installPaseoTeamRuntime({
+    runtime: dependencies.teamMissionsRuntime ?? { enabled: false },
+    persistenceFaultInjector: dependencies.teamPersistenceFaultInjector,
+    paseoHome: config.paseoHome,
+    agentManager,
+    agentStorage,
+    resolveWorkspaceCwd: async (workspaceId) =>
+      (await workspaceRegistry.get(workspaceId))?.cwd ?? null,
+    publishTeamProfile: (team) => {
+      for (const session of wsServer?.listTrustedSessions() ?? []) {
+        session.emitTeamProfileSnapshot(team);
+      }
+    },
+    publishMission: (mission) => {
+      for (const session of wsServer?.listTrustedSessions() ?? []) {
+        session.emitTeamMissionSnapshot(mission);
+      }
+    },
+    providerRegistryOptions: {
+      runtimeSettings: config.agentProviderSettings,
+      providerOverrides: config.providerOverrides,
+      workspaceGitService,
+      managedProcesses,
+      isDev: config.isDev === true,
+    },
+    logger,
+  });
   const checkoutDiffManager = new CheckoutDiffManager({
     logger,
     paseoHome: config.paseoHome,
@@ -1296,11 +1333,15 @@ export async function createPaseoDaemon(
     archiveWorkspace: archiveScheduleWorkspaceExternal,
   });
   await scheduleService.start();
-  agentManager.setAgentArchivedCallback(async (agentId) => {
+  agentManager.onAgentRecordChange(async (change) => {
+    if (change.kind !== "archived") return;
     try {
-      await scheduleService.completeForAgent(agentId);
+      await scheduleService.completeForAgent(change.agentId);
     } catch (error) {
-      logger.warn({ err: error, agentId }, "Failed to complete schedules for archived agent");
+      logger.warn(
+        { err: error, agentId: change.agentId },
+        "Failed to complete schedules for archived agent",
+      );
     }
   });
   logger.info({ elapsed: elapsed() }, "Schedule service initialized");
@@ -1369,6 +1410,8 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
     callerAgentId: runtime.callerAgentId,
+    registerExtraTools: (registerTool) =>
+      teamRuntime.registerAgentTools(runtime.callerAgentId, registerTool),
     enableVoiceTools: runtime.enableVoiceTools,
     voiceOnly: runtime.voiceOnly,
     resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
@@ -1559,6 +1602,8 @@ export async function createPaseoDaemon(
             daemonConfigStore.onFieldChange("appendSystemPrompt", (value) => {
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
             });
+            await teamRuntime.start();
+            logger.info({ elapsed: elapsed() }, "Team runtime initialized");
             const relayEnabled = config.relayEnabled ?? true;
             const relayEndpoint = config.relayEndpoint ?? "relay.paseo.sh:443";
             const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
@@ -1656,6 +1701,7 @@ export async function createPaseoDaemon(
               browserToolsBroker,
               hubRelationships,
               promptLibraryStore,
+              teamRuntime.sessionDeps(),
               workspaceSetupRuntime,
               pluginRuntime,
             );
@@ -1716,6 +1762,7 @@ export async function createPaseoDaemon(
 
   const stop = async () => {
     await pluginRuntime.stopAllPlugins();
+    teamRuntime.stop();
     await hubRelationships.stop();
     workspaceReconciliation.dispose();
     scriptHealthMonitor.stop();
@@ -1757,6 +1804,7 @@ export async function createPaseoDaemon(
     config,
     agentManager,
     agentStorage,
+    teamRuntime,
     terminalManager,
     serviceProxy,
     scriptRuntimeStore,
