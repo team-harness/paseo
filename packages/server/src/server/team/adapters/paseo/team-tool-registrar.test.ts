@@ -19,6 +19,7 @@ describe("PaseoTeamToolRegistrar", () => {
     expect([...tools.keys()].toSorted()).toEqual([
       "assign_task",
       "assignment_report",
+      "chat_post",
       "chat_read",
       "mission_plan",
       "mission_status",
@@ -44,6 +45,34 @@ describe("PaseoTeamToolRegistrar", () => {
     registrar.register(undefined, captureTools(tools));
 
     expect(tools.size).toBe(0);
+  });
+
+  test("posts a participant-scoped room reply without selecting a recipient", async () => {
+    const postAgentRoomReply = vi.fn(async () => ({ message: { id: "reply-1" } }));
+    const registrar = new PaseoTeamToolRegistrar({
+      service: collaborationFake({ postAgentRoomReply }),
+      logger: createTestLogger(),
+    });
+    const tools = new Map<string, PaseoToolDefinition>();
+    registrar.register("agent-member", captureTools(tools));
+
+    await tools.get("chat_post")?.handler(
+      {
+        missionId: "mission-1",
+        idempotencyKey: "ack-human-1",
+        replyToMessageId: "human-1",
+        body: "Acknowledged; continuing the parser work.",
+      },
+      {},
+    );
+
+    expect(postAgentRoomReply).toHaveBeenCalledExactlyOnceWith({
+      callerAgentId: "agent-member",
+      missionId: "mission-1",
+      idempotencyKey: "ack-human-1",
+      replyToMessageId: "human-1",
+      body: "Acknowledged; continuing the parser work.",
+    });
   });
 
   test("rejects the scalar assign shape at the strict schema boundary", async () => {
@@ -246,6 +275,7 @@ function collaborationFake(overrides: Record<string, unknown> = {}) {
     reportAssignment: vi.fn(),
     sendTeamMessage: vi.fn(),
     readTeamChat: vi.fn(),
+    postAgentRoomReply: vi.fn(),
     reconcilePendingMessages: vi.fn(),
     ...overrides,
   };

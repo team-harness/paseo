@@ -53,14 +53,14 @@ describe("PaseoTeamRoomAdapter", () => {
       messageId: "message-1",
       missionId: "mission-1",
       roomId: "room-message",
-      senderAgentId: "agent-lead",
+      author: { kind: "agent", id: "agent-lead" },
       body: "@software-engineer implement the parser",
     });
     await rooms.post({
       messageId: "message-1",
       missionId: "mission-1",
       roomId: "room-message",
-      senderAgentId: "agent-lead",
+      author: { kind: "agent", id: "agent-lead" },
       body: "@software-engineer implement the parser",
     });
 
@@ -71,9 +71,44 @@ describe("PaseoTeamRoomAdapter", () => {
         body: "@software-engineer implement the parser",
       },
     ]);
-    expect(posted).toEqual({ messageId: "message-1", cursor: 1 });
+    expect(posted).toMatchObject({ message: { id: "message-1" }, cursor: 1 });
     await expect(
       rooms.read({ missionId: "mission-1", roomId: "room-message", afterCursor: 0, limit: 20 }),
     ).resolves.toMatchObject({ cursor: 1, hasMore: false, messages: [{ id: "message-1" }] });
+  });
+
+  test("replays a human mention without broadcasting or persisting it twice", async () => {
+    const store = new MissionRoomStore(rootDirectory, () => "2026-08-11T01:00:00.000Z");
+    const rooms = new PaseoTeamRoomAdapter(store);
+    await rooms.createMissionRoom({
+      roomId: "room-message",
+      teamId: "team-1",
+      missionId: "mission-1",
+      teamName: "Compiler team",
+      objective: "Implement the parser",
+    });
+    const broadcasts: string[] = [];
+    store.onMessage((event) => broadcasts.push(event.message.id));
+    const input = {
+      messageId: "human-message-1",
+      missionId: "mission-1",
+      roomId: "room-message",
+      author: { kind: "human" as const, id: "user-1" },
+      body: "@software-engineer status?",
+      replyToMessageId: null,
+      mentionAgentIds: ["agent-member"],
+    };
+
+    await rooms.post(input);
+    await rooms.post(input);
+
+    expect(broadcasts).toEqual(["human-message-1"]);
+    expect((await store.read({ missionId: "mission-1" })).messages).toEqual([
+      expect.objectContaining({
+        id: "human-message-1",
+        author: { kind: "human", id: "user-1" },
+        mentionAgentIds: ["agent-member"],
+      }),
+    ]);
   });
 });

@@ -115,6 +115,15 @@ const ChatReadInputSchema = z
   })
   .strict();
 
+const ChatPostInputSchema = z
+  .object({
+    missionId: z.string().min(1),
+    idempotencyKey: z.string().min(1),
+    replyToMessageId: z.string().min(1),
+    body: z.string().min(1),
+  })
+  .strict();
+
 type CollaborationToolService = Pick<
   TeamCollaborationService,
   | "teamStatus"
@@ -125,6 +134,7 @@ type CollaborationToolService = Pick<
   | "reportAssignment"
   | "sendTeamMessage"
   | "readTeamChat"
+  | "postAgentRoomReply"
   | "reconcilePendingMessages"
 >;
 
@@ -231,6 +241,17 @@ export class PaseoTeamToolRegistrar {
         inputSchema: ChatReadInputSchema,
       },
       (input) => execute(() => this.options.service.readTeamChat({ callerAgentId, ...input })),
+    );
+    registerTool(
+      "chat_post",
+      {
+        title: "Reply in Team chat",
+        description:
+          "Post one persistent reply to the Mission room without notifying or interrupting another Member.",
+        inputSchema: ChatPostInputSchema,
+      },
+      (input) =>
+        execute(() => this.options.service.postAgentRoomReply({ callerAgentId, ...input })),
     );
   }
 
