@@ -59,6 +59,11 @@ $PASEO_HOME/
 │   └── session-pins.json                 # Host-owned pinned agent/session shortcuts
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
+├── team-missions/
+│   ├── profiles/{teamId}.json           # Reusable Team profile and lifecycle intents
+│   ├── missions/{missionId}.json        # Mission aggregate, evidence, and outboxes
+│   ├── rooms/{missionId}.json           # Mission-owned conversation and cursor state
+│   └── workspace-scope-leases.json      # Cross-Team writable scope ownership
 ├── projects/
 │   ├── projects.json                    # Project registry
 │   ├── workspaces.json                  # Workspace registry
@@ -416,7 +421,42 @@ One file per schedule. ID is 8 hex characters.
 
 ---
 
-## 6. Project Registry
+## 6. Agent Teams
+
+Agent Teams persists under one feature-owned directory:
+
+```text
+$PASEO_HOME/team-missions/
+├── profiles/{teamId}.json
+├── missions/{missionId}.json
+├── rooms/{missionId}.json
+└── workspace-scope-leases.json
+```
+
+Each store serializes mutations and writes JSON atomically. A Team profile is the reusable roster
+authority and has at most one active Mission. Creating a Team does not create Agent sessions or a
+Mission room. Starting a Mission creates its aggregate and room, then provisions only the Lead;
+other participants are created when ready Assignments need them.
+
+The Mission file owns plan revisions, roster snapshots, participant bindings, Workstreams,
+Assignment contracts, accepted-turn facts, reports, Attention items, recovery intents, and durable
+outboxes. Dispatch and finish are replayable sagas: retries reuse identities and request
+fingerprints already persisted rather than deriving new work after a crash.
+
+The room file is Mission-owned. Team message RPCs address it by `missionId`; generic Chat and Loop
+storage are not part of the Team feature. The room stores ordered messages plus the cursors needed
+for recipient notification recovery. Mission state changes only through structured Mission and
+Assignment operations, never by interpreting room prose.
+
+The workspace lease registry coordinates writable scopes across all Teams and Missions that resolve
+to the same canonical workspace. Read-only work takes no lease. Writable scopes are normalized path
+prefixes or the whole workspace; overlapping requests queue deterministically. Historical ownership
+intervals remain after release so workspace deltas can distinguish another Assignment's valid change
+from an unowned or ambiguous change.
+
+---
+
+## 7. Project Registry
 
 **Path:** `$PASEO_HOME/projects/projects.json`
 
@@ -451,7 +491,7 @@ workspace together with its owning project.
 
 ---
 
-## 7. Workspace Registry
+## 8. Workspace Registry
 
 **Path:** `$PASEO_HOME/projects/workspaces.json`
 
@@ -485,7 +525,7 @@ than treating it as valid.
 
 ---
 
-## 8. Push Token Store
+## 9. Push Token Store
 
 **Path:** `$PASEO_HOME/push-tokens.json`
 
@@ -499,7 +539,7 @@ Simple set of Expo push notification tokens. Loaded with permissive parsing (fil
 
 ---
 
-## 9. Daemon meta files
+## 10. Daemon meta files
 
 These small files are not validated as full Zod schemas but are persisted under `$PASEO_HOME` for daemon identity and runtime coordination.
 

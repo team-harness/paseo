@@ -91,3 +91,6 @@ packages/protocol/src/generated/validation/*.aot.ts
 packages/desktop/.cache/
 packages/desktop/src-tauri/resources/managed-runtime/
 app.json
+
+# QA screenshots: regenerate with the evidence spec rather than committing 1MB of PNGs.
+.codestable/audits/*/*.png

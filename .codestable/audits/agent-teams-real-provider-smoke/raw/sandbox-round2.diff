@@ -1,0 +1,24 @@
+diff --git a/README.md b/README.md
+index 5098788..4b1a1aa 100644
+--- a/README.md
++++ b/README.md
+@@ -1,3 +1,7 @@
+ # Smoke Sandbox
+
+ ## Inventory
++
++- math.js — 提供基础算术运算的工具模块（含 add 与 multiply）。
++
++- 本文件由 smoke 测试维护。
+diff --git a/math.js b/math.js
+index 7d65831..e059eb5 100644
+--- a/math.js
++++ b/math.js
+@@ -1,3 +1,7 @@
+ export function add(a, b) {
+   return a + b;
+ }
++
++export function multiply(a, b) {
++  return a * b;
++}

@@ -110,6 +110,19 @@ import type {
   PaseoConfigRevision,
   WorkspaceCreateRequest,
   WorkspaceRecoveryState,
+  TeamProfileCreateRequest,
+  TeamProfileListRequest,
+  TeamProfileInspectRequest,
+  TeamProfileUpdateRequest,
+  TeamProfileArchiveRequest,
+  TeamMissionStartRequest,
+  TeamMissionListRequest,
+  TeamMissionInspectRequest,
+  TeamMissionCancelRequest,
+  TeamMissionAttentionResolveRequest,
+  TeamMissionMessagePostRequest,
+  TeamMissionRoomSubscribeRequest,
+  TeamMissionRoomUnsubscribeRequest,
 } from "@getpaseo/protocol/messages";
 import type {
   AgentPermissionRequest,
@@ -295,6 +308,22 @@ export type DaemonEvent =
   | {
       type: "providers_snapshot_update";
       payload: Extract<SessionOutboundMessage, { type: "providers_snapshot_update" }>["payload"];
+    }
+  | {
+      type: "team.profile.snapshot";
+      teamId: string;
+      payload: Extract<SessionOutboundMessage, { type: "team.profile.snapshot" }>["payload"];
+    }
+  | {
+      type: "team.mission.snapshot";
+      teamId: string;
+      missionId: string;
+      payload: Extract<SessionOutboundMessage, { type: "team.mission.snapshot" }>["payload"];
+    }
+  | {
+      type: "team.mission.message.posted";
+      missionId: string;
+      payload: Extract<SessionOutboundMessage, { type: "team.mission.message.posted" }>["payload"];
     }
   | { type: "error"; message: string };
 
@@ -508,6 +537,58 @@ type SubscribeTerminalPayload = SubscribeTerminalResponse["payload"];
 type CloseItemsPayload = CloseItemsResponse["payload"];
 type KillTerminalPayload = KillTerminalResponse["payload"];
 type CaptureTerminalPayload = CaptureTerminalResponse["payload"];
+type TeamProfileCreatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.profile.create.response" }
+>["payload"];
+type TeamProfileListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.profile.list.response" }
+>["payload"];
+type TeamProfileInspectPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.profile.inspect.response" }
+>["payload"];
+type TeamProfileUpdatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.profile.update.response" }
+>["payload"];
+type TeamProfileArchivePayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.profile.archive.response" }
+>["payload"];
+type TeamMissionStartPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.mission.start.response" }
+>["payload"];
+type TeamMissionListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.mission.list.response" }
+>["payload"];
+type TeamMissionInspectPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.mission.inspect.response" }
+>["payload"];
+type TeamMissionCancelPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.mission.cancel.response" }
+>["payload"];
+type TeamMissionAttentionResolvePayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.mission.attention.resolve.response" }
+>["payload"];
+type TeamMissionMessagePostPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.mission.message.post.response" }
+>["payload"];
+type TeamMissionRoomSubscribePayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.mission.room.subscribe.response" }
+>["payload"];
+type TeamMissionRoomUnsubscribePayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.mission.room.unsubscribe.response" }
+>["payload"];
 type ScheduleCreatePayload = Extract<
   SessionOutboundMessage,
   { type: "schedule/create/response" }
@@ -689,6 +770,27 @@ export type ProjectListPayload = Extract<
   SessionOutboundMessage,
   { type: "project.list.response" }
 >["payload"];
+type TeamMissionsRequestOptions<TRequest extends { type: string; requestId: string }> = Omit<
+  TRequest,
+  "type" | "requestId"
+> & { requestId?: string };
+export type CreateTeamProfileOptions = TeamMissionsRequestOptions<TeamProfileCreateRequest>;
+export type ListTeamProfilesOptions = TeamMissionsRequestOptions<TeamProfileListRequest>;
+export type InspectTeamProfileOptions = TeamMissionsRequestOptions<TeamProfileInspectRequest>;
+export type UpdateTeamProfileOptions = TeamMissionsRequestOptions<TeamProfileUpdateRequest>;
+export type ArchiveTeamProfileOptions = TeamMissionsRequestOptions<TeamProfileArchiveRequest>;
+export type StartTeamMissionOptions = TeamMissionsRequestOptions<TeamMissionStartRequest>;
+export type ListTeamMissionsOptions = TeamMissionsRequestOptions<TeamMissionListRequest>;
+export type InspectTeamMissionOptions = TeamMissionsRequestOptions<TeamMissionInspectRequest>;
+export type CancelTeamMissionOptions = TeamMissionsRequestOptions<TeamMissionCancelRequest>;
+export type ResolveTeamMissionAttentionOptions =
+  TeamMissionsRequestOptions<TeamMissionAttentionResolveRequest>;
+export type PostTeamMissionMessageOptions =
+  TeamMissionsRequestOptions<TeamMissionMessagePostRequest>;
+export type SubscribeTeamMissionRoomOptions =
+  TeamMissionsRequestOptions<TeamMissionRoomSubscribeRequest>;
+export type UnsubscribeTeamMissionRoomOptions =
+  TeamMissionsRequestOptions<TeamMissionRoomUnsubscribeRequest>;
 export interface CreateScheduleOptions {
   prompt: string;
   name?: string | null;
@@ -5108,6 +5210,135 @@ export class DaemonClient {
     });
   }
 
+  supportsTeamMissions(): boolean {
+    return this.lastServerInfoMessage?.features?.teamMissions === true;
+  }
+
+  async createTeamProfile(options: CreateTeamProfileOptions): Promise<TeamProfileCreatePayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.profile.create.request", ...params },
+    });
+  }
+
+  async listTeamProfiles(options: ListTeamProfilesOptions = {}): Promise<TeamProfileListPayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.profile.list.request", ...params },
+    });
+  }
+
+  async inspectTeamProfile(options: InspectTeamProfileOptions): Promise<TeamProfileInspectPayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.profile.inspect.request", ...params },
+    });
+  }
+
+  async updateTeamProfile(options: UpdateTeamProfileOptions): Promise<TeamProfileUpdatePayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.profile.update.request", ...params },
+    });
+  }
+
+  async archiveTeamProfile(options: ArchiveTeamProfileOptions): Promise<TeamProfileArchivePayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.profile.archive.request", ...params },
+    });
+  }
+
+  async startTeamMission(options: StartTeamMissionOptions): Promise<TeamMissionStartPayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.mission.start.request", ...params },
+    });
+  }
+
+  async listTeamMissions(options: ListTeamMissionsOptions): Promise<TeamMissionListPayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.mission.list.request", ...params },
+    });
+  }
+
+  async inspectTeamMission(options: InspectTeamMissionOptions): Promise<TeamMissionInspectPayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.mission.inspect.request", ...params },
+    });
+  }
+
+  async cancelTeamMission(options: CancelTeamMissionOptions): Promise<TeamMissionCancelPayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.mission.cancel.request", ...params },
+    });
+  }
+
+  async resolveTeamMissionAttention(
+    options: ResolveTeamMissionAttentionOptions,
+  ): Promise<TeamMissionAttentionResolvePayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.mission.attention.resolve.request", ...params },
+    });
+  }
+
+  async postTeamMissionMessage(
+    options: PostTeamMissionMessageOptions,
+  ): Promise<TeamMissionMessagePostPayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.mission.message.post.request", ...params },
+    });
+  }
+
+  async subscribeTeamMissionRoom(
+    options: SubscribeTeamMissionRoomOptions,
+  ): Promise<TeamMissionRoomSubscribePayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.mission.room.subscribe.request", ...params },
+    });
+  }
+
+  async unsubscribeTeamMissionRoom(
+    options: UnsubscribeTeamMissionRoomOptions,
+  ): Promise<TeamMissionRoomUnsubscribePayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.mission.room.unsubscribe.request", ...params },
+    });
+  }
+
   async scheduleCreate(options: CreateScheduleOptions): Promise<ScheduleCreatePayload> {
     return this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
@@ -5262,6 +5493,14 @@ export class DaemonClient {
     }
   }
 
+  private requireTeamMissionsSupport(): void {
+    // COMPAT(teamMissions): added in v0.3.0-beta.3, remove after 2027-02-08 once
+    // the daemon floor advertises Team Missions. Missing capability is a hard gate.
+    if (!this.supportsTeamMissions()) {
+      throw new Error("Update the host to use Team Missions.");
+    }
+  }
+
   private resolveTransportUrlForAttempt(): string {
     return this.config.url;
   }
@@ -5289,6 +5528,7 @@ export class DaemonClient {
           [CLIENT_CAPS.providerSubagents]: true,
           [CLIENT_CAPS.projectUpdates]: true,
           [CLIENT_CAPS.compactProviderSnapshots]: true,
+          [CLIENT_CAPS.teamMissions]: true,
           ...this.config.capabilities,
         },
         ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
@@ -5800,6 +6040,25 @@ export class DaemonClient {
         };
       case "project.update":
         return { type: "project.update", payload: msg.payload };
+      case "team.profile.snapshot":
+        return {
+          type: "team.profile.snapshot",
+          teamId: msg.payload.team.id,
+          payload: msg.payload,
+        };
+      case "team.mission.snapshot":
+        return {
+          type: "team.mission.snapshot",
+          teamId: msg.payload.mission.teamId,
+          missionId: msg.payload.mission.id,
+          payload: msg.payload,
+        };
+      case "team.mission.message.posted":
+        return {
+          type: "team.mission.message.posted",
+          missionId: msg.payload.missionId,
+          payload: msg.payload,
+        };
       case "workspace_setup_progress":
         return {
           type: "workspace_setup_progress",

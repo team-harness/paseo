@@ -1,0 +1,6 @@
+ RUN  v4.1.7 /Users/wyattfang/.paseo/worktrees/3rvhzvvc/agent-teams
+
+ Test Files  2 passed (2)
+      Tests  47 passed (47)
+   Start at  04:14:18
+   Duration  13.78s (transform 3.51s, setup 0ms, import 5.74s, tests 9.59s, environment 0ms)

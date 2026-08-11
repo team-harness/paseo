@@ -1,0 +1,9 @@
+> @getpaseo/app@0.3.0-beta.2 test
+> vitest run src/runtime/host-runtime.test.ts --bail=1
+
+ RUN  v4.1.7 /Users/wyattfang/.paseo/worktrees/3rvhzvvc/agent-teams/packages/app
+
+ Test Files  1 passed (1)
+      Tests  69 passed (69)
+   Start at  04:18:15
+   Duration  71.77s (transform 59.64s, setup 548ms, import 68.65s, tests 1.06s, environment 0ms)

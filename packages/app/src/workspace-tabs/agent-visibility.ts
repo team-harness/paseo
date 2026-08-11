@@ -2,6 +2,7 @@ import type { Agent } from "@/stores/session-store";
 import type { WorkspaceTabSnapshot } from "@/stores/workspace-layout-actions";
 import { isWorkspaceRootAgent } from "@/subagents/policies";
 import { normalizeWorkspaceOpaqueId } from "@/utils/workspace-identity";
+import { getTeamIdFromLabels } from "@getpaseo/protocol/agent-labels";
 
 export interface WorkspaceAgentVisibility {
   activeAgentIds: Set<string>;
@@ -43,7 +44,10 @@ export function deriveWorkspaceAgentVisibility(input: {
     if (!agent.archivedAt) {
       activeAgentIds.add(agent.id);
       const parentAgent = agent.parentAgentId ? agentsById.get(agent.parentAgentId) : undefined;
-      if (isWorkspaceRootAgent(agent, parentAgent)) {
+      // A team owns its members' navigation. They remain available for an
+      // explicit avatar click, but creating a team must not spray one tab per
+      // member into the workspace.
+      if (isWorkspaceRootAgent(agent, parentAgent) && getTeamIdFromLabels(agent.labels) === null) {
         autoOpenAgentIds.add(agent.id);
       }
     }

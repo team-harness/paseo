@@ -38,17 +38,17 @@ class FakeDaemonClient {
   public sentAgentMessages: Array<Parameters<DaemonClient["sendAgentMessage"]>> = [];
   public sendAgentMessageFailures: Error[] = [];
   public sendAgentMessageResponses: Promise<void>[] = [];
-  private agentUpdateListeners = new Set<
-    (message: Extract<SessionOutboundMessage, { type: "agent_update" }>) => void
-  >();
+  private agentUpdateListeners = new Set<(message: unknown) => void>();
   private fetchWaiters = new Set<() => void>();
   private agentListenerWaiters = new Set<() => void>();
   private sentMessageWaiters = new Set<() => void>();
+  public lastServerInfoMessage: ReturnType<DaemonClient["getLastServerInfoMessage"]> = null;
 
-  on(
-    type: "agent_update",
-    listener: (message: Extract<SessionOutboundMessage, { type: "agent_update" }>) => void,
-  ): () => void {
+  public eventListenerRegistrations: string[] = [];
+  public listTeamProfilesCalls = 0;
+
+  on(type: string, listener: (message: unknown) => void): () => void {
+    this.eventListenerRegistrations.push(type);
     if (type === "agent_update") this.agentUpdateListeners.add(listener);
     for (const waiter of this.agentListenerWaiters) waiter();
     return () => this.agentUpdateListeners.delete(listener);
@@ -151,6 +151,38 @@ class FakeDaemonClient {
       };
       this.fetchWaiters.add(waiter);
     });
+  }
+
+  getLastServerInfoMessage(): ReturnType<DaemonClient["getLastServerInfoMessage"]> {
+    return this.lastServerInfoMessage;
+  }
+
+  async listTeamProfiles(): Promise<Awaited<ReturnType<DaemonClient["listTeamProfiles"]>>> {
+    this.listTeamProfilesCalls += 1;
+    return {
+      requestId: "req_team_profiles",
+      teams: [],
+      error: null,
+      errorCode: null,
+    };
+  }
+
+  async inspectTeamMission(): Promise<Awaited<ReturnType<DaemonClient["inspectTeamMission"]>>> {
+    return {
+      requestId: "req_team_mission",
+      mission: null,
+      error: null,
+      errorCode: null,
+    };
+  }
+
+  async listTeamMissions(): Promise<Awaited<ReturnType<DaemonClient["listTeamMissions"]>>> {
+    return {
+      requestId: "req_team_missions",
+      missions: [],
+      error: null,
+      errorCode: null,
+    };
   }
 
   async ping(): Promise<{ rttMs: number }> {
@@ -1781,6 +1813,197 @@ describe("HostRuntimeStore", () => {
 
     store.syncHosts([]);
     expect(useSessionStore.getState().sessions[host.serverId]).toBeUndefined();
+  });
+
+  it("copies an already-received server handshake into the session replica", async () => {
+    const host = makeHost({ serverId: "srv_handshake" });
+    const fakeClient = new FakeDaemonClient();
+    fakeClient.lastServerInfoMessage = {
+      status: "server_info",
+      serverId: host.serverId,
+      hostname: "test-host",
+      version: "0.3.0",
+      features: { canonicalSubmittedPrompts: true },
+    };
+    fakeClient.setConnectionState({ status: "connected" });
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        connectToDaemon: async () => ({
+          client: fakeClient as unknown as DaemonClient,
+          serverId: host.serverId,
+          hostname: "test-host",
+        }),
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    store.syncHosts([host]);
+    await fakeClient.waitForFetches(1);
+    await waitForDirectoryReady(store, host.serverId);
+
+    expect(
+      useSessionStore.getState().sessions[host.serverId]?.serverInfo?.features
+        ?.canonicalSubmittedPrompts,
+    ).toBe(true);
+
+    store.syncHosts([]);
+  });
+
+  it("does not start the Team Missions replica when its capability is absent", async () => {
+    const host = makeHost({ serverId: "srv_without_team_missions" });
+    const fakeClient = new FakeDaemonClient();
+    fakeClient.lastServerInfoMessage = {
+      status: "server_info",
+      serverId: host.serverId,
+      hostname: "test-host",
+      version: "0.3.0",
+      features: {},
+    };
+    fakeClient.setConnectionState({ status: "connected" });
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        connectToDaemon: async () => ({
+          client: fakeClient as unknown as DaemonClient,
+          serverId: host.serverId,
+          hostname: "test-host",
+        }),
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    store.syncHosts([host]);
+    await fakeClient.waitForFetches(1);
+    await waitForDirectoryReady(store, host.serverId);
+
+    expect(fakeClient.listTeamProfilesCalls).toBe(0);
+    expect(useSessionStore.getState().sessions[host.serverId]?.teamMissionsReplica.status).toBe(
+      "update_host",
+    );
+
+    useSessionStore.getState().updateSessionServerInfo(host.serverId, {
+      serverId: host.serverId,
+      hostname: "test-host",
+      version: "0.3.0",
+      features: { teamMissions: false },
+    });
+
+    expect(fakeClient.listTeamProfilesCalls).toBe(0);
+
+    store.syncHosts([]);
+  });
+
+  it("waits for server_info before starting the Team Missions replica", async () => {
+    const host = makeHost({
+      serverId: "srv_team_missions",
+      connections: [
+        {
+          id: "direct:lan:6767",
+          type: "directTcp",
+          endpoint: "lan:6767",
+        },
+      ],
+    });
+    const fakeClient = new FakeDaemonClient();
+    fakeClient.setConnectionState({ status: "connected" });
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        connectToDaemon: async () => ({
+          client: fakeClient as unknown as DaemonClient,
+          serverId: host.serverId,
+          hostname: "test-host",
+        }),
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    store.syncHosts([host]);
+    await fakeClient.waitForFetches(1);
+    await waitForDirectoryReady(store, host.serverId);
+
+    expect(fakeClient.listTeamProfilesCalls).toBe(0);
+    expect(useSessionStore.getState().sessions[host.serverId]?.teamMissionsReplica.status).toBe(
+      "checking_host",
+    );
+
+    useSessionStore.getState().updateSessionServerInfo(host.serverId, {
+      serverId: host.serverId,
+      hostname: "test-host",
+      version: "0.3.0",
+      features: { teamMissions: true },
+    });
+    await vi.waitFor(() => expect(fakeClient.listTeamProfilesCalls).toBe(1));
+    await vi.waitFor(() =>
+      expect(useSessionStore.getState().sessions[host.serverId]?.teamMissionsReplica.status).toBe(
+        "ready",
+      ),
+    );
+
+    useSessionStore.getState().updateSessionServerInfo(host.serverId, {
+      serverId: host.serverId,
+      hostname: "test-host",
+      version: "0.3.0",
+      features: { teamMissions: false },
+    });
+    expect(useSessionStore.getState().sessions[host.serverId]?.teamMissionsReplica.status).toBe(
+      "update_host",
+    );
+    expect(fakeClient.listTeamProfilesCalls).toBe(1);
+
+    store.syncHosts([]);
+  });
+
+  it("rekeys and removes the host-owned Team Missions replica", async () => {
+    const oldServerId = "local:team-missions";
+    const newServerId = "srv_team_missions_rekeyed";
+    const host = makeHost({
+      serverId: oldServerId,
+      connections: [
+        {
+          id: "direct:lan:6767",
+          type: "directTcp",
+          endpoint: "lan:6767",
+        },
+      ],
+    });
+    const fakeClient = new FakeDaemonClient();
+    fakeClient.lastServerInfoMessage = {
+      status: "server_info",
+      serverId: oldServerId,
+      hostname: "test-host",
+      version: "0.3.0",
+      features: { teamMissions: true },
+    };
+    fakeClient.setConnectionState({ status: "connected" });
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        connectToDaemon: async () => ({
+          client: fakeClient as unknown as DaemonClient,
+          serverId: oldServerId,
+          hostname: "test-host",
+        }),
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    store.syncHosts([host]);
+    await fakeClient.waitForFetches(1);
+    await vi.waitFor(() => expect(fakeClient.listTeamProfilesCalls).toBe(1));
+
+    store.reconcileServerId(oldServerId, newServerId);
+    await vi.waitFor(() => expect(fakeClient.listTeamProfilesCalls).toBe(2));
+    await vi.waitFor(() =>
+      expect(useSessionStore.getState().sessions[newServerId]?.teamMissionsReplica.status).toBe(
+        "ready",
+      ),
+    );
+    expect(useSessionStore.getState().sessions[oldServerId]).toBeUndefined();
+
+    store.syncHosts([]);
+    expect(useSessionStore.getState().sessions[newServerId]).toBeUndefined();
   });
 
   it("bootstraps legacy daemons from unscoped agents and creates path-backed workspaces", async () => {

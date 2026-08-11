@@ -134,6 +134,47 @@ Run it locally with the same command owned by the Ubuntu `desktop-tests` require
 npm run test:e2e:browser-tabs --workspace=@getpaseo/desktop
 ```
 
+## Agent team coordination
+
+Team coordination has two independent acceptance gates. Report them separately. Deterministic runtime
+tests prove state-machine safety; real-provider runs prove that the planner uses the system well.
+
+### Deterministic runtime gate
+
+Cover these contracts through Team interfaces with typed adapters or E2E against an isolated real
+daemon:
+
+- Team profile revisions, roster snapshots, participant bindings, and mention handles remain durable;
+- matching is deterministic from required/preferred Skills, Level, runtime capabilities, load, and roster order;
+- independent writable scopes can overlap in time while conflicting scopes queue across Teams and Missions;
+- a busy Participant is never interrupted, and accepted work is never dispatched a second time;
+- accepted-turn facts, workspace deltas, reports, final verification, and Attention gates agree;
+- report holds, recovery turns, recipient attention, and completion outboxes converge without polling;
+- restart at every persisted saga stage resumes the same ids, revisions, deliveries, and lease ownership;
+- cancel, failure, participant loss, provider rejection, and unknown acceptance preserve evidence and reach a defined terminal or Attention state.
+
+Every contract must pass. Do not average failures into a score.
+
+### Real-provider coordination score
+
+Evaluate one fixed Mission with a real provider and an explicit Team profile. Keep the Team and Mission
+snapshots, room history, tool calls, plan revisions, Assignment timestamps, workspace ownership
+intervals, diff, reports, and verification output. Score each dimension from 0 to 2:
+
+| Dimension           | 0                                                                                            | 1                                                                                                             | 2                                                                                                                                                          |
+| ------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workstream fit      | Plan ignores hard Skills, Level, capabilities, dependencies, review, or scope constraints    | Plan is feasible but has avoidable coupling, overqualified allocation, or an unexplained soft override        | Every Workstream has a minimal sufficient owner, explicit dynamic scope, valid dependencies, and independent review where available                        |
+| Coordination        | Work deadlocks, busy-waits, interrupts a Participant, or loses required parallelism          | Mission completes with avoidable serialization, idle time, redundant handoff, or rework                       | Independent ready work overlaps, dependencies and handoffs wake the next owner, and load stays balanced without polling                                    |
+| Tool discipline     | Prompt or chat text acts as authority, or state/report data is fabricated outside Team tools | Structured tools are used, but stale revisions, redundant reads, or a missing report cause avoidable recovery | The Lead and Members use status, plan, Assignment, report, message, history, and chat tools with current revisions and no polling                          |
+| Delivery            | Result is broken, incomplete, or cannot be verified                                          | Result becomes correct only after rework, a scope violation, or missing artifact/report repair                | Final verification approves every acceptance criterion; tests, artifacts, handoffs, and ownership audit are complete                                       |
+| Runtime reliability | Work, evidence, or delivery is lost or duplicated, or the Mission cannot converge            | Mission converges only after an avoidable retry, restart, or manual recovery                                  | Ids and evidence remain stable through retries and injected crashes; leases, report holds, outboxes, and Attention resolve without duplicate provider work |
+
+A run qualifies at 8/10 or higher, with no zero and Delivery equal to 2. Use at least two task
+shapes, including one with parallel delivery plus integration and one with a blocked or recovery path.
+Each task shape must qualify three consecutive times; a failed run resets that shape's streak. Record
+provider, model, duration, planning latency, parallelism, Member idle time, tool-call and token counts,
+scope conflicts, Attention items, recovery, and rework for every run.
+
 ## Test organization
 
 - Collocate tests with implementation: `thing.ts` + `thing.test.ts`

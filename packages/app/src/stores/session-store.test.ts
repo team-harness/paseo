@@ -12,6 +12,7 @@ import {
 } from "./session-store";
 import type { StreamItem } from "../types/stream";
 import { patchWorkspaceScripts } from "../contexts/session-workspace-scripts";
+import { createTeamMissionsReplica } from "../runtime/team-missions-sync/replica";
 
 function createWorkspace(
   input: Partial<WorkspaceDescriptor> & Pick<WorkspaceDescriptor, "id">,
@@ -718,5 +719,57 @@ describe("patchWorkspaceScripts", () => {
 
     expect(next).toBe(current);
     expect(next.get(workspace.id)).toBe(workspace);
+  });
+});
+
+describe("Team Missions replica", () => {
+  it("starts each session in an independent checking-host state", () => {
+    const store = useSessionStore.getState();
+    store.initializeSession("test-server", null as unknown as DaemonClient);
+    store.initializeSession("second-server", null as unknown as DaemonClient);
+
+    const first = store.getSession("test-server")?.teamMissionsReplica;
+    const second = store.getSession("second-server")?.teamMissionsReplica;
+
+    expect(first?.status).toBe("checking_host");
+    expect(first?.profiles.size).toBe(0);
+    expect(first?.missions.size).toBe(0);
+    expect(first?.historyReads.size).toBe(0);
+    expect(second).not.toBe(first);
+
+    store.clearSession("second-server");
+  });
+
+  it("atomically replaces the replica and no-ops for the same reference", () => {
+    const store = useSessionStore.getState();
+    initializeTestSession();
+    const replica = createTeamMissionsReplica({ status: "ready" });
+
+    store.setTeamMissionsReplica("test-server", replica);
+    const afterReplacement = useSessionStore.getState();
+    store.setTeamMissionsReplica("test-server", replica);
+    const afterNoop = useSessionStore.getState();
+
+    expect(afterReplacement.sessions["test-server"]?.teamMissionsReplica).toBe(replica);
+    expect(afterNoop).toBe(afterReplacement);
+  });
+
+  it("does not carry a removed host replica into a reinitialized session", () => {
+    const store = useSessionStore.getState();
+    initializeTestSession();
+    store.setTeamMissionsReplica(
+      "test-server",
+      createTeamMissionsReplica({
+        status: "failed",
+        error: "old host failed",
+      }),
+    );
+
+    store.clearSession("test-server");
+    initializeTestSession();
+
+    expect(store.getSession("test-server")?.teamMissionsReplica).toEqual(
+      createTeamMissionsReplica(),
+    );
   });
 });

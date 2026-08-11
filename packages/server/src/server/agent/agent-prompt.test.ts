@@ -9,6 +9,7 @@ import {
   isSystemInjectedEnvelope,
   sendPromptToAgent,
   setupFinishNotification,
+  UnknownAgentRunAcceptanceError,
 } from "./agent-prompt.js";
 import type { AgentManagerEvent, ManagedAgent } from "./agent-manager.js";
 
@@ -155,12 +156,17 @@ test("isSystemInjectedEnvelope matches the envelope formatSystemNotificationProm
   expect(isSystemInjectedEnvelope("hello world")).toBe(false);
 });
 
-test("sendPromptToAgent forwards the client message id as run options", async () => {
+test("sendPromptToAgent returns the exact accepted turn with the client message id", async () => {
   const agent: ManagedAgent = Object.create(null);
   Reflect.set(agent, "id", "agent-1");
   Reflect.set(agent, "provider", "codex");
 
-  const streamAgentSpy = vi.fn(() => (async function* noop() {})());
+  const streamAgentSpy = vi.fn(() =>
+    (async function* acceptedTurn() {
+      yield { type: "turn_started", provider: "codex", turnId: "turn-exact-1" } as const;
+      yield { type: "turn_completed", provider: "codex", turnId: "turn-exact-1" } as const;
+    })(),
+  );
   const agentManager: AgentManager = Object.create(AgentManager.prototype);
   Reflect.set(
     agentManager,
@@ -178,7 +184,7 @@ test("sendPromptToAgent forwards the client message id as run options", async ()
     vi.fn(async () => null),
   );
 
-  await sendPromptToAgent({
+  const result = await sendPromptToAgent({
     agentManager,
     agentStorage,
     agentId: "agent-1",
@@ -192,6 +198,424 @@ test("sendPromptToAgent forwards the client message id as run options", async ()
     outputSchema: { type: "object" },
     clientMessageId: "msg-client-1",
   });
+  expect(result).toEqual({ outOfBand: false, turnId: "turn-exact-1" });
+});
+
+// DEC-10: the caller decides whether a prompt may cancel work in flight. A
+// mention that loses the race against a turn starting gives up on waking the
+// agent, so eligibility checked a moment earlier cannot become an interrupt.
+// The message is in the room either way; the agent reads it when it next looks.
+test("sendPromptToAgent leaves a run in flight alone when replaceRunning is false", async () => {
+  const agent: ManagedAgent = Object.create(null);
+  Reflect.set(agent, "id", "agent-1");
+  Reflect.set(agent, "provider", "codex");
+
+  // What the real AgentManager does with a run already in flight: it refuses,
+  // rather than queueing behind it (agent-manager.ts:2276).
+  const streamAgentSpy = vi.fn(() => {
+    throw new Error("Agent agent-1 already has an active run");
+  });
+  const replaceAgentRunSpy = vi.fn(async () => (async function* noop() {})());
+  const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  Reflect.set(
+    agentManager,
+    "getAgent",
+    vi.fn(() => agent),
+  );
+  Reflect.set(agentManager, "tryRunOutOfBand", vi.fn().mockReturnValue(false));
+  // The race: the turn started between the eligibility check and this call.
+  Reflect.set(agentManager, "hasInFlightRun", vi.fn().mockReturnValue(true));
+  Reflect.set(agentManager, "streamAgent", streamAgentSpy);
+  Reflect.set(agentManager, "replaceAgentRun", replaceAgentRunSpy);
+
+  const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
+  Reflect.set(
+    agentStorage,
+    "get",
+    vi.fn(async () => null),
+  );
+
+  await expect(
+    sendPromptToAgent({
+      agentManager,
+      agentStorage,
+      agentId: "agent-1",
+      prompt: "hello",
+      replaceRunning: false,
+      logger: createTestLogger(),
+    }),
+  ).rejects.toThrow("already has an active run");
+
+  // The point of the flag: the turn in flight was never touched.
+  expect(replaceAgentRunSpy).not.toHaveBeenCalled();
+});
+
+test("sendPromptToAgent releases its durable claim when mode selection fails before provider dispatch", async () => {
+  const agent: ManagedAgent = Object.create(null);
+  Reflect.set(agent, "id", "agent-1");
+  Reflect.set(agent, "provider", "codex");
+  const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  Reflect.set(
+    agentManager,
+    "getAgent",
+    vi.fn(() => agent),
+  );
+  Reflect.set(
+    agentManager,
+    "setAgentMode",
+    vi.fn(async () => {
+      throw new Error("mode is unavailable");
+    }),
+  );
+
+  const release = vi.fn(async () => true);
+  const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
+  Reflect.set(
+    agentStorage,
+    "get",
+    vi.fn(async () => null),
+  );
+  Reflect.set(
+    agentStorage,
+    "claimPromptDispatch",
+    vi.fn(async () => ({ kind: "claimed", token: "owner-token" }) as const),
+  );
+  Reflect.set(agentStorage, "releasePromptDispatchClaim", release);
+
+  await expect(
+    sendPromptToAgent({
+      agentManager,
+      agentStorage,
+      agentId: "agent-1",
+      prompt: "hello",
+      messageId: "msg-client-1",
+      fenceUnknownAcceptance: true,
+      sessionMode: "code",
+      logger: createTestLogger(),
+    }),
+  ).rejects.toThrow("mode is unavailable");
+  expect(release).toHaveBeenCalledWith("agent-1", "msg-client-1", "owner-token");
+});
+
+test("sendPromptToAgent releases its durable claim when loading the provider binary fails", async () => {
+  const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  Reflect.set(
+    agentManager,
+    "getAgent",
+    vi.fn(() => null),
+  );
+  Reflect.set(
+    agentManager,
+    "waitForAgentClose",
+    vi.fn(async () => undefined),
+  );
+
+  const release = vi.fn(async () => true);
+  const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
+  Reflect.set(
+    agentStorage,
+    "get",
+    vi
+      .fn()
+      .mockResolvedValueOnce({ id: "agent-1" })
+      .mockRejectedValueOnce(new Error("provider binary is unavailable")),
+  );
+  Reflect.set(
+    agentStorage,
+    "claimPromptDispatch",
+    vi.fn(async () => ({ kind: "claimed", token: "load-owner-token" }) as const),
+  );
+  Reflect.set(agentStorage, "releasePromptDispatchClaim", release);
+
+  await expect(
+    sendPromptToAgent({
+      agentManager,
+      agentStorage,
+      agentId: "agent-1",
+      prompt: "hello",
+      messageId: "msg-load",
+      fenceUnknownAcceptance: true,
+      logger: createTestLogger(),
+    }),
+  ).rejects.toThrow("provider binary is unavailable");
+  expect(release).toHaveBeenCalledWith("agent-1", "msg-load", "load-owner-token");
+});
+
+test("sendPromptToAgent releases its durable claim when a busy race is detected before provider dispatch", async () => {
+  const agent: ManagedAgent = Object.create(null);
+  Reflect.set(agent, "id", "agent-1");
+  Reflect.set(agent, "provider", "codex");
+  const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  Reflect.set(
+    agentManager,
+    "getAgent",
+    vi.fn(() => agent),
+  );
+  Reflect.set(
+    agentManager,
+    "tryRunOutOfBand",
+    vi.fn(() => false),
+  );
+  Reflect.set(
+    agentManager,
+    "hasInFlightRun",
+    vi.fn(() => true),
+  );
+
+  const release = vi.fn(async () => true);
+  const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
+  Reflect.set(
+    agentStorage,
+    "get",
+    vi.fn(async () => null),
+  );
+  Reflect.set(
+    agentStorage,
+    "claimPromptDispatch",
+    vi.fn(async () => ({ kind: "claimed", token: "busy-owner-token" }) as const),
+  );
+  Reflect.set(agentStorage, "releasePromptDispatchClaim", release);
+
+  await expect(
+    sendPromptToAgent({
+      agentManager,
+      agentStorage,
+      agentId: "agent-1",
+      prompt: "hello",
+      messageId: "msg-busy",
+      fenceUnknownAcceptance: true,
+      replaceRunning: false,
+      logger: createTestLogger(),
+    }),
+  ).rejects.toThrow("already has an active run");
+  expect(release).toHaveBeenCalledWith("agent-1", "msg-busy", "busy-owner-token");
+});
+
+test("sendPromptToAgent permanently fences an error after entering the provider", async () => {
+  const agent: ManagedAgent = Object.create(null);
+  Reflect.set(agent, "id", "agent-1");
+  Reflect.set(agent, "provider", "codex");
+  const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  Reflect.set(
+    agentManager,
+    "getAgent",
+    vi.fn(() => agent),
+  );
+  Reflect.set(
+    agentManager,
+    "tryRunOutOfBand",
+    vi.fn(() => false),
+  );
+  Reflect.set(
+    agentManager,
+    "hasInFlightRun",
+    vi.fn(() => false),
+  );
+  Reflect.set(
+    agentManager,
+    "streamAgent",
+    vi.fn(() =>
+      (async function* providerFailure() {
+        yield await Promise.reject(new Error("provider failed while accepting the turn"));
+      })(),
+    ),
+  );
+
+  const release = vi.fn(async () => true);
+  const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
+  Reflect.set(
+    agentStorage,
+    "get",
+    vi.fn(async () => null),
+  );
+  Reflect.set(
+    agentStorage,
+    "claimPromptDispatch",
+    vi.fn(async () => ({ kind: "claimed", token: "provider-owner-token" }) as const),
+  );
+  Reflect.set(agentStorage, "releasePromptDispatchClaim", release);
+  const logger = createTestLogger();
+  const warn = vi.fn();
+  logger.warn = warn as typeof logger.warn;
+
+  await expect(
+    sendPromptToAgent({
+      agentManager,
+      agentStorage,
+      agentId: "agent-1",
+      prompt: "hello",
+      messageId: "msg-provider",
+      fenceUnknownAcceptance: true,
+      logger,
+    }),
+  ).rejects.toBeInstanceOf(UnknownAgentRunAcceptanceError);
+  expect(release).not.toHaveBeenCalled();
+  expect(warn).toHaveBeenCalledWith(
+    expect.objectContaining({
+      agentId: "agent-1",
+      messageId: "msg-provider",
+      err: expect.objectContaining({ message: "provider failed while accepting the turn" }),
+    }),
+    "Agent prompt acceptance is unknown",
+  );
+});
+
+test("sendPromptToAgent releases its durable claim when provider setup throws before startTurn", async () => {
+  const agent: ManagedAgent = Object.create(null);
+  Reflect.set(agent, "id", "agent-1");
+  Reflect.set(agent, "provider", "codex");
+  const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  Reflect.set(
+    agentManager,
+    "getAgent",
+    vi.fn(() => agent),
+  );
+  Reflect.set(
+    agentManager,
+    "tryRunOutOfBand",
+    vi.fn(() => false),
+  );
+  Reflect.set(
+    agentManager,
+    "hasInFlightRun",
+    vi.fn(() => false),
+  );
+  Reflect.set(
+    agentManager,
+    "streamAgent",
+    vi.fn(() => {
+      throw new Error("provider setup failed before startTurn");
+    }),
+  );
+
+  const release = vi.fn(async () => true);
+  const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
+  Reflect.set(
+    agentStorage,
+    "get",
+    vi.fn(async () => null),
+  );
+  Reflect.set(
+    agentStorage,
+    "claimPromptDispatch",
+    vi.fn(async () => ({ kind: "claimed", token: "setup-owner-token" }) as const),
+  );
+  Reflect.set(agentStorage, "releasePromptDispatchClaim", release);
+
+  await expect(
+    sendPromptToAgent({
+      agentManager,
+      agentStorage,
+      agentId: "agent-1",
+      prompt: "hello",
+      messageId: "msg-provider-setup",
+      fenceUnknownAcceptance: true,
+      logger: createTestLogger(),
+    }),
+  ).rejects.toThrow("provider setup failed before startTurn");
+  expect(release).toHaveBeenCalledWith("agent-1", "msg-provider-setup", "setup-owner-token");
+});
+
+test("sendPromptToAgent releases its durable claim when an out-of-band command succeeds", async () => {
+  const agent: ManagedAgent = Object.create(null);
+  Reflect.set(agent, "id", "agent-1");
+  Reflect.set(agent, "provider", "codex");
+  const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  Reflect.set(
+    agentManager,
+    "getAgent",
+    vi.fn(() => agent),
+  );
+  Reflect.set(
+    agentManager,
+    "tryRunOutOfBand",
+    vi.fn(() => true),
+  );
+
+  const release = vi.fn(async () => true);
+  const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
+  Reflect.set(
+    agentStorage,
+    "get",
+    vi.fn(async () => null),
+  );
+  Reflect.set(
+    agentStorage,
+    "claimPromptDispatch",
+    vi.fn(async () => ({ kind: "claimed", token: "out-of-band-owner-token" }) as const),
+  );
+  Reflect.set(agentStorage, "releasePromptDispatchClaim", release);
+
+  await expect(
+    sendPromptToAgent({
+      agentManager,
+      agentStorage,
+      agentId: "agent-1",
+      prompt: "/goal pause",
+      messageId: "msg-out-of-band",
+      fenceUnknownAcceptance: true,
+      logger: createTestLogger(),
+    }),
+  ).resolves.toEqual({ outOfBand: true, turnId: null });
+  expect(release).toHaveBeenCalledWith("agent-1", "msg-out-of-band", "out-of-band-owner-token");
+});
+
+test("sendPromptToAgent keeps its durable claim when provider mapping returns no turn id", async () => {
+  const agent: ManagedAgent = Object.create(null);
+  Reflect.set(agent, "id", "agent-1");
+  Reflect.set(agent, "provider", "codex");
+  const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  Reflect.set(
+    agentManager,
+    "getAgent",
+    vi.fn(() => agent),
+  );
+  Reflect.set(
+    agentManager,
+    "tryRunOutOfBand",
+    vi.fn(() => false),
+  );
+  Reflect.set(
+    agentManager,
+    "hasInFlightRun",
+    vi.fn(() => false),
+  );
+  Reflect.set(
+    agentManager,
+    "streamAgent",
+    vi.fn(() =>
+      (async function* unmappedProviderResult() {
+        yield { type: "turn_completed", provider: "codex", turnId: "turn-unmapped" } as const;
+      })(),
+    ),
+  );
+
+  const release = vi.fn(async () => true);
+  const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
+  Reflect.set(
+    agentStorage,
+    "get",
+    vi.fn(async () => null),
+  );
+  Reflect.set(
+    agentStorage,
+    "claimPromptDispatch",
+    vi.fn(async () => ({ kind: "claimed", token: "mapping-owner-token" }) as const),
+  );
+  Reflect.set(agentStorage, "releasePromptDispatchClaim", release);
+
+  await expect(
+    sendPromptToAgent({
+      agentManager,
+      agentStorage,
+      agentId: "agent-1",
+      prompt: "hello",
+      messageId: "msg-mapping",
+      fenceUnknownAcceptance: true,
+      logger: createTestLogger(),
+    }),
+  ).resolves.toEqual({ outOfBand: false, turnId: null });
+  expect(release).not.toHaveBeenCalled();
 });
 
 test("finish notifications tell the parent the child's last assistant message", async () => {

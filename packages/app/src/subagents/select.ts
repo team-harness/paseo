@@ -73,7 +73,7 @@ export function selectSubagentsForParent(
     return EMPTY_SUBAGENT_ROWS;
   }
 
-  const rows: SubagentRow[] = [];
+  const children: Agent[] = [];
   for (const agent of agents.values()) {
     if (
       agent.archivedAt ||
@@ -82,8 +82,19 @@ export function selectSubagentsForParent(
     ) {
       continue;
     }
-    rows.push(toSubagentRow(agent));
+    children.push(agent);
   }
+
+  // Mission participants are also ordinary parent/child agents. The Team
+  // panel owns them while their participant binding is active.
+  const participantAgentIds = new Set<string>();
+  const replica = state.sessions[params.serverId]?.teamMissionsReplica;
+  for (const mission of replica?.missions.values() ?? []) {
+    for (const participant of mission.participants) {
+      if (participant.archivedAt === null) participantAgentIds.add(participant.agentId);
+    }
+  }
+  const rows = children.filter((agent) => !participantAgentIds.has(agent.id)).map(toSubagentRow);
 
   if (rows.length === 0) {
     return EMPTY_SUBAGENT_ROWS;

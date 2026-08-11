@@ -57,7 +57,13 @@ function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): Workspace
       const sha = trimNonEmpty(value.sha);
       return sha ? { kind: "commit_diff", sha } : null;
     }
+    case "team": {
+      const teamId = trimNonEmpty(value.teamId);
+      return teamId ? { kind: "team", teamId } : null;
+    }
     default:
+      // A target that does not normalize is dropped on restore, so a variant
+      // missing from here is a tab that silently stops surviving a restart.
       return null;
   }
 }
@@ -127,6 +133,11 @@ function secondaryWorkspaceTabTargetsEqual(
   if (left.kind === "commit_diff" && right.kind === "commit_diff") {
     return left.sha === right.sha;
   }
+  if (left.kind === "team" && right.kind === "team") {
+    return left.teamId === right.teamId;
+  }
+  // A variant missing from here is not equal to itself, and this is the dedupe
+  // primitive — so opening it twice would leave two tabs on the same thing.
   return false;
 }
 
@@ -187,6 +198,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "working_diff") {
     return "working_diff";
+  }
+  if (target.kind === "team") {
+    return `team_${target.teamId}`;
   }
   return `file_${target.path}`;
 }

@@ -91,6 +91,14 @@ import type {
   PaseoToolResult,
 } from "./types.js";
 
+/** How a feature module adds a tool to the catalog. */
+export type RegisterPaseoTool = (
+  name: string,
+  config: PaseoToolConfig,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool handlers are schema-validated at registration boundaries.
+  handler: (input: any, context: PaseoToolExecutionContext) => Promise<PaseoToolResult>,
+) => void;
+
 export interface PaseoToolHostDependencies {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
@@ -140,6 +148,11 @@ export interface PaseoToolHostDependencies {
   resolveCallerContext?: (callerAgentId: string) => VoiceCallerContext | null;
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
+  /**
+   * Lets a feature add its own tools without editing this file for each one.
+   * Called last, so an extra tool can replace a built-in of the same name.
+   */
+  registerExtraTools?: (registerTool: RegisterPaseoTool) => void;
   logger: Logger;
 }
 
@@ -3124,6 +3137,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       };
     },
   );
+
+  options.registerExtraTools?.(registerTool);
 
   return toCatalog();
 }

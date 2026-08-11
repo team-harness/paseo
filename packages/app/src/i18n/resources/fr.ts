@@ -1,4 +1,5 @@
 import type { TranslationResources } from "./en";
+import { teamV2Fr } from "./team-v2";
 
 export const fr: TranslationResources = {
   common: {
@@ -676,6 +677,7 @@ export const fr: TranslationResources = {
         terminal: "Terminal",
         browser: "Navigateur",
         agent: "Agent",
+        team: "Équipe",
         workspace: "Workspace",
       },
       switcher: {
@@ -704,6 +706,8 @@ export const fr: TranslationResources = {
       },
       actions: {
         newAgent: "Nouvel agent",
+        newTeam: "Nouvelle équipe",
+        moreActions: "Plus d’actions",
         newTerminal: "Nouveau terminal",
         preparingTerminal: "Préparation de l'onglet du terminal",
         preparingTerminalTooltip: "Préparation du terminal...",
@@ -773,6 +777,7 @@ export const fr: TranslationResources = {
       actions: {
         workspaceActions: "ActionsWorkspace",
         newAgent: "Nouvel agent",
+        newTeam: "Nouvelle équipe",
         newTerminal: "Nouvelle borne",
         newBrowser: "Nouvel onglet du navigateur",
         importSession: "Session d'importation",
@@ -1093,6 +1098,112 @@ export const fr: TranslationResources = {
         signIn: "Exécutez {{command}} pour utiliser les fonctionnalités {{brand}}.",
         generic: "Configurez {{brand}} sur cet hôte pour utiliser ses fonctionnalités.",
       },
+    },
+  },
+  teams: {
+    ...teamV2Fr,
+    list: {
+      unreadable: "Impossible de lire les équipes.",
+    },
+    form: {
+      neverStarted: "Cette requête a produit une équipe qui n’a jamais démarré. Réessayez.",
+      keyReused: "Cette requête a déjà servi à une autre équipe. Réessayez.",
+      refused: "L’équipe n’a pas pu être créée.",
+      title: "Nouvelle équipe",
+      name: "Nom",
+      namePlaceholder: "À quoi sert cette équipe",
+      task: "Tâche",
+      taskPlaceholder: "Ce que l’équipe doit accomplir",
+      lead: "Lead",
+      provider: "Fournisseur",
+      noProviders: "Aucun fournisseur sur ce daemon",
+      role: "Rôle",
+      rolePlaceholder: "server",
+      responsibility: "Responsabilité",
+      responsibilityPlaceholder:
+        "Ce que ce membre prend en charge et quand le lead doit l'assigner",
+      addMember: "Ajouter un membre",
+      removeMember: "Retirer",
+      review: "Vérifier",
+      back: "Retour",
+      submit: "Créer l’équipe",
+      created: "Équipe créée.",
+      cost: "Crée {{agents}} agents : un lead et {{members}} membres.",
+    },
+    settings: {
+      title: "Paramètres de l'équipe",
+      open: "Ouvrir les paramètres de l'équipe",
+      details: "Détails de l'équipe",
+      editTeam: "Modifier l'équipe",
+      members: "Membres ({{count}})",
+      taskMissing: "Aucune tâche définie.",
+      unsupported: "Mettez à jour cet Host pour modifier l'équipe et les responsabilités.",
+      pendingPermissions: "Autorisations en attente",
+      responsibilityMissing: "Aucune responsabilité définie.",
+      dangerZone: "Actions de l'équipe",
+      openAgent: "Ouvrir l'Agent",
+      editMember: "Modifier le membre",
+      editMemberNamed: "Modifier {{role}}",
+      save: "Enregistrer",
+      saved: "Enregistré.",
+      updateRefused: "Les paramètres de l'équipe n'ont pas pu être mis à jour.",
+    },
+    room: {
+      placeholder: "Dites quelque chose à l’équipe…",
+      send: "Envoyer",
+      notPosted: "Ce message n’a pas été publié.",
+      unopenable: "Impossible d’ouvrir ce salon.",
+      you: "Vous",
+      empty: "Rien n’a encore été dit.",
+      showMore: "Afficher la suite",
+      showMoreLines: "Afficher {{count}} lignes de plus",
+    },
+    tabs: {
+      chat: "Discussion",
+      tasks: "Tâches",
+    },
+    tasks: {
+      empty: "Rien d'assigné pour l'instant.",
+      state: {
+        queued: "En attente",
+        dispatched: "En cours",
+      },
+      outcome: {
+        completed: "Terminé",
+        failed: "Échec",
+        canceled: "Annulée",
+        unknown: "Fini",
+      },
+    },
+    route: {
+      loading: "Recherche de cette équipe…",
+      unsupported:
+        "{{hostName}} est trop ancien pour les équipes. Mettez-le à jour pour ouvrir ce lien.",
+    },
+    panel: {
+      archiveRefused: "L’équipe n’a pas pu être archivée.",
+      removeRefused: "Ce membre n’a pas pu être retiré.",
+      leadTabClosed:
+        "Onglet fermé. {{teamName}} continue de tourner — archivez-la depuis son panneau.",
+      archiveRunning: "{{count}} d’entre eux travaillent en ce moment et perdront ce travail.",
+      creating: "En formation",
+      archiving: "Archivage",
+      ended: "Terminée",
+      left: "partie",
+      archiveTitle: "Archiver l’équipe ?",
+      archiveMessage: "Cela archive l’équipe et ses {{count}} agents. C’est irréversible.",
+      archiveConfirm: "Archiver",
+      archiveAction: "Archiver l’équipe",
+      removeTitle: "Retirer le membre ?",
+      removeMessage: "{{role}} quitte l’équipe. L’agent continue de tourner.",
+      removeConfirm: "Retirer",
+      removeAction: "Retirer",
+      waitingOnYou: "En attente de vous",
+      working: "Au travail",
+      idle: "Inactif",
+      notLoaded: "Non chargé",
+      missing: "Équipe introuvable",
+      lead: "lead",
     },
   },
   sidebar: {

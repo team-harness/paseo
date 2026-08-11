@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 
-import type { AgentPromptInput, AgentRunOptions } from "./agent-sdk-types.js";
+import type { AgentPromptInput, AgentRunOptions, AgentStreamEvent } from "./agent-sdk-types.js";
 import type { AgentManager, ManagedAgent } from "./agent-manager.js";
 import type { AgentStorage } from "./agent-storage.js";
 import { ensureAgentLoaded } from "./agent-loading.js";
@@ -16,48 +16,16 @@ export type AgentRunController = Pick<
 export interface StartAgentRunOptions {
   replaceRunning?: boolean;
   runOptions?: AgentRunOptions;
+  onProviderBoundary?: () => void;
 }
 
-export async function startAgentRun(
-  agentManager: AgentRunController,
-  agentId: string,
-  prompt: AgentPromptInput,
-  logger: Logger,
-  options?: StartAgentRunOptions,
-): Promise<{ outOfBand: boolean }> {
-  const snapshot = agentManager.getAgent(agentId);
-  logger.trace(
-    {
-      agentId,
-      provider: snapshot?.provider,
-      providerSessionId: snapshot?.persistence?.sessionId ?? undefined,
-      turnId: snapshot?.activeForegroundTurnId ?? undefined,
-      promptType: typeof prompt === "string" ? "string" : "structured",
-      hasRunOptions: Boolean(options?.runOptions),
-      replaceRunning: Boolean(options?.replaceRunning),
-    },
-    "agent.session.start_stream.request",
-  );
-  // Out-of-band commands (e.g. /goal pause) must run WITHOUT canceling an
-  // in-flight turn — replaceAgentRun would interrupt the running turn. The
-  // intercept lives at this layer so it covers every prompt entrypoint.
-  if (agentManager.tryRunOutOfBand(agentId, prompt, options?.runOptions)) {
-    return { outOfBand: true };
-  }
-  const shouldReplace = Boolean(options?.replaceRunning && agentManager.hasInFlightRun(agentId));
-  const runOptions = options?.runOptions;
-  const iterator = shouldReplace
-    ? await agentManager.replaceAgentRun(agentId, prompt, runOptions)
-    : agentManager.streamAgent(agentId, prompt, runOptions);
-  logger.trace(
-    {
-      agentId,
-      provider: snapshot?.provider,
-      providerSessionId: snapshot?.persistence?.sessionId ?? undefined,
-      shouldReplace,
-    },
-    "agent.session.start_stream.iterator_returned",
-  );
+function drainAgentRunIterator(input: {
+  iterator: AsyncGenerator<AgentStreamEvent>;
+  agentId: string;
+  snapshot: ManagedAgent | null;
+  logger: Logger;
+}): void {
+  const { iterator, agentId, snapshot, logger } = input;
   void (async () => {
     try {
       for await (const _ of iterator) {
@@ -84,7 +52,97 @@ export async function startAgentRun(
       logger.error({ err: error, agentId }, "Agent stream failed");
     }
   })();
-  return { outOfBand: false };
+}
+
+function acceptedTurnId(first: IteratorResult<AgentStreamEvent, void>): string | null {
+  if (first.done || first.value.type !== "turn_started") return null;
+  return first.value.turnId ?? null;
+}
+
+async function startProviderIterator(input: {
+  agentManager: AgentRunController;
+  agentId: string;
+  prompt: AgentPromptInput;
+  runOptions?: AgentRunOptions;
+  shouldReplace: boolean;
+}): Promise<AsyncGenerator<AgentStreamEvent>> {
+  return input.shouldReplace
+    ? await input.agentManager.replaceAgentRun(input.agentId, input.prompt, input.runOptions)
+    : input.agentManager.streamAgent(input.agentId, input.prompt, input.runOptions);
+}
+
+function traceAgentRunRequest(input: {
+  logger: Logger;
+  agentId: string;
+  snapshot: ManagedAgent | null;
+  prompt: AgentPromptInput;
+  options?: StartAgentRunOptions;
+}): void {
+  input.logger.trace(
+    {
+      agentId: input.agentId,
+      provider: input.snapshot?.provider,
+      providerSessionId: input.snapshot?.persistence?.sessionId ?? undefined,
+      turnId: input.snapshot?.activeForegroundTurnId ?? undefined,
+      promptType: typeof input.prompt === "string" ? "string" : "structured",
+      hasRunOptions: Boolean(input.options?.runOptions),
+      replaceRunning: Boolean(input.options?.replaceRunning),
+    },
+    "agent.session.start_stream.request",
+  );
+}
+
+function traceProviderIteratorReturned(input: {
+  logger: Logger;
+  agentId: string;
+  snapshot: ManagedAgent | null;
+  shouldReplace: boolean;
+}): void {
+  input.logger.trace(
+    {
+      agentId: input.agentId,
+      provider: input.snapshot?.provider,
+      providerSessionId: input.snapshot?.persistence?.sessionId ?? undefined,
+      shouldReplace: input.shouldReplace,
+    },
+    "agent.session.start_stream.iterator_returned",
+  );
+}
+
+export async function startAgentRun(
+  agentManager: AgentRunController,
+  agentId: string,
+  prompt: AgentPromptInput,
+  logger: Logger,
+  options?: StartAgentRunOptions,
+): Promise<{ outOfBand: boolean; turnId: string | null }> {
+  const snapshot = agentManager.getAgent(agentId);
+  traceAgentRunRequest({ logger, agentId, snapshot, prompt, options });
+  // Out-of-band commands (e.g. /goal pause) must run WITHOUT canceling an
+  // in-flight turn — replaceAgentRun would interrupt the running turn. The
+  // intercept lives at this layer so it covers every prompt entrypoint.
+  if (agentManager.tryRunOutOfBand(agentId, prompt, options?.runOptions)) {
+    return { outOfBand: true, turnId: null };
+  }
+  const hasInFlightRun = agentManager.hasInFlightRun(agentId);
+  if (hasInFlightRun && !options?.replaceRunning) {
+    throw new Error(`Agent ${agentId} already has an active run`);
+  }
+  const shouldReplace = Boolean(options?.replaceRunning && hasInFlightRun);
+  const runOptions = options?.runOptions;
+  const iterator = await startProviderIterator({
+    agentManager,
+    agentId,
+    prompt,
+    runOptions,
+    shouldReplace,
+  });
+  traceProviderIteratorReturned({ logger, agentId, snapshot, shouldReplace });
+  options?.onProviderBoundary?.();
+  const first = await iterator.next();
+  const turnId = acceptedTurnId(first);
+  drainAgentRunIterator({ iterator, agentId, snapshot, logger });
+  return { outOfBand: false, turnId };
 }
 
 /**
@@ -126,6 +184,11 @@ export interface SendPromptToAgentParams {
   /** Prompt to dispatch to the provider (may include image blocks or wrapped text). */
   prompt: AgentPromptInput;
   messageId?: string;
+  /**
+   * Persist `messageId` before entering the provider. A repeated unresolved
+   * intent is reported as unknown instead of risking a second side effect.
+   */
+  fenceUnknownAcceptance?: boolean;
   runOptions?: AgentRunOptions;
   /** Optional mode to set on the agent before the run starts. */
   sessionMode?: string;
@@ -135,6 +198,14 @@ export interface SendPromptToAgentParams {
    * schedule fires, notify-on-finish).
    */
   unarchive?: boolean;
+  /**
+   * Default true. When false, a run already in flight is left alone and this
+   * call rejects instead — the manager refuses a second run rather than
+   * queueing it. Use false for prompts that nudge rather than command: a chat
+   * mention must not cancel the turn someone else is waiting on (DEC-10), and
+   * losing the nudge costs nothing because the message is already in the room.
+   */
+  replaceRunning?: boolean;
   logger: Logger;
 }
 
@@ -148,6 +219,16 @@ export interface StartCreatedAgentInitialPromptParams {
 }
 
 const AGENT_RUN_START_TIMEOUT_MS = 15_000;
+
+export class UnknownAgentRunAcceptanceError extends Error {
+  constructor(options?: { cause?: unknown }) {
+    super(
+      "Dispatch acceptance is unknown; automatic retry is fenced and manual Mission resolution is required",
+      { cause: options?.cause },
+    );
+    this.name = "UnknownAgentRunAcceptanceError";
+  }
+}
 
 export async function waitForAgentRunStartWithTimeout(
   agentManager: AgentManager,
@@ -172,39 +253,91 @@ export async function waitForAgentRunStartWithTimeout(
  * drift between them.
  *
  * When `unarchive` is false and the agent is archived, the call is a silent
- * no-op (returns `{ outOfBand: false }`) — the agent is not run.
+ * no-op (returns `{ outOfBand: false, turnId: null }`) — the agent is not run.
  */
 export async function sendPromptToAgent(
   params: SendPromptToAgentParams,
-): Promise<{ outOfBand: boolean }> {
+): Promise<{ outOfBand: boolean; turnId: string | null }> {
   const unarchive = params.unarchive ?? true;
 
   const record = await params.agentStorage.get(params.agentId);
   if (record?.archivedAt) {
     if (!unarchive) {
-      return { outOfBand: false };
+      return { outOfBand: false, turnId: null };
     }
     await unarchiveAgentState(params.agentStorage, params.agentManager, params.agentId);
   }
 
-  await ensureAgentLoaded(params.agentId, {
-    agentManager: params.agentManager,
-    agentStorage: params.agentStorage,
-    logger: params.logger,
-  });
-
-  if (params.sessionMode) {
-    await params.agentManager.setAgentMode(params.agentId, params.sessionMode);
+  let dispatchClaimToken: string | null = null;
+  if (params.fenceUnknownAcceptance && params.messageId) {
+    const claim = await params.agentStorage.claimPromptDispatch(params.agentId, params.messageId);
+    if (!claim) {
+      throw new Error(`Agent ${params.agentId} not found`);
+    }
+    if (claim.kind === "accepted") {
+      return { outOfBand: false, turnId: claim.turnId };
+    }
+    if (claim.kind === "unknown") {
+      throw new UnknownAgentRunAcceptanceError();
+    }
+    dispatchClaimToken = claim.token;
   }
 
-  const runOptions = params.messageId
-    ? { ...params.runOptions, clientMessageId: params.messageId }
-    : params.runOptions;
+  let crossedProviderBoundary = false;
+  try {
+    await ensureAgentLoaded(params.agentId, {
+      agentManager: params.agentManager,
+      agentStorage: params.agentStorage,
+      logger: params.logger,
+    });
 
-  return await startAgentRun(params.agentManager, params.agentId, params.prompt, params.logger, {
-    replaceRunning: true,
-    runOptions,
-  });
+    if (params.sessionMode) {
+      await params.agentManager.setAgentMode(params.agentId, params.sessionMode);
+    }
+
+    const runOptions = params.messageId
+      ? { ...params.runOptions, clientMessageId: params.messageId }
+      : params.runOptions;
+
+    const result = await startAgentRun(
+      params.agentManager,
+      params.agentId,
+      params.prompt,
+      params.logger,
+      {
+        replaceRunning: params.replaceRunning ?? true,
+        runOptions,
+        onProviderBoundary: () => {
+          crossedProviderBoundary = true;
+        },
+      },
+    );
+    if (dispatchClaimToken && !crossedProviderBoundary) {
+      await params.agentStorage.releasePromptDispatchClaim(
+        params.agentId,
+        params.messageId!,
+        dispatchClaimToken,
+      );
+    }
+    return result;
+  } catch (error) {
+    if (dispatchClaimToken && !crossedProviderBoundary) {
+      await params.agentStorage.releasePromptDispatchClaim(
+        params.agentId,
+        params.messageId!,
+        dispatchClaimToken,
+      );
+      throw error;
+    }
+    if (dispatchClaimToken && !(error instanceof UnknownAgentRunAcceptanceError)) {
+      params.logger.warn(
+        { err: error, agentId: params.agentId, messageId: params.messageId },
+        "Agent prompt acceptance is unknown",
+      );
+      throw new UnknownAgentRunAcceptanceError({ cause: error });
+    }
+    throw error;
+  }
 }
 
 export async function startCreatedAgentInitialPrompt(
@@ -219,19 +352,9 @@ export async function startCreatedAgentInitialPrompt(
     return currentSnapshot;
   }
 
-  const dispatchResult = await startAgentRun(
-    params.agentManager,
-    params.agentId,
-    params.prompt,
-    params.logger,
-    {
-      runOptions: params.runOptions,
-    },
-  );
-
-  if (!dispatchResult.outOfBand) {
-    await waitForAgentRunStartWithTimeout(params.agentManager, params.agentId);
-  }
+  await startAgentRun(params.agentManager, params.agentId, params.prompt, params.logger, {
+    runOptions: params.runOptions,
+  });
 
   const refreshedSnapshot = params.agentManager.getAgent(params.agentId) ?? params.snapshot ?? null;
   if (!refreshedSnapshot) {

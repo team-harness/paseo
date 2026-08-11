@@ -173,6 +173,20 @@ describe("translation resources", () => {
     expect(en.workspace.fileActions.addToChat).toBe("Add to chat");
   });
 
+  it("labels the signed-in person's team-room messages as their own", () => {
+    expect(en.teams.room.you).toBe("You");
+    expect(zhCN.teams.room.you).toBe("我");
+  });
+
+  it("keeps Team Mission profile, Mission, and settings copy localized", () => {
+    expect(en.teams.v2.profile.role).toBe("Role");
+    expect(en.teams.v2.missionStart.selectTeam).toBe("Select a Team");
+    expect(en.teams.v2Settings.navigation.plan).toBe("Plan & Assignments");
+    expect(zhCN.teams.v2.profile.role).toBe("角色");
+    expect(zhCN.teams.v2.missionStart.selectTeam).toBe("选择 Team");
+    expect(zhCN.teams.v2Settings.navigation.plan).toBe("计划与 Assignment");
+  });
+
   it("keeps local connection fallback errors translated", () => {
     expect(findUntranslatedConnectionErrors()).toEqual([]);
   });
@@ -712,5 +726,13 @@ describe("translation resources", () => {
     expect(en.startup.logs.loading).toBe("Loading daemon logs...");
     expect(en.startup.logs.unavailable).toBe("No daemon logs available.");
     expect(en.startup.logs.loadFailed).toBe("Unable to load daemon logs: {{message}}");
+  });
+
+  // The workspace header menu is the only way into a team. This key shipped
+  // under workspace.tabs.actions, where nothing reads it, so the menu item
+  // rendered as the raw key and the entry read as broken chrome.
+  it("puts New Team where the workspace header menu reads it", () => {
+    expect(en.workspace.header.actions.newTeam).toBe("New Team");
+    expect(en.workspace.tabs.actions.newTeam).toBe("New Team");
   });
 });

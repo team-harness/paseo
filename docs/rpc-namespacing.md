@@ -58,6 +58,29 @@ Responses put correlated result data under `payload`:
 
 Keep `requestId` in both request and response payloads. It is the correlation key.
 
+## Team Missions Namespacing
+
+Team profile operations use `team.profile.*`; Mission operations use `team.mission.*`. Examples:
+
+```ts
+team.profile.create.request;
+team.profile.create.response;
+team.mission.start.request;
+team.mission.start.response;
+team.mission.attention.resolve.request;
+team.mission.attention.resolve.response;
+```
+
+Authoritative broadcasts end in `.snapshot` and are not request/response pairs:
+
+```ts
+team.profile.snapshot;
+team.mission.snapshot;
+```
+
+The `teamMissions` server feature and `team_missions` physical-socket capability gate the whole
+surface. Do not add flat Team aliases or a fallback protocol.
+
 ## Forge Namespacing
 
 Forge-neutral behavior currently uses `checkout.forge.*` for checkout-scoped operations and `forge.search.*` for forge search; forge-specific names belong here only after schema and session handlers exist:

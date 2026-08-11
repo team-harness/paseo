@@ -124,6 +124,7 @@ export async function ensureAgentLoaded(
         labels: record.labels,
         workspaceId: record.workspaceId,
         owner: record.owner,
+        existingRecord: "rehydrate",
       });
       deps.logger.info({ agentId, provider: record.provider }, "Agent created from stored config");
     }

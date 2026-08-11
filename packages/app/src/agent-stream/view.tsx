@@ -1,4 +1,5 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { resolvePermissionActions } from "@/agent-stream/permission-actions";
 import React, {
   forwardRef,
   memo,
@@ -1546,31 +1547,15 @@ function PermissionRequestCard({
       },
     [request.detail, request.input],
   );
-  const resolvedActions = useMemo((): AgentPermissionAction[] => {
-    if (request.kind === "question") {
-      return [];
-    }
-    if (Array.isArray(request.actions) && request.actions.length > 0) {
-      return request.actions;
-    }
-    return [
-      {
-        id: "reject",
-        label: t("agentStream.permission.deny"),
-        behavior: "deny",
-        variant: "danger",
-        intent: "dismiss",
-      },
-      {
-        id: "accept",
-        label: isPlanRequest
-          ? t("agentStream.permission.implement")
-          : t("agentStream.permission.accept"),
-        behavior: "allow",
-        variant: "primary",
-      },
-    ];
-  }, [isPlanRequest, request, t]);
+  const resolvedActions = useMemo(
+    (): AgentPermissionAction[] =>
+      resolvePermissionActions(request, {
+        deny: t("agentStream.permission.deny"),
+        accept: t("agentStream.permission.accept"),
+        implement: t("agentStream.permission.implement"),
+      }),
+    [request, t],
+  );
 
   const planMarkdown = useMemo(() => {
     if (!request) {

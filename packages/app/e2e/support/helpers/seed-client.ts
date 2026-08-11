@@ -111,6 +111,11 @@ export interface SeedDaemonClient {
     initialPrompt?: string;
     labels?: Record<string, string>;
   }): Promise<{ id: string; status: string }>;
+  sendMessage(agentId: string, message: string, options?: { requestId?: string }): Promise<unknown>;
+  postTeamMissionMessage(options: { missionId: string; body: string }): Promise<{
+    message: { id: string; body: string } | null;
+    error: string | null;
+  }>;
   fetchAgents(options?: { scope?: "active" }): Promise<{
     entries: Array<{
       agent: {
