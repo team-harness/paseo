@@ -1,0 +1,21 @@
+=== Team Missions Command Tests ===
+
+Test 1: workspace and Team profile creation use the real CLI binary
+workspace and Team profile creation work
+
+Test 2: Team profile list and inspect return structured JSON
+Team profile list and inspect work
+
+Test 3: Team profile update enforces and advances revision
+Team profile update advances revision
+
+Test 4: Mission list is available without starting a provider
+Mission list returns structured JSON without a provider
+
+Test 5: Team profile archive advances revision and changes list visibility
+Team profile archive advances revision and changes list visibility
+
+Daemon process exited with code 143
+Daemon stderr: [DaemonRunner] supervisor_received_SIGTERM. Stopping worker...
+
+=== Team Missions Command Tests Passed ===

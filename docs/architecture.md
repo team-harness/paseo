@@ -64,18 +64,19 @@ not retain non-Git directories.
 
 **Key modules:**
 
-| Module                          | Responsibility                                                                |
-| ------------------------------- | ----------------------------------------------------------------------------- |
-| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay  |
-| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing        |
-| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations         |
-| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management       |
-| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$PASEO_HOME/agents/`                         |
-| `server/agent/tools/`           | Transport-neutral catalog for workspaces, agents, permissions, and automation |
-| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Paseo tool catalog with the MCP SDK       |
-| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                               |
-| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                 |
-| `server/schedule/`              | Cron-based scheduled agents                                                   |
+| Module                          | Responsibility                                                                          |
+| ------------------------------- | --------------------------------------------------------------------------------------- |
+| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay            |
+| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing                  |
+| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations                   |
+| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management                 |
+| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$PASEO_HOME/agents/`                                   |
+| `server/agent/tools/`           | Transport-neutral catalog for workspaces, agents, permissions, and automation           |
+| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Paseo tool catalog with the MCP SDK                 |
+| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                                         |
+| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                           |
+| `server/schedule/`              | Cron-based scheduled agents                                                             |
+| `server/team/`                  | Reusable Team profiles, Mission planning, collaboration, scheduling, and Paseo adapters |
 
 ### `packages/protocol` — Wire schemas and shared protocol types
 
@@ -117,6 +118,8 @@ Commander.js CLI with Docker-style commands. Common agent operations are also ex
 
 - `paseo agent ls/run/import/attach/logs/stop/delete/send/inspect/wait/archive/reload/update/mode`
 - `paseo daemon start/stop/restart/status/pair/set-password`
+- `paseo team profile create/list/inspect/update/archive`
+- `paseo team mission start/list/inspect/cancel`
 - `paseo terminal ls/create/capture/send-keys/kill`
 - `paseo script ls/start/stop`
 - `paseo schedule create/ls/inspect/update/pause/resume/run-once/logs/delete`
@@ -225,6 +228,31 @@ New session RPCs use dotted names with `.request` and `.response` suffixes, such
 - `agent_permission_request` / `agent_permission_resolved` — Tool-call permission flow
 - `agent_deleted`, `agent_archived`, `agent_status`, `agent_list`
 - `checkout_status_update`, `checkout_diff_update`, and the full `checkout_*` request/response set for git operations
+- `team.profile.*` and `team.mission.*` request/response pairs, Mission room messages, and profile and Mission snapshots
+
+A Mission room subscription belongs to one physical socket and dies with it. The daemon records the
+socket's `missionId` subscription before reading the first page, so a message posted in between can
+arrive twice: once in the page and once on the stream. The client drops streamed messages whose cursor
+is at or below the subscribe response cursor. Reversing that order could lose the message without a
+detectable cursor gap.
+
+Team profile and Mission RPCs use the `team.profile.*` and `team.mission.*` namespaces. The daemon
+publishes `team.profile.snapshot` and `team.mission.snapshot` only to physical sockets that advertise
+the `team_missions` client capability. `server_info.features.teamMissions` is advertised only after
+startup reconciliation finishes. Clients that do not see it require a host upgrade; there is no
+second Team protocol.
+
+Startup mounts the Agent MCP route, binds the HTTP listener, and installs the bound MCP URL before
+Team reconciliation can wake a recovered Participant. WebSocket capability exposure happens after
+that reconciliation. Reordering this sequence can start a recovery turn without caller-scoped Team
+tools.
+
+A Mission owns its room; there is no generic Chat or Loop runtime behind it. Mentions resolve against
+its versioned roster before fanout. A Role is
+display text and may repeat, while a persisted mention handle is the stable address: `@server`,
+`@server-2`, and so on. Handles are never reassigned after a Member leaves. The composer and transcript
+show handles instead of agent ids when the roster identity is known, and render human messages with the
+localized `You` label.
 
 Agent snapshots optionally carry the daemon-owned active turn identity, and turn lifecycle stream events
 optionally carry the same `turnId`. New clients use these fields when present and normalize an old daemon's
@@ -274,6 +302,84 @@ Example: adding a new enum value
 // 4. Gate the new emitted value: session.supports(CLIENT_CAPS.newThing) ? "new_value" : "old_value"
 ```
 
+## Agent Teams
+
+Agent Teams is a feature capsule behind the `TeamRuntime` interface. Paseo core installs the runtime,
+routes dotted Team RPCs, publishes snapshots, and supplies adapters for agents, chat, providers, and
+workspace inspection. Core modules do not import Team domain or application implementations.
+
+| Module                                                             | Interface responsibility                                                             |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `packages/protocol/src/team/`                                      | Wire schemas for Team profiles, Missions, snapshots, and RPCs                        |
+| `packages/server/src/server/team/domain/`                          | Pure plan, assignment, matching, scope, and state validation                         |
+| `packages/server/src/server/team/application/`                     | Mission lifecycle, collaboration, scheduling, outboxes, and reconciliation           |
+| `packages/server/src/server/team/persistence/`                     | Atomic profile, Mission, recovery, and workspace lease stores                        |
+| `packages/server/src/server/team/adapters/paseo/`                  | Adapters for AgentManager, AgentStorage, chat, providers, tools, and workspace state |
+| `packages/server/src/server/team/team-runtime.ts`                  | The daemon-facing lifecycle, RPC, snapshot, and agent-tool interface                 |
+| `packages/app/src/teams/` and `packages/app/src/components/teams/` | Replica, forms, Mission room, and Team settings                                      |
+
+### Profiles and Missions
+
+A Team profile is a reusable roster bound to one workspace. A workspace may have several Team
+profiles, and the user selects one when starting a Mission. Each Member profile contains a Role,
+Level from 1 to 5, one or more Skills, an execution profile, and a stable mention handle. Roles may
+repeat. Creating or editing a profile does not create Agent sessions.
+
+A Mission supplies the objective, constraints, and acceptance criteria for one run. It freezes a
+versioned roster and runtime capability snapshot, creates a Mission room, and provisions the Lead.
+Other Members become participants only when a ready Assignment needs them. Finishing a Mission archives
+its participant sessions but leaves the Team profile available for another Mission.
+
+The Lead submits a complete Workstream DAG. Workstreams define deliverables, acceptance criteria,
+required and preferred Skills, minimum Level, runtime capabilities, dependencies, review policy,
+and mutable workspace scope. The daemon matches owners and reviewers from the frozen roster and
+records the explanation. This plan creates the responsibility boundary for that Mission; Team
+profiles do not contain permanent responsibilities.
+
+Assignments are immutable contracts against one plan revision. Delivery, review, and verification
+Assignments carry their own scope, dependencies, inputs, output criteria, priority, participant
+binding, accepted turn, and structured report. A required final verification Workstream depends on
+all delivery paths. A Mission completes only when its verification turn succeeds, its report approves
+the result, workspace ownership has no unresolved violation, and no blocker remains.
+
+### Collaboration and scheduling
+
+The collaboration interface is structured and durable. Prompts introduce context but do not define
+membership, plans, work state, or completion.
+
+| Agent tool            | Purpose                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| `team_status`         | Read the Team roster, participant bindings, runtime state, and Member load           |
+| `mission_status`      | Read the plan revision, Workstream DAG, Assignments, reports, blockers, and handoffs |
+| `mission_plan`        | Lead-only atomic Workstream planning and replan                                      |
+| `assign_task`         | Lead-only atomic batch of structured Assignment contracts                            |
+| `assignment_report`   | Assignee-only completed, blocked, or failed report with artifacts and handoffs       |
+| `team_message`        | Post a durable directed room message by Member id or mention handle                  |
+| `team_member_history` | Read one current participant's curated history                                       |
+| `chat_read`           | Read a room page immediately and advance the caller's durable cursor                 |
+
+Independent, non-overlapping scopes may run in parallel. The workspace-level lease registry serializes
+overlapping scopes across every Team and Mission sharing the workspace. Accepted work is never replayed.
+When a turn settles, the scheduler records its fact, captures the workspace delta, and then releases or
+transfers ownership. A missing report moves the scope to `report_hold`; at most two non-preemptive
+recovery turns request the report before the Mission enters Attention.
+
+Directed messages are written to the room before recipient attention is queued. The durable outbox
+moves through pending, notified, acknowledged, or canceled states. An idle participant may be woken
+after its current turn settles; a busy participant is never interrupted and the scheduler never waits
+in a polling loop. Attention items preserve provider, participant, report, notification, and workspace
+ownership failures until an explicit resume, replan, recovery, attribution, exclusion, or cancellation
+action resolves them.
+
+### App surface
+
+The Team tab is the Mission room. It contains the conversation and composer, without a roster header or
+task switcher. The settings button beside the composer opens a centered sheet on wide layouts and an
+upward sheet on compact layouts. Its five pages are **Team**, **Members**, **Mission**, **Plan &
+Assignments**, and **Attention & Lifecycle**. Profile and Member edits happen there; plan and Assignment
+facts remain read-only. Creating a Team from the workspace Tab `+` adds only the profile, so no Member
+Agent tabs open until the Mission scheduler provisions participants.
+
 ## Agent lifecycle
 
 The lifecycle states are defined in `shared/agent-lifecycle.ts`:
@@ -295,6 +401,7 @@ initializing → idle ⇄ running
 `ManagedAgent` is a discriminated union over those lifecycle tags. Notes:
 
 - **AgentManager** is the source of truth for agent state and broadcasts updates to all subscribers
+- Durable record changes (archive, unarchive, label edits, deletion, settled turns) are a separate stream from the in-memory lifecycle events, reachable with `onAgentRecordChange`. Subscribers run one after another and each is isolated, so one that throws never fails the operation that told it. Archive, unarchive and label edits wait for their subscribers — that is what keeps schedule completion finishing before an archive returns. Turn settlement does not: it runs on its own persistence chain off the turn hot path, which is timing-sensitive, and is announced only once the outcome is durable. A subscriber needing its own ordering queues internally instead of blocking here. Deletion is announced explicitly because a removed record leaves no tombstone behind, and `assertAgentDeletable` lets a holder of a pre-allocated id refuse the delete before anything is torn down.
 - Timeline sequence allocation is append-only with epochs (each run starts a new epoch). The one
   permitted in-place enrichment adds a provider message id to the manager-owned row for an accepted
   prompt; it preserves the row's sequence, content, and timestamp. Storage uses sequence numbers for

@@ -6,5 +6,9 @@ export {
   useHideFinishedProviderSubagents,
   type UseHideFinishedProviderSubagentsInput,
 } from "./use-hide-finished-provider-subagents";
-export { resolveCloseAgentTabPolicy, type CloseAgentTabPolicy } from "./close-tab-policy";
+export {
+  closesWithoutArchiving,
+  resolveCloseAgentTabPolicy,
+  type CloseAgentTabPolicy,
+} from "./close-tab-policy";
 export { isWorkspaceRootAgent } from "./workspace-root-policy";

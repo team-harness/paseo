@@ -47,7 +47,20 @@ interface CloseBulkWorkspaceTabsInput {
   warn?: (message: string, payload: object) => void;
 }
 
-export function classifyBulkClosableTabs(tabs: WorkspaceTabDescriptor[]): BulkClosableTabGroups {
+/**
+ * Whether closing this agent's tab archives it.
+ *
+ * Bulk close has to ask what the single close asks, because it is the same
+ * question: a subagent's tab is a view of it, and a team lead's tab is not the
+ * way an eight-agent team ends. Archiving those in a batch is the silent
+ * version of what the single path refuses to do even loudly.
+ */
+export type ResolveBulkAgentClose = (agentId: string) => boolean;
+
+export function classifyBulkClosableTabs(
+  tabs: WorkspaceTabDescriptor[],
+  archivesOnClose: ResolveBulkAgentClose = () => true,
+): BulkClosableTabGroups {
   const groups: BulkClosableTabGroups = {
     agentTabs: [],
     terminalTabs: [],
@@ -56,7 +69,11 @@ export function classifyBulkClosableTabs(tabs: WorkspaceTabDescriptor[]): BulkCl
 
   for (const tab of tabs) {
     if (tab.target.kind === "agent") {
-      groups.agentTabs.push({ tabId: tab.tabId, agentId: tab.target.agentId });
+      if (archivesOnClose(tab.target.agentId)) {
+        groups.agentTabs.push({ tabId: tab.tabId, agentId: tab.target.agentId });
+      } else {
+        groups.otherTabs.push({ tabId: tab.tabId, target: tab.target });
+      }
       continue;
     }
     if (tab.target.kind === "terminal") {

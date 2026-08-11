@@ -2,6 +2,10 @@ import equal from "fast-deep-equal";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import {
+  createTeamMissionsReplica,
+  type TeamMissionsReplica,
+} from "@/runtime/team-missions-sync/replica";
 import type { ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import {
@@ -422,6 +426,7 @@ export interface SessionState {
   workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
   agentDetails: Map<string, Agent>;
   workspaces: Map<string, WorkspaceDescriptor>;
+  teamMissionsReplica: TeamMissionsReplica;
   // All active project descriptors, keyed by host-local projectId.
   projects: Map<string, ProjectDescriptor>;
   // Transient restore state for archived workspaces, keyed by normalized
@@ -637,6 +642,7 @@ interface SessionStoreActions {
   // Hydration
   setHasHydratedAgents: (serverId: string, hydrated: boolean) => void;
   setHasHydratedWorkspaces: (serverId: string, hydrated: boolean) => void;
+  setTeamMissionsReplica: (serverId: string, replica: TeamMissionsReplica) => void;
 
   // Agent directory (derived from agents)
   getAgentDirectory: (serverId: string) => AgentDirectoryEntry[] | undefined;
@@ -680,6 +686,7 @@ function createInitialSessionState(
     workspaceAgentActivity: new Map(),
     agentDetails: new Map(),
     workspaces: new Map(),
+    teamMissionsReplica: createTeamMissionsReplica(),
     projects: new Map(),
     restoringWorkspaces: new Map(),
     pendingPermissions: new Map(),
@@ -1935,6 +1942,20 @@ export const useSessionStore = create<SessionStore>()(
             sessions: {
               ...prev.sessions,
               [serverId]: { ...session, hasHydratedAgents: hydrated },
+            },
+          };
+        });
+      },
+
+      setTeamMissionsReplica: (serverId, teamMissionsReplica) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session || session.teamMissionsReplica === teamMissionsReplica) return prev;
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, teamMissionsReplica },
             },
           };
         });

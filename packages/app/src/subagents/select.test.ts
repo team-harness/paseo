@@ -1,7 +1,9 @@
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { TeamMission } from "@getpaseo/protocol/team/v2-types";
 import { afterEach, describe, expect, it } from "vitest";
 import { selectProviderSubagentsForParent, selectSubagentsForParent } from "./select";
 import { useProviderSubagentStore } from "./provider-store";
+import { createTeamMissionsReplica } from "@/runtime/team-missions-sync/replica";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 
 const SERVER_ID = "server-1";
@@ -64,6 +66,75 @@ afterEach(() => {
     descriptors: new Map(),
     timelines: new Map(),
     hiddenFromTrack: new Set(),
+  });
+});
+
+function setParticipant(agentId: string, archivedAt: string | null = null): void {
+  const mission = {
+    id: "mission-1",
+    participants: [
+      {
+        memberId: "member-1",
+        agentId,
+        bindingEpoch: 1,
+        joinedAt: "2026-03-08T10:00:00.000Z",
+        archivedAt,
+      },
+    ],
+  } as TeamMission;
+  useSessionStore.getState().setTeamMissionsReplica(
+    SERVER_ID,
+    createTeamMissionsReplica({
+      status: "ready",
+      missions: new Map([[mission.id, mission]]),
+    }),
+  );
+}
+
+describe("a team member is not also a subagent of its recruiter", () => {
+  it("keeps a team member out of its recruiter's track", () => {
+    // A recruit is stamped with its recruiter as parent, so it is a subagent
+    // and a team member at once. Both surfaces would draw it, and the track
+    // carries lifecycle actions the team panel is supposed to own.
+    setAgents([
+      makeAgent({ id: "member", parentAgentId: "parent" }),
+      makeAgent({ id: "plain", parentAgentId: "parent" }),
+    ]);
+    setParticipant("member");
+
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      { serverId: SERVER_ID, parentAgentId: "parent" },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(["plain"]);
+  });
+
+  it("gives a member back to the track once its participant is archived", () => {
+    setAgents([makeAgent({ id: "member", parentAgentId: "parent" })]);
+    setParticipant("member", "2026-03-08T11:00:00.000Z");
+
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      { serverId: SERVER_ID, parentAgentId: "parent" },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(["member"]);
+  });
+
+  it("keeps an agent that is not an active Mission participant", () => {
+    setAgents([makeAgent({ id: "member", parentAgentId: "parent" })]);
+    setParticipant("someone-else");
+
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      { serverId: SERVER_ID, parentAgentId: "parent" },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(["member"]);
   });
 });
 

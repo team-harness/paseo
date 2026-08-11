@@ -11,13 +11,19 @@ import {
   AgentManagerShuttingDownError,
   commandMayHaveChangedExternalState,
   type AgentManagerEvent,
+  type AgentRecordChange,
   type ManagedAgent,
 } from "./agent-manager.js";
 import { AgentStorage } from "./agent-storage.js";
 import { toAgentPayload } from "./agent-projections.js";
-import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import {
+  PARENT_AGENT_ID_LABEL,
+  TEAM_ID_LABEL,
+  TEAM_ROLE_LABEL,
+} from "@getpaseo/protocol/agent-labels";
 import { formatSystemNotificationPrompt, startAgentRun } from "./agent-prompt.js";
 import { ensureAgentLoaded, ensureUnarchivedAgentLoaded } from "./agent-loading.js";
+import { archiveAgentCommand } from "./lifecycle-command.js";
 import type { StoredAgentRecord } from "./agent-storage.js";
 import type {
   AgentClient,
@@ -509,6 +515,7 @@ class McpCapableTestAgentClient extends TestAgentClient {
 
 class ControlledInterruptSession extends TestAgentSession {
   interruptCalled = false;
+  private activeSubscriptions = 0;
 
   constructor(
     config: AgentSessionConfig,
@@ -529,13 +536,31 @@ class ControlledInterruptSession extends TestAgentSession {
     this.interruptCalled = true;
     await this.interruptBehavior(this);
   }
+
+  override subscribe(callback: (event: AgentStreamEvent) => void): () => void {
+    const unsubscribe = super.subscribe(callback);
+    this.activeSubscriptions += 1;
+    let subscribed = true;
+    return () => {
+      if (!subscribed) return;
+      subscribed = false;
+      this.activeSubscriptions -= 1;
+      unsubscribe();
+    };
+  }
+
+  subscriptionCount(): number {
+    return this.activeSubscriptions;
+  }
 }
 
 interface ControlledInterruptFixture {
   agentId: string;
   manager: AgentManager;
   session: ControlledInterruptSession;
+  storage: AgentStorage;
   startForegroundRun(): Promise<void>;
+  waitForForegroundRunEnd(): Promise<void>;
   cleanup(): Promise<void>;
 }
 
@@ -556,9 +581,10 @@ async function createControlledInterruptFixture(options: {
       return session;
     }
   })();
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
   const manager = new AgentManager({
     clients: { codex: client },
-    registry: new AgentStorage(join(workdir, "agents"), logger),
+    registry: storage,
     logger,
     rescueTimeouts: { interruptSessionMs: 10 },
     idFactory: () => options.agentId,
@@ -566,22 +592,37 @@ async function createControlledInterruptFixture(options: {
   const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
     workspaceId: undefined,
   });
+  const foregroundRunAccepted = deferred<void>();
+  let foregroundRun = Promise.resolve();
 
   return {
     agentId: agent.id,
     manager,
     session,
+    storage,
     async startForegroundRun() {
-      const run = manager.streamAgent(agent.id, "exercise cancellation");
-      void (async () => {
-        for await (const _event of run) {
+      const run = manager.streamAgent(agent.id, "exercise cancellation", {
+        clientMessageId: `${options.turnId}-client-message`,
+      });
+      foregroundRun = (async () => {
+        for await (const event of run) {
+          if (event.type === "turn_started") {
+            foregroundRunAccepted.resolve();
+          }
           // Keep the foreground stream subscribed until the controlled turn settles.
         }
       })();
       await manager.waitForAgentRunStart(agent.id);
+      await foregroundRunAccepted.promise;
+      await storage.flush();
+    },
+    async waitForForegroundRunEnd() {
+      await foregroundRun;
     },
     async cleanup() {
-      await manager.closeAgent(agent.id);
+      if (manager.getAgent(agent.id)) {
+        await manager.closeAgent(agent.id);
+      }
       rmSync(workdir, { recursive: true, force: true });
     },
   };
@@ -1861,6 +1902,431 @@ test("cancelAgentRun preserves the active turn when the provider rejects the int
       provider: "codex",
       turnId: "provider-still-active-turn",
     });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("archive force-settles a durable active turn after the provider refuses interruption", async () => {
+  const fixture = await createControlledInterruptFixture({
+    name: "archive-after-interrupt-refused",
+    agentId: "00000000-0000-4000-8000-000000000307",
+    turnId: "provider-still-active-archive-turn",
+    interrupt: async () => {
+      throw new Error("A foreground turn is still active");
+    },
+  });
+
+  try {
+    await fixture.startForegroundRun();
+    await fixture.manager.whenTurnStateSettled(fixture.agentId);
+    expect((await fixture.storage.get(fixture.agentId))?.activeTurn?.turnId).toBe(
+      "provider-still-active-archive-turn",
+    );
+
+    const factsSeenByListener: Array<{
+      outcome: Awaited<ReturnType<AgentStorage["getTurnOutcome"]>>;
+      activeTurn: StoredAgentRecord["activeTurn"];
+    }> = [];
+    fixture.manager.onAgentRecordChange(async (change) => {
+      if (change.kind !== "turn_settled") return;
+      factsSeenByListener.push({
+        outcome: await fixture.storage.getTurnOutcome(change.agentId, change.turnId),
+        activeTurn: (await fixture.storage.get(change.agentId))?.activeTurn,
+      });
+    });
+
+    await archiveAgentCommand(
+      {
+        agentManager: fixture.manager,
+        agentStorage: fixture.storage,
+        logger,
+      },
+      fixture.agentId,
+    );
+
+    const stored = await fixture.storage.get(fixture.agentId);
+    expect(stored?.activeTurn).toBeNull();
+    expect(stored?.turnOutcomes).toContainEqual({
+      turnId: "provider-still-active-archive-turn",
+      outcome: "canceled",
+      endedAt: expect.any(String),
+    });
+    expect(factsSeenByListener).toEqual([
+      {
+        outcome: {
+          turnId: "provider-still-active-archive-turn",
+          outcome: "canceled",
+          endedAt: expect.any(String),
+        },
+        activeTurn: null,
+      },
+    ]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("close fences late session terminal ingress before forcing local cancellation", async () => {
+  const fixture = await createControlledInterruptFixture({
+    name: "close-terminal-ingress-fence",
+    agentId: "00000000-0000-4000-8000-000000000311",
+    turnId: "close-terminal-ingress-fence-turn",
+    interrupt: async () => {
+      throw new Error("A foreground turn is still active");
+    },
+  });
+  const terminalWriteStarted = deferred<void>();
+  const allowTerminalWrite = deferred<void>();
+  let close: Promise<void> | null = null;
+
+  try {
+    await fixture.startForegroundRun();
+    expect((await fixture.storage.get(fixture.agentId))?.activeTurn?.turnId).toBe(
+      "close-terminal-ingress-fence-turn",
+    );
+    const recordTurnOutcome = fixture.storage.recordTurnOutcome.bind(fixture.storage);
+    const writeOutcome = vi
+      .spyOn(fixture.storage, "recordTurnOutcome")
+      .mockImplementation(async (...args) => {
+        terminalWriteStarted.resolve();
+        await allowTerminalWrite.promise;
+        return await recordTurnOutcome(...args);
+      });
+    const closeProvider = vi.spyOn(fixture.session, "close");
+    const sessionTerminals: AgentStreamEvent[] = [];
+    fixture.manager.subscribe(
+      (event) => {
+        if (event.type === "agent_stream" && event.event.type === "turn_completed") {
+          sessionTerminals.push(event.event);
+        }
+      },
+      { agentId: fixture.agentId, replayState: false },
+    );
+    const settledChanges: AgentRecordChange[] = [];
+    fixture.manager.onAgentRecordChange((change) => {
+      if (change.kind === "turn_settled") settledChanges.push(change);
+    });
+
+    close = fixture.manager.closeAgent(fixture.agentId);
+    fixture.session.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      turnId: "close-terminal-ingress-fence-turn",
+    });
+    await terminalWriteStarted.promise;
+
+    expect(writeOutcome).toHaveBeenCalledOnce();
+    expect(writeOutcome).toHaveBeenCalledWith(
+      fixture.agentId,
+      expect.objectContaining({
+        turnId: "close-terminal-ingress-fence-turn",
+        outcome: "canceled",
+      }),
+    );
+    expect(sessionTerminals).toEqual([]);
+    expect(settledChanges).toEqual([]);
+    expect(fixture.manager.getAgent(fixture.agentId)).not.toBeNull();
+    expect(closeProvider).not.toHaveBeenCalled();
+
+    allowTerminalWrite.resolve();
+    await expect(close).resolves.toBeUndefined();
+    expect(closeProvider).toHaveBeenCalledOnce();
+    expect(settledChanges).toEqual([
+      expect.objectContaining({
+        kind: "turn_settled",
+        turnId: "close-terminal-ingress-fence-turn",
+        outcome: "canceled",
+      }),
+    ]);
+    expect(
+      await fixture.storage.getTurnOutcome(fixture.agentId, "close-terminal-ingress-fence-turn"),
+    ).toMatchObject({ outcome: "canceled" });
+  } finally {
+    allowTerminalWrite.resolve();
+    await close?.catch(() => undefined);
+    await fixture.cleanup();
+  }
+});
+
+test("close restores session ingress after a pre-teardown settlement failure", async () => {
+  const fixture = await createControlledInterruptFixture({
+    name: "close-settlement-failure-restores-ingress",
+    agentId: "00000000-0000-4000-8000-000000000312",
+    turnId: "close-settlement-failure-restores-ingress-turn",
+    interrupt: async () => {
+      throw new Error("A foreground turn is still active");
+    },
+  });
+
+  try {
+    await fixture.startForegroundRun();
+    expect(fixture.session.subscriptionCount()).toBe(1);
+    const writeOutcome = vi
+      .spyOn(fixture.storage, "recordTurnOutcome")
+      .mockRejectedValueOnce(new Error("pre-teardown settlement failed"));
+    const closeProvider = vi.spyOn(fixture.session, "close");
+    const settledChanges: AgentRecordChange[] = [];
+    fixture.manager.onAgentRecordChange((change) => {
+      if (change.kind === "turn_settled") settledChanges.push(change);
+    });
+
+    await expect(fixture.manager.closeAgent(fixture.agentId)).rejects.toThrow(
+      "pre-teardown settlement failed",
+    );
+
+    expect(fixture.manager.getAgent(fixture.agentId)).not.toBeNull();
+    expect(closeProvider).not.toHaveBeenCalled();
+    expect(fixture.session.subscriptionCount()).toBe(1);
+    const idle = waitForAgentLifecycle(fixture.manager, fixture.agentId, "idle");
+    fixture.session.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      turnId: "close-settlement-failure-restores-ingress-turn",
+    });
+    await idle;
+
+    await expect(fixture.manager.closeAgent(fixture.agentId)).resolves.toBeUndefined();
+    expect(closeProvider).toHaveBeenCalledOnce();
+    expect(fixture.session.subscriptionCount()).toBe(0);
+    expect(writeOutcome).toHaveBeenCalledTimes(2);
+    expect(settledChanges).toEqual([
+      expect.objectContaining({
+        kind: "turn_settled",
+        turnId: "close-settlement-failure-restores-ingress-turn",
+        outcome: "canceled",
+      }),
+    ]);
+    expect(
+      await fixture.storage.getTurnOutcome(
+        fixture.agentId,
+        "close-settlement-failure-restores-ingress-turn",
+      ),
+    ).toMatchObject({ outcome: "canceled" });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("close waits for a late terminal outcome before closing the live agent", async () => {
+  const fixture = await createControlledInterruptFixture({
+    name: "archive-late-terminal-write",
+    agentId: "00000000-0000-4000-8000-000000000309",
+    turnId: "archive-late-terminal-write-turn",
+    interrupt: async () => {
+      throw new Error("A foreground turn is still active");
+    },
+  });
+  const terminalWriteStarted = deferred<void>();
+  const allowTerminalWrite = deferred<void>();
+  let close: Promise<void> | null = null;
+
+  try {
+    await fixture.startForegroundRun();
+    await fixture.manager.whenTurnStateSettled(fixture.agentId);
+    expect((await fixture.storage.get(fixture.agentId))?.activeTurn?.turnId).toBe(
+      "archive-late-terminal-write-turn",
+    );
+    const recordTurnOutcome = fixture.storage.recordTurnOutcome.bind(fixture.storage);
+    const writeOutcome = vi
+      .spyOn(fixture.storage, "recordTurnOutcome")
+      .mockImplementationOnce(async (...args) => {
+        terminalWriteStarted.resolve();
+        await allowTerminalWrite.promise;
+        return await recordTurnOutcome(...args);
+      });
+    const closeProvider = vi.spyOn(fixture.session, "close");
+    const idle = waitForAgentLifecycle(fixture.manager, fixture.agentId, "idle");
+
+    fixture.session.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      turnId: "archive-late-terminal-write-turn",
+    });
+    await idle;
+    await terminalWriteStarted.promise;
+    await fixture.waitForForegroundRunEnd();
+    expect(fixture.manager.getAgent(fixture.agentId)).toMatchObject({ activeTurnId: null });
+
+    let closeState: "pending" | "resolved" | "rejected" = "pending";
+    close = fixture.manager.closeAgent(fixture.agentId).then(
+      () => {
+        closeState = "resolved";
+        return undefined;
+      },
+      (error) => {
+        closeState = "rejected";
+        throw error;
+      },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(closeState).toBe("pending");
+    expect(fixture.manager.getAgent(fixture.agentId)).not.toBeNull();
+    expect(closeProvider).not.toHaveBeenCalled();
+
+    allowTerminalWrite.resolve();
+    await expect(close).resolves.toBeUndefined();
+    expect(closeProvider).toHaveBeenCalledOnce();
+    expect(writeOutcome).toHaveBeenCalledOnce();
+    expect(writeOutcome).toHaveBeenCalledWith(
+      fixture.agentId,
+      expect.objectContaining({
+        turnId: "archive-late-terminal-write-turn",
+        outcome: "completed",
+      }),
+    );
+    expect(
+      await fixture.storage.getTurnOutcome(fixture.agentId, "archive-late-terminal-write-turn"),
+    ).toMatchObject({ outcome: "completed" });
+    expect((await fixture.storage.get(fixture.agentId))?.activeTurn).toBeNull();
+  } finally {
+    allowTerminalWrite.resolve();
+    await close?.catch(() => undefined);
+    await fixture.cleanup();
+  }
+});
+
+test("close retries a rejected late terminal outcome before closing the live agent", async () => {
+  const fixture = await createControlledInterruptFixture({
+    name: "close-rejected-late-terminal-write",
+    agentId: "00000000-0000-4000-8000-000000000310",
+    turnId: "close-rejected-late-terminal-write-turn",
+    interrupt: async () => {
+      throw new Error("A foreground turn is still active");
+    },
+  });
+  const terminalWriteStarted = deferred<void>();
+  const rejectTerminalWrite = deferred<void>();
+
+  try {
+    await fixture.startForegroundRun();
+    await fixture.manager.whenTurnStateSettled(fixture.agentId);
+    expect((await fixture.storage.get(fixture.agentId))?.activeTurn?.turnId).toBe(
+      "close-rejected-late-terminal-write-turn",
+    );
+    const recordTurnOutcome = fixture.storage.recordTurnOutcome.bind(fixture.storage);
+    const writeOutcome = vi
+      .spyOn(fixture.storage, "recordTurnOutcome")
+      .mockImplementationOnce(async (...args) => {
+        terminalWriteStarted.resolve();
+        await rejectTerminalWrite.promise;
+        return await recordTurnOutcome(...args);
+      });
+    const closeProvider = vi.spyOn(fixture.session, "close");
+    const idle = waitForAgentLifecycle(fixture.manager, fixture.agentId, "idle");
+
+    fixture.session.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      turnId: "close-rejected-late-terminal-write-turn",
+    });
+    await idle;
+    await terminalWriteStarted.promise;
+    await fixture.waitForForegroundRunEnd();
+
+    const firstClose = fixture.manager.closeAgent(fixture.agentId);
+    await Promise.resolve();
+    await Promise.resolve();
+    rejectTerminalWrite.reject(new Error("late terminal write failed"));
+
+    await expect(firstClose).rejects.toThrow("late terminal write failed");
+    expect(fixture.manager.getAgent(fixture.agentId)).not.toBeNull();
+    expect(closeProvider).not.toHaveBeenCalled();
+    expect((await fixture.storage.get(fixture.agentId))?.activeTurn?.turnId).toBe(
+      "close-rejected-late-terminal-write-turn",
+    );
+
+    await expect(fixture.manager.closeAgent(fixture.agentId)).resolves.toBeUndefined();
+    expect(closeProvider).toHaveBeenCalledOnce();
+    expect(
+      await fixture.storage.getTurnOutcome(
+        fixture.agentId,
+        "close-rejected-late-terminal-write-turn",
+      ),
+    ).toMatchObject({ outcome: "completed" });
+    expect((await fixture.storage.get(fixture.agentId))?.activeTurn).toBeNull();
+    writeOutcome.mockRestore();
+    closeProvider.mockRestore();
+  } finally {
+    rejectTerminalWrite.resolve();
+    await fixture.cleanup();
+  }
+});
+
+test("archive retries a forced terminal write before removing the live agent", async () => {
+  const fixture = await createControlledInterruptFixture({
+    name: "archive-terminal-write-retry",
+    agentId: "00000000-0000-4000-8000-000000000308",
+    turnId: "archive-terminal-write-retry-turn",
+    interrupt: async () => {
+      throw new Error("A foreground turn is still active");
+    },
+  });
+
+  try {
+    await fixture.startForegroundRun();
+    await fixture.manager.whenTurnStateSettled(fixture.agentId);
+    const closeProvider = vi.spyOn(fixture.session, "close");
+    const writeOutcome = vi
+      .spyOn(fixture.storage, "recordTurnOutcome")
+      .mockRejectedValueOnce(new Error("forced terminal write failed"));
+    const settledChanges: AgentRecordChange[] = [];
+    fixture.manager.onAgentRecordChange((change) => {
+      if (change.kind === "turn_settled") settledChanges.push(change);
+    });
+
+    await expect(
+      archiveAgentCommand(
+        {
+          agentManager: fixture.manager,
+          agentStorage: fixture.storage,
+          logger,
+        },
+        fixture.agentId,
+      ),
+    ).rejects.toThrow("forced terminal write failed");
+
+    expect(closeProvider).not.toHaveBeenCalled();
+    expect(fixture.manager.getAgent(fixture.agentId)).toMatchObject({
+      lifecycle: "running",
+      activeForegroundTurnId: "archive-terminal-write-retry-turn",
+    });
+    expect(settledChanges).toEqual([]);
+    expect((await fixture.storage.get(fixture.agentId))?.activeTurn?.turnId).toBe(
+      "archive-terminal-write-retry-turn",
+    );
+
+    await expect(
+      archiveAgentCommand(
+        {
+          agentManager: fixture.manager,
+          agentStorage: fixture.storage,
+          logger,
+        },
+        fixture.agentId,
+      ),
+    ).resolves.toMatchObject({ agentId: fixture.agentId });
+
+    expect(closeProvider).toHaveBeenCalledOnce();
+    expect(settledChanges).toEqual([
+      expect.objectContaining({
+        kind: "turn_settled",
+        agentId: fixture.agentId,
+        turnId: "archive-terminal-write-retry-turn",
+        outcome: "canceled",
+      }),
+    ]);
+    const stored = await fixture.storage.get(fixture.agentId);
+    expect(stored?.activeTurn).toBeNull();
+    expect(stored?.turnOutcomes).toContainEqual({
+      turnId: "archive-terminal-write-retry-turn",
+      outcome: "canceled",
+      endedAt: expect.any(String),
+    });
+    writeOutcome.mockRestore();
+    closeProvider.mockRestore();
   } finally {
     await fixture.cleanup();
   }
@@ -3584,14 +4050,16 @@ test("updateAgentMetadata bumps updatedAt for stored agents", async () => {
   await storage.upsert(before);
   expect(manager.getAgent(snapshot.id)).toBeNull();
 
-  const upsertSpy = vi.spyOn(storage, "upsert");
+  // Metadata updates go through the write queue's read-modify-write, so a
+  // concurrent write cannot be carried away by a stale copy.
+  const mutateSpy = vi.spyOn(storage, "mutate");
 
   await manager.updateAgentMetadata(snapshot.id, {
     title: "Stored title",
     labels: { role: "worker" },
   });
 
-  expect(upsertSpy).toHaveBeenCalledTimes(1);
+  expect(mutateSpy).toHaveBeenCalledTimes(1);
   const after = await storage.get(snapshot.id);
   expect(after?.title).toBe("Stored title");
   expect(after?.labels).toEqual({ surface: "mobile", role: "worker" });
@@ -3829,7 +4297,11 @@ test("detachAgent removes only the parent label from a live agent and emits stat
     {
       labels: {
         [PARENT_AGENT_ID_LABEL]: parent.id,
-        team: "infra",
+        // Real team labels, not a stand-in: detaching a recruit from its
+        // recruiter must leave its membership alone, or the roster and the
+        // labels that index it disagree about who is on the team.
+        [TEAM_ID_LABEL]: "team-1",
+        [TEAM_ROLE_LABEL]: "reviewer",
       },
       workspaceId: undefined,
     },
@@ -3850,10 +4322,22 @@ test("detachAgent removes only the parent label from a live agent and emits stat
 
   expect(result.previousParentAgentId).toBe(parent.id);
   expect(result.live).toBe(true);
-  expect(result.record.labels).toEqual({ team: "infra" });
-  expect(manager.getAgent(child.id)?.labels).toEqual({ team: "infra" });
-  expect((await storage.get(child.id))?.labels).toEqual({ team: "infra" });
-  expect(emittedLabels).toContainEqual({ team: "infra" });
+  expect(result.record.labels).toEqual({
+    [TEAM_ID_LABEL]: "team-1",
+    [TEAM_ROLE_LABEL]: "reviewer",
+  });
+  expect(manager.getAgent(child.id)?.labels).toEqual({
+    [TEAM_ID_LABEL]: "team-1",
+    [TEAM_ROLE_LABEL]: "reviewer",
+  });
+  expect((await storage.get(child.id))?.labels).toEqual({
+    [TEAM_ID_LABEL]: "team-1",
+    [TEAM_ROLE_LABEL]: "reviewer",
+  });
+  expect(emittedLabels).toContainEqual({
+    [TEAM_ID_LABEL]: "team-1",
+    [TEAM_ROLE_LABEL]: "reviewer",
+  });
 });
 
 test("detachAgent removes the parent label from a stored-only agent", async () => {
@@ -6688,7 +7172,7 @@ test("archiveAgent persists archivedAt and updatedAt before emitting closed stat
   expect(lifecycles.slice(-2)).toEqual(["idle", "closed"]);
 });
 
-test("fires onAgentArchived for archived parent and cascaded children", async () => {
+test("reports archived parent and cascaded children as record changes", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-archived-hook-cascade-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -6698,8 +7182,10 @@ test("fires onAgentArchived for archived parent and cascaded children", async ()
     registry: storage,
     logger,
   });
-  manager.setAgentArchivedCallback((agentId) => {
-    archivedIds.push(agentId);
+  manager.onAgentRecordChange((change) => {
+    if (change.kind === "archived") {
+      archivedIds.push(change.agentId);
+    }
   });
 
   const liveParent = await manager.createAgent(
@@ -6721,7 +7207,7 @@ test("fires onAgentArchived for archived parent and cascaded children", async ()
   expect([...archivedIds].sort()).toEqual([liveChild.id, liveParent.id].sort());
 });
 
-test("fires onAgentArchived for stored-only snapshot archives", async () => {
+test("reports stored-only snapshot archives as record changes", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-archived-hook-snapshot-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -6731,8 +7217,10 @@ test("fires onAgentArchived for stored-only snapshot archives", async () => {
     registry: storage,
     logger,
   });
-  manager.setAgentArchivedCallback((agentId) => {
-    archivedIds.push(agentId);
+  manager.onAgentRecordChange((change) => {
+    if (change.kind === "archived") {
+      archivedIds.push(change.agentId);
+    }
   });
 
   const storedOnly = await manager.createAgent(
@@ -6748,6 +7236,308 @@ test("fires onAgentArchived for stored-only snapshot archives", async () => {
 
   await manager.archiveSnapshot(storedOnly.id, new Date().toISOString());
   expect(archivedIds).toEqual([storedOnly.id]);
+});
+
+// DEC-2: a team pre-allocates agent ids before creating anything, and its
+// reconciler replays creation after a crash. Reusing a live id must fail loudly
+// rather than wipe the running agent's timeline.
+test("refuses to create an agent over an id that is already live", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-conflict-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  await expect(
+    manager.createAgent({ provider: "codex", cwd: workdir }, first.id, {
+      workspaceId: undefined,
+    }),
+  ).rejects.toThrow(/already/i);
+
+  // The original agent is untouched.
+  expect(manager.getAgent(first.id)?.id).toBe(first.id);
+});
+
+test("refuses to create an agent over an id that only exists in storage", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-conflict-stored-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+  await manager.closeAgent(first.id);
+
+  // Creating clears the id's timeline before it validates anything, so a stored
+  // record has to be checked up front rather than trampled.
+  await expect(
+    manager.createAgent({ provider: "codex", cwd: workdir }, first.id, {
+      workspaceId: undefined,
+    }),
+  ).rejects.toThrow(/already/i);
+
+  expect(await storage.get(first.id)).not.toBeNull();
+});
+
+test("returns the live agent when the same owner replays its plan", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-reuse-live-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const owner = { "paseo.team-id": "team-1" };
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+    labels: owner,
+  });
+
+  const again = await manager.createAgent({ provider: "codex", cwd: workdir }, first.id, {
+    workspaceId: undefined,
+    labels: owner,
+    reuseIfOwnedBy: owner,
+  });
+
+  expect(again.id).toBe(first.id);
+});
+
+test("refuses to reuse an id whose agent was built from a different config", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-reuse-config-"));
+  const otherdir = mkdtempSync(join(tmpdir(), "agent-manager-id-reuse-config-other-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const owner = { "paseo.team-id": "team-1" };
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+    labels: owner,
+  });
+
+  // Same owner, same id, different cwd: this describes a different agent, so
+  // handing back the existing one would silently ignore the request.
+  await expect(
+    manager.createAgent({ provider: "codex", cwd: otherdir }, first.id, {
+      workspaceId: undefined,
+      labels: owner,
+      reuseIfOwnedBy: owner,
+    }),
+  ).rejects.toThrow(/different provider or cwd/);
+
+  rmSync(otherdir, { recursive: true, force: true });
+});
+
+test("refuses to reuse an id that belongs to a different owner", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-reuse-foreign-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+    labels: { "paseo.team-id": "team-1" },
+  });
+
+  await expect(
+    manager.createAgent({ provider: "codex", cwd: workdir }, first.id, {
+      workspaceId: undefined,
+      reuseIfOwnedBy: { "paseo.team-id": "team-2" },
+    }),
+  ).rejects.toThrow(/belongs to someone else/);
+});
+
+test("serializes concurrent creates that name the same id", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-concurrent-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const agentId = randomUUID();
+  // Without serialization both calls pass the conflict check, build a session
+  // each, and the second registration replaces the first.
+  const results = await Promise.allSettled([
+    manager.createAgent({ provider: "codex", cwd: workdir }, agentId, {
+      workspaceId: undefined,
+    }),
+    manager.createAgent({ provider: "codex", cwd: workdir }, agentId, {
+      workspaceId: undefined,
+    }),
+  ]);
+
+  expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+  expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+});
+
+test("rehydrating a stored agent may reuse its id", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-id-rehydrate-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+  await manager.closeAgent(first.id);
+
+  const rehydrated = await manager.createAgent({ provider: "codex", cwd: workdir }, first.id, {
+    workspaceId: undefined,
+    existingRecord: "rehydrate",
+  });
+
+  expect(rehydrated.id).toBe(first.id);
+});
+
+// DEC-12: hard delete leaves no tombstone, so a team being created cannot tell
+// "member never made" from "member deleted". The guard removes that ambiguity at
+// the source instead of guessing afterwards.
+test("lets a guard veto deleting an agent, and reports why", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-deletion-guard-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  await expect(manager.assertAgentDeletable(agent.id)).resolves.toBeUndefined();
+
+  const release = manager.registerAgentDeletionGuard((agentId) =>
+    agentId === agent.id ? "it is being added to team team-1" : null,
+  );
+
+  await expect(manager.assertAgentDeletable(agent.id)).rejects.toThrow(
+    /being added to team team-1/,
+  );
+  await expect(manager.assertAgentDeletable("some-other-agent")).resolves.toBeUndefined();
+
+  release();
+  await expect(manager.assertAgentDeletable(agent.id)).resolves.toBeUndefined();
+});
+
+// The stream replaces a single-slot callback: teams and schedules both need to
+// hear about the same archive, and neither may break the other or the archive.
+test("delivers a record change to every subscriber and isolates their failures", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-record-change-fanout-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const seenByFirst: string[] = [];
+  const seenByLast: string[] = [];
+  manager.onAgentRecordChange(() => {
+    seenByFirst.push("first");
+  });
+  manager.onAgentRecordChange(() => {
+    throw new Error("subscriber blew up");
+  });
+  manager.onAgentRecordChange(async () => {
+    await Promise.resolve();
+    seenByLast.push("last");
+  });
+
+  const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  await expect(manager.archiveAgent(agent.id)).resolves.not.toThrow();
+
+  expect(seenByFirst).toEqual(["first"]);
+  expect(seenByLast).toEqual(["last"]);
+  expect((await storage.get(agent.id))?.archivedAt).toBeTruthy();
+});
+
+test("stops delivering after a subscriber unsubscribes", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-record-change-unsubscribe-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const seen: string[] = [];
+  const unsubscribe = manager.onAgentRecordChange((change) => {
+    seen.push(change.kind);
+  });
+
+  const first = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+  await manager.archiveAgent(first.id);
+  unsubscribe();
+
+  const second = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+  await manager.archiveAgent(second.id);
+
+  expect(seen).toEqual(["archived"]);
+});
+
+// Archive is the only change the old callback reported. A team roster also has
+// to react to the other three, none of which had any notification at all.
+test("reports unarchive, label changes and deletion", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-record-change-kinds-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  const changes: AgentRecordChange[] = [];
+  manager.onAgentRecordChange((change) => {
+    changes.push(change);
+  });
+
+  const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+  await manager.setLabels(agent.id, { "paseo.team-id": "team-1" });
+  await manager.closeAgent(agent.id);
+  await manager.archiveSnapshot(agent.id, new Date().toISOString());
+  await manager.unarchiveSnapshot(agent.id);
+  await manager.notifyAgentDeleted(agent.id);
+
+  expect(changes.map((change) => change.kind)).toEqual([
+    "labels_changed",
+    "archived",
+    "unarchived",
+    "deleted",
+  ]);
+  const labelChange = changes.find((change) => change.kind === "labels_changed");
+  expect(labelChange).toMatchObject({ labels: { "paseo.team-id": "team-1" } });
 });
 
 test("unarchiveSnapshot skips native provider unarchive for active records", async () => {
@@ -7133,11 +7923,19 @@ test("archiveAgent cascade surfaces partial child archive failures", async () =>
   let failingChildId: string | null = null;
 
   class FailingChildArchiveStorage extends AgentStorage {
-    override async upsert(record: StoredAgentRecord): Promise<void> {
-      if (record.id === failingChildId && record.archivedAt) {
-        throw new Error(`Injected cascade archive failure for ${record.id}`);
+    // Archive writes go through the queue's read-modify-write, so the injection
+    // point is the mutation rather than a whole-record upsert.
+    override async mutate<T extends StoredAgentRecord>(
+      agentId: string,
+      mutation: (current: StoredAgentRecord) => T,
+    ): Promise<T | null> {
+      if (agentId === failingChildId) {
+        const current = await this.get(agentId);
+        if (current && mutation(current).archivedAt) {
+          throw new Error(`Injected cascade archive failure for ${agentId}`);
+        }
       }
-      await super.upsert(record);
+      return super.mutate(agentId, mutation);
     }
   }
 
@@ -9505,4 +10303,43 @@ test("onWorkspaceStateMayHaveChanged is not called for running shell tool calls"
   await manager.runAgent(snapshot.id, { text: "merge it" });
 
   expect(onWorkspaceStateMayHaveChanged).not.toHaveBeenCalled();
+});
+
+// DEC-14: the team task ledger settles an assignment against the outcome of the
+// exact turn the provider accepted. It reads that fact from storage, so the fact
+// has to be on disk by the time the terminal event reaches a subscriber.
+test("persists the turn outcome before dispatching the terminal event", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-turn-outcome-"));
+  try {
+    const storage = new AgentStorage(join(workdir, "agents"), logger);
+    const manager = new AgentManager({
+      clients: { codex: new TestAgentClient() },
+      registry: storage,
+      logger,
+    });
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+
+    // Read storage from inside the subscriber: the ledger settles an assignment
+    // the moment it hears the turn ended, and must not be told before the fact
+    // it will read is durable. Converging afterwards would hide exactly that gap.
+    const seenBySubscriber: unknown[] = [];
+    manager.onAgentRecordChange(async (change) => {
+      if (change.kind === "turn_settled") {
+        seenBySubscriber.push(await storage.getTurnOutcome(change.agentId, change.turnId));
+      }
+    });
+
+    for await (const _event of manager.streamAgent(agent.id, "run the task")) {
+      // Drain the foreground stream so the turn settles.
+    }
+    await vi.waitFor(() => expect(seenBySubscriber).toHaveLength(1));
+
+    expect(seenBySubscriber[0]).toMatchObject({ turnId: "turn-1", outcome: "completed" });
+    // A settled turn leaves nothing in flight behind it.
+    expect((await storage.get(agent.id))?.activeTurn).toBeNull();
+  } finally {
+    rmSync(workdir, { recursive: true, force: true });
+  }
 });

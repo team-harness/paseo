@@ -48,6 +48,43 @@ describe("canonical CLI surface", () => {
     expect(scheduleCreate?.helpInformation()).toContain("--thinking <id>");
   });
 
+  it("offers the team commands", () => {
+    const team = createCli().commands.find((command) => command.name() === "team");
+    const names = team?.commands.map((command) => command.name());
+
+    expect(names).toEqual(["profile", "mission"]);
+    expect(team?.commands[0]?.commands.map((command) => command.name())).toEqual([
+      "create",
+      "list",
+      "inspect",
+      "update",
+      "archive",
+    ]);
+    expect(team?.commands[1]?.commands.map((command) => command.name())).toEqual([
+      "start",
+      "list",
+      "inspect",
+      "cancel",
+    ]);
+  });
+
+  it("asks a team create for everything a team cannot be built without", () => {
+    const team = createCli().commands.find((command) => command.name() === "team");
+    const profile = team?.commands.find((command) => command.name() === "profile");
+    const create = profile?.commands.find((command) => command.name() === "create");
+    const help = create?.helpInformation();
+
+    expect(help).toContain("--workspace <id>");
+    expect(help).toContain("--skill <id=name=description>");
+    expect(help).toContain("--lead <key=role>");
+    expect(help).toContain("--member <key=role>");
+    expect(help).toContain("--level <key=value>");
+    expect(help).toContain("--member-skill <key=value>");
+    expect(help).toContain("--provider <key=value>");
+    // The key exists for the retry whose outcome nobody learned.
+    expect(help).toContain("--idempotency-key <key>");
+  });
+
   it("offers opening an existing agent in the desktop app", () => {
     const agent = createCli().commands.find((command) => command.name() === "agent");
     const open = agent?.commands.find((command) => command.name() === "open");

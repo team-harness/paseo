@@ -6,6 +6,7 @@ import { resolvePaseoHome } from "./paseo-home.js";
 import { createRootLogger } from "./logger.js";
 import type { DaemonLifecycleIntent } from "./bootstrap.js";
 import { getProcessDiagnostics } from "./process-diagnostics.js";
+import { resolveDaemonWorkerTeamMissionsRuntime } from "./daemon-worker-team-runtime.js";
 
 process.title = "Paseo Daemon";
 
@@ -305,6 +306,9 @@ async function main() {
         onLifecycleIntent: handleLifecycleIntent,
       },
       logger,
+      {
+        teamMissionsRuntime: resolveDaemonWorkerTeamMissionsRuntime(process.env),
+      },
     );
   } catch (err) {
     logger.fatal({ err }, "Daemon bootstrap failed");

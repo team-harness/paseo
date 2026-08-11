@@ -38,6 +38,12 @@ The app checks for the capability and either runs the feature or tells the user 
 
 Existing functionality keeps working across versions because of the protocol contract. Gating a new feature never substitutes for that.
 
+Team Missions uses two related gates. The daemon advertises `server_info.features.teamMissions` only
+after its runtime and startup reconciliation are ready. A physical WebSocket also declares the
+`team_missions` client capability before it receives Team profile or Mission snapshots. If the server
+feature is absent, the app asks for a host upgrade and does not send Team RPCs or run a fallback
+protocol.
+
 ## Every shim is tagged and dated
 
 A shim that exists for old-app or old-daemon support carries a comment naming it, the version it arrived in, and when it can go:

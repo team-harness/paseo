@@ -33,6 +33,15 @@ function makeFileTab(path: string): WorkspaceTabDescriptor {
   };
 }
 
+function makeTeamTab(teamId: string): WorkspaceTabDescriptor {
+  return {
+    key: `team_${teamId}`,
+    tabId: `team_${teamId}`,
+    kind: "team",
+    target: { kind: "team", teamId },
+  };
+}
+
 describe("workspace bulk close helpers", () => {
   it("classifies agent, terminal, and passive tabs for shared bulk close handling", () => {
     const groups = classifyBulkClosableTabs([
@@ -51,6 +60,37 @@ describe("workspace bulk close helpers", () => {
         },
       ],
     });
+  });
+
+  it("routes an agent that does not archive on close away from the archive batch", () => {
+    // Bulk close asks the same policy question as single close. Team and
+    // delegated Agent tabs are views, so they remain layout-only here too.
+    const groups = classifyBulkClosableTabs(
+      [makeAgentTab("lead-1"), makeAgentTab("solo-1")],
+      (agentId) => agentId !== "lead-1",
+    );
+
+    expect(groups.agentTabs).toEqual([{ tabId: "agent_solo-1", agentId: "solo-1" }]);
+    expect(groups.otherTabs).toEqual([
+      { tabId: "agent_lead-1", target: { kind: "agent", agentId: "lead-1" } },
+    ]);
+  });
+
+  it("keeps archiving every agent when nothing objects", () => {
+    const groups = classifyBulkClosableTabs([makeAgentTab("a1")]);
+
+    expect(groups.agentTabs).toEqual([{ tabId: "agent_a1", agentId: "a1" }]);
+    expect(groups.otherTabs).toEqual([]);
+  });
+
+  it("always treats a Team tab as layout-only", () => {
+    const groups = classifyBulkClosableTabs([makeTeamTab("team-a")]);
+
+    expect(groups.agentTabs).toEqual([]);
+    expect(groups.terminalTabs).toEqual([]);
+    expect(groups.otherTabs).toEqual([
+      { tabId: "team_team-a", target: { kind: "team", teamId: "team-a" } },
+    ]);
   });
 
   it("describes mixed destructive bulk close operations in the confirmation copy", () => {

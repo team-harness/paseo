@@ -1,0 +1,3820 @@
+{
+  "sanitized": true,
+  "evidencePolicy": "allowlisted_v1",
+  "shape": "parallel_delivery",
+  "repetition": 2,
+  "provider": "codex",
+  "model": null,
+  "teamId": "da34b057-a70e-486d-aaab-60b98645ba37",
+  "missionId": "fce2c63c-7ea3-4189-8e72-6cf10b584289",
+  "missionStatus": "completed",
+  "durationMs": 377670,
+  "planningLatencyMs": 164401,
+  "maxParallelAssignments": 3,
+  "memberIdleMs": {
+    "51b7139c-f297-4cef-9f16-8494f5cdb102": 297703,
+    "25af5d75-1a6a-4db3-b8b3-353b6584217c": 298633,
+    "1828d19a-4fde-43dc-bc10-4184694376e2": 313403,
+    "44cc7249-8c39-4ebd-ac58-76eb0b3df026": 294112,
+    "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3": 278166
+  },
+  "toolCalls": {
+    "mission_status": 8,
+    "mission_plan": 1,
+    "assignment_report": 6
+  },
+  "tokenUsage": {
+    "inputTokens": 2229815,
+    "outputTokens": 19743,
+    "totalCostUsd": 2.914741
+  },
+  "tokenUsageViolations": {
+    "count": 0,
+    "digests": []
+  },
+  "providerStartTurns": [
+    {
+      "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+      "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:member:51b7139c-f297-4cef-9f16-8494f5cdb102:wake:1",
+      "turnId": "codex-turn-f4e975ca-b4f1-4754-9649-c969b86f509a",
+      "outcome": "accepted",
+      "error": null
+    },
+    {
+      "agentId": "b267f913-8043-8cba-a8fd-2c3730c3ee26",
+      "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:2eca2a75-51ea-4443-8d5f-b7951556bbf9:dispatch",
+      "turnId": "codex-turn-9ad9425a-0f3e-47fe-bad2-b6d92b3e0d02",
+      "outcome": "accepted",
+      "error": null
+    },
+    {
+      "agentId": "abec41da-bd99-8b68-a8c7-5107bc31917c",
+      "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:13ff0468-046e-4793-9fa3-e9c5944a7c59:dispatch",
+      "turnId": "codex-turn-868ca04e-42b7-4611-a485-5d78cffc59c8",
+      "outcome": "accepted",
+      "error": null
+    },
+    {
+      "agentId": "df3bea89-2171-8ea6-acba-6aee35e5aa59",
+      "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:281652e4-7635-46d8-8a24-2846c86b4038:dispatch",
+      "turnId": "codex-turn-850fac8d-3376-4649-892a-6303011a9ee8",
+      "outcome": "accepted",
+      "error": null
+    },
+    {
+      "agentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+      "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-api:review:dispatch",
+      "turnId": "codex-turn-3c152b0e-d246-407c-befc-632832eea61c",
+      "outcome": "accepted",
+      "error": null
+    },
+    {
+      "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+      "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:f5988da8-7e0a-4a90-ab12-979333ac527c:dispatch",
+      "turnId": "codex-turn-b14cd844-6ff2-4090-90e9-b9807dd5e2b0",
+      "outcome": "accepted",
+      "error": null
+    },
+    {
+      "agentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+      "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-final-verification:verification:dispatch",
+      "turnId": "codex-turn-09e15eb2-af39-43a6-a97e-ed3c72a3f432",
+      "outcome": "accepted",
+      "error": null
+    }
+  ],
+  "assignmentDispatchAudit": {
+    "valid": true,
+    "duplicateBoundaryCrossings": 0,
+    "violations": {
+      "count": 0,
+      "digests": []
+    },
+    "assignments": [
+      {
+        "assignmentId": "281652e4-7635-46d8-8a24-2846c86b4038",
+        "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:281652e4-7635-46d8-8a24-2846c86b4038:dispatch",
+        "boundaryCrossings": [
+          {
+            "agentId": "df3bea89-2171-8ea6-acba-6aee35e5aa59",
+            "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:281652e4-7635-46d8-8a24-2846c86b4038:dispatch",
+            "turnId": "codex-turn-850fac8d-3376-4649-892a-6303011a9ee8",
+            "outcome": "accepted",
+            "error": null
+          }
+        ]
+      },
+      {
+        "assignmentId": "2eca2a75-51ea-4443-8d5f-b7951556bbf9",
+        "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:2eca2a75-51ea-4443-8d5f-b7951556bbf9:dispatch",
+        "boundaryCrossings": [
+          {
+            "agentId": "b267f913-8043-8cba-a8fd-2c3730c3ee26",
+            "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:2eca2a75-51ea-4443-8d5f-b7951556bbf9:dispatch",
+            "turnId": "codex-turn-9ad9425a-0f3e-47fe-bad2-b6d92b3e0d02",
+            "outcome": "accepted",
+            "error": null
+          }
+        ]
+      },
+      {
+        "assignmentId": "13ff0468-046e-4793-9fa3-e9c5944a7c59",
+        "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:13ff0468-046e-4793-9fa3-e9c5944a7c59:dispatch",
+        "boundaryCrossings": [
+          {
+            "agentId": "abec41da-bd99-8b68-a8c7-5107bc31917c",
+            "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:13ff0468-046e-4793-9fa3-e9c5944a7c59:dispatch",
+            "turnId": "codex-turn-868ca04e-42b7-4611-a485-5d78cffc59c8",
+            "outcome": "accepted",
+            "error": null
+          }
+        ]
+      },
+      {
+        "assignmentId": "f5988da8-7e0a-4a90-ab12-979333ac527c",
+        "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:f5988da8-7e0a-4a90-ab12-979333ac527c:dispatch",
+        "boundaryCrossings": [
+          {
+            "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+            "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:f5988da8-7e0a-4a90-ab12-979333ac527c:dispatch",
+            "turnId": "codex-turn-b14cd844-6ff2-4090-90e9-b9807dd5e2b0",
+            "outcome": "accepted",
+            "error": null
+          }
+        ]
+      },
+      {
+        "assignmentId": "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-api:review",
+        "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-api:review:dispatch",
+        "boundaryCrossings": [
+          {
+            "agentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+            "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-api:review:dispatch",
+            "turnId": "codex-turn-3c152b0e-d246-407c-befc-632832eea61c",
+            "outcome": "accepted",
+            "error": null
+          }
+        ]
+      },
+      {
+        "assignmentId": "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-final-verification:verification",
+        "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-final-verification:verification:dispatch",
+        "boundaryCrossings": [
+          {
+            "agentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+            "clientMessageId": "team-mission:fce2c63c-7ea3-4189-8e72-6cf10b584289:assignment:assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-final-verification:verification:dispatch",
+            "turnId": "codex-turn-09e15eb2-af39-43a6-a97e-ed3c72a3f432",
+            "outcome": "accepted",
+            "error": null
+          }
+        ]
+      }
+    ]
+  },
+  "participantTimelines": [
+    {
+      "memberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+      "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+      "timeline": {
+        "pageCount": 1,
+        "entryCount": 19,
+        "pages": [
+          {
+            "requestId": "f5f3a458-a28c-485c-85af-bc8b57b86429",
+            "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+            "direction": "tail",
+            "projection": "canonical",
+            "epoch": "7ad43cbd-32dc-4b00-8fa0-e81b6cd7ed11",
+            "reset": false,
+            "staleCursor": false,
+            "gap": false,
+            "window": {
+              "minSeq": 1,
+              "maxSeq": 19,
+              "nextSeq": 20
+            },
+            "startCursor": {
+              "epoch": "7ad43cbd-32dc-4b00-8fa0-e81b6cd7ed11",
+              "seq": 1
+            },
+            "endCursor": {
+              "epoch": "7ad43cbd-32dc-4b00-8fa0-e81b6cd7ed11",
+              "seq": 19
+            },
+            "hasOlder": false,
+            "hasNewer": false,
+            "entryCount": 19
+          }
+        ],
+        "entries": [
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:23:31.000Z",
+            "seqStart": 1,
+            "seqEnd": 1,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 1,
+                "endSeq": 1
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-2",
+              "textDigest": "45d2f32e9c28c4292fbfdbf63ce320b5a036e226194c283eb7cb0b5c47bc734b"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:23:31.000Z",
+            "seqStart": 2,
+            "seqEnd": 2,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 2,
+                "endSeq": 2
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-0af3b080-6e8e-4064-9dac-c30ec1137185",
+              "name": "mission_status",
+              "nameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "f26cfd280b5b6133a92de1e9f332edf14742ff9365f009593a23f3ea8b7878a3"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:23:31.000Z",
+            "seqStart": 3,
+            "seqEnd": 3,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 3,
+                "endSeq": 3
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-3",
+              "textDigest": "9852b3459ae7520494b4c979135bea6b3f05f5ab84029deb4ff95480223a559e"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:23:31.000Z",
+            "seqStart": 4,
+            "seqEnd": 4,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 4,
+                "endSeq": 4
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-f3217a9f-863b-435d-839d-2d94721d1865",
+              "name": "mission_plan",
+              "nameDigest": "f3d08cde478dfb79bc6d94f765573b871681e6523469952ef2b9fc9ea9d63770",
+              "status": "failed",
+              "detail": {
+                "type": "unknown",
+                "digest": "5378a2e8fa722bb0389460b3f14f34fbfb08467ae6a5fac5d7aecf05a87355c4"
+              },
+              "error": {
+                "name": "UnknownError",
+                "code": null,
+                "digest": "d8ccae19bc1cf787d7c532787ee4c11a381ca9cb705b52ae720148ba6ecb1159"
+              }
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:23:31.000Z",
+            "seqStart": 5,
+            "seqEnd": 5,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 5,
+                "endSeq": 5
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-4",
+              "textDigest": "ce29e60e3451811f84c7c8939aef8f40c340045eaae346bbd16200328f98afa5"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:23:31.000Z",
+            "seqStart": 6,
+            "seqEnd": 6,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 6,
+                "endSeq": 6
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-345e9378-3255-4063-8087-88ec4d8db0d0",
+              "name": "mission_plan",
+              "nameDigest": "f3d08cde478dfb79bc6d94f765573b871681e6523469952ef2b9fc9ea9d63770",
+              "status": "failed",
+              "detail": {
+                "type": "unknown",
+                "digest": "a592d4516bea440214d0bde73c71945422b5a8b7ec9a45b60087563a44e190a8"
+              },
+              "error": {
+                "name": "UnknownError",
+                "code": null,
+                "digest": "d8ccae19bc1cf787d7c532787ee4c11a381ca9cb705b52ae720148ba6ecb1159"
+              }
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:23:31.000Z",
+            "seqStart": 7,
+            "seqEnd": 7,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 7,
+                "endSeq": 7
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-5",
+              "textDigest": "839e0aaa196547f5bdbb5083fa691b595c20a4aa5aa094761251ec61c55c54a2"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:23:31.000Z",
+            "seqStart": 8,
+            "seqEnd": 8,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 8,
+                "endSeq": 8
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-8f5ae2cb-318e-4fc7-ba80-7f935b2fcd9e",
+              "name": "mission_plan",
+              "nameDigest": "f3d08cde478dfb79bc6d94f765573b871681e6523469952ef2b9fc9ea9d63770",
+              "status": "failed",
+              "detail": {
+                "type": "unknown",
+                "digest": "374023c35c70e612ecc37d03c3abb12b053d8aaaffe4ddf99c7b8d7b167f138e"
+              },
+              "error": {
+                "name": "UnknownError",
+                "code": null,
+                "digest": "d8ccae19bc1cf787d7c532787ee4c11a381ca9cb705b52ae720148ba6ecb1159"
+              }
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:23:31.000Z",
+            "seqStart": 9,
+            "seqEnd": 9,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 9,
+                "endSeq": 9
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-6",
+              "textDigest": "c58eec92983b0893eaae58b0e1d0ec78e64bb8ee09778dcd3afd0ead9566d206"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:23:31.000Z",
+            "seqStart": 10,
+            "seqEnd": 10,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 10,
+                "endSeq": 10
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-2bb37e92-a856-4745-a0d7-5e1994a8f2af",
+              "name": "mission_plan",
+              "nameDigest": "f3d08cde478dfb79bc6d94f765573b871681e6523469952ef2b9fc9ea9d63770",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "2bbe859afd44cc8c4d4f79358c009f9afc95ba8e0861e601faa8adbe201673f1"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:23:31.000Z",
+            "seqStart": 11,
+            "seqEnd": 11,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 11,
+                "endSeq": 11
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-7",
+              "textDigest": "d1b70fd60319e91fe55543532c9969c5703579224d32c91701340dad1ac532f6"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:05.000Z",
+            "seqStart": 12,
+            "seqEnd": 12,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 12,
+                "endSeq": 12
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-9",
+              "textDigest": "96e0ec06ef26bf9e30d04694784d704fe0d9e838e02da9ba41f73576c8b1784d"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:05.000Z",
+            "seqStart": 13,
+            "seqEnd": 13,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 13,
+                "endSeq": 13
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-077735cf-d080-448d-bed6-bd5f442fd91e",
+              "name": "mission_status",
+              "nameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "d488320eee7485b80aa4c506be80a660d1507db2e9eeae645237cf0648105c50"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:05.000Z",
+            "seqStart": 14,
+            "seqEnd": 14,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 14,
+                "endSeq": 14
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-10",
+              "textDigest": "809a48d12b1f740621b71482af529d67c95cb85fc292a6794b533feea83aad3c"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:05.000Z",
+            "seqStart": 15,
+            "seqEnd": 15,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 15,
+                "endSeq": 15
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-11",
+              "textDigest": "b454480697e7f411e2e655ac8498fc069aa7ff80c2b73ebd95a20e13cc19d8bb"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:05.000Z",
+            "seqStart": 16,
+            "seqEnd": 16,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 16,
+                "endSeq": 16
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-fc3b48f0-a424-4067-a3ae-1094681cb30d",
+              "nameDigest": "2fae8afd84d0919feab0a3b16efd8e6266a9f2c65dbaea93c6b41c643b4eecaa",
+              "status": "completed",
+              "detail": {
+                "type": "edit",
+                "digest": "bbbfea5666f0f7abcce15788a2348e46ddd1786a52ad68aef3eb4d4ba7d154b0"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:05.000Z",
+            "seqStart": 17,
+            "seqEnd": 17,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 17,
+                "endSeq": 17
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-12",
+              "textDigest": "612b16e1016c2bfb755f97ddb57e3428c3559169a10b7241208b99626a65fdbe"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:05.000Z",
+            "seqStart": 18,
+            "seqEnd": 18,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 18,
+                "endSeq": 18
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-3165bd20-0f93-4994-b4f5-535b55a0284e",
+              "name": "assignment_report",
+              "nameDigest": "fe69d0e486231bdb6558286374eaf8b1e9dc7a5be72a3462a8235926f3c4794f",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "32aa6ff2df76d033de2a28524fb3fb65b99e12d57506701582e98e88406c4154"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:05.000Z",
+            "seqStart": 19,
+            "seqEnd": 19,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 19,
+                "endSeq": 19
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-13",
+              "textDigest": "090e02633de7183446424ca90532011b3e32926955db4de37fa9863cfe6e44a9"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "memberId": "44cc7249-8c39-4ebd-ac58-76eb0b3df026",
+      "agentId": "abec41da-bd99-8b68-a8c7-5107bc31917c",
+      "timeline": {
+        "pageCount": 1,
+        "entryCount": 8,
+        "pages": [
+          {
+            "requestId": "97ef2ea4-69cd-4b62-8984-8b182674f7b2",
+            "agentId": "abec41da-bd99-8b68-a8c7-5107bc31917c",
+            "direction": "tail",
+            "projection": "canonical",
+            "epoch": "75de2ee0-cae2-4105-bf7f-9041cb902be4",
+            "reset": false,
+            "staleCursor": false,
+            "gap": false,
+            "window": {
+              "minSeq": 1,
+              "maxSeq": 8,
+              "nextSeq": 9
+            },
+            "startCursor": {
+              "epoch": "75de2ee0-cae2-4105-bf7f-9041cb902be4",
+              "seq": 1
+            },
+            "endCursor": {
+              "epoch": "75de2ee0-cae2-4105-bf7f-9041cb902be4",
+              "seq": 8
+            },
+            "hasOlder": false,
+            "hasNewer": false,
+            "entryCount": 8
+          }
+        ],
+        "entries": [
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:45.000Z",
+            "seqStart": 1,
+            "seqEnd": 1,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 1,
+                "endSeq": 1
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-2",
+              "textDigest": "0fc85a015c04c64b7ed3a6e1f8c5cb3e7dfa6b7fd6b2fe97d4f9c815d6a72573"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:45.000Z",
+            "seqStart": 2,
+            "seqEnd": 2,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 2,
+                "endSeq": 2
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-531c2e0e-e8ba-435c-8ed1-93125789f962",
+              "name": "mission_status",
+              "nameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "a8b5616d07ed90de4d349fc02a319054b020a4a50ae3a074cfa6cc8aca91d318"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:45.000Z",
+            "seqStart": 3,
+            "seqEnd": 3,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 3,
+                "endSeq": 3
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-3",
+              "textDigest": "1234fa52bd910b1106b4168ad5d2682d559f872c8829cdea0b9a5a859808d532"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:45.000Z",
+            "seqStart": 4,
+            "seqEnd": 4,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 4,
+                "endSeq": 4
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-4",
+              "textDigest": "165a78fb310450f36ad7d47b23e32b84cf67a1229ae9df5cddac08394fb7188d"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:45.000Z",
+            "seqStart": 5,
+            "seqEnd": 5,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 5,
+                "endSeq": 5
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-269b2a4d-4d55-42b4-a878-7330622a3e7a",
+              "nameDigest": "2fae8afd84d0919feab0a3b16efd8e6266a9f2c65dbaea93c6b41c643b4eecaa",
+              "status": "completed",
+              "detail": {
+                "type": "edit",
+                "digest": "75b33be5fbd4fdc4c4248fc05c7ca02f6b456a62b5165756a2a66f406cc17ee6"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:45.000Z",
+            "seqStart": 6,
+            "seqEnd": 6,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 6,
+                "endSeq": 6
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-5",
+              "textDigest": "b5b5a3271c5bb829be0d513fa69e0ddaa8c6c82003e85b06d4207eb3634bbb9e"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:45.000Z",
+            "seqStart": 7,
+            "seqEnd": 7,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 7,
+                "endSeq": 7
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-f51ed479-0999-4841-b317-901404ed80ba",
+              "name": "assignment_report",
+              "nameDigest": "fe69d0e486231bdb6558286374eaf8b1e9dc7a5be72a3462a8235926f3c4794f",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "ec18cfb6adde5afe4e9ffd3fecdf747d6c1046c80d6502ad34a5a6ae323eb0b4"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:45.000Z",
+            "seqStart": 8,
+            "seqEnd": 8,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 8,
+                "endSeq": 8
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-6",
+              "textDigest": "f3adce99a7fc96d7743c1b6c7379e0ca8146db24cf9c8f1017dd6f436342e696"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "memberId": "25af5d75-1a6a-4db3-b8b3-353b6584217c",
+      "agentId": "df3bea89-2171-8ea6-acba-6aee35e5aa59",
+      "timeline": {
+        "pageCount": 1,
+        "entryCount": 9,
+        "pages": [
+          {
+            "requestId": "41fee198-9c1d-414c-b95c-cf315ab2319d",
+            "agentId": "df3bea89-2171-8ea6-acba-6aee35e5aa59",
+            "direction": "tail",
+            "projection": "canonical",
+            "epoch": "d10a18a6-9b2e-4509-8f66-a017b4d09f93",
+            "reset": false,
+            "staleCursor": false,
+            "gap": false,
+            "window": {
+              "minSeq": 1,
+              "maxSeq": 9,
+              "nextSeq": 10
+            },
+            "startCursor": {
+              "epoch": "d10a18a6-9b2e-4509-8f66-a017b4d09f93",
+              "seq": 1
+            },
+            "endCursor": {
+              "epoch": "d10a18a6-9b2e-4509-8f66-a017b4d09f93",
+              "seq": 9
+            },
+            "hasOlder": false,
+            "hasNewer": false,
+            "entryCount": 9
+          }
+        ],
+        "entries": [
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:40.000Z",
+            "seqStart": 1,
+            "seqEnd": 1,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 1,
+                "endSeq": 1
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-2",
+              "textDigest": "deb4520746885a4a377627ce9e3aea7c5ee7df85754e3e9ce94bb4cf3a4859e7"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:40.000Z",
+            "seqStart": 2,
+            "seqEnd": 2,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 2,
+                "endSeq": 2
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-e25cbf6b-6252-453f-b213-d1aeebb1b708",
+              "name": "mission_status",
+              "nameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "92e295d18432922803987ea9e6d6ab9b4777a38abcc078613820c9101535f30a"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:40.000Z",
+            "seqStart": 3,
+            "seqEnd": 3,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 3,
+                "endSeq": 3
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-3",
+              "textDigest": "e7bfbe7ac3ec9d57dd0b49c38c7c29a868f68ff5d6b2ba1a97f918913f47c0f7"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:40.000Z",
+            "seqStart": 4,
+            "seqEnd": 4,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 4,
+                "endSeq": 4
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-4",
+              "textDigest": "37d968ccfef71f025fa9aa26ef77d32b482fce9cee893dc18d366ce5ae0ec759"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:40.000Z",
+            "seqStart": 5,
+            "seqEnd": 5,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 5,
+                "endSeq": 5
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-4edb9694-3e6e-44ba-856a-9d28d05cab11",
+              "nameDigest": "2fae8afd84d0919feab0a3b16efd8e6266a9f2c65dbaea93c6b41c643b4eecaa",
+              "status": "completed",
+              "detail": {
+                "type": "edit",
+                "digest": "f3d6aaeadc6b48cd45d3e28f557a4a02548c3deace0836e4c10d2be1d3a70e0b"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:40.000Z",
+            "seqStart": 6,
+            "seqEnd": 6,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 6,
+                "endSeq": 6
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-5",
+              "textDigest": "c9f1c722d74cf7e549d6a6ccc0e9104999e3f1688c7592a352a8523fcfcc2a68"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:40.000Z",
+            "seqStart": 7,
+            "seqEnd": 7,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 7,
+                "endSeq": 7
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-ba9c2924-8852-49c5-8270-a507a35a6e58",
+              "name": "mission_status",
+              "nameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "aef3fe206a6beeb4fe135821785003248497dc8d75136938d3100fd452ce039d"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:40.000Z",
+            "seqStart": 8,
+            "seqEnd": 8,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 8,
+                "endSeq": 8
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-b61a5f85-7a1e-4c1d-acfa-589d031b9b92",
+              "name": "assignment_report",
+              "nameDigest": "fe69d0e486231bdb6558286374eaf8b1e9dc7a5be72a3462a8235926f3c4794f",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "092a4d737ef2416aa5cf71aa896d5045e4574a8a4274282dbb147bc4613ad10d"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:40.000Z",
+            "seqStart": 9,
+            "seqEnd": 9,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 9,
+                "endSeq": 9
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-6",
+              "textDigest": "27605c641b13b1c4cc2ba80eae8c0d642871caaf29c6b9d8bdf8bb08deb5a472"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "memberId": "1828d19a-4fde-43dc-bc10-4184694376e2",
+      "agentId": "b267f913-8043-8cba-a8fd-2c3730c3ee26",
+      "timeline": {
+        "pageCount": 1,
+        "entryCount": 8,
+        "pages": [
+          {
+            "requestId": "b2f5e085-e886-4139-b59f-9c808a3dc4b4",
+            "agentId": "b267f913-8043-8cba-a8fd-2c3730c3ee26",
+            "direction": "tail",
+            "projection": "canonical",
+            "epoch": "cc906039-4ec4-4d5d-afc5-3bfc6dcd56c4",
+            "reset": false,
+            "staleCursor": false,
+            "gap": false,
+            "window": {
+              "minSeq": 1,
+              "maxSeq": 8,
+              "nextSeq": 9
+            },
+            "startCursor": {
+              "epoch": "cc906039-4ec4-4d5d-afc5-3bfc6dcd56c4",
+              "seq": 1
+            },
+            "endCursor": {
+              "epoch": "cc906039-4ec4-4d5d-afc5-3bfc6dcd56c4",
+              "seq": 8
+            },
+            "hasOlder": false,
+            "hasNewer": false,
+            "entryCount": 8
+          }
+        ],
+        "entries": [
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:25.000Z",
+            "seqStart": 1,
+            "seqEnd": 1,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 1,
+                "endSeq": 1
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-2",
+              "textDigest": "57b5195e8fb96cd48b54f1cb00473cb53ee0226d51e652cd3066533ce0e92fe9"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:25.000Z",
+            "seqStart": 2,
+            "seqEnd": 2,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 2,
+                "endSeq": 2
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-6e3aa118-c85e-4013-9b32-9ce503e2e418",
+              "name": "mission_status",
+              "nameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "c61858120b0820016bd90aa37835f8283fdb8b6a88647ef8ccc17c7cc5e70899"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:25.000Z",
+            "seqStart": 3,
+            "seqEnd": 3,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 3,
+                "endSeq": 3
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-3",
+              "textDigest": "1070146c5be3e245f98bdbfc8236cbfb9f73a9039dd78f0a9d95796d8ae9a0c0"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:25.000Z",
+            "seqStart": 4,
+            "seqEnd": 4,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 4,
+                "endSeq": 4
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-4",
+              "textDigest": "ddfe163a5781e92540e817efdad3b45a33d4f0201cbf7ca5a3a8054ee19950c0"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:25.000Z",
+            "seqStart": 5,
+            "seqEnd": 5,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 5,
+                "endSeq": 5
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-7aab149a-1c2c-43a5-9d75-782b6f82f076",
+              "nameDigest": "2fae8afd84d0919feab0a3b16efd8e6266a9f2c65dbaea93c6b41c643b4eecaa",
+              "status": "completed",
+              "detail": {
+                "type": "edit",
+                "digest": "4d3326cfe1972ede10c0ab851d7a02500079d6dc027396cfd2097ce7f82fce75"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:25.000Z",
+            "seqStart": 6,
+            "seqEnd": 6,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 6,
+                "endSeq": 6
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-5",
+              "textDigest": "6779763825c2b6ad5090629bab5e4844344d4ff9cec076ee0df243b00c564def"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:25.000Z",
+            "seqStart": 7,
+            "seqEnd": 7,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 7,
+                "endSeq": 7
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-1a94da62-967b-4f49-9892-d03f3e3cc505",
+              "name": "assignment_report",
+              "nameDigest": "fe69d0e486231bdb6558286374eaf8b1e9dc7a5be72a3462a8235926f3c4794f",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "e525e69904d41e3cb4edfbff182bcab059fab2b21d816474b414de2b053fc597"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:24:25.000Z",
+            "seqStart": 8,
+            "seqEnd": 8,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 8,
+                "endSeq": 8
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-6",
+              "textDigest": "ac95848064d42896f611911143aa34d7c930bdcd68d9f10445d640dfcf5e1a79"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "memberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+      "agentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+      "timeline": {
+        "pageCount": 1,
+        "entryCount": 12,
+        "pages": [
+          {
+            "requestId": "43762fa3-ac12-49a1-ad41-ae942523ab8b",
+            "agentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+            "direction": "tail",
+            "projection": "canonical",
+            "epoch": "4f752fa5-ea1c-46b4-8eef-dba720db42a6",
+            "reset": false,
+            "staleCursor": false,
+            "gap": false,
+            "window": {
+              "minSeq": 1,
+              "maxSeq": 12,
+              "nextSeq": 13
+            },
+            "startCursor": {
+              "epoch": "4f752fa5-ea1c-46b4-8eef-dba720db42a6",
+              "seq": 1
+            },
+            "endCursor": {
+              "epoch": "4f752fa5-ea1c-46b4-8eef-dba720db42a6",
+              "seq": 12
+            },
+            "hasOlder": false,
+            "hasNewer": false,
+            "entryCount": 12
+          }
+        ],
+        "entries": [
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:25:34.000Z",
+            "seqStart": 1,
+            "seqEnd": 1,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 1,
+                "endSeq": 1
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-2",
+              "textDigest": "13312b642d316853abf83678bcb6187d0f1eae74dff0bce074943f5dedcc2aa0"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:25:34.000Z",
+            "seqStart": 2,
+            "seqEnd": 2,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 2,
+                "endSeq": 2
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-f1547d1b-b0f8-45d7-b841-b3c0a95b0b9d",
+              "name": "mission_status",
+              "nameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "01b9f8f3737e4931904a820058b80b3327c3aa8ec870add0c26fd33f602db51a"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:25:34.000Z",
+            "seqStart": 3,
+            "seqEnd": 3,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 3,
+                "endSeq": 3
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-3",
+              "textDigest": "92453520861f3d55b25295fb0f9ae8345175eee53d382207a7b15870e6ec853a"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:25:34.000Z",
+            "seqStart": 4,
+            "seqEnd": 4,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 4,
+                "endSeq": 4
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-4",
+              "textDigest": "fdb906d92a4223b8f7e04ec3f68ef69dc62a7e86ec4b7b0f9defe7f56e4e6e3e"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:25:34.000Z",
+            "seqStart": 5,
+            "seqEnd": 5,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 5,
+                "endSeq": 5
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-3b2ab5d4-d299-45b5-b6be-0d0673590141",
+              "name": "assignment_report",
+              "nameDigest": "fe69d0e486231bdb6558286374eaf8b1e9dc7a5be72a3462a8235926f3c4794f",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "e04d04677b2fed178721c06a5ca8c467882a6a3f0804df4d000c8fb78a136012"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:25:34.000Z",
+            "seqStart": 6,
+            "seqEnd": 6,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 6,
+                "endSeq": 6
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-5",
+              "textDigest": "a15b819d85b808f6115269e63a83b36496377f67037dd23984f09af24bf183c0"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:51.000Z",
+            "seqStart": 7,
+            "seqEnd": 7,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 7,
+                "endSeq": 7
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-7",
+              "textDigest": "5d5e735b03ce707950c1ed30067246d6196e46624531f32036fb713112166e86"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:51.000Z",
+            "seqStart": 8,
+            "seqEnd": 8,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 8,
+                "endSeq": 8
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-67482b51-6e1f-4d77-ba72-63c2dd9dedc4",
+              "name": "mission_status",
+              "nameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "9cca86991d87ad959b9e7588168913d9a63aca03aaca7ba8d50bdb6cf2710190"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:51.000Z",
+            "seqStart": 9,
+            "seqEnd": 9,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 9,
+                "endSeq": 9
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-8",
+              "textDigest": "e12694723abdd9d900a39dfa887aa772cf1ab4f06b303ff5d73de89fdc6e5b2a"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:51.000Z",
+            "seqStart": 10,
+            "seqEnd": 10,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 10,
+                "endSeq": 10
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-9",
+              "textDigest": "f31145fb1a1cc64179f95706785fa0482b06e217d5bbe98745bcc69ae05c8512"
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:51.000Z",
+            "seqStart": 11,
+            "seqEnd": 11,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 11,
+                "endSeq": 11
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "tool_call",
+              "callId": "exec-fd540eb1-ad1f-4ebc-bd45-3d5f5935bd40",
+              "name": "assignment_report",
+              "nameDigest": "fe69d0e486231bdb6558286374eaf8b1e9dc7a5be72a3462a8235926f3c4794f",
+              "status": "completed",
+              "detail": {
+                "type": "unknown",
+                "digest": "8015fc56022b171721dacf8fcbe7347e9477122b43a237ed6deffea84444a44b"
+              },
+              "error": null
+            }
+          },
+          {
+            "provider": "codex",
+            "timestamp": "2026-08-10T17:26:51.000Z",
+            "seqStart": 12,
+            "seqEnd": 12,
+            "sourceSeqRanges": [
+              {
+                "startSeq": 12,
+                "endSeq": 12
+              }
+            ],
+            "collapsed": [],
+            "item": {
+              "type": "assistant_message",
+              "messageId": "item-10",
+              "textDigest": "153a27cb90c9cd5e15eb1babc0fc42ca41d7ed3682a46cf9429bf4aed526fd16"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "roomHistory": {
+    "pageCount": 1,
+    "messageCount": 0,
+    "pages": [
+      {
+        "requestId": "9ce55b78-f0ff-46a6-98d2-9bf3fe97c221",
+        "roomId": "046480ca-b5c5-45b7-a7e0-e9bdba7fc971",
+        "cursor": 0,
+        "hasMore": false,
+        "messageCount": 0,
+        "error": null
+      }
+    ],
+    "messages": [],
+    "unsubscribe": {
+      "requestId": "38a23874-6b03-4926-b5aa-6d3a600d3c54",
+      "roomId": "046480ca-b5c5-45b7-a7e0-e9bdba7fc971",
+      "error": null
+    }
+  },
+  "sanitizedPinoLog": {
+    "sanitized": true,
+    "relativePath": "parallel_delivery/run-2.daemon-provider.sanitized.jsonl",
+    "sourceBytes": 2170,
+    "sourceSha256": "9475811a9df0438db8acb35f1279847b8ad77679527698141a06ff8ccf6c79f9",
+    "bytes": 258,
+    "sha256": "a9762b01b837bb26a381471ebbf6edab78bb6491c1499baef29f53838cd3f71c"
+  },
+  "parallelDagAudit": {
+    "valid": true,
+    "violations": {
+      "count": 0,
+      "digests": []
+    },
+    "commonDeliveryOverlap": {
+      "startedAt": "2026-08-10T17:23:21.527Z",
+      "settledAt": "2026-08-10T17:24:25.794Z"
+    },
+    "nodes": {
+      "api": {
+        "workstreamId": "profile-api",
+        "assignmentId": "281652e4-7635-46d8-8a24-2846c86b4038",
+        "dispatchedAt": "2026-08-10T17:23:21.527Z",
+        "settledAt": "2026-08-10T17:24:40.564Z"
+      },
+      "ui": {
+        "workstreamId": "profile-ui",
+        "assignmentId": "2eca2a75-51ea-4443-8d5f-b7951556bbf9",
+        "dispatchedAt": "2026-08-10T17:23:21.527Z",
+        "settledAt": "2026-08-10T17:24:25.794Z"
+      },
+      "test": {
+        "workstreamId": "profile-tests",
+        "assignmentId": "13ff0468-046e-4793-9fa3-e9c5944a7c59",
+        "dispatchedAt": "2026-08-10T17:23:21.527Z",
+        "settledAt": "2026-08-10T17:24:45.085Z"
+      },
+      "integration": {
+        "workstreamId": "profile-integration",
+        "assignmentId": "f5988da8-7e0a-4a90-ab12-979333ac527c",
+        "dispatchedAt": "2026-08-10T17:24:45.151Z",
+        "settledAt": "2026-08-10T17:26:05.118Z"
+      },
+      "finalVerification": {
+        "workstreamId": "profile-final-verification",
+        "assignmentId": "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-final-verification:verification",
+        "dispatchedAt": "2026-08-10T17:26:05.148Z",
+        "settledAt": "2026-08-10T17:26:51.902Z"
+      },
+      "apiReviewAssignmentIds": [
+        "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-api:review"
+      ],
+      "contractChainWorkstreamIds": [],
+      "contractChainAssignmentIds": [],
+      "finalSubjectAssignmentIds": [
+        "13ff0468-046e-4793-9fa3-e9c5944a7c59",
+        "281652e4-7635-46d8-8a24-2846c86b4038",
+        "2eca2a75-51ea-4443-8d5f-b7951556bbf9",
+        "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-api:review",
+        "f5988da8-7e0a-4a90-ab12-979333ac527c"
+      ]
+    }
+  },
+  "recoveryDagAudit": null,
+  "toolDisciplineAudit": {
+    "score": 1,
+    "violations": {
+      "count": 6,
+      "digests": [
+        "59498adb99783e79d83db77640476723ea32940a1464f442dcf0da76e62ccf93",
+        "37c6d201f701b43fb7996943bbdea30e4b845239d67cbc1479855a78727c5f52",
+        "59498adb99783e79d83db77640476723ea32940a1464f442dcf0da76e62ccf93",
+        "37c6d201f701b43fb7996943bbdea30e4b845239d67cbc1479855a78727c5f52",
+        "59498adb99783e79d83db77640476723ea32940a1464f442dcf0da76e62ccf93",
+        "37c6d201f701b43fb7996943bbdea30e4b845239d67cbc1479855a78727c5f52"
+      ]
+    },
+    "successfulCounts": {
+      "mission_status": 8,
+      "mission_plan": 1,
+      "assignment_report": 6
+    },
+    "calls": [
+      {
+        "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+        "name": "mission_status",
+        "rawNameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "7baf9a6bc14dd476d0f6654f88ffb4782f6eb8eeed62bcc71d0384d51d81b77e",
+        "outputDigest": "fa2d5dc68ca7efab0b32910e728189395851c62916f1374bef050a1cdb1d2057"
+      },
+      {
+        "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+        "name": "mission_plan",
+        "rawNameDigest": "f3d08cde478dfb79bc6d94f765573b871681e6523469952ef2b9fc9ea9d63770",
+        "status": "failed",
+        "successful": false,
+        "missionAssociation": "mismatch",
+        "assignmentActivation": null,
+        "inputDigest": "ba66da185e444dbab670c801522114153050fbe936d2e29e0f1a6d78f2e41cc9",
+        "outputDigest": "8f61312b2bf13250cd2e85a0c014691633903ddd80fe390755307c6a3fe046b3"
+      },
+      {
+        "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+        "name": "mission_plan",
+        "rawNameDigest": "f3d08cde478dfb79bc6d94f765573b871681e6523469952ef2b9fc9ea9d63770",
+        "status": "failed",
+        "successful": false,
+        "missionAssociation": "mismatch",
+        "assignmentActivation": null,
+        "inputDigest": "e0ecc596a3540442121cad9baeb13c41065421b96f909b2dc39908f3ab5e388c",
+        "outputDigest": "df2c6351d7816b1184540f68be6aea3df0deb3544cd5826fd7ea73ed7465d358"
+      },
+      {
+        "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+        "name": "mission_plan",
+        "rawNameDigest": "f3d08cde478dfb79bc6d94f765573b871681e6523469952ef2b9fc9ea9d63770",
+        "status": "failed",
+        "successful": false,
+        "missionAssociation": "mismatch",
+        "assignmentActivation": null,
+        "inputDigest": "b973170c008ea536ad9b2ffcb998ac53e221a076b36d09812b266fd7fa09eb8d",
+        "outputDigest": "1e29bde8417ec4ac3f19e477cfed11ab8cd8fcd554b875a1d28d7cd8343ef6fa"
+      },
+      {
+        "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+        "name": "mission_plan",
+        "rawNameDigest": "f3d08cde478dfb79bc6d94f765573b871681e6523469952ef2b9fc9ea9d63770",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": "atomic_mission_plan",
+        "inputDigest": "b03c67261138d846eb94cfcdcd0a51f4dde576d8511af809b93d9274798013cc",
+        "outputDigest": "20bcd7eee436bc28bb421e65235bfe9a37ef2f36ffdbd3674423a82790cafb6b"
+      },
+      {
+        "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+        "name": "mission_status",
+        "rawNameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "7baf9a6bc14dd476d0f6654f88ffb4782f6eb8eeed62bcc71d0384d51d81b77e",
+        "outputDigest": "7417646f4e6d1d1560c0723aad797949ea21b4aaccb041959fea1fccbacfef6b"
+      },
+      {
+        "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+        "name": "assignment_report",
+        "rawNameDigest": "fe69d0e486231bdb6558286374eaf8b1e9dc7a5be72a3462a8235926f3c4794f",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "34fad2b08a2f7fa6fdcf8a390073b9589bc0178ab639292567b2cfd0dab47431",
+        "outputDigest": "72bf63840cd4d0c59aad0120d860b7368f9494165b377d9dbc476baff7b22b5f"
+      },
+      {
+        "agentId": "abec41da-bd99-8b68-a8c7-5107bc31917c",
+        "name": "mission_status",
+        "rawNameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "7baf9a6bc14dd476d0f6654f88ffb4782f6eb8eeed62bcc71d0384d51d81b77e",
+        "outputDigest": "e67edecf44c5b245f888626afc449fcaeda2d7abcb6bf487b9d909fafb84d948"
+      },
+      {
+        "agentId": "abec41da-bd99-8b68-a8c7-5107bc31917c",
+        "name": "assignment_report",
+        "rawNameDigest": "fe69d0e486231bdb6558286374eaf8b1e9dc7a5be72a3462a8235926f3c4794f",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "3090c8f6295a9ad224d69cd2fa7309688bbef30dbc6f166010cc2664286725e2",
+        "outputDigest": "3ef337211cec9ef96ad04911ead259f092b72180dbeecc3e24a397f12c826aa8"
+      },
+      {
+        "agentId": "df3bea89-2171-8ea6-acba-6aee35e5aa59",
+        "name": "mission_status",
+        "rawNameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "7baf9a6bc14dd476d0f6654f88ffb4782f6eb8eeed62bcc71d0384d51d81b77e",
+        "outputDigest": "88b67cfe8d69bf38516c0af65fd1a290ec0c093b900fff870d5a520987a8b9da"
+      },
+      {
+        "agentId": "df3bea89-2171-8ea6-acba-6aee35e5aa59",
+        "name": "mission_status",
+        "rawNameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "7baf9a6bc14dd476d0f6654f88ffb4782f6eb8eeed62bcc71d0384d51d81b77e",
+        "outputDigest": "2f10a6ea9dc115a22e104602edd836c3e947e0e9251956c53dcfa24c53ecff73"
+      },
+      {
+        "agentId": "df3bea89-2171-8ea6-acba-6aee35e5aa59",
+        "name": "assignment_report",
+        "rawNameDigest": "fe69d0e486231bdb6558286374eaf8b1e9dc7a5be72a3462a8235926f3c4794f",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "c1e7454bdf41aae336f97ef083ee025006d2a16e44a174f09f2b45eeb3cc2820",
+        "outputDigest": "5c7cbbf3a6f0feeb00396097d44d6423fbf108f3308fd96e45795f233a0a3a46"
+      },
+      {
+        "agentId": "b267f913-8043-8cba-a8fd-2c3730c3ee26",
+        "name": "mission_status",
+        "rawNameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "7baf9a6bc14dd476d0f6654f88ffb4782f6eb8eeed62bcc71d0384d51d81b77e",
+        "outputDigest": "dba0cad5a181dff6dbdfa6127994da5ceeb6f858738205679ae63c02ad8f08c5"
+      },
+      {
+        "agentId": "b267f913-8043-8cba-a8fd-2c3730c3ee26",
+        "name": "assignment_report",
+        "rawNameDigest": "fe69d0e486231bdb6558286374eaf8b1e9dc7a5be72a3462a8235926f3c4794f",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "681d1696f977f9bed83d282dd4b73ac1550a800665e850354248264c1a4779eb",
+        "outputDigest": "0c1a2a2017844e47044034f0db78c07232e02f1bdeeae42d203347333b08aef1"
+      },
+      {
+        "agentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+        "name": "mission_status",
+        "rawNameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "7baf9a6bc14dd476d0f6654f88ffb4782f6eb8eeed62bcc71d0384d51d81b77e",
+        "outputDigest": "46c797fcc828f95cfd12cbf3148361dbeb86360f80a56bfd8d59d24ec67a7584"
+      },
+      {
+        "agentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+        "name": "assignment_report",
+        "rawNameDigest": "fe69d0e486231bdb6558286374eaf8b1e9dc7a5be72a3462a8235926f3c4794f",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "1b0a87efdeaa1efea804454f064877b2fe73ebc6b1546a2b440ca2b25bad795f",
+        "outputDigest": "8aab63490a74acdf2144946d0ef1d48584d710562dbc69e8babd26ae3865b7b3"
+      },
+      {
+        "agentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+        "name": "mission_status",
+        "rawNameDigest": "422991ab73408c0ebfc2b13ae9d63432001c2d9e951a096a7ed2a20ed4715499",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "7baf9a6bc14dd476d0f6654f88ffb4782f6eb8eeed62bcc71d0384d51d81b77e",
+        "outputDigest": "751f54c2d4c84637d8fd9191c735174472053fa2695bcff2a9f02076f0494ae1"
+      },
+      {
+        "agentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+        "name": "assignment_report",
+        "rawNameDigest": "fe69d0e486231bdb6558286374eaf8b1e9dc7a5be72a3462a8235926f3c4794f",
+        "status": "completed",
+        "successful": true,
+        "missionAssociation": "verified",
+        "assignmentActivation": null,
+        "inputDigest": "7f4540eb3de14f5d8b0f334db13fa2a5b2e56e6e38e0fbd71e082af0fb5d4871",
+        "outputDigest": "31232be293b005a124fc128aa8e7b80b850346e82bb0ae08b4c0d4df40954957"
+      }
+    ]
+  },
+  "validationViolations": {
+    "count": 0,
+    "digests": []
+  },
+  "scopeConflicts": 0,
+  "runtimeMetrics": {
+    "acceptedTurnReplayCount": 0,
+    "busyWaitCallCount": 0,
+    "unresolvedReportCount": 0,
+    "unresolvedAttentionCount": 0
+  },
+  "attentionItems": [],
+  "recovery": {
+    "score": 1,
+    "violations": {
+      "count": 1,
+      "digests": ["ee8bf0979866a22acd698ddf64ae22369ec290ec8396dce0455fc4ce14566528"]
+    },
+    "startupSaga": {
+      "injectedFaultPoint": null,
+      "observed": false,
+      "valid": true,
+      "firstStartFailed": false,
+      "startAttempts": 1,
+      "replayedSameIdempotentStart": false
+    },
+    "reportRecovery": {
+      "observed": false,
+      "valid": false,
+      "reason": "no_report_recovery_turn_observed",
+      "outcome": "unobserved",
+      "turnCount": 0,
+      "rejectedTurnCount": 0,
+      "maxAttempt": null,
+      "turns": []
+    }
+  },
+  "reworkCount": 0,
+  "workspace": {
+    "gitStatusDigest": "6e4ac0c937743c921419fbebaf0b7105761e0de5bd632577cd609db2e9ca5bf5",
+    "gitDiffStatDigest": "6334278309132080ecd2a62772c18bcb1155ad56bd93ddbb36cf05a4f8649bb5",
+    "gitPatchDigest": "5a789ab6df10afd1ff17180b6f55ef2db3b0443a024a96269f835f3195d9728a",
+    "artifactCount": 4,
+    "artifacts": [
+      {
+        "kind": "file",
+        "pathDigest": "55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9",
+        "bytes": 107,
+        "sha256": "620a94d72fc9311ae43084b6c882a295a8a33f23bde25d77c7edcd0619890d06",
+        "encoding": "utf8",
+        "contentDigest": "4bdbac1ff6bfc8321bc7c1cb71b71f96b8f6e345fa1fd6a75d46329b168c1f58"
+      },
+      {
+        "kind": "file",
+        "pathDigest": "690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586",
+        "bytes": 312,
+        "sha256": "7de5b41729b4bd8b07e40814eae4efb452db38a05f056fa659ac03097c1889e9",
+        "encoding": "utf8",
+        "contentDigest": "28bb7f36a9dc8f48910671403a8d56c3eebcd5576a471aeed0e6aa9870f0f173"
+      },
+      {
+        "kind": "file",
+        "pathDigest": "9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d",
+        "bytes": 95,
+        "sha256": "9c2848b6d6ebbcc9ce07edd5cff899d4cea5ea726defec654bbb6bd873822955",
+        "encoding": "utf8",
+        "contentDigest": "ec6bf03eeeea9a58f4b2d1097e12907fc538a3c74729801d61d277810bf6cd09"
+      },
+      {
+        "kind": "file",
+        "pathDigest": "ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587",
+        "bytes": 1210,
+        "sha256": "e201d2c98fcca14d55caa8f382e1e660ad302f16054a0e001d04eedc7215b6f1",
+        "encoding": "utf8",
+        "contentDigest": "0b5aa90c14ab041e0b8a61e02956063cc45d52f0091cbd73023024db95e562be"
+      }
+    ]
+  },
+  "verification": {
+    "passed": true,
+    "commandDigest": "58bb6064e8f8a246b1252f5a3af9e3db3ff3a77f0db7ebea0a4de66af0b5aa92",
+    "outputDigest": "04cd37422a92e9ee26dd562edfe38d7b1cc5f810aaf8e80f27da990df23cbaff",
+    "outputBytes": 462
+  },
+  "scores": {
+    "workstreamFit": 2,
+    "coordination": 2,
+    "toolDiscipline": 1,
+    "delivery": 2,
+    "runtimeReliability": 1,
+    "total": 8,
+    "qualifies": true
+  },
+  "mission": {
+    "id": "fce2c63c-7ea3-4189-8e72-6cf10b584289",
+    "teamId": "da34b057-a70e-486d-aaab-60b98645ba37",
+    "workspaceId": "wks_a0c3d40e363807a7",
+    "objectiveDigest": "fcf75bc59438417591a5d2117bb52eea1fcdfe1a2869cb04ee2f1c0d110894f8",
+    "constraints": {
+      "count": 6,
+      "digests": [
+        "9790e6bebbf5e785588b12bde29ec24f824f623e5eda3918d095afee609e2544",
+        "8610f5991adffe429e5cd5bb95f92019c6488caa9a8da7fc31fa421da35df2d1",
+        "33d1330acd0c83ba8cf791e6cad3919eda16454b4b3a9e1abe905f6849d9a37b",
+        "92cc3d7e913b13a8dc4e9b7de2e9fc08e9494634ce830ecd92bfcce260288673",
+        "fc29e1004bb93e27c6d1102981175eb5eaefd1ec48c3895ee02e160d74559b05",
+        "595cb8507306a0bb62765bfd0609fa38f1a48e2fd0d74dc37ddf3f403301c4ef"
+      ]
+    },
+    "acceptanceCriteria": {
+      "count": 5,
+      "digests": [
+        "a38beea8cb2757ced0ddde7493f79cb103c9b0c369425a96171f21bf8e65e112",
+        "4c0649952b1eb4c647ac668b49f5e24da12df5f8f47ab6f4f297261ee966535b",
+        "79e8d628a13547c6c2096c32625bdb3833bd9af56ac68aa6a65164a1d91ef0d5",
+        "d3d3baff97181fd9868c3ed12f819d01460bf37020f3d99f386c18f48be09add",
+        "aa17ce6236d3aeee37011c95d93b42c6cb0d3aeb0c5fe217c56e92ca05148642"
+      ]
+    },
+    "status": "completed",
+    "suspendedStatus": null,
+    "activeRosterSnapshotRevision": 1,
+    "planRevision": 1,
+    "revision": 25,
+    "workspaceAuditPolicy": {
+      "revision": 1,
+      "includeTrackedPaths": true,
+      "includeNonIgnoredUntrackedPaths": true,
+      "includeDeclaredArtifactPaths": true,
+      "excludeGitignoredPathsByDefault": true,
+      "excludedPathPrefixes": {
+        "count": 1,
+        "digests": ["47a778e92382f0a8ecf7b09cb868e1af06f1cb9dc1deb9c0127300d6c6d4f114"]
+      }
+    },
+    "chatRoomId": "046480ca-b5c5-45b7-a7e0-e9bdba7fc971",
+    "participants": [
+      {
+        "memberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+        "agentId": "88103743-5476-4426-adee-58f82b7646c4",
+        "bindingEpoch": 1,
+        "joinedAt": "2026-08-10T17:20:35.476Z",
+        "archivedAt": "2026-08-10T17:26:51.911Z"
+      },
+      {
+        "memberId": "44cc7249-8c39-4ebd-ac58-76eb0b3df026",
+        "agentId": "abec41da-bd99-8b68-a8c7-5107bc31917c",
+        "bindingEpoch": 1,
+        "joinedAt": "2026-08-10T17:23:21.265Z",
+        "archivedAt": "2026-08-10T17:26:51.911Z"
+      },
+      {
+        "memberId": "25af5d75-1a6a-4db3-b8b3-353b6584217c",
+        "agentId": "df3bea89-2171-8ea6-acba-6aee35e5aa59",
+        "bindingEpoch": 1,
+        "joinedAt": "2026-08-10T17:23:21.343Z",
+        "archivedAt": "2026-08-10T17:26:51.911Z"
+      },
+      {
+        "memberId": "1828d19a-4fde-43dc-bc10-4184694376e2",
+        "agentId": "b267f913-8043-8cba-a8fd-2c3730c3ee26",
+        "bindingEpoch": 1,
+        "joinedAt": "2026-08-10T17:23:21.344Z",
+        "archivedAt": "2026-08-10T17:26:51.911Z"
+      },
+      {
+        "memberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+        "agentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+        "bindingEpoch": 1,
+        "joinedAt": "2026-08-10T17:24:41.433Z",
+        "archivedAt": "2026-08-10T17:26:51.911Z"
+      }
+    ],
+    "rosterSnapshots": [
+      {
+        "revision": 1,
+        "teamRevision": 1,
+        "leadMemberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+        "reason": "initial",
+        "skills": [
+          {
+            "skillId": "coordination",
+            "nameDigest": "c6c6c1f431776373875764cc5d56c4d9db9a1fa15c32dfea2b2ed67ecbe770d4",
+            "descriptionDigest": "2efa145cc070f7d67a992aa152f92c7c362b42c4ea3230a897230e07b32137c4"
+          },
+          {
+            "skillId": "api",
+            "nameDigest": "63e3a42fcd0c2bc3820823b61f131b485a5d862055faad68bd11e4d7ee5ad107",
+            "descriptionDigest": "fa12bda926eadef385a65c11f05f4b7c0e706216e6188c6f5d4de4bdb37a6a1f"
+          },
+          {
+            "skillId": "ui",
+            "nameDigest": "2a10de19e9dd20b0afdd40f052013100c24f08260bdb3c686ba04dce8faa3929",
+            "descriptionDigest": "b879ea27aa18e44668a8b9a495e24255c86fcb0dcaf52cd592f76b08cd03df88"
+          },
+          {
+            "skillId": "testing",
+            "nameDigest": "c8b61ec034d17530b93c32e49e0d98eb7b27225cba9fbea927212a9d6ab0a5ce",
+            "descriptionDigest": "eebec97a61ccf6c9416359f401badd2a38e4acd59fc505e133825aaf57ec9d02"
+          },
+          {
+            "skillId": "integration",
+            "nameDigest": "f2860eb54ca77635af70dd0361ee5450c2a482fc6341d958450d8d7f9054d0de",
+            "descriptionDigest": "ae114ecf2f2fc031764e4bf27892c6e6ab4f6e3892add8a2b27a19d9b245aa33"
+          },
+          {
+            "skillId": "verification",
+            "nameDigest": "0f43e98303a5e069bb169ccda8d8ca2c1dd70948ab41491b77e7df6b167456e8",
+            "descriptionDigest": "810e768c48e88016f5567450aa1073df9d3d84c0716a481f1a617201cb5e7083"
+          }
+        ],
+        "members": [
+          {
+            "memberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+            "roleDigest": "25dd18fd025b009e7ee10ea778ff9665cdfac3b51fff36f4c24be2ac8d77cf26",
+            "level": 5,
+            "skillIds": ["coordination", "integration"],
+            "mentionHandleDigest": "17ddea7cccdb6b775c3e818074f02cca15ae4dd97fd398936a0739b2ed816cae",
+            "executionProfile": {
+              "provider": "codex",
+              "model": null,
+              "modeId": "full-access",
+              "thinkingOptionId": "medium",
+              "featureValuesDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+            },
+            "runtimeSnapshot": {
+              "providerAvailable": true,
+              "toolIds": [
+                "assign_task",
+                "assignment_report",
+                "chat_read",
+                "mission_plan",
+                "mission_status",
+                "team_member_history",
+                "team_message",
+                "team_status"
+              ],
+              "capabilityIds": [
+                "structured-tools",
+                "supports-mcp-servers",
+                "supports-reasoning-stream",
+                "supports-rewind-conversation",
+                "supports-session-listing",
+                "supports-session-persistence",
+                "supports-streaming",
+                "supports-tool-invocations"
+              ]
+            }
+          },
+          {
+            "memberId": "25af5d75-1a6a-4db3-b8b3-353b6584217c",
+            "roleDigest": "9d13104af3caa9fcf3eb5b85435e40d39ced8baeac88157d26ac30f615aa615c",
+            "level": 4,
+            "skillIds": ["api"],
+            "mentionHandleDigest": "7b60b870f113849832e5c9744966415eee822763d65a227b97ff3debae3d1430",
+            "executionProfile": {
+              "provider": "codex",
+              "model": null,
+              "modeId": "full-access",
+              "thinkingOptionId": "medium",
+              "featureValuesDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+            },
+            "runtimeSnapshot": {
+              "providerAvailable": true,
+              "toolIds": [
+                "assign_task",
+                "assignment_report",
+                "chat_read",
+                "mission_plan",
+                "mission_status",
+                "team_member_history",
+                "team_message",
+                "team_status"
+              ],
+              "capabilityIds": [
+                "structured-tools",
+                "supports-mcp-servers",
+                "supports-reasoning-stream",
+                "supports-rewind-conversation",
+                "supports-session-listing",
+                "supports-session-persistence",
+                "supports-streaming",
+                "supports-tool-invocations"
+              ]
+            }
+          },
+          {
+            "memberId": "1828d19a-4fde-43dc-bc10-4184694376e2",
+            "roleDigest": "c0602c12d11cbce4e6eb5e0f15bed781ce31f6616291c827abc4b228ecfe43c0",
+            "level": 4,
+            "skillIds": ["ui"],
+            "mentionHandleDigest": "dc7bac9f3acf03f0c45c47e602c024a57b90190da500e1f60f4c55344606d733",
+            "executionProfile": {
+              "provider": "codex",
+              "model": null,
+              "modeId": "full-access",
+              "thinkingOptionId": "medium",
+              "featureValuesDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+            },
+            "runtimeSnapshot": {
+              "providerAvailable": true,
+              "toolIds": [
+                "assign_task",
+                "assignment_report",
+                "chat_read",
+                "mission_plan",
+                "mission_status",
+                "team_member_history",
+                "team_message",
+                "team_status"
+              ],
+              "capabilityIds": [
+                "structured-tools",
+                "supports-mcp-servers",
+                "supports-reasoning-stream",
+                "supports-rewind-conversation",
+                "supports-session-listing",
+                "supports-session-persistence",
+                "supports-streaming",
+                "supports-tool-invocations"
+              ]
+            }
+          },
+          {
+            "memberId": "44cc7249-8c39-4ebd-ac58-76eb0b3df026",
+            "roleDigest": "b19c0a194d1f37318f6c28a2d7569a339ee51c371d9f200c95045af67dd819a4",
+            "level": 4,
+            "skillIds": ["testing"],
+            "mentionHandleDigest": "b2d07c08fd4ed2ea58d23e9b4c8fc8efce841da0db9b9ddf438d499ea09e5aee",
+            "executionProfile": {
+              "provider": "codex",
+              "model": null,
+              "modeId": "full-access",
+              "thinkingOptionId": "medium",
+              "featureValuesDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+            },
+            "runtimeSnapshot": {
+              "providerAvailable": true,
+              "toolIds": [
+                "assign_task",
+                "assignment_report",
+                "chat_read",
+                "mission_plan",
+                "mission_status",
+                "team_member_history",
+                "team_message",
+                "team_status"
+              ],
+              "capabilityIds": [
+                "structured-tools",
+                "supports-mcp-servers",
+                "supports-reasoning-stream",
+                "supports-rewind-conversation",
+                "supports-session-listing",
+                "supports-session-persistence",
+                "supports-streaming",
+                "supports-tool-invocations"
+              ]
+            }
+          },
+          {
+            "memberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+            "roleDigest": "2b3d3cb7df8a85e34b5841703d6bb56ed43327c4750adc9ba7ec809e5ff58270",
+            "level": 5,
+            "skillIds": ["verification"],
+            "mentionHandleDigest": "4bdff66d7ae2933d0b8735e009f273fdbb774ea4760f8f3d0a0b75290f2bd6db",
+            "executionProfile": {
+              "provider": "codex",
+              "model": null,
+              "modeId": "full-access",
+              "thinkingOptionId": "medium",
+              "featureValuesDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+            },
+            "runtimeSnapshot": {
+              "providerAvailable": true,
+              "toolIds": [
+                "assign_task",
+                "assignment_report",
+                "chat_read",
+                "mission_plan",
+                "mission_status",
+                "team_member_history",
+                "team_message",
+                "team_status"
+              ],
+              "capabilityIds": [
+                "structured-tools",
+                "supports-mcp-servers",
+                "supports-reasoning-stream",
+                "supports-rewind-conversation",
+                "supports-session-listing",
+                "supports-session-persistence",
+                "supports-streaming",
+                "supports-tool-invocations"
+              ]
+            }
+          }
+        ],
+        "createdAt": "2026-08-10T17:20:35.476Z"
+      }
+    ],
+    "workstreams": [
+      {
+        "workstreamId": "profile-api",
+        "kind": "delivery",
+        "titleDigest": "02749022317b26801decc81030d428907d9af5e77596944ad247795deb10e883",
+        "objectiveDigest": "7a1113dbc279d283eca8cb114534e1d5399bf4a20a82477b21e6768c6f599d30",
+        "deliverables": {
+          "count": 1,
+          "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+        },
+        "acceptanceCriteria": {
+          "count": 3,
+          "digests": [
+            "3683725d4f6c47c930f5755d8cc56c805056726b86aabbfe562d84d7738b7d65",
+            "8e9e39132c057a3aa372d329b1a464b5003e8191844ab4907e71436d4800910d",
+            "97b8f607d4c07caef7a53c20c954ac20ad53a90a3b8f152d29713cf4d709ade7"
+          ]
+        },
+        "requiredSkillIds": ["api"],
+        "preferredSkillIds": [],
+        "requiredRuntimeCapabilityIds": [],
+        "minimumLevel": 4,
+        "planRevision": 1,
+        "rosterSnapshotRevision": 1,
+        "dependencyWorkstreamIds": [],
+        "mutableScope": {
+          "kind": "paths",
+          "pathPrefixes": {
+            "count": 1,
+            "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+          }
+        },
+        "ownerMemberId": "25af5d75-1a6a-4db3-b8b3-353b6584217c",
+        "ownerMatchExplanation": {
+          "recommendedMemberId": "25af5d75-1a6a-4db3-b8b3-353b6584217c",
+          "requiredSkillIds": ["api"],
+          "preferredSkillIds": [],
+          "matchedPreferredSkillIds": [],
+          "requiredRuntimeCapabilityIds": [],
+          "minimumLevel": 4,
+          "selectedLevel": 4,
+          "eligibleMemberIds": ["25af5d75-1a6a-4db3-b8b3-353b6584217c"],
+          "excludedMemberIds": [],
+          "previousMemberId": null,
+          "candidateOpenAssignments": [
+            {
+              "memberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "25af5d75-1a6a-4db3-b8b3-353b6584217c",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "1828d19a-4fde-43dc-bc10-4184694376e2",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "44cc7249-8c39-4ebd-ac58-76eb0b3df026",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+              "openAssignments": 0
+            }
+          ],
+          "continuedPreviousMember": false,
+          "openAssignments": 0,
+          "rosterIndex": 1
+        },
+        "reviewPolicy": "required",
+        "reviewerRequirements": {
+          "requiredSkillIds": ["verification"],
+          "preferredSkillIds": [],
+          "requiredRuntimeCapabilityIds": [],
+          "minimumLevel": 5
+        },
+        "reviewerMemberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+        "reviewerMatchExplanation": {
+          "recommendedMemberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+          "requiredSkillIds": ["verification"],
+          "preferredSkillIds": [],
+          "matchedPreferredSkillIds": [],
+          "requiredRuntimeCapabilityIds": [],
+          "minimumLevel": 5,
+          "selectedLevel": 5,
+          "eligibleMemberIds": ["a4c7dfcc-4be2-4198-8b1e-d145b62c82b3"],
+          "excludedMemberIds": [],
+          "previousMemberId": null,
+          "candidateOpenAssignments": [
+            {
+              "memberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "25af5d75-1a6a-4db3-b8b3-353b6584217c",
+              "openAssignments": 1
+            },
+            {
+              "memberId": "1828d19a-4fde-43dc-bc10-4184694376e2",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "44cc7249-8c39-4ebd-ac58-76eb0b3df026",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+              "openAssignments": 0
+            }
+          ],
+          "continuedPreviousMember": false,
+          "openAssignments": 0,
+          "rosterIndex": 4
+        },
+        "status": "accepted"
+      },
+      {
+        "workstreamId": "profile-ui",
+        "kind": "delivery",
+        "titleDigest": "8b6d59ffc8bf71e9041ecb925985c46e5bbb54c0249f5d0af9dd281d49ce9509",
+        "objectiveDigest": "691aa3d19f6e3a047e9a58437cef9df995d4f093ccdc4ce0b73302073be41c58",
+        "deliverables": {
+          "count": 1,
+          "digests": ["9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d"]
+        },
+        "acceptanceCriteria": {
+          "count": 1,
+          "digests": ["7bb0badb2dee78f52d838aa396b95a45228665763541079d932ffabe4fef0c69"]
+        },
+        "requiredSkillIds": ["ui"],
+        "preferredSkillIds": [],
+        "requiredRuntimeCapabilityIds": [],
+        "minimumLevel": 4,
+        "planRevision": 1,
+        "rosterSnapshotRevision": 1,
+        "dependencyWorkstreamIds": [],
+        "mutableScope": {
+          "kind": "paths",
+          "pathPrefixes": {
+            "count": 1,
+            "digests": ["9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d"]
+          }
+        },
+        "ownerMemberId": "1828d19a-4fde-43dc-bc10-4184694376e2",
+        "ownerMatchExplanation": {
+          "recommendedMemberId": "1828d19a-4fde-43dc-bc10-4184694376e2",
+          "requiredSkillIds": ["ui"],
+          "preferredSkillIds": [],
+          "matchedPreferredSkillIds": [],
+          "requiredRuntimeCapabilityIds": [],
+          "minimumLevel": 4,
+          "selectedLevel": 4,
+          "eligibleMemberIds": ["1828d19a-4fde-43dc-bc10-4184694376e2"],
+          "excludedMemberIds": [],
+          "previousMemberId": null,
+          "candidateOpenAssignments": [
+            {
+              "memberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "25af5d75-1a6a-4db3-b8b3-353b6584217c",
+              "openAssignments": 1
+            },
+            {
+              "memberId": "1828d19a-4fde-43dc-bc10-4184694376e2",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "44cc7249-8c39-4ebd-ac58-76eb0b3df026",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+              "openAssignments": 1
+            }
+          ],
+          "continuedPreviousMember": false,
+          "openAssignments": 0,
+          "rosterIndex": 2
+        },
+        "reviewPolicy": "none",
+        "reviewerRequirements": null,
+        "reviewerMemberId": null,
+        "reviewerMatchExplanation": null,
+        "status": "accepted"
+      },
+      {
+        "workstreamId": "profile-tests",
+        "kind": "delivery",
+        "titleDigest": "3bb5bc155d7e9d843043ac008907f272c9dd7f3467575040c78704c0a220eba9",
+        "objectiveDigest": "168623704cede36713c6c48e3d5a2fb8046710fe16b7e364d91c5e9d4be39aef",
+        "deliverables": {
+          "count": 1,
+          "digests": ["ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"]
+        },
+        "acceptanceCriteria": {
+          "count": 5,
+          "digests": [
+            "ca34b4c37af0a5ec082dd3cc84da534bdf596cac71339f80cdba6e532e306a64",
+            "c00c646301f2cde27c8ccd0f085e73f99f9af83b4c5753b487da88d7f64e6be1",
+            "9947b49b21700e0768e54a8e5926be48c80fb0e412968f92c99b6f0780480a2f",
+            "9b46ee6bf8cfcb54eea5afc8c4071ad74e9655c97a12be1b7ea9b66dd1565a68",
+            "8806d9e22e822d8c8a2b0112c6ae05ee1bff3efff1c4a5b49a10a2f9433d52b5"
+          ]
+        },
+        "requiredSkillIds": ["testing"],
+        "preferredSkillIds": [],
+        "requiredRuntimeCapabilityIds": [],
+        "minimumLevel": 4,
+        "planRevision": 1,
+        "rosterSnapshotRevision": 1,
+        "dependencyWorkstreamIds": [],
+        "mutableScope": {
+          "kind": "paths",
+          "pathPrefixes": {
+            "count": 1,
+            "digests": ["ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"]
+          }
+        },
+        "ownerMemberId": "44cc7249-8c39-4ebd-ac58-76eb0b3df026",
+        "ownerMatchExplanation": {
+          "recommendedMemberId": "44cc7249-8c39-4ebd-ac58-76eb0b3df026",
+          "requiredSkillIds": ["testing"],
+          "preferredSkillIds": [],
+          "matchedPreferredSkillIds": [],
+          "requiredRuntimeCapabilityIds": [],
+          "minimumLevel": 4,
+          "selectedLevel": 4,
+          "eligibleMemberIds": ["44cc7249-8c39-4ebd-ac58-76eb0b3df026"],
+          "excludedMemberIds": [],
+          "previousMemberId": null,
+          "candidateOpenAssignments": [
+            {
+              "memberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "25af5d75-1a6a-4db3-b8b3-353b6584217c",
+              "openAssignments": 1
+            },
+            {
+              "memberId": "1828d19a-4fde-43dc-bc10-4184694376e2",
+              "openAssignments": 1
+            },
+            {
+              "memberId": "44cc7249-8c39-4ebd-ac58-76eb0b3df026",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+              "openAssignments": 1
+            }
+          ],
+          "continuedPreviousMember": false,
+          "openAssignments": 0,
+          "rosterIndex": 3
+        },
+        "reviewPolicy": "none",
+        "reviewerRequirements": null,
+        "reviewerMemberId": null,
+        "reviewerMatchExplanation": null,
+        "status": "accepted"
+      },
+      {
+        "workstreamId": "profile-integration",
+        "kind": "integration",
+        "titleDigest": "a7da055d0458a432d2690863e0d227f0a7faa9b7de7f69b2d3e0e78772918547",
+        "objectiveDigest": "31ee8b26b6d5754a1b6c315f07a81d9ef134d098b8cc1a156b158b94f2d29251",
+        "deliverables": {
+          "count": 1,
+          "digests": ["55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9"]
+        },
+        "acceptanceCriteria": {
+          "count": 2,
+          "digests": [
+            "18a70b3e76d2bf60b04c5b2881af968573f1500484f502f640be9a3d783777d7",
+            "81c378d2bf4bdd5a091a6e442a043e99ff2e49207f974070e27e2f73f14cc611"
+          ]
+        },
+        "requiredSkillIds": ["integration"],
+        "preferredSkillIds": [],
+        "requiredRuntimeCapabilityIds": [],
+        "minimumLevel": 5,
+        "planRevision": 1,
+        "rosterSnapshotRevision": 1,
+        "dependencyWorkstreamIds": ["profile-api", "profile-ui", "profile-tests"],
+        "mutableScope": {
+          "kind": "paths",
+          "pathPrefixes": {
+            "count": 1,
+            "digests": ["55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9"]
+          }
+        },
+        "ownerMemberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+        "ownerMatchExplanation": {
+          "recommendedMemberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+          "requiredSkillIds": ["integration"],
+          "preferredSkillIds": [],
+          "matchedPreferredSkillIds": [],
+          "requiredRuntimeCapabilityIds": [],
+          "minimumLevel": 5,
+          "selectedLevel": 5,
+          "eligibleMemberIds": ["51b7139c-f297-4cef-9f16-8494f5cdb102"],
+          "excludedMemberIds": [],
+          "previousMemberId": null,
+          "candidateOpenAssignments": [
+            {
+              "memberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+              "openAssignments": 0
+            },
+            {
+              "memberId": "25af5d75-1a6a-4db3-b8b3-353b6584217c",
+              "openAssignments": 1
+            },
+            {
+              "memberId": "1828d19a-4fde-43dc-bc10-4184694376e2",
+              "openAssignments": 1
+            },
+            {
+              "memberId": "44cc7249-8c39-4ebd-ac58-76eb0b3df026",
+              "openAssignments": 1
+            },
+            {
+              "memberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+              "openAssignments": 1
+            }
+          ],
+          "continuedPreviousMember": false,
+          "openAssignments": 0,
+          "rosterIndex": 0
+        },
+        "reviewPolicy": "none",
+        "reviewerRequirements": null,
+        "reviewerMemberId": null,
+        "reviewerMatchExplanation": null,
+        "status": "accepted"
+      },
+      {
+        "workstreamId": "profile-final-verification",
+        "kind": "verification",
+        "titleDigest": "f8dcb87c33c0d64b431a4cb488d742c76fd79595d7ce69e9ece7a67a408b285d",
+        "objectiveDigest": "8b7847193b2d6e3693c4b8adbad00741868406aff1d97114d5428beba6f59c73",
+        "deliverables": {
+          "count": 1,
+          "digests": ["e4635e2ab796e37fc0ef44ce336827517d582de2f53f402d6c9d3e6910a17907"]
+        },
+        "acceptanceCriteria": {
+          "count": 2,
+          "digests": [
+            "a38beea8cb2757ced0ddde7493f79cb103c9b0c369425a96171f21bf8e65e112",
+            "abe6cb394c527fcc9da00e21d342464380cc5bf0d924e221462fc9d0ed664ac8"
+          ]
+        },
+        "requiredSkillIds": ["verification"],
+        "preferredSkillIds": [],
+        "requiredRuntimeCapabilityIds": [],
+        "minimumLevel": 5,
+        "planRevision": 1,
+        "rosterSnapshotRevision": 1,
+        "dependencyWorkstreamIds": ["profile-integration"],
+        "mutableScope": {
+          "kind": "read_only",
+          "pathPrefixes": {
+            "count": 0,
+            "digests": []
+          }
+        },
+        "ownerMemberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+        "ownerMatchExplanation": {
+          "recommendedMemberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+          "requiredSkillIds": ["verification"],
+          "preferredSkillIds": [],
+          "matchedPreferredSkillIds": [],
+          "requiredRuntimeCapabilityIds": [],
+          "minimumLevel": 5,
+          "selectedLevel": 5,
+          "eligibleMemberIds": ["a4c7dfcc-4be2-4198-8b1e-d145b62c82b3"],
+          "excludedMemberIds": [],
+          "previousMemberId": null,
+          "candidateOpenAssignments": [
+            {
+              "memberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+              "openAssignments": 1
+            },
+            {
+              "memberId": "25af5d75-1a6a-4db3-b8b3-353b6584217c",
+              "openAssignments": 1
+            },
+            {
+              "memberId": "1828d19a-4fde-43dc-bc10-4184694376e2",
+              "openAssignments": 1
+            },
+            {
+              "memberId": "44cc7249-8c39-4ebd-ac58-76eb0b3df026",
+              "openAssignments": 1
+            },
+            {
+              "memberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+              "openAssignments": 1
+            }
+          ],
+          "continuedPreviousMember": false,
+          "openAssignments": 1,
+          "rosterIndex": 4
+        },
+        "reviewPolicy": "none",
+        "reviewerRequirements": null,
+        "reviewerMemberId": null,
+        "reviewerMatchExplanation": null,
+        "status": "accepted"
+      }
+    ],
+    "workstreamPlanSnapshots": [],
+    "assignments": [
+      {
+        "assignmentId": "281652e4-7635-46d8-8a24-2846c86b4038",
+        "revision": 4,
+        "kind": "delivery",
+        "subjectAssignmentIds": [],
+        "missionId": "fce2c63c-7ea3-4189-8e72-6cf10b584289",
+        "workstreamId": "profile-api",
+        "assigneeMemberId": "25af5d75-1a6a-4db3-b8b3-353b6584217c",
+        "runtimeAgentId": "df3bea89-2171-8ea6-acba-6aee35e5aa59",
+        "bindingEpoch": 1,
+        "objectiveDigest": "591e58c4089d1acbf6a260aba915c31eb1e28a6c1dadb076571de852e2ed8b71",
+        "inputRefs": {
+          "count": 1,
+          "digests": ["84b349e36a721373aa50dbcc16cfe96bf45d4c2304a5e3814a3dfb8f286a2d70"]
+        },
+        "deliverables": {
+          "count": 1,
+          "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+        },
+        "acceptanceCriteria": {
+          "count": 4,
+          "digests": [
+            "04f2ad677b425cab9c880834e4a835fa125662a1c9f7ea2e5eb916f34e7b72cc",
+            "2fb70e8b7f0944789987bb6d0a4cae222b7ad07a8306052aa866f0b5620ae250",
+            "96809c85e5378e7ccb0e1aa7cb193a14b279db0aabf8ce7d74d85656614a4e4d",
+            "47d535d622ec4d5887328c83a09fd2cf703ece5bb3cdf7b8b544371bdd7d9b8f"
+          ]
+        },
+        "mutableScope": {
+          "kind": "paths",
+          "pathPrefixes": {
+            "count": 1,
+            "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+          }
+        },
+        "dependencyAssignmentIds": [],
+        "priority": 1,
+        "planRevision": 1,
+        "rosterSnapshotRevision": 1,
+        "supersededBy": null,
+        "terminationReason": null,
+        "scopeLease": null,
+        "workspaceBaseline": {
+          "baselineId": "baseline:2b9de1f0613c58871654ac42f5153d4a730e9ca55e365a3172712623c93d11cf",
+          "workspaceId": "wks_a0c3d40e363807a7",
+          "assignmentId": "281652e4-7635-46d8-8a24-2846c86b4038",
+          "policyRevision": 1,
+          "capturedAt": "2026-08-10T17:23:21.464Z",
+          "entryCount": 2,
+          "entries": [
+            {
+              "pathDigest": "84b349e36a721373aa50dbcc16cfe96bf45d4c2304a5e3814a3dfb8f286a2d70",
+              "fingerprint": "sha256:d9dc1bf4d09f12a0cc87ffa7f10c1f18df862289c1ce8e342ac721d7f4a5e686",
+              "classification": "tracked"
+            },
+            {
+              "pathDigest": "5707e6c061ce5f5d2e50bb177a3fdb0e607fb2cf38f3cf4dc5f5cea97f87e747",
+              "fingerprint": "sha256:b418a904ed972a66b967335c4a03e2d1ae8fc5c37f68ab1d85f9be80a256ddc7",
+              "classification": "tracked"
+            }
+          ]
+        },
+        "report": {
+          "status": "completed",
+          "verdict": null,
+          "summaryDigest": "ebabdedee427538435c5bbe56a5c45907a5dc22e52189f44ef5701fdca53df8c",
+          "artifactPaths": {
+            "count": 1,
+            "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+          },
+          "testCount": 2,
+          "tests": [
+            {
+              "commandDigest": "411b1ad128d8bfc306ad9dd1b6206bfa18579a0ab01175de6d99b9387cb25bc1",
+              "passed": true
+            },
+            {
+              "commandDigest": "2ac76575daccfddba783586b58b259133a24e5c87c47ef5845377fb0e744728e",
+              "passed": true
+            }
+          ],
+          "blockerCount": 0,
+          "blockers": {
+            "count": 0,
+            "digests": []
+          },
+          "decisionCount": 2,
+          "decisions": {
+            "count": 2,
+            "digests": [
+              "29ebb6ed1fbe5cdf124073142c99c455a3a2bcca6448db4c0a7d23f75c92bce5",
+              "cd207dad4771db07e44207a093371932b018addd662b635089ddd67c4e638b73"
+            ]
+          },
+          "handoffCount": 1,
+          "handoffs": [
+            {
+              "targetWorkstreamId": "profile-integration",
+              "summaryDigest": "b810ecae78e005ef52ea50fe35405b40240fb14c789ed9b77c5cc8c22a54baf2",
+              "artifactPaths": {
+                "count": 1,
+                "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+              }
+            }
+          ]
+        },
+        "dispatchState": "settled",
+        "semanticState": "completed",
+        "status": "completed",
+        "attempt": 1,
+        "acceptedTurnId": "codex-turn-850fac8d-3376-4649-892a-6303011a9ee8",
+        "terminalEvidence": {
+          "assignmentId": "281652e4-7635-46d8-8a24-2846c86b4038",
+          "acceptedTurn": {
+            "turnId": "codex-turn-850fac8d-3376-4649-892a-6303011a9ee8",
+            "runtimeAgentId": "df3bea89-2171-8ea6-acba-6aee35e5aa59",
+            "outcome": "completed",
+            "recordedAt": "2026-08-10T17:24:40.529Z"
+          },
+          "capturedDelta": [
+            {
+              "pathDigest": "690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586",
+              "fingerprint": "sha256:7de5b41729b4bd8b07e40814eae4efb452db38a05f056fa659ac03097c1889e9"
+            }
+          ],
+          "ownershipViolations": [],
+          "report": {
+            "status": "completed",
+            "verdict": null,
+            "summaryDigest": "ebabdedee427538435c5bbe56a5c45907a5dc22e52189f44ef5701fdca53df8c",
+            "artifactPaths": {
+              "count": 1,
+              "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+            },
+            "testCount": 2,
+            "tests": [
+              {
+                "commandDigest": "411b1ad128d8bfc306ad9dd1b6206bfa18579a0ab01175de6d99b9387cb25bc1",
+                "passed": true
+              },
+              {
+                "commandDigest": "2ac76575daccfddba783586b58b259133a24e5c87c47ef5845377fb0e744728e",
+                "passed": true
+              }
+            ],
+            "blockerCount": 0,
+            "blockers": {
+              "count": 0,
+              "digests": []
+            },
+            "decisionCount": 2,
+            "decisions": {
+              "count": 2,
+              "digests": [
+                "29ebb6ed1fbe5cdf124073142c99c455a3a2bcca6448db4c0a7d23f75c92bce5",
+                "cd207dad4771db07e44207a093371932b018addd662b635089ddd67c4e638b73"
+              ]
+            },
+            "handoffCount": 1,
+            "handoffs": [
+              {
+                "targetWorkstreamId": "profile-integration",
+                "summaryDigest": "b810ecae78e005ef52ea50fe35405b40240fb14c789ed9b77c5cc8c22a54baf2",
+                "artifactPaths": {
+                  "count": 1,
+                  "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+                }
+              }
+            ]
+          },
+          "handoffs": [
+            {
+              "targetWorkstreamId": "profile-integration",
+              "summaryDigest": "b810ecae78e005ef52ea50fe35405b40240fb14c789ed9b77c5cc8c22a54baf2",
+              "artifactPaths": {
+                "count": 1,
+                "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+              }
+            }
+          ],
+          "capturedAt": "2026-08-10T17:24:40.564Z"
+        },
+        "createdAt": "2026-08-10T17:23:19.880Z",
+        "dispatchedAt": "2026-08-10T17:23:21.527Z",
+        "settledAt": "2026-08-10T17:24:40.564Z"
+      },
+      {
+        "assignmentId": "2eca2a75-51ea-4443-8d5f-b7951556bbf9",
+        "revision": 4,
+        "kind": "delivery",
+        "subjectAssignmentIds": [],
+        "missionId": "fce2c63c-7ea3-4189-8e72-6cf10b584289",
+        "workstreamId": "profile-ui",
+        "assigneeMemberId": "1828d19a-4fde-43dc-bc10-4184694376e2",
+        "runtimeAgentId": "b267f913-8043-8cba-a8fd-2c3730c3ee26",
+        "bindingEpoch": 1,
+        "objectiveDigest": "ff8828d293de50e39719436fd7c20d57297a6a6a9d699e9e1b8991c14822d012",
+        "inputRefs": {
+          "count": 1,
+          "digests": ["84b349e36a721373aa50dbcc16cfe96bf45d4c2304a5e3814a3dfb8f286a2d70"]
+        },
+        "deliverables": {
+          "count": 1,
+          "digests": ["9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d"]
+        },
+        "acceptanceCriteria": {
+          "count": 2,
+          "digests": [
+            "c0dac710bb861c291c2e745360766560a4975c9ac768d19a9b8ad5562745eee0",
+            "190c4275032762a29ab4d15c975c3e84e76e29f19e7788e3ebf6d9ead3d14981"
+          ]
+        },
+        "mutableScope": {
+          "kind": "paths",
+          "pathPrefixes": {
+            "count": 1,
+            "digests": ["9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d"]
+          }
+        },
+        "dependencyAssignmentIds": [],
+        "priority": 1,
+        "planRevision": 1,
+        "rosterSnapshotRevision": 1,
+        "supersededBy": null,
+        "terminationReason": null,
+        "scopeLease": null,
+        "workspaceBaseline": {
+          "baselineId": "baseline:5a529bf30b91d1504d462ad9d947dbfbd0d600cc5436b790d15a245646e260bb",
+          "workspaceId": "wks_a0c3d40e363807a7",
+          "assignmentId": "2eca2a75-51ea-4443-8d5f-b7951556bbf9",
+          "policyRevision": 1,
+          "capturedAt": "2026-08-10T17:23:21.516Z",
+          "entryCount": 2,
+          "entries": [
+            {
+              "pathDigest": "84b349e36a721373aa50dbcc16cfe96bf45d4c2304a5e3814a3dfb8f286a2d70",
+              "fingerprint": "sha256:d9dc1bf4d09f12a0cc87ffa7f10c1f18df862289c1ce8e342ac721d7f4a5e686",
+              "classification": "tracked"
+            },
+            {
+              "pathDigest": "5707e6c061ce5f5d2e50bb177a3fdb0e607fb2cf38f3cf4dc5f5cea97f87e747",
+              "fingerprint": "sha256:b418a904ed972a66b967335c4a03e2d1ae8fc5c37f68ab1d85f9be80a256ddc7",
+              "classification": "tracked"
+            }
+          ]
+        },
+        "report": {
+          "status": "completed",
+          "verdict": null,
+          "summaryDigest": "6fd07f196b1b14a9c0540a98482d67d5d6ca520989e464c8f733543718eb5a7b",
+          "artifactPaths": {
+            "count": 1,
+            "digests": ["9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d"]
+          },
+          "testCount": 2,
+          "tests": [
+            {
+              "commandDigest": "e1f941dcc9d9cd366ac6d3d09bd6c18644ca349e354795323e26b35d77bff595",
+              "passed": true
+            },
+            {
+              "commandDigest": "1d88b4f3ff62ca224735e515d6dc748933ee75298ffd11692fa8b84dcc197659",
+              "passed": true
+            }
+          ],
+          "blockerCount": 0,
+          "blockers": {
+            "count": 0,
+            "digests": []
+          },
+          "decisionCount": 1,
+          "decisions": {
+            "count": 1,
+            "digests": ["46f37fdb189a169dc70246585521e24d1a1db5c1415f38e16aa9ae68304a7d24"]
+          },
+          "handoffCount": 0,
+          "handoffs": []
+        },
+        "dispatchState": "settled",
+        "semanticState": "completed",
+        "status": "completed",
+        "attempt": 1,
+        "acceptedTurnId": "codex-turn-9ad9425a-0f3e-47fe-bad2-b6d92b3e0d02",
+        "terminalEvidence": {
+          "assignmentId": "2eca2a75-51ea-4443-8d5f-b7951556bbf9",
+          "acceptedTurn": {
+            "turnId": "codex-turn-9ad9425a-0f3e-47fe-bad2-b6d92b3e0d02",
+            "runtimeAgentId": "b267f913-8043-8cba-a8fd-2c3730c3ee26",
+            "outcome": "completed",
+            "recordedAt": "2026-08-10T17:24:25.755Z"
+          },
+          "capturedDelta": [
+            {
+              "pathDigest": "9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d",
+              "fingerprint": "sha256:9c2848b6d6ebbcc9ce07edd5cff899d4cea5ea726defec654bbb6bd873822955"
+            }
+          ],
+          "ownershipViolations": [],
+          "report": {
+            "status": "completed",
+            "verdict": null,
+            "summaryDigest": "6fd07f196b1b14a9c0540a98482d67d5d6ca520989e464c8f733543718eb5a7b",
+            "artifactPaths": {
+              "count": 1,
+              "digests": ["9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d"]
+            },
+            "testCount": 2,
+            "tests": [
+              {
+                "commandDigest": "e1f941dcc9d9cd366ac6d3d09bd6c18644ca349e354795323e26b35d77bff595",
+                "passed": true
+              },
+              {
+                "commandDigest": "1d88b4f3ff62ca224735e515d6dc748933ee75298ffd11692fa8b84dcc197659",
+                "passed": true
+              }
+            ],
+            "blockerCount": 0,
+            "blockers": {
+              "count": 0,
+              "digests": []
+            },
+            "decisionCount": 1,
+            "decisions": {
+              "count": 1,
+              "digests": ["46f37fdb189a169dc70246585521e24d1a1db5c1415f38e16aa9ae68304a7d24"]
+            },
+            "handoffCount": 0,
+            "handoffs": []
+          },
+          "handoffs": [],
+          "capturedAt": "2026-08-10T17:24:25.794Z"
+        },
+        "createdAt": "2026-08-10T17:23:19.880Z",
+        "dispatchedAt": "2026-08-10T17:23:21.527Z",
+        "settledAt": "2026-08-10T17:24:25.794Z"
+      },
+      {
+        "assignmentId": "13ff0468-046e-4793-9fa3-e9c5944a7c59",
+        "revision": 4,
+        "kind": "delivery",
+        "subjectAssignmentIds": [],
+        "missionId": "fce2c63c-7ea3-4189-8e72-6cf10b584289",
+        "workstreamId": "profile-tests",
+        "assigneeMemberId": "44cc7249-8c39-4ebd-ac58-76eb0b3df026",
+        "runtimeAgentId": "abec41da-bd99-8b68-a8c7-5107bc31917c",
+        "bindingEpoch": 1,
+        "objectiveDigest": "187393472165e97d8e6f00ae703dead239d148a64ecc3a44032b05742981ec20",
+        "inputRefs": {
+          "count": 1,
+          "digests": ["84b349e36a721373aa50dbcc16cfe96bf45d4c2304a5e3814a3dfb8f286a2d70"]
+        },
+        "deliverables": {
+          "count": 1,
+          "digests": ["ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"]
+        },
+        "acceptanceCriteria": {
+          "count": 3,
+          "digests": [
+            "88fa6e8f3d22be999c4a4857f788f179e377029f1c09d74762a3ef44b425cc8a",
+            "e77dcfafd28b7eb03d8ab6354d5b0ded56a65d0236b9de15eb27d64e427daaf6",
+            "a78b69ad1fbf07d6555017c566ae78eebf74c351726eebd2fb0a5439053bdb89"
+          ]
+        },
+        "mutableScope": {
+          "kind": "paths",
+          "pathPrefixes": {
+            "count": 1,
+            "digests": ["ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"]
+          }
+        },
+        "dependencyAssignmentIds": [],
+        "priority": 1,
+        "planRevision": 1,
+        "rosterSnapshotRevision": 1,
+        "supersededBy": null,
+        "terminationReason": null,
+        "scopeLease": null,
+        "workspaceBaseline": {
+          "baselineId": "baseline:98a7fe2b8e19c49629f9c3def83533ceb369912393f522f9d0c63addffbe65b6",
+          "workspaceId": "wks_a0c3d40e363807a7",
+          "assignmentId": "13ff0468-046e-4793-9fa3-e9c5944a7c59",
+          "policyRevision": 1,
+          "capturedAt": "2026-08-10T17:23:21.413Z",
+          "entryCount": 2,
+          "entries": [
+            {
+              "pathDigest": "84b349e36a721373aa50dbcc16cfe96bf45d4c2304a5e3814a3dfb8f286a2d70",
+              "fingerprint": "sha256:d9dc1bf4d09f12a0cc87ffa7f10c1f18df862289c1ce8e342ac721d7f4a5e686",
+              "classification": "tracked"
+            },
+            {
+              "pathDigest": "5707e6c061ce5f5d2e50bb177a3fdb0e607fb2cf38f3cf4dc5f5cea97f87e747",
+              "fingerprint": "sha256:b418a904ed972a66b967335c4a03e2d1ae8fc5c37f68ab1d85f9be80a256ddc7",
+              "classification": "tracked"
+            }
+          ]
+        },
+        "report": {
+          "status": "completed",
+          "verdict": null,
+          "summaryDigest": "7813f3fdc90c30e5d9da1747bba34cb7b01a0e3c15b12af49a695c6183985355",
+          "artifactPaths": {
+            "count": 1,
+            "digests": ["ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"]
+          },
+          "testCount": 2,
+          "tests": [
+            {
+              "commandDigest": "7faa60bfc8fee6c0d8bf30882b6fa9e395cc787e4c736708994926701126751a",
+              "passed": true
+            },
+            {
+              "commandDigest": "5f13667d0485c31389b3ee8cd87a161151de1098c6e9915e4623b29a832d1b7c",
+              "passed": true
+            }
+          ],
+          "blockerCount": 0,
+          "blockers": {
+            "count": 0,
+            "digests": []
+          },
+          "decisionCount": 3,
+          "decisions": {
+            "count": 3,
+            "digests": [
+              "ee5546a6efbc82b3531bbdacf4df009e71b52148dc5d6e78050c0658e4af8b98",
+              "5dc043cdd6f867b8f1b142d5ec37fdc8222c6fb08128cf8a7962727f991d337d",
+              "77b1e172ca97fecadbd169210bfad32e4cd7145f7ea544eac12ac17c072cf52c"
+            ]
+          },
+          "handoffCount": 1,
+          "handoffs": [
+            {
+              "targetWorkstreamId": "profile-integration",
+              "summaryDigest": "18bddae191117889f2f23adbb5f4c488d1f435d7e8cddb9ae3dfb4c749007612",
+              "artifactPaths": {
+                "count": 1,
+                "digests": ["ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"]
+              }
+            }
+          ]
+        },
+        "dispatchState": "settled",
+        "semanticState": "completed",
+        "status": "completed",
+        "attempt": 1,
+        "acceptedTurnId": "codex-turn-868ca04e-42b7-4611-a485-5d78cffc59c8",
+        "terminalEvidence": {
+          "assignmentId": "13ff0468-046e-4793-9fa3-e9c5944a7c59",
+          "acceptedTurn": {
+            "turnId": "codex-turn-868ca04e-42b7-4611-a485-5d78cffc59c8",
+            "runtimeAgentId": "abec41da-bd99-8b68-a8c7-5107bc31917c",
+            "outcome": "completed",
+            "recordedAt": "2026-08-10T17:24:45.049Z"
+          },
+          "capturedDelta": [
+            {
+              "pathDigest": "ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587",
+              "fingerprint": "sha256:e201d2c98fcca14d55caa8f382e1e660ad302f16054a0e001d04eedc7215b6f1"
+            }
+          ],
+          "ownershipViolations": [],
+          "report": {
+            "status": "completed",
+            "verdict": null,
+            "summaryDigest": "7813f3fdc90c30e5d9da1747bba34cb7b01a0e3c15b12af49a695c6183985355",
+            "artifactPaths": {
+              "count": 1,
+              "digests": ["ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"]
+            },
+            "testCount": 2,
+            "tests": [
+              {
+                "commandDigest": "7faa60bfc8fee6c0d8bf30882b6fa9e395cc787e4c736708994926701126751a",
+                "passed": true
+              },
+              {
+                "commandDigest": "5f13667d0485c31389b3ee8cd87a161151de1098c6e9915e4623b29a832d1b7c",
+                "passed": true
+              }
+            ],
+            "blockerCount": 0,
+            "blockers": {
+              "count": 0,
+              "digests": []
+            },
+            "decisionCount": 3,
+            "decisions": {
+              "count": 3,
+              "digests": [
+                "ee5546a6efbc82b3531bbdacf4df009e71b52148dc5d6e78050c0658e4af8b98",
+                "5dc043cdd6f867b8f1b142d5ec37fdc8222c6fb08128cf8a7962727f991d337d",
+                "77b1e172ca97fecadbd169210bfad32e4cd7145f7ea544eac12ac17c072cf52c"
+              ]
+            },
+            "handoffCount": 1,
+            "handoffs": [
+              {
+                "targetWorkstreamId": "profile-integration",
+                "summaryDigest": "18bddae191117889f2f23adbb5f4c488d1f435d7e8cddb9ae3dfb4c749007612",
+                "artifactPaths": {
+                  "count": 1,
+                  "digests": ["ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"]
+                }
+              }
+            ]
+          },
+          "handoffs": [
+            {
+              "targetWorkstreamId": "profile-integration",
+              "summaryDigest": "18bddae191117889f2f23adbb5f4c488d1f435d7e8cddb9ae3dfb4c749007612",
+              "artifactPaths": {
+                "count": 1,
+                "digests": ["ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"]
+              }
+            }
+          ],
+          "capturedAt": "2026-08-10T17:24:45.085Z"
+        },
+        "createdAt": "2026-08-10T17:23:19.880Z",
+        "dispatchedAt": "2026-08-10T17:23:21.527Z",
+        "settledAt": "2026-08-10T17:24:45.085Z"
+      },
+      {
+        "assignmentId": "f5988da8-7e0a-4a90-ab12-979333ac527c",
+        "revision": 4,
+        "kind": "delivery",
+        "subjectAssignmentIds": [],
+        "missionId": "fce2c63c-7ea3-4189-8e72-6cf10b584289",
+        "workstreamId": "profile-integration",
+        "assigneeMemberId": "51b7139c-f297-4cef-9f16-8494f5cdb102",
+        "runtimeAgentId": "88103743-5476-4426-adee-58f82b7646c4",
+        "bindingEpoch": 1,
+        "objectiveDigest": "f39f5d88f98cd60bd73536c9dbff865978ea74706e206673ce01deec6fc5f768",
+        "inputRefs": {
+          "count": 4,
+          "digests": [
+            "690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586",
+            "9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d",
+            "ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587",
+            "84b349e36a721373aa50dbcc16cfe96bf45d4c2304a5e3814a3dfb8f286a2d70"
+          ]
+        },
+        "deliverables": {
+          "count": 1,
+          "digests": ["55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9"]
+        },
+        "acceptanceCriteria": {
+          "count": 3,
+          "digests": [
+            "cb1261b00ce6376f62bea3eada182edcceeef2c7bdd62f7306b2012b85b5400c",
+            "a38beea8cb2757ced0ddde7493f79cb103c9b0c369425a96171f21bf8e65e112",
+            "e26ae3dc396398830e95ebfbc27fac4885cdfdd7d11e2d7d9c7645bc67d2d6d3"
+          ]
+        },
+        "mutableScope": {
+          "kind": "paths",
+          "pathPrefixes": {
+            "count": 1,
+            "digests": ["55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9"]
+          }
+        },
+        "dependencyAssignmentIds": [
+          "281652e4-7635-46d8-8a24-2846c86b4038",
+          "2eca2a75-51ea-4443-8d5f-b7951556bbf9",
+          "13ff0468-046e-4793-9fa3-e9c5944a7c59"
+        ],
+        "priority": 2,
+        "planRevision": 1,
+        "rosterSnapshotRevision": 1,
+        "supersededBy": null,
+        "terminationReason": null,
+        "scopeLease": null,
+        "workspaceBaseline": {
+          "baselineId": "baseline:d737fe87734aee129fe297ff7c3110447249ccdd7a8b501d74961f0ff10a8fbc",
+          "workspaceId": "wks_a0c3d40e363807a7",
+          "assignmentId": "f5988da8-7e0a-4a90-ab12-979333ac527c",
+          "policyRevision": 1,
+          "capturedAt": "2026-08-10T17:24:45.144Z",
+          "entryCount": 5,
+          "entries": [
+            {
+              "pathDigest": "84b349e36a721373aa50dbcc16cfe96bf45d4c2304a5e3814a3dfb8f286a2d70",
+              "fingerprint": "sha256:d9dc1bf4d09f12a0cc87ffa7f10c1f18df862289c1ce8e342ac721d7f4a5e686",
+              "classification": "tracked"
+            },
+            {
+              "pathDigest": "5707e6c061ce5f5d2e50bb177a3fdb0e607fb2cf38f3cf4dc5f5cea97f87e747",
+              "fingerprint": "sha256:b418a904ed972a66b967335c4a03e2d1ae8fc5c37f68ab1d85f9be80a256ddc7",
+              "classification": "tracked"
+            },
+            {
+              "pathDigest": "690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586",
+              "fingerprint": "sha256:7de5b41729b4bd8b07e40814eae4efb452db38a05f056fa659ac03097c1889e9",
+              "classification": "non_ignored_untracked"
+            },
+            {
+              "pathDigest": "9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d",
+              "fingerprint": "sha256:9c2848b6d6ebbcc9ce07edd5cff899d4cea5ea726defec654bbb6bd873822955",
+              "classification": "non_ignored_untracked"
+            },
+            {
+              "pathDigest": "ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587",
+              "fingerprint": "sha256:e201d2c98fcca14d55caa8f382e1e660ad302f16054a0e001d04eedc7215b6f1",
+              "classification": "non_ignored_untracked"
+            }
+          ]
+        },
+        "report": {
+          "status": "completed",
+          "verdict": null,
+          "summaryDigest": "07155982f6eede728e3f2f4a0bcf24149b3a2fd17a553a3b05d3ea7f2da12344",
+          "artifactPaths": {
+            "count": 1,
+            "digests": ["55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9"]
+          },
+          "testCount": 2,
+          "tests": [
+            {
+              "commandDigest": "00b20d4077d5dc71071551fc106b76b704e8a9a05844233f15ea9c81e3b4dc9e",
+              "passed": true
+            },
+            {
+              "commandDigest": "58bb6064e8f8a246b1252f5a3af9e3db3ff3a77f0db7ebea0a4de66af0b5aa92",
+              "passed": true
+            }
+          ],
+          "blockerCount": 0,
+          "blockers": {
+            "count": 0,
+            "digests": []
+          },
+          "decisionCount": 1,
+          "decisions": {
+            "count": 1,
+            "digests": ["e76173cb5377ec80d546599ca9cf966505f1ce41f91725f9131c7e88aa0dcd5c"]
+          },
+          "handoffCount": 1,
+          "handoffs": [
+            {
+              "targetWorkstreamId": "profile-final-verification",
+              "summaryDigest": "e36c43ecf9f45a046cd1540af3fb530f3c47f91e60a1902bdaa5a6e52d48885d",
+              "artifactPaths": {
+                "count": 4,
+                "digests": [
+                  "55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9",
+                  "690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586",
+                  "9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d",
+                  "ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"
+                ]
+              }
+            }
+          ]
+        },
+        "dispatchState": "settled",
+        "semanticState": "completed",
+        "status": "completed",
+        "attempt": 1,
+        "acceptedTurnId": "codex-turn-b14cd844-6ff2-4090-90e9-b9807dd5e2b0",
+        "terminalEvidence": {
+          "assignmentId": "f5988da8-7e0a-4a90-ab12-979333ac527c",
+          "acceptedTurn": {
+            "turnId": "codex-turn-b14cd844-6ff2-4090-90e9-b9807dd5e2b0",
+            "runtimeAgentId": "88103743-5476-4426-adee-58f82b7646c4",
+            "outcome": "completed",
+            "recordedAt": "2026-08-10T17:26:05.076Z"
+          },
+          "capturedDelta": [
+            {
+              "pathDigest": "55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9",
+              "fingerprint": "sha256:620a94d72fc9311ae43084b6c882a295a8a33f23bde25d77c7edcd0619890d06"
+            }
+          ],
+          "ownershipViolations": [],
+          "report": {
+            "status": "completed",
+            "verdict": null,
+            "summaryDigest": "07155982f6eede728e3f2f4a0bcf24149b3a2fd17a553a3b05d3ea7f2da12344",
+            "artifactPaths": {
+              "count": 1,
+              "digests": ["55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9"]
+            },
+            "testCount": 2,
+            "tests": [
+              {
+                "commandDigest": "00b20d4077d5dc71071551fc106b76b704e8a9a05844233f15ea9c81e3b4dc9e",
+                "passed": true
+              },
+              {
+                "commandDigest": "58bb6064e8f8a246b1252f5a3af9e3db3ff3a77f0db7ebea0a4de66af0b5aa92",
+                "passed": true
+              }
+            ],
+            "blockerCount": 0,
+            "blockers": {
+              "count": 0,
+              "digests": []
+            },
+            "decisionCount": 1,
+            "decisions": {
+              "count": 1,
+              "digests": ["e76173cb5377ec80d546599ca9cf966505f1ce41f91725f9131c7e88aa0dcd5c"]
+            },
+            "handoffCount": 1,
+            "handoffs": [
+              {
+                "targetWorkstreamId": "profile-final-verification",
+                "summaryDigest": "e36c43ecf9f45a046cd1540af3fb530f3c47f91e60a1902bdaa5a6e52d48885d",
+                "artifactPaths": {
+                  "count": 4,
+                  "digests": [
+                    "55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9",
+                    "690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586",
+                    "9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d",
+                    "ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"
+                  ]
+                }
+              }
+            ]
+          },
+          "handoffs": [
+            {
+              "targetWorkstreamId": "profile-final-verification",
+              "summaryDigest": "e36c43ecf9f45a046cd1540af3fb530f3c47f91e60a1902bdaa5a6e52d48885d",
+              "artifactPaths": {
+                "count": 4,
+                "digests": [
+                  "55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9",
+                  "690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586",
+                  "9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d",
+                  "ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"
+                ]
+              }
+            }
+          ],
+          "capturedAt": "2026-08-10T17:26:05.118Z"
+        },
+        "createdAt": "2026-08-10T17:23:19.880Z",
+        "dispatchedAt": "2026-08-10T17:24:45.151Z",
+        "settledAt": "2026-08-10T17:26:05.118Z"
+      },
+      {
+        "assignmentId": "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-api:review",
+        "revision": 4,
+        "kind": "review",
+        "subjectAssignmentIds": ["281652e4-7635-46d8-8a24-2846c86b4038"],
+        "missionId": "fce2c63c-7ea3-4189-8e72-6cf10b584289",
+        "workstreamId": "profile-api",
+        "assigneeMemberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+        "runtimeAgentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+        "bindingEpoch": 1,
+        "objectiveDigest": "7a1113dbc279d283eca8cb114534e1d5399bf4a20a82477b21e6768c6f599d30",
+        "inputRefs": {
+          "count": 1,
+          "digests": ["6e2b661b1d557a681793fb6fe5abb6df187c9297cbc60cc814171f611b4151e1"]
+        },
+        "deliverables": {
+          "count": 1,
+          "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+        },
+        "acceptanceCriteria": {
+          "count": 3,
+          "digests": [
+            "3683725d4f6c47c930f5755d8cc56c805056726b86aabbfe562d84d7738b7d65",
+            "8e9e39132c057a3aa372d329b1a464b5003e8191844ab4907e71436d4800910d",
+            "97b8f607d4c07caef7a53c20c954ac20ad53a90a3b8f152d29713cf4d709ade7"
+          ]
+        },
+        "mutableScope": {
+          "kind": "read_only",
+          "pathPrefixes": {
+            "count": 0,
+            "digests": []
+          }
+        },
+        "dependencyAssignmentIds": ["281652e4-7635-46d8-8a24-2846c86b4038"],
+        "priority": 1,
+        "planRevision": 1,
+        "rosterSnapshotRevision": 1,
+        "supersededBy": null,
+        "terminationReason": null,
+        "scopeLease": null,
+        "workspaceBaseline": {
+          "baselineId": "baseline:7e116ef56ce1db306f24051c568bdd9691f1a3837e5d26410a9741f9a75fc793",
+          "workspaceId": "wks_a0c3d40e363807a7",
+          "assignmentId": "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-api:review",
+          "policyRevision": 1,
+          "capturedAt": "2026-08-10T17:24:41.483Z",
+          "entryCount": 5,
+          "entries": [
+            {
+              "pathDigest": "84b349e36a721373aa50dbcc16cfe96bf45d4c2304a5e3814a3dfb8f286a2d70",
+              "fingerprint": "sha256:d9dc1bf4d09f12a0cc87ffa7f10c1f18df862289c1ce8e342ac721d7f4a5e686",
+              "classification": "tracked"
+            },
+            {
+              "pathDigest": "5707e6c061ce5f5d2e50bb177a3fdb0e607fb2cf38f3cf4dc5f5cea97f87e747",
+              "fingerprint": "sha256:b418a904ed972a66b967335c4a03e2d1ae8fc5c37f68ab1d85f9be80a256ddc7",
+              "classification": "tracked"
+            },
+            {
+              "pathDigest": "690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586",
+              "fingerprint": "sha256:7de5b41729b4bd8b07e40814eae4efb452db38a05f056fa659ac03097c1889e9",
+              "classification": "non_ignored_untracked"
+            },
+            {
+              "pathDigest": "9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d",
+              "fingerprint": "sha256:9c2848b6d6ebbcc9ce07edd5cff899d4cea5ea726defec654bbb6bd873822955",
+              "classification": "non_ignored_untracked"
+            },
+            {
+              "pathDigest": "ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587",
+              "fingerprint": "sha256:e201d2c98fcca14d55caa8f382e1e660ad302f16054a0e001d04eedc7215b6f1",
+              "classification": "non_ignored_untracked"
+            }
+          ]
+        },
+        "report": {
+          "status": "completed",
+          "verdict": "approved",
+          "summaryDigest": "8b09b2e6bf2ea3c0ef0d6bb5dac1227210e1b3a22b0f541a000460750b701a71",
+          "artifactPaths": {
+            "count": 1,
+            "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+          },
+          "testCount": 3,
+          "tests": [
+            {
+              "commandDigest": "411b1ad128d8bfc306ad9dd1b6206bfa18579a0ab01175de6d99b9387cb25bc1",
+              "passed": true
+            },
+            {
+              "commandDigest": "64cb4f003ffb672bfb2124ac69a15eb27108dc6c6a74222733704e9689bac97d",
+              "passed": true
+            },
+            {
+              "commandDigest": "a656f357e448da8b3dd4e874ede7b3ba7af9d4eab78d6e756b557ea5292ad623",
+              "passed": true
+            }
+          ],
+          "blockerCount": 0,
+          "blockers": {
+            "count": 0,
+            "digests": []
+          },
+          "decisionCount": 2,
+          "decisions": {
+            "count": 2,
+            "digests": [
+              "886fd199ca986ea2567e62fcb4895bea10a2328cdc3ff85987aa1a0eaaec5c7e",
+              "22a957f88ad0f216d30c3aa2374137e4da81413d1068a797dd306d8247cf5b22"
+            ]
+          },
+          "handoffCount": 1,
+          "handoffs": [
+            {
+              "targetWorkstreamId": "profile-integration",
+              "summaryDigest": "462bdd09ccfc9f9ae963a3263edcc0674138866755c644c653df4a1400e10ab1",
+              "artifactPaths": {
+                "count": 1,
+                "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+              }
+            }
+          ]
+        },
+        "dispatchState": "settled",
+        "semanticState": "completed",
+        "status": "completed",
+        "attempt": 1,
+        "acceptedTurnId": "codex-turn-3c152b0e-d246-407c-befc-632832eea61c",
+        "terminalEvidence": {
+          "assignmentId": "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-api:review",
+          "acceptedTurn": {
+            "turnId": "codex-turn-3c152b0e-d246-407c-befc-632832eea61c",
+            "runtimeAgentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+            "outcome": "completed",
+            "recordedAt": "2026-08-10T17:25:34.217Z"
+          },
+          "capturedDelta": [],
+          "ownershipViolations": [],
+          "report": {
+            "status": "completed",
+            "verdict": "approved",
+            "summaryDigest": "8b09b2e6bf2ea3c0ef0d6bb5dac1227210e1b3a22b0f541a000460750b701a71",
+            "artifactPaths": {
+              "count": 1,
+              "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+            },
+            "testCount": 3,
+            "tests": [
+              {
+                "commandDigest": "411b1ad128d8bfc306ad9dd1b6206bfa18579a0ab01175de6d99b9387cb25bc1",
+                "passed": true
+              },
+              {
+                "commandDigest": "64cb4f003ffb672bfb2124ac69a15eb27108dc6c6a74222733704e9689bac97d",
+                "passed": true
+              },
+              {
+                "commandDigest": "a656f357e448da8b3dd4e874ede7b3ba7af9d4eab78d6e756b557ea5292ad623",
+                "passed": true
+              }
+            ],
+            "blockerCount": 0,
+            "blockers": {
+              "count": 0,
+              "digests": []
+            },
+            "decisionCount": 2,
+            "decisions": {
+              "count": 2,
+              "digests": [
+                "886fd199ca986ea2567e62fcb4895bea10a2328cdc3ff85987aa1a0eaaec5c7e",
+                "22a957f88ad0f216d30c3aa2374137e4da81413d1068a797dd306d8247cf5b22"
+              ]
+            },
+            "handoffCount": 1,
+            "handoffs": [
+              {
+                "targetWorkstreamId": "profile-integration",
+                "summaryDigest": "462bdd09ccfc9f9ae963a3263edcc0674138866755c644c653df4a1400e10ab1",
+                "artifactPaths": {
+                  "count": 1,
+                  "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+                }
+              }
+            ]
+          },
+          "handoffs": [
+            {
+              "targetWorkstreamId": "profile-integration",
+              "summaryDigest": "462bdd09ccfc9f9ae963a3263edcc0674138866755c644c653df4a1400e10ab1",
+              "artifactPaths": {
+                "count": 1,
+                "digests": ["690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586"]
+              }
+            }
+          ],
+          "capturedAt": "2026-08-10T17:25:34.243Z"
+        },
+        "createdAt": "2026-08-10T17:24:40.567Z",
+        "dispatchedAt": "2026-08-10T17:24:41.493Z",
+        "settledAt": "2026-08-10T17:25:34.243Z"
+      },
+      {
+        "assignmentId": "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-final-verification:verification",
+        "revision": 4,
+        "kind": "verification",
+        "subjectAssignmentIds": [
+          "13ff0468-046e-4793-9fa3-e9c5944a7c59",
+          "281652e4-7635-46d8-8a24-2846c86b4038",
+          "2eca2a75-51ea-4443-8d5f-b7951556bbf9",
+          "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-api:review",
+          "f5988da8-7e0a-4a90-ab12-979333ac527c"
+        ],
+        "missionId": "fce2c63c-7ea3-4189-8e72-6cf10b584289",
+        "workstreamId": "profile-final-verification",
+        "assigneeMemberId": "a4c7dfcc-4be2-4198-8b1e-d145b62c82b3",
+        "runtimeAgentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+        "bindingEpoch": 1,
+        "objectiveDigest": "8b7847193b2d6e3693c4b8adbad00741868406aff1d97114d5428beba6f59c73",
+        "inputRefs": {
+          "count": 5,
+          "digests": [
+            "d7bc2dcfaddff0f42b592baae393c0efbe949eca429055be658509b46225baa8",
+            "6e2b661b1d557a681793fb6fe5abb6df187c9297cbc60cc814171f611b4151e1",
+            "4ea154e2d7a1120824a7397f5bc876e8cf96212bd0fe1844b3776ef439e5ef66",
+            "7956153844d7eacfae9728248d82a157fddc9fd3ea3b60d60dde1bd97fb61954",
+            "0adb08ae01eaf25e1c96adaf502551ff8700143e48fc1def6bb3bbc00e1c22d0"
+          ]
+        },
+        "deliverables": {
+          "count": 1,
+          "digests": ["e4635e2ab796e37fc0ef44ce336827517d582de2f53f402d6c9d3e6910a17907"]
+        },
+        "acceptanceCriteria": {
+          "count": 2,
+          "digests": [
+            "a38beea8cb2757ced0ddde7493f79cb103c9b0c369425a96171f21bf8e65e112",
+            "abe6cb394c527fcc9da00e21d342464380cc5bf0d924e221462fc9d0ed664ac8"
+          ]
+        },
+        "mutableScope": {
+          "kind": "read_only",
+          "pathPrefixes": {
+            "count": 0,
+            "digests": []
+          }
+        },
+        "dependencyAssignmentIds": [
+          "13ff0468-046e-4793-9fa3-e9c5944a7c59",
+          "281652e4-7635-46d8-8a24-2846c86b4038",
+          "2eca2a75-51ea-4443-8d5f-b7951556bbf9",
+          "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-api:review",
+          "f5988da8-7e0a-4a90-ab12-979333ac527c"
+        ],
+        "priority": 2,
+        "planRevision": 1,
+        "rosterSnapshotRevision": 1,
+        "supersededBy": null,
+        "terminationReason": null,
+        "scopeLease": null,
+        "workspaceBaseline": {
+          "baselineId": "baseline:a5521f870beaf5b71c06b8eb79ae8e026cf0c4923eefb2f54cb1a4310934d3ec",
+          "workspaceId": "wks_a0c3d40e363807a7",
+          "assignmentId": "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-final-verification:verification",
+          "policyRevision": 1,
+          "capturedAt": "2026-08-10T17:26:05.143Z",
+          "entryCount": 6,
+          "entries": [
+            {
+              "pathDigest": "84b349e36a721373aa50dbcc16cfe96bf45d4c2304a5e3814a3dfb8f286a2d70",
+              "fingerprint": "sha256:d9dc1bf4d09f12a0cc87ffa7f10c1f18df862289c1ce8e342ac721d7f4a5e686",
+              "classification": "tracked"
+            },
+            {
+              "pathDigest": "5707e6c061ce5f5d2e50bb177a3fdb0e607fb2cf38f3cf4dc5f5cea97f87e747",
+              "fingerprint": "sha256:b418a904ed972a66b967335c4a03e2d1ae8fc5c37f68ab1d85f9be80a256ddc7",
+              "classification": "tracked"
+            },
+            {
+              "pathDigest": "55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9",
+              "fingerprint": "sha256:620a94d72fc9311ae43084b6c882a295a8a33f23bde25d77c7edcd0619890d06",
+              "classification": "non_ignored_untracked"
+            },
+            {
+              "pathDigest": "690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586",
+              "fingerprint": "sha256:7de5b41729b4bd8b07e40814eae4efb452db38a05f056fa659ac03097c1889e9",
+              "classification": "non_ignored_untracked"
+            },
+            {
+              "pathDigest": "9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d",
+              "fingerprint": "sha256:9c2848b6d6ebbcc9ce07edd5cff899d4cea5ea726defec654bbb6bd873822955",
+              "classification": "non_ignored_untracked"
+            },
+            {
+              "pathDigest": "ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587",
+              "fingerprint": "sha256:e201d2c98fcca14d55caa8f382e1e660ad302f16054a0e001d04eedc7215b6f1",
+              "classification": "non_ignored_untracked"
+            }
+          ]
+        },
+        "report": {
+          "status": "completed",
+          "verdict": "approved",
+          "summaryDigest": "53d695fd7993ef8c106d33c052eb8377379056962197b4fff58ac74a9f39435b",
+          "artifactPaths": {
+            "count": 4,
+            "digests": [
+              "690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586",
+              "9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d",
+              "55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9",
+              "ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"
+            ]
+          },
+          "testCount": 3,
+          "tests": [
+            {
+              "commandDigest": "58bb6064e8f8a246b1252f5a3af9e3db3ff3a77f0db7ebea0a4de66af0b5aa92",
+              "passed": true
+            },
+            {
+              "commandDigest": "3b202bfd07cfde8ad946319068a9def134b44f26f7f960eb706ff27c4802612f",
+              "passed": true
+            },
+            {
+              "commandDigest": "15ec7009b22bd6a1fc3a3c93e76e67e1fecd2100cb0a3b3f8ad05715338e10af",
+              "passed": true
+            }
+          ],
+          "blockerCount": 0,
+          "blockers": {
+            "count": 0,
+            "digests": []
+          },
+          "decisionCount": 4,
+          "decisions": {
+            "count": 4,
+            "digests": [
+              "692b8c5f8583edd4c898a0026ea23be6cddf22bf5711c0dc5030af5819e834e7",
+              "6d4263bd000d6a8b7919da3825c277d6283206f6985d8df97c20bd1380458df8",
+              "de04c2f32d959493ff93358e5a602c193f3476fa2e4256fbe90879f73402b994",
+              "9235456810b0109ff07d5ae4c0e85b4fd55feee0d2a075db56a7cd3a3ce960ad"
+            ]
+          },
+          "handoffCount": 0,
+          "handoffs": []
+        },
+        "dispatchState": "settled",
+        "semanticState": "completed",
+        "status": "completed",
+        "attempt": 1,
+        "acceptedTurnId": "codex-turn-09e15eb2-af39-43a6-a97e-ed3c72a3f432",
+        "terminalEvidence": {
+          "assignmentId": "assignment:fce2c63c-7ea3-4189-8e72-6cf10b584289:1:profile-final-verification:verification",
+          "acceptedTurn": {
+            "turnId": "codex-turn-09e15eb2-af39-43a6-a97e-ed3c72a3f432",
+            "runtimeAgentId": "26eb7ae8-94d2-8899-a803-be3b33fee966",
+            "outcome": "completed",
+            "recordedAt": "2026-08-10T17:26:51.876Z"
+          },
+          "capturedDelta": [],
+          "ownershipViolations": [],
+          "report": {
+            "status": "completed",
+            "verdict": "approved",
+            "summaryDigest": "53d695fd7993ef8c106d33c052eb8377379056962197b4fff58ac74a9f39435b",
+            "artifactPaths": {
+              "count": 4,
+              "digests": [
+                "690e13e998bbad8b72372820c3c8844267e52cfe41130100eaf65994fd8f4586",
+                "9dcf5d6aaa9a67afe2d7fb87dac5669dd546121e775ba136f14845da5284f87d",
+                "55113e622be42938bdad7d07281c9ee43b207cf53288b1e1da2682d37049f9a9",
+                "ef19e401a80e9d05fdd4be1e45bf1d928230bde5c41ff9eaf3d18a2cdfe24587"
+              ]
+            },
+            "testCount": 3,
+            "tests": [
+              {
+                "commandDigest": "58bb6064e8f8a246b1252f5a3af9e3db3ff3a77f0db7ebea0a4de66af0b5aa92",
+                "passed": true
+              },
+              {
+                "commandDigest": "3b202bfd07cfde8ad946319068a9def134b44f26f7f960eb706ff27c4802612f",
+                "passed": true
+              },
+              {
+                "commandDigest": "15ec7009b22bd6a1fc3a3c93e76e67e1fecd2100cb0a3b3f8ad05715338e10af",
+                "passed": true
+              }
+            ],
+            "blockerCount": 0,
+            "blockers": {
+              "count": 0,
+              "digests": []
+            },
+            "decisionCount": 4,
+            "decisions": {
+              "count": 4,
+              "digests": [
+                "692b8c5f8583edd4c898a0026ea23be6cddf22bf5711c0dc5030af5819e834e7",
+                "6d4263bd000d6a8b7919da3825c277d6283206f6985d8df97c20bd1380458df8",
+                "de04c2f32d959493ff93358e5a602c193f3476fa2e4256fbe90879f73402b994",
+                "9235456810b0109ff07d5ae4c0e85b4fd55feee0d2a075db56a7cd3a3ce960ad"
+              ]
+            },
+            "handoffCount": 0,
+            "handoffs": []
+          },
+          "handoffs": [],
+          "capturedAt": "2026-08-10T17:26:51.902Z"
+        },
+        "createdAt": "2026-08-10T17:26:05.122Z",
+        "dispatchedAt": "2026-08-10T17:26:05.148Z",
+        "settledAt": "2026-08-10T17:26:51.902Z"
+      }
+    ],
+    "attentionItems": [],
+    "lifecycleRecoveryFailure": null,
+    "createdAt": "2026-08-10T17:20:35.479Z",
+    "updatedAt": "2026-08-10T17:26:53.139Z",
+    "completedAt": "2026-08-10T17:26:53.139Z"
+  }
+}
