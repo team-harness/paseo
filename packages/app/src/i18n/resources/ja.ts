@@ -1137,6 +1137,10 @@ export const ja: TranslationResources = {
       empty: "まだ発言はありません。",
       showMore: "続きを表示",
       showMoreLines: "残り {{count}} 行を表示",
+      mentionReceiptOne:
+        "1 人のメンバーに配信済み、または待機中です。作業中のメンバーは安全な区切りで受信します。",
+      mentionReceiptMany:
+        "{{count}} 人のメンバーに配信済み、または待機中です。作業中のメンバーは安全な区切りで受信します。",
     },
     tabs: {
       chat: "チャット",

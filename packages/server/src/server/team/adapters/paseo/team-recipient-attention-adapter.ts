@@ -8,10 +8,7 @@ import {
 } from "../../../agent/agent-prompt.js";
 import type { AgentStorage } from "../../../agent/agent-storage.js";
 import { isAgentWakeable } from "../../../agent/agent-wakeability.js";
-import type {
-  TeamRecipientAttentionPort,
-  TeamRoomMentionWakePort,
-} from "../../application/ports.js";
+import type { TeamRecipientAttentionPort } from "../../application/ports.js";
 
 interface PaseoTeamRecipientAttentionAdapterOptions {
   agentManager: AgentManager;
@@ -20,9 +17,7 @@ interface PaseoTeamRecipientAttentionAdapterOptions {
   sendPrompt?: (params: SendPromptToAgentParams) => Promise<{ outOfBand: boolean }>;
 }
 
-export class PaseoTeamRecipientAttentionAdapter
-  implements TeamRecipientAttentionPort, TeamRoomMentionWakePort
-{
+export class PaseoTeamRecipientAttentionAdapter implements TeamRecipientAttentionPort {
   private readonly agentManager: AgentManager;
   private readonly agentStorage: AgentStorage;
   private readonly logger: Logger;
@@ -57,6 +52,20 @@ export class PaseoTeamRecipientAttentionAdapter
     const record = await this.agentStorage.get(input.recipientAgentId);
     if (!record || record.archivedAt) return "unavailable" as const;
     const live = this.agentManager.getAgent(input.recipientAgentId);
+    const prompt = formatSystemNotificationPrompt(
+      input.origin === "human_mention"
+        ? `A human mentioned you in Mission "${input.missionId}". First call chat_read with missionId "${input.missionId}". Then call chat_post with missionId "${input.missionId}", replyToMessageId "${input.roomMessageId}", idempotencyKey "${input.deliveryId}:ack", and a brief acknowledgment or current status. Continue the same Assignment after the room reply is posted.`
+        : `Team message ${input.deliveryId} is ready for Mission "${input.missionId}". Call chat_read with missionId "${input.missionId}" now.`,
+    );
+    const messageId = `team-message:${input.deliveryId}:binding:${input.bindingEpoch}:attempt:${input.attempt}`;
+    if (input.origin === "human_mention" && live?.lifecycle === "running") {
+      const steered = await this.agentManager.steerActiveTurn({
+        agentId: input.recipientAgentId,
+        prompt,
+        clientMessageId: messageId,
+      });
+      return steered.status === "delivered" ? ("notified" as const) : ("busy" as const);
+    }
     if (!isAgentWakeable({ live, record })) return "busy" as const;
 
     try {
@@ -64,10 +73,8 @@ export class PaseoTeamRecipientAttentionAdapter
         agentManager: this.agentManager,
         agentStorage: this.agentStorage,
         agentId: input.recipientAgentId,
-        prompt: formatSystemNotificationPrompt(
-          `Team message ${input.deliveryId} is ready for Mission "${input.missionId}". Call chat_read with missionId "${input.missionId}" now.`,
-        ),
-        messageId: `team-message:${input.deliveryId}:binding:${input.bindingEpoch}:attempt:${input.attempt}`,
+        prompt,
+        messageId,
         unarchive: false,
         replaceRunning: false,
         logger: this.logger,
@@ -75,31 +82,6 @@ export class PaseoTeamRecipientAttentionAdapter
       return "notified" as const;
     } catch (error) {
       if (this.agentManager.hasInFlightRun(input.recipientAgentId)) return "busy" as const;
-      throw error;
-    }
-  }
-
-  async wake(input: Parameters<TeamRoomMentionWakePort["wake"]>[0]): Promise<void> {
-    const record = await this.agentStorage.get(input.recipientAgentId);
-    if (!record || record.archivedAt) return;
-    const live = this.agentManager.getAgent(input.recipientAgentId);
-    if (!isAgentWakeable({ live, record })) return;
-
-    try {
-      await this.sendPrompt({
-        agentManager: this.agentManager,
-        agentStorage: this.agentStorage,
-        agentId: input.recipientAgentId,
-        prompt: formatSystemNotificationPrompt(
-          `You were mentioned in Mission "${input.missionId}". Call chat_read with missionId "${input.missionId}" now.`,
-        ),
-        messageId: `team-room-mention:${input.messageId}:binding:${input.bindingEpoch}`,
-        unarchive: false,
-        replaceRunning: false,
-        logger: this.logger,
-      });
-    } catch (error) {
-      if (this.agentManager.hasInFlightRun(input.recipientAgentId)) return;
       throw error;
     }
   }

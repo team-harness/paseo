@@ -1157,6 +1157,10 @@ export const fr: TranslationResources = {
       empty: "Rien n’a encore été dit.",
       showMore: "Afficher la suite",
       showMoreLines: "Afficher {{count}} lignes de plus",
+      mentionReceiptOne:
+        "Livré ou mis en attente pour 1 membre. Les membres occupés le reçoivent à un point d’arrêt sûr.",
+      mentionReceiptMany:
+        "Livré ou mis en attente pour {{count}} membres. Les membres occupés le reçoivent à un point d’arrêt sûr.",
     },
     tabs: {
       chat: "Discussion",

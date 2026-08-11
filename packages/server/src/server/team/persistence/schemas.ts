@@ -176,8 +176,6 @@ const recipientAttentionFields = {
   idempotencyKey: z.string().min(1),
   requestFingerprint: z.string().min(1),
   roomMessageId: z.string().min(1),
-  senderMemberId: z.string().min(1),
-  senderAgentId: z.string().min(1),
   recipientMemberId: z.string().min(1),
   bindingEpoch: z.number().int().positive(),
   mentionHandle: z.string().min(1),
@@ -189,7 +187,21 @@ const recipientAttentionFields = {
   successorDeliveryId: z.string().min(1).nullable(),
 };
 
-export const MissionRecipientAttentionDeliverySchema = z.discriminatedUnion("state", [
+const MissionRecipientAttentionSourceSchema = z.union([
+  z.object({
+    origin: z.literal("agent_message").optional(),
+    senderMemberId: z.string().min(1),
+    senderAgentId: z.string().min(1),
+  }),
+  z.object({
+    origin: z.literal("human_mention"),
+    actorId: z.string().min(1),
+    replyToMessageId: z.string().min(1).nullable(),
+    mentionAgentIds: z.array(z.string().min(1)),
+  }),
+]);
+
+const MissionRecipientAttentionStateSchema = z.discriminatedUnion("state", [
   z.object({
     ...recipientAttentionFields,
     state: z.literal("pending"),
@@ -233,6 +245,10 @@ export const MissionRecipientAttentionDeliverySchema = z.discriminatedUnion("sta
     ]),
   }),
 ]);
+export const MissionRecipientAttentionDeliverySchema = z.intersection(
+  MissionRecipientAttentionSourceSchema,
+  MissionRecipientAttentionStateSchema,
+);
 export type MissionRecipientAttentionDelivery = z.infer<
   typeof MissionRecipientAttentionDeliverySchema
 >;

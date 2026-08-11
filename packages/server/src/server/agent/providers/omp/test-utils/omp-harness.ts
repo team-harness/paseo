@@ -466,6 +466,21 @@ export class OmpHarness {
     await promptStarted;
   }
 
+  async startTurn(message: string): Promise<{ turnId: string }> {
+    const promptStarted = this.omp.latestSession().nextPrompt();
+    const result = await this.requireSession().startTurn(message);
+    await promptStarted;
+    return result;
+  }
+
+  async steerActiveTurn(message: string, expectedTurnId: string) {
+    return await this.requireSession().steerActiveTurn(message, { expectedTurnId });
+  }
+
+  steerRequests(): Array<{ message: string; imageCount: number }> {
+    return [...this.omp.latestSession().steerRequests];
+  }
+
   async interrupt(): Promise<void> {
     await this.requireSession().interrupt();
   }

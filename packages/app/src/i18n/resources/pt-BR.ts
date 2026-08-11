@@ -1148,6 +1148,10 @@ export const ptBR: TranslationResources = {
       empty: "Ninguém disse nada ainda.",
       showMore: "Mostrar mais",
       showMoreLines: "Mostrar mais {{count}} linhas",
+      mentionReceiptOne:
+        "Entregue ou na fila para 1 membro. Membros ocupados recebem em um ponto de parada seguro.",
+      mentionReceiptMany:
+        "Entregue ou na fila para {{count}} membros. Membros ocupados recebem em um ponto de parada seguro.",
     },
     tabs: {
       chat: "Conversa",

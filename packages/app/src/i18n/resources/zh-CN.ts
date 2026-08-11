@@ -1113,6 +1113,8 @@ export const zhCN: TranslationResources = {
       empty: "还没有人发言。",
       showMore: "展开",
       showMoreLines: "展开其余 {{count}} 行",
+      mentionReceiptOne: "已投递或排队给 1 位成员；忙碌成员会在安全检查点收到。",
+      mentionReceiptMany: "已投递或排队给 {{count}} 位成员；忙碌成员会在安全检查点收到。",
     },
     tabs: {
       chat: "聊天",

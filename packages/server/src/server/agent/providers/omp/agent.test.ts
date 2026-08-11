@@ -107,6 +107,19 @@ function createToolCatalog(): PaseoToolCatalog {
 }
 
 describe("OMP agent client and session", () => {
+  test("steers a cooperative message into the existing OMP turn", async () => {
+    const harness = new OmpHarness();
+    await harness.start();
+    const { turnId } = await harness.startTurn("continue the Assignment");
+
+    await expect(
+      harness.steerActiveTurn("Reply in the Team room, then continue.", turnId),
+    ).resolves.toBe("delivered");
+    expect(harness.steerRequests()).toEqual([
+      { message: "Reply in the Team room, then continue.", imageCount: 0 },
+    ]);
+  });
+
   test("owns launch configuration and registers native host tools", async () => {
     const omp = new OmpHarness();
     await omp.start({ modeId: "ask" }, createToolCatalog());

@@ -357,6 +357,7 @@ membership, plans, work state, or completion.
 | `team_message`        | Post a durable directed room message by Member id or mention handle                  |
 | `team_member_history` | Read one current participant's curated history                                       |
 | `chat_read`           | Read a room page immediately and advance the caller's durable cursor                 |
+| `chat_post`           | Reply to a human room message without notifying another Member                       |
 
 Independent, non-overlapping scopes may run in parallel. The workspace-level lease registry serializes
 overlapping scopes across every Team and Mission sharing the workspace. Accepted work is never replayed.
@@ -364,12 +365,13 @@ When a turn settles, the scheduler records its fact, captures the workspace delt
 transfers ownership. A missing report moves the scope to `report_hold`; at most two non-preemptive
 recovery turns request the report before the Mission enters Attention.
 
-Directed messages are written to the room before recipient attention is queued. The durable outbox
-moves through pending, notified, acknowledged, or canceled states. An idle participant may be woken
-after its current turn settles; a busy participant is never interrupted and the scheduler never waits
-in a polling loop. Attention items preserve provider, participant, report, notification, and workspace
-ownership failures until an explicit resume, replan, recovery, attribution, exclusion, or cancellation
-action resolves them.
+Directed messages and human mentions use a durable recipient outbox. A busy participant whose provider
+supports same-turn steering receives the mention in its current turn, reads the room, posts a brief
+acknowledgment or status, and continues the same Assignment. This never interrupts or replaces the
+accepted turn. When steering is unavailable, delivery stays pending until a safe lifecycle checkpoint;
+the scheduler never waits in a polling loop. The composer receipt means delivered or queued, not read.
+Attention items preserve provider, participant, report, notification, and workspace ownership failures
+until an explicit resume, replan, recovery, attribution, exclusion, or cancellation action resolves them.
 
 ### App surface
 

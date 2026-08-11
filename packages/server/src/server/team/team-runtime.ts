@@ -80,6 +80,7 @@ export interface TeamRuntimeService {
   postMissionMessage(input: {
     missionId: string;
     actorId: string;
+    idempotencyKey: string;
     body: string;
     replyToMessageId?: string;
   }): Promise<TeamRuntimeRoomMessageEvent>;
@@ -360,6 +361,7 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
         const posted = await service.postMissionMessage({
           missionId: request.missionId,
           actorId: context.actorId,
+          idempotencyKey: request.requestId,
           body: request.body,
           ...(request.replyToMessageId ? { replyToMessageId: request.replyToMessageId } : {}),
         });

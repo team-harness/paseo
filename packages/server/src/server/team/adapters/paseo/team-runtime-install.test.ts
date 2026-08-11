@@ -9,7 +9,6 @@ import { AgentStorage } from "../../../agent/agent-storage.js";
 import { TeamCollaborationService } from "../../application/team-collaboration-service.js";
 import { TeamMissionScheduler } from "../../application/team-mission-scheduler.js";
 import { TeamMissionService } from "../../application/team-mission-service.js";
-import { TeamRoomService } from "../../application/team-room-service.js";
 import { MissionStore } from "../../persistence/mission-store.js";
 import { WorkspaceScopeLeaseStore } from "../../persistence/workspace-scope-lease-store.js";
 import {
@@ -79,6 +78,7 @@ describe("installPaseoTeamRuntime", () => {
     expect(names.toSorted()).toEqual([
       "assign_task",
       "assignment_report",
+      "chat_post",
       "chat_read",
       "mission_plan",
       "mission_status",
@@ -88,7 +88,7 @@ describe("installPaseoTeamRuntime", () => {
     ]);
   });
 
-  test("delegates human Mission room posts to the Team room application service", async () => {
+  test("delegates human Mission room posts to the durable collaboration service", async () => {
     const fixture = await createFixture(rootDirectory);
     const posted = {
       missionId: "mission-room",
@@ -106,7 +106,7 @@ describe("installPaseoTeamRuntime", () => {
       cursor: 1,
     };
     const postHumanMessage = vi
-      .spyOn(TeamRoomService.prototype, "postHumanMessage")
+      .spyOn(TeamCollaborationService.prototype, "postHumanRoomMessage")
       .mockResolvedValue(posted);
     let installedService: TeamRuntimeService | undefined;
     let runtime: TeamRuntime | null = null;
@@ -121,6 +121,7 @@ describe("installPaseoTeamRuntime", () => {
       const input = {
         missionId: "mission-room",
         actorId: "user-1",
+        idempotencyKey: "post-human-room-message",
         body: "@lead status?",
       };
 

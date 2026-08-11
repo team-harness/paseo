@@ -1159,6 +1159,10 @@ export const es: TranslationResources = {
       empty: "Todavía no se ha dicho nada.",
       showMore: "Mostrar más",
       showMoreLines: "Mostrar {{count}} líneas más",
+      mentionReceiptOne:
+        "Entregado o en cola para 1 miembro. Los miembros ocupados lo reciben en un punto seguro.",
+      mentionReceiptMany:
+        "Entregado o en cola para {{count}} miembros. Los miembros ocupados lo reciben en un punto seguro.",
     },
     tabs: {
       chat: "Chat",

@@ -67,6 +67,7 @@ interface CodexClientLike {
 type CodexTestSession = AgentSession & {
   connected: boolean;
   currentThreadId: string | null;
+  currentTurnId: string | null;
   activeForegroundTurnId: string | null;
   client: CodexClientLike | null;
 };
@@ -536,6 +537,40 @@ describe("Codex app-server provider", () => {
     const turnStart = request.mock.calls.find(([method]) => method === "turn/start")?.[1];
     expect(turnStart).not.toHaveProperty("approvalPolicy");
     expect(turnStart).not.toHaveProperty("sandboxPolicy");
+  });
+
+  test("steers a cooperative message into the identified active Codex turn", async () => {
+    const session = createSession();
+    const request = vi.fn(async (method: string) => {
+      if (method === "turn/steer") return { turnId: "provider-turn-1" };
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    session.currentTurnId = "provider-turn-1";
+    session.client = createStub<CodexClientLike>({ request });
+
+    await expect(
+      session.steerActiveTurn?.("Reply in the Team room, then continue.", {
+        expectedTurnId: "test-turn",
+        clientMessageId: "team-message-1",
+      }),
+    ).resolves.toBe("delivered");
+
+    expect(request).toHaveBeenCalledExactlyOnceWith(
+      "turn/steer",
+      {
+        threadId: "test-thread",
+        expectedTurnId: "provider-turn-1",
+        clientUserMessageId: "team-message-1",
+        input: [
+          {
+            type: "text",
+            text: "Reply in the Team room, then continue.",
+            text_elements: [],
+          },
+        ],
+      },
+      expect.any(Number),
+    );
   });
 
   test("carries the complete native workspace-write policy including writable roots", async () => {

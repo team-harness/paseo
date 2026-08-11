@@ -1123,6 +1123,10 @@ export const ar: TranslationResources = {
       empty: "لم يُقل شيء بعد.",
       showMore: "عرض المزيد",
       showMoreLines: "عرض {{count}} أسطر أخرى",
+      mentionReceiptOne:
+        "تم التسليم أو الوضع في قائمة الانتظار لعضو واحد. يتلقاها الأعضاء المشغولون عند نقطة توقف آمنة.",
+      mentionReceiptMany:
+        "تم التسليم أو الوضع في قائمة الانتظار لـ {{count}} أعضاء. يتلقاها الأعضاء المشغولون عند نقطة توقف آمنة.",
     },
     tabs: {
       chat: "محادثة",

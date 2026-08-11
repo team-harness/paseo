@@ -1132,6 +1132,10 @@ export const ko: TranslationResources = {
       empty: "아직 아무 말도 없습니다.",
       showMore: "더 보기",
       showMoreLines: "{{count}}줄 더 보기",
+      mentionReceiptOne:
+        "멤버 1명에게 전달되었거나 대기 중입니다. 작업 중인 멤버는 안전한 중단 지점에서 받습니다.",
+      mentionReceiptMany:
+        "멤버 {{count}}명에게 전달되었거나 대기 중입니다. 작업 중인 멤버는 안전한 중단 지점에서 받습니다.",
     },
     tabs: {
       chat: "채팅",

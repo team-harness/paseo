@@ -199,7 +199,12 @@ describe("TeamRuntime v2 façade", () => {
       },
     });
     expect(service.postMessageInputs).toEqual([
-      { missionId: "mission-room", actorId: "human-client", body: "  Plan the release  " },
+      {
+        missionId: "mission-room",
+        actorId: "human-client",
+        idempotencyKey: "post-1",
+        body: "  Plan the release  ",
+      },
     ]);
 
     await expect(

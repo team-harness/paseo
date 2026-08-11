@@ -621,6 +621,13 @@ export interface AgentPermissionResult {
   followUpPrompt?: AgentPromptInput;
 }
 
+export type AgentTurnSteerResult = "delivered" | "not_steerable" | "stale_turn";
+
+export interface AgentTurnSteerOptions {
+  expectedTurnId: string;
+  clientMessageId?: string;
+}
+
 export interface AgentSession {
   readonly provider: AgentProvider;
   readonly id: string | null;
@@ -628,6 +635,10 @@ export interface AgentSession {
   readonly features?: AgentFeature[];
   run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult>;
   startTurn(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<{ turnId: string }>;
+  steerActiveTurn?(
+    prompt: AgentPromptInput,
+    options: AgentTurnSteerOptions,
+  ): Promise<AgentTurnSteerResult>;
   subscribe(callback: (event: AgentStreamEvent) => void): () => void;
   streamHistory(): AsyncGenerator<AgentStreamEvent>;
   getRuntimeInfo(): Promise<AgentRuntimeInfo>;

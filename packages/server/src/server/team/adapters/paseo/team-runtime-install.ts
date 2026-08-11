@@ -18,7 +18,6 @@ import {
   TeamMissionService,
 } from "../../application/team-mission-service.js";
 import { TeamOperationCoordinator } from "../../application/team-operation-coordinator.js";
-import { TeamRoomService } from "../../application/team-room-service.js";
 import { MissionStore } from "../../persistence/mission-store.js";
 import { MissionRoomStore } from "../../persistence/mission-room-store.js";
 import { TeamProfileStore } from "../../persistence/profile-store.js";
@@ -161,16 +160,6 @@ export async function installPaseoTeamRuntimeAdapter(
     agentStorage: options.agentStorage,
     logger: options.logger,
   });
-  const roomService = new TeamRoomService({
-    missions,
-    rooms: roomStore,
-    mentionWake: recipientAttention,
-    ids,
-    operations,
-    onWakeError: (error, context) => {
-      options.logger.warn({ err: error, ...context }, "Failed to wake mentioned Team participant");
-    },
-  });
   const collaboration = new TeamCollaborationService({
     profiles,
     missions,
@@ -299,7 +288,7 @@ export async function installPaseoTeamRuntimeAdapter(
     startMission: (input) => service.startMission(input),
     listMissions: (teamId, includeTerminal) => service.listMissions(teamId, includeTerminal),
     inspectMission: (missionId) => service.inspectMission(missionId),
-    postMissionMessage: (input) => roomService.postHumanMessage(input),
+    postMissionMessage: (input) => collaboration.postHumanRoomMessage(input),
     readMissionRoom: async (input) => {
       const stored = await missions.get(input.missionId);
       if (!stored) {

@@ -4312,6 +4312,39 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
   }
 
+  async steerActiveTurn(
+    prompt: AgentPromptInput,
+    options: { expectedTurnId: string; clientMessageId?: string },
+  ): Promise<"delivered" | "not_steerable" | "stale_turn"> {
+    if (this.activeForegroundTurnId !== options.expectedTurnId) return "stale_turn";
+    if (!this.client || !this.currentThreadId || !this.currentTurnId) return "not_steerable";
+    try {
+      const response = toObjectRecord(
+        await this.client.request(
+          "turn/steer",
+          {
+            threadId: this.currentThreadId,
+            expectedTurnId: this.currentTurnId,
+            input: await this.buildUserInput(prompt),
+            ...(options.clientMessageId ? { clientUserMessageId: options.clientMessageId } : {}),
+          },
+          TURN_START_TIMEOUT_MS,
+        ),
+      );
+      return response?.turnId === this.currentTurnId ? "delivered" : "stale_turn";
+    } catch (error) {
+      this.logger.debug(
+        {
+          err: error,
+          sessionId: this.currentThreadId,
+          turnId: this.currentTurnId,
+        },
+        "Codex active turn did not accept steering input",
+      );
+      return "not_steerable";
+    }
+  }
+
   private rememberCodexUserMessageTurn(messageId: string | null | undefined): boolean {
     if (typeof messageId !== "string" || messageId.length === 0) {
       return false;

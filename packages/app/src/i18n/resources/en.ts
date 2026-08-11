@@ -1135,6 +1135,10 @@ export const en = {
       empty: "Nothing said yet.",
       showMore: "Show more",
       showMoreLines: "Show {{count}} more lines",
+      mentionReceiptOne:
+        "Delivered or queued for 1 member. Busy members receive it at a safe checkpoint.",
+      mentionReceiptMany:
+        "Delivered or queued for {{count}} members. Busy members receive it at a safe checkpoint.",
     },
     tabs: {
       chat: "Chat",

@@ -10,15 +10,23 @@ describe("PaseoTeamRecipientAttentionAdapter", () => {
   let lifecycle: "idle" | "running";
   let recordChangeListener: ((change: AgentRecordChange) => Promise<void> | void) | null;
   let sentPrompts: SendPromptToAgentParams[];
+  let steerInputs: Parameters<AgentManager["steerActiveTurn"]>[0][];
+  let steerStatus: Awaited<ReturnType<AgentManager["steerActiveTurn"]>>["status"];
   let adapter: PaseoTeamRecipientAttentionAdapter;
 
   beforeEach(() => {
     lifecycle = "idle";
     recordChangeListener = null;
     sentPrompts = [];
+    steerInputs = [];
+    steerStatus = "delivered";
     const agentManager = {
       getAgent: () => ({ lifecycle }),
       hasInFlightRun: () => lifecycle === "running",
+      steerActiveTurn: async (input: Parameters<AgentManager["steerActiveTurn"]>[0]) => {
+        steerInputs.push(input);
+        return { status: steerStatus, turnId: "turn-1" };
+      },
       onAgentRecordChange: (listener: (change: AgentRecordChange) => Promise<void> | void) => {
         recordChangeListener = listener;
         return () => undefined;
@@ -51,6 +59,36 @@ describe("PaseoTeamRecipientAttentionAdapter", () => {
     expect(sentPrompts).toEqual([]);
   });
 
+  test("steers a busy human mention into the active turn without starting another turn", async () => {
+    lifecycle = "running";
+
+    await expect(adapter.attempt({ ...attemptInput(), origin: "human_mention" })).resolves.toBe(
+      "notified",
+    );
+
+    expect(sentPrompts).toEqual([]);
+    expect(steerInputs).toHaveLength(1);
+    expect(steerInputs[0]).toMatchObject({
+      agentId: "agent-member",
+      clientMessageId: "team-message:delivery-1:binding:1:attempt:1",
+    });
+    expect(steerInputs[0]?.prompt).toContain("chat_read");
+    expect(steerInputs[0]?.prompt).toContain("chat_post");
+    expect(steerInputs[0]?.prompt).toContain("Continue the same Assignment");
+  });
+
+  test("keeps a human mention pending when the active provider cannot steer", async () => {
+    lifecycle = "running";
+    steerStatus = "unsupported";
+
+    await expect(adapter.attempt({ ...attemptInput(), origin: "human_mention" })).resolves.toBe(
+      "busy",
+    );
+
+    expect(sentPrompts).toEqual([]);
+    expect(steerInputs).toHaveLength(1);
+  });
+
   test("sends a minimal cursor-read notification with deterministic identity", async () => {
     await expect(adapter.attempt(attemptInput())).resolves.toBe("notified");
 
@@ -63,37 +101,6 @@ describe("PaseoTeamRecipientAttentionAdapter", () => {
     });
     expect(sentPrompts[0]?.prompt).toContain('Call chat_read with missionId "mission-1" now.');
     expect(sentPrompts[0]?.prompt).not.toContain("objective");
-  });
-
-  test("wakes an idle room mention with a stable message identity", async () => {
-    await adapter.wake({
-      messageId: "room-message-1",
-      missionId: "mission-1",
-      recipientAgentId: "agent-member",
-      bindingEpoch: 3,
-    });
-
-    expect(sentPrompts).toHaveLength(1);
-    expect(sentPrompts[0]).toMatchObject({
-      agentId: "agent-member",
-      messageId: "team-room-mention:room-message-1:binding:3",
-      unarchive: false,
-      replaceRunning: false,
-    });
-    expect(sentPrompts[0]?.prompt).toContain('Call chat_read with missionId "mission-1" now.');
-  });
-
-  test("does not retry a room mention while the participant is busy", async () => {
-    lifecycle = "running";
-
-    await adapter.wake({
-      messageId: "room-message-1",
-      missionId: "mission-1",
-      recipientAgentId: "agent-member",
-      bindingEpoch: 3,
-    });
-
-    expect(sentPrompts).toEqual([]);
   });
 
   test("forwards durable turn settlement as an eligibility change", async () => {
@@ -130,6 +137,8 @@ function attemptInput() {
   return {
     deliveryId: "delivery-1",
     missionId: "mission-1",
+    origin: "agent_message" as const,
+    roomMessageId: "room-message-1",
     recipientAgentId: "agent-member",
     bindingEpoch: 1,
     attempt: 1,
