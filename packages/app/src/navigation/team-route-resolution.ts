@@ -17,7 +17,7 @@ export type TeamRouteResolution =
  * Where a `/h/:serverId/team/:teamId` URL should land.
  *
  * A Team URL carries no workspace. Active Teams follow their Mission; idle
- * Teams use their creation workspace or the first remaining live workspace.
+ * global profiles may fall back from their creation workspace to a live one.
  */
 export function resolveTeamRoute(input: {
   serverId: string;
@@ -47,9 +47,15 @@ export function resolveTeamRoute(input: {
   }
 
   if (!input.activeMissionId && creationWorkspaceId) {
-    const workspaceId = liveWorkspaceIds.includes(creationWorkspaceId)
-      ? creationWorkspaceId
-      : (liveWorkspaceIds[0] ?? null);
+    let workspaceId: string | null = null;
+    if (liveWorkspaceIds.includes(creationWorkspaceId)) {
+      workspaceId = creationWorkspaceId;
+    } else {
+      // COMPAT(globalTeamProfiles): added in v0.3.1, remove after 2027-02-11 when legacy creation-workspace binding is retired.
+      if (input.globalTeamProfilesSupported) {
+        workspaceId = liveWorkspaceIds[0] ?? null;
+      }
+    }
     if (workspaceId) return { kind: "resolved", workspaceId };
   }
 
@@ -73,6 +79,8 @@ export function resolveTeamRoute(input: {
     return { kind: "hydrating" };
   }
 
+  // COMPAT(globalTeamProfiles): added in v0.3.1, remove after 2027-02-11 when
+  // legacy creation-workspace binding is retired.
   if (
     input.globalTeamProfilesSupported &&
     !input.activeMissionId &&

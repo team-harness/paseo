@@ -3,7 +3,7 @@ epic: ../epics/agent-teams.md
 phase: acceptance
 approved_revision: e13c92a152e546753556eebe03d9c239bd22125c425df1ff938ba2e1c0e10b3c
 current_item: null
-next_action: 运行 Agent Teams v2 集成验证与 fresh final acceptance review
+next_action: 等待 owner 安装验证 DMG 后最终接受并完成 Epic 毕业
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -101,6 +101,7 @@ remote_publish: final
 - V2-ITEM-10 final acceptance：fresh managed reviewer 首轮发现 runtime 顶层 reconciliation 错误被吞、App 用冻结 provider snapshot 隐藏可用 replacement Lead 两项 important；两项均以鉴别性红测修复。runtime 原 reviewer 随后发现 unreadable pending Mission 会越过动作隔离并放大为 daemon 启动失败；修复把 profile/Mission 读取、block 判定与 replay 收进统一动作边界，真实双 Team 文件存储回归证明坏 Mission 保留、健康 Team 继续恢复。最终冻结 target `4ded35f8…97c0d1`（41420 行 / 90 files），fresh final acceptance 与 runtime follow-up 均判定 **0 blocking / 0 important，可合**。最终增量验证：service **66/66 passed**、runtime install **15/15 passed**、App selector **5/5 passed**；全 workspace typecheck、lint、format 与 staged diff check 均通过。
 - 2026-08-11：owner 确认“Team 全局、Mission 绑定 workspace”。V2-ITEM-11 contract review Round 1/2 共发现 workspace archive/start TOCTOU、effective workspace 幂等、版本漂移、零 live workspace 可达性与锁反转风险；修订统一 `workspace fence → Team permit` 顺序，冻结 host-level Team 入口和双向 App/daemon capability 行为。Round 3 同一 reviewer 核对 `e13c92a…e10b3c`（459 行），判定前序 findings 全部 resolved、无 new finding，允许执行。
 - 2026-08-12：V2-ITEM-11 实现与 change review 完成。Team profile 改为 host-global，Mission 冻结显式 `workspaceId`；App/CLI 使用 host-level Team 入口，workspace archive 仅终止绑定 Mission、不归档 Team。Workspace start/archive 统一 `workspace fence → backing fence → Team permit`，durable archive intent 在首次 workspace fence 内 claim，provision/restore 与 zero-record 删除共享 canonical backing fence。定向竞态、完整相关测试、server/full typecheck、全仓 lint、format 与 diff-check 通过；同一 Paseo reviewer `27936051` follow-up 判定 previous blocking resolved，0 blocking / 0 important / 0 minor，允许进入 Epic final acceptance。
+- 2026-08-12：Agent Teams v2 final acceptance reviewer `ab10b233` 以同一 lineage 完成 3 轮 finding-driven 审查。旧 daemon 的 idle Team 保持 creation-workspace 可见性，深链与 sidebar 不再静默回落到其他 workspace；`globalTeamProfiles` 行为兼容分支全部进入 `COMPAT(...)` 清理索引。最终冻结 target `c6eafe50…f8857`（10 files / +73 / -17），previous findings 全部 resolved，0 blocking / 0 important / 0 minor，允许 `remote_publish: final` 并进入 owner final acceptance。
 
 ## 临时决策与证据
 

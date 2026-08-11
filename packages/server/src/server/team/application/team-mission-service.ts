@@ -443,6 +443,8 @@ export class TeamMissionService {
 
   async startMission(input: StartMissionInput): Promise<TeamMission> {
     const initialTeam = await this.requireTeam(input.teamId);
+    // COMPAT(globalTeamProfiles): added in v0.3.1, remove the Team-workspace fallback after
+    // 2027-02-11 once the app floor is >= v0.3.1 and always sends workspaceId.
     const workspaceId = normalizeMissionWorkspaceId(
       input.workspaceId ?? initialTeam.profile.workspaceId,
     );
@@ -458,6 +460,8 @@ export class TeamMissionService {
     lockedWorkspaceId: string,
   ): Promise<TeamMission> {
     const storedTeam = await this.requireTeam(input.teamId);
+    // COMPAT(globalTeamProfiles): added in v0.3.1, remove the Team-workspace fallback after
+    // 2027-02-11 once the app floor is >= v0.3.1 and always sends workspaceId.
     const effectiveWorkspaceId = normalizeMissionWorkspaceId(
       input.workspaceId ?? storedTeam.profile.workspaceId,
     );
