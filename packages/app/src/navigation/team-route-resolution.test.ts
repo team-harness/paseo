@@ -46,6 +46,17 @@ describe("resolving a team URL to the workspace that holds it", () => {
     ).toEqual({ kind: "resolved", workspaceId: "ws-1" });
   });
 
+  it("does not move a legacy idle Team off its archived creation workspace", () => {
+    expect(
+      resolveTeamRoute({
+        ...BASE,
+        globalTeamProfilesSupported: false,
+        creationWorkspaceId: "ws-archived",
+        liveWorkspaceIds: ["ws-b"],
+      }),
+    ).toEqual({ kind: "hydrating" });
+  });
+
   it("keeps a hydrated idle Team at host level when no live workspace is available", () => {
     expect(resolveTeamRoute({ ...BASE, liveWorkspaceIds: [] })).toEqual({ kind: "hostLevel" });
   });

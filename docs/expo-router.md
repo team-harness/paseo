@@ -92,8 +92,9 @@ targets.
   daemon — answering "too old to have teams" there is wrong while it connects
   and permanently wrong for a host that never does. An active Team resolves only
   through its hydrated Mission workspace. An idle Team uses a live creation
-  workspace, then the first stable live workspace; with none, render the Team on
-  its host route so settings remain reachable and Mission start stays disabled.
+  workspace. Only a daemon advertising `globalTeamProfiles` may fall back to the
+  first stable live workspace or, when none remain, render the Team on its host
+  route. Keep profiles from older daemons bound to their creation workspace.
 
 Agent paths converge on `navigateToAgent()`. Team paths either converge on
 `navigateToWorkspace()` or remain host-level. Do not make notification routing

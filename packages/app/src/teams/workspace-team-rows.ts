@@ -8,11 +8,12 @@ export interface WorkspaceTeamRow {
   statusBucket: SidebarStateBucket | null;
 }
 
-/** Places active Teams by Mission workspace, with a stable idle fallback. */
+/** Places active Teams by Mission workspace, with a capability-gated idle fallback. */
 export function selectWorkspaceTeamRows(
   replica: TeamMissionsReplica,
   workspaceId: string,
   liveWorkspaceIds: readonly string[],
+  globalTeamProfilesSupported: boolean,
 ): WorkspaceTeamRow[] {
   const rows: WorkspaceTeamRow[] = [];
   const liveWorkspaceIdSet = new Set(liveWorkspaceIds);
@@ -25,10 +26,14 @@ export function selectWorkspaceTeamRows(
     let placementWorkspaceId: string | null | undefined;
     if (team.activeMissionId) {
       placementWorkspaceId = mission?.workspaceId;
+    } else if (liveWorkspaceIdSet.has(team.workspaceId)) {
+      placementWorkspaceId = team.workspaceId;
     } else {
-      placementWorkspaceId = liveWorkspaceIdSet.has(team.workspaceId)
-        ? team.workspaceId
-        : firstLiveWorkspaceId;
+      // COMPAT(globalTeamProfiles): added in v0.3.1, remove after 2027-02-11 when legacy creation-workspace binding is retired.
+      placementWorkspaceId = null;
+      if (globalTeamProfilesSupported) {
+        placementWorkspaceId = firstLiveWorkspaceId;
+      }
     }
     if (placementWorkspaceId !== workspaceId) continue;
     rows.push({
