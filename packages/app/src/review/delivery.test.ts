@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceReviewSummaryEntry } from "./workspace-comments";
 import {
   beginReviewDeliveryInState,
@@ -6,6 +6,7 @@ import {
   finishReviewDeliveryInState,
   normalizeReviewDeliveryState,
   recordReviewDeliveryInState,
+  submitReviewMessageViaComposer,
   type ReviewDeliveryState,
 } from "./delivery";
 
@@ -37,6 +38,48 @@ function emptyState(): ReviewDeliveryState {
 }
 
 describe("review delivery", () => {
+  it.each([
+    { sendBehavior: "interrupt" as const, isAgentRunning: true },
+    { sendBehavior: "queue" as const, isAgentRunning: false },
+  ])(
+    "submits through Composer for $sendBehavior behavior when running=$isAgentRunning",
+    async ({ sendBehavior, isAgentRunning }) => {
+      const queueMessage = vi.fn();
+      const submitMessage = vi.fn(async () => undefined);
+
+      await expect(
+        submitReviewMessageViaComposer({
+          message: "Review comments",
+          sendBehavior,
+          isAgentRunning,
+          queueMessage,
+          submitMessage,
+        }),
+      ).resolves.toBe("submitted");
+
+      expect(submitMessage).toHaveBeenCalledWith("Review comments");
+      expect(queueMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it("uses the Composer queue policy while the associated agent is running", async () => {
+    const queueMessage = vi.fn();
+    const submitMessage = vi.fn(async () => undefined);
+
+    await expect(
+      submitReviewMessageViaComposer({
+        message: "Review comments",
+        sendBehavior: "queue",
+        isAgentRunning: true,
+        queueMessage,
+        submitMessage,
+      }),
+    ).resolves.toBe("queued");
+
+    expect(queueMessage).toHaveBeenCalledWith("Review comments");
+    expect(submitMessage).not.toHaveBeenCalled();
+  });
+
   it("locks the workspace review session to the first agent", () => {
     const first = recordReviewDeliveryInState(emptyState(), {
       workspaceKey: "workspace-key",

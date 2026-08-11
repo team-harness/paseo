@@ -1,4 +1,47 @@
+import { submitAgentInput, type AgentInputSubmitResult } from "@/composer/submit";
+import type { SendBehavior } from "@/hooks/use-settings";
 import type { WorkspaceReviewSummaryEntry } from "./workspace-comments";
+
+export interface SubmitReviewMessageViaComposerInput {
+  message: string;
+  sendBehavior: SendBehavior;
+  isAgentRunning: boolean;
+  queueMessage: (message: string) => void;
+  submitMessage: (message: string) => Promise<void>;
+  failedToSendMessage?: string;
+}
+
+export async function submitReviewMessageViaComposer(
+  input: SubmitReviewMessageViaComposerInput,
+): Promise<Extract<AgentInputSubmitResult, "queued" | "submitted">> {
+  let submissionError: unknown;
+  const result = await submitAgentInput({
+    message: input.message,
+    attachments: [],
+    forceSend: input.sendBehavior === "interrupt",
+    isAgentRunning: input.isAgentRunning,
+    canSubmit: true,
+    queueMessage: ({ message }) => input.queueMessage(message),
+    submitMessage: ({ message }) => input.submitMessage(message),
+    clearDraft: () => undefined,
+    setUserInput: () => undefined,
+    setAttachments: () => undefined,
+    setSendError: () => undefined,
+    setIsProcessing: () => undefined,
+    onSubmitError: (error) => {
+      submissionError = error;
+    },
+    failedToSendMessage: input.failedToSendMessage,
+  });
+
+  if (result === "queued" || result === "submitted") {
+    return result;
+  }
+  if (submissionError instanceof Error) {
+    throw submissionError;
+  }
+  throw new Error(input.failedToSendMessage ?? "Review message could not be submitted");
+}
 
 export interface ReviewDeliverySession {
   agentId: string;

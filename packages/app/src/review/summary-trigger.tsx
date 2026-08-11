@@ -21,6 +21,7 @@ import {
   createMessageSubmissionWriter,
   handoffCreatedAgentMessageSubmission,
 } from "@/composer/submission/writer";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { selectAgentTurnPresentation, useSessionStore, type Agent } from "@/stores/session-store";
@@ -32,7 +33,7 @@ import { normalizeWorkspaceOpaqueId, normalizeWorkspacePath } from "@/utils/work
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { deleteReviewDraftComments, useReviewDraftStore } from "./store";
-import { collectPendingReviewEntries } from "./delivery";
+import { collectPendingReviewEntries, submitReviewMessageViaComposer } from "./delivery";
 import {
   useReviewDeliveryInFlight,
   useReviewDeliverySession,
@@ -64,6 +65,7 @@ const REVIEW_SUMMARY_SNAP_POINTS = ["60%", "88%"];
 export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
   const { t } = useTranslation();
   const toast = useToast();
+  const { settings: appSettings } = useAppSettings();
   const scope = useMemo(
     () => ({ serverId: props.serverId, workspaceId: props.workspaceId, cwd: props.cwd }),
     [props.cwd, props.serverId, props.workspaceId],
@@ -259,36 +261,41 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
       const text = buildAgentPrompt(entries, Boolean(deliverySession));
       const session = useSessionStore.getState().sessions[props.serverId];
       const isRunning = selectAgentTurnPresentation(session, agent.id).isActive;
-      if (isRunning) {
-        const result = queueComposerMessage({
-          agentId: agent.id,
-          text,
-          attachments: [],
-          queue: {
-            read: (agentId) =>
-              useSessionStore.getState().sessions[props.serverId]?.queuedMessages.get(agentId) ??
-              [],
-            write: (updater) => setQueuedMessages(props.serverId, updater),
-          },
-          onSubmitted: () => finishDelivery(operationId, agent.id, entries),
-          onDiscarded: () => releaseDelivery(operationId),
-        });
-        if (!result.queued) {
-          throw new Error(t("review.summary.agentUnavailable"));
-        }
-      } else {
-        await dispatchComposerAgentMessage({
-          client,
-          agentId: agent.id,
-          text,
-          attachments: [],
-          encodeImages,
-          submission: createMessageSubmissionWriter(props.serverId),
-        });
-        finishDelivery(operationId, agent.id, entries);
-      }
+      const result = await submitReviewMessageViaComposer({
+        message: text,
+        sendBehavior: appSettings.sendBehavior,
+        isAgentRunning: isRunning,
+        queueMessage: (queuedText) => {
+          const queued = queueComposerMessage({
+            agentId: agent.id,
+            text: queuedText,
+            attachments: [],
+            queue: {
+              read: (agentId) =>
+                useSessionStore.getState().sessions[props.serverId]?.queuedMessages.get(agentId) ??
+                [],
+              write: (updater) => setQueuedMessages(props.serverId, updater),
+            },
+          });
+          if (!queued.queued) {
+            throw new Error(t("review.summary.agentUnavailable"));
+          }
+        },
+        submitMessage: async (submitText) => {
+          await dispatchComposerAgentMessage({
+            client,
+            agentId: agent.id,
+            text: submitText,
+            attachments: [],
+            encodeImages,
+            submission: createMessageSubmissionWriter(props.serverId),
+          });
+        },
+        failedToSendMessage: t("composer.errors.failedToSend"),
+      });
+      finishDelivery(operationId, agent.id, entries);
       toast.show(
-        isRunning
+        result === "queued"
           ? t("review.summary.queued", { count: entries.length })
           : t("review.summary.sent", { count: entries.length }),
         { variant: "success" },
@@ -296,13 +303,13 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
       openAgent(agent.id);
     },
     [
+      appSettings.sendBehavior,
       buildAgentPrompt,
       client,
       deliverySession,
       finishDelivery,
       openAgent,
       props.serverId,
-      releaseDelivery,
       setQueuedMessages,
       t,
       toast,
