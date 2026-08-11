@@ -45,8 +45,11 @@ import type { GitCommandRuntimeMetricsSnapshot } from "../utils/git-command-runt
 import { snapshotGitCommandRuntimeMetrics } from "../utils/run-git-command.js";
 import type { WorkspaceAutoName } from "./workspace-auto-name.js";
 import { deriveProjectSlug } from "./workspace-git-metadata.js";
-import { PushTokenStore } from "./push/token-store.js";
-import { createPushNotificationSender, type PushNotificationSender } from "./push/notifications.js";
+import {
+  createPushNotifications,
+  type PushNotifications,
+  type PushNotificationSender,
+} from "./push/index.js";
 import type { ScriptHealthState } from "./script-health-monitor.js";
 import type { ServiceProxySubsystem } from "./service-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
@@ -536,7 +539,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly paseoHome: string;
   private readonly worktreesRoot: string | undefined;
   private readonly daemonConfigStore: DaemonConfigStore;
-  private readonly pushTokenStore: PushTokenStore;
+  private readonly pushNotifications: PushNotifications;
   private readonly pushNotificationSender: PushNotificationSender;
   private readonly mcpBaseUrl: string | null;
   private speech!: SpeechService | null;
@@ -695,9 +698,11 @@ export class VoiceAssistantWebSocketServer {
     });
 
     const pushLogger = this.logger.child({ module: "push" });
-    this.pushTokenStore = new PushTokenStore(pushLogger, join(paseoHome, "push-tokens.json"));
-    this.pushNotificationSender =
-      pushNotificationSender ?? createPushNotificationSender(pushLogger, this.pushTokenStore);
+    this.pushNotifications = createPushNotifications({
+      logger: pushLogger,
+      filePath: join(paseoHome, "push-tokens.json"),
+    });
+    this.pushNotificationSender = pushNotificationSender ?? this.pushNotifications;
 
     this.agentManager.setAgentAttentionCallback((params) => {
       void this.broadcastAgentAttention(params).catch((err) => {
@@ -1344,7 +1349,7 @@ export class VoiceAssistantWebSocketServer {
         );
       },
       downloadTokenStore: this.downloadTokenStore,
-      pushTokenStore: this.pushTokenStore,
+      pushNotifications: this.pushNotifications,
       paseoHome: this.paseoHome,
       worktreesRoot: this.worktreesRoot,
       agentManager: this.agentManager,
@@ -1559,6 +1564,8 @@ export class VoiceAssistantWebSocketServer {
         ...(this.advertiseDaemonStatusRpc ? { daemonStatusRpc: true } : {}),
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
         ...(this.advertiseRelayConfig ? { relayConfig: true } : {}),
+        // COMPAT(pushTokenRevocation): added in v0.3.2, remove gate after 2027-02-10.
+        pushTokenRevocation: true,
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": true,
         // COMPAT(terminalInputModeReplay): added in v0.2.6, remove gate after 2027-02-02.
@@ -1647,6 +1654,10 @@ export class VoiceAssistantWebSocketServer {
         fsEntryDuplicate: true,
         // COMPAT(checkoutDiscardChanges): added in v0.3.0, remove gate after 2027-02-08.
         checkoutDiscardChanges: true,
+        // COMPAT(agentProfiles): added in v0.3.2, remove gate after 2027-02-11.
+        agentProfiles: true,
+        // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
+        agentConfigApply: true,
       },
     };
   }

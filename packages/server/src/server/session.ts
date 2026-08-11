@@ -172,7 +172,7 @@ import type { HubRelationshipManagement } from "./hub/relationship-controller.js
 import { HubExecutionController } from "./hub/execution-controller.js";
 import type { HubExecutionAgents } from "./hub/daemon-executions.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
-import { PushTokenStore } from "./push/token-store.js";
+import type { PushNotifications } from "./push/index.js";
 import {
   archivePersistedWorkspaceRecord,
   archiveWorkspaceContents,
@@ -443,7 +443,7 @@ export interface SessionOptions {
   onWorkspaceRecovered?: (workspace: PersistedWorkspaceRecord) => Promise<void>;
   logger: pino.Logger;
   downloadTokenStore: DownloadTokenStore;
-  pushTokenStore: PushTokenStore;
+  pushNotifications: PushNotifications;
   paseoHome: string;
   worktreesRoot?: string;
   agentManager: AgentManager;
@@ -633,7 +633,7 @@ export class Session {
   private readonly workspaceProvisioning: WorkspaceProvisioningService;
   private readonly workspaceRecovery: WorkspaceRecoveryService;
   private readonly daemonConfigStore: DaemonConfigStore;
-  private readonly pushTokenStore: PushTokenStore;
+  private readonly pushNotifications: PushNotifications;
   private unsubscribeAgentEvents: (() => void) | null = null;
   private unsubscribeProjectMutations: (() => void) | null = null;
   private unsubscribeWorkspaceMutations: (() => void) | null = null;
@@ -655,6 +655,7 @@ export class Session {
     appVisible: boolean;
     appVisibilityChangedAt: Date;
   } | null = null;
+  private registeredPushToken: string | null = null;
   private readonly terminalManager: TerminalManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly serviceProxy: ServiceProxySubsystem | null;
@@ -700,7 +701,7 @@ export class Session {
       onWorkspaceRecovered,
       logger,
       downloadTokenStore,
-      pushTokenStore,
+      pushNotifications,
       paseoHome,
       worktreesRoot,
       agentManager,
@@ -752,7 +753,7 @@ export class Session {
     this.getTransportBufferedAmount = getTransportBufferedAmount ?? (() => 0);
     this.onLifecycleIntent = onLifecycleIntent ?? null;
     this.onWorkspaceRecovered = onWorkspaceRecovered ?? null;
-    this.pushTokenStore = pushTokenStore;
+    this.pushNotifications = pushNotifications;
     this.paseoHome = paseoHome;
     this.worktreesRoot = worktreesRoot;
     this.sessionLogger = logger.child({
@@ -2030,6 +2031,8 @@ export class Session {
         return this.agentConfigSession.handleSetAgentFeatureRequest(msg);
       case "set_agent_thinking_request":
         return this.agentConfigSession.handleSetAgentThinkingRequest(msg);
+      case "agent.config.apply.request":
+        return this.agentConfigSession.handleAgentConfigApplyRequest(msg);
       case "get_daemon_config_request":
         this.emit({
           type: "get_daemon_config_response",
@@ -2324,6 +2327,16 @@ export class Session {
         return;
       case "register_push_token":
         this.handleRegisterPushToken(msg.token);
+        return;
+      case "push.unregister.request":
+        this.pushNotifications.revoke(msg.token);
+        if (this.registeredPushToken?.trim() === msg.token.trim()) {
+          this.registeredPushToken = null;
+        }
+        this.emit({
+          type: "push.unregister.response",
+          payload: { requestId: msg.requestId },
+        });
         return;
     }
   }
@@ -3770,6 +3783,9 @@ export class Session {
     if (msg.appVisible && focusedTerminalId) {
       void this.clearFocusedTerminalAttention(focusedTerminalId);
     }
+    if (this.registeredPushToken) {
+      this.pushNotifications.renew(this.registeredPushToken);
+    }
   }
 
   private async clearFocusedTerminalAttention(terminalId: string): Promise<void> {
@@ -3788,7 +3804,8 @@ export class Session {
    * Handle push token registration
    */
   private handleRegisterPushToken(token: string): void {
-    this.pushTokenStore.addToken(token);
+    this.registeredPushToken = token;
+    this.pushNotifications.renew(token);
     this.sessionLogger.info("Registered push token");
   }
 

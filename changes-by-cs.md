@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `29ae25d7aa44dadc91cfc77cd4c64d475bd18d8c`，同步于 2026-08-11。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `29ae25d7aa44dadc91cfc77cd4c64d475bd18d8c`）。
+- 最近同步基线：`upstream/main` = `7b167784d7c692a4ff8676046698fb95e0fed43f`，同步于 2026-08-12。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `7b167784d7c692a4ff8676046698fb95e0fed43f`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,12 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-12: `upstream/main` `7b167784d` / `v0.3.1`
+
+- 合入上游可复用 Agent Profiles、聊天 Mermaid 图、实时任务进度、Command Center 侧边栏分组、元数据生成模型选择、大型 Diff 单表面渲染、工作区重命名 CLI、Android Provider Snapshot 存储上限，以及 daemon/Provider 稳定性修复。
+- Assistant 消息表面同时保留 fork 的分享入口与弱化时间，并采用上游任务进度及 Mermaid 渲染；Session Context 采用上游 push notification 生命周期，同时保留 fork 的 `status.summary` 刷新与推送订阅。
+- 上游仍没有提供 Status Bar/usage ledger、多 Host 汇总、Threadshare 分享、Host 常用 Prompt、跨 File/Changes Review Comments、完整 Composer 消息历史、固定签名分发或独立 Android APK 构建的等价能力；本轮没有下线 fork 功能。
 
 ### 2026-08-11: `upstream/main` `29ae25d7a` / `v0.3.1`
 

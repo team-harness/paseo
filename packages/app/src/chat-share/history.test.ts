@@ -185,6 +185,7 @@ describe("exportChatHistory", () => {
           id: "todo-1",
           provider: "codex",
           items: [{ text: "password=todo-secret", completed: false }],
+          activity: { type: "created", count: 1 },
           timestamp,
         },
         {

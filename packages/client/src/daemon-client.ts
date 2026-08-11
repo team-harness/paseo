@@ -119,7 +119,11 @@ import type {
   AgentProvider,
   AgentSessionConfig,
 } from "@getpaseo/protocol/agent-types";
-import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@getpaseo/protocol/messages";
+import type {
+  AgentConfigApply,
+  MutableDaemonConfig,
+  MutableDaemonConfigPatch,
+} from "@getpaseo/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@getpaseo/protocol/terminal-subscription-key";
 import {
@@ -892,6 +896,7 @@ function toTimeoutError(error: unknown, label: string, timeoutMs: number): Error
 const DEFAULT_RECONNECT_BASE_DELAY_MS = 1500;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 30000;
 const DEFAULT_SESSION_RPC_TIMEOUT_MS = 60_000;
+const PUSH_TOKEN_REVOCATION_TIMEOUT_MS = 2_000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
 const DEFAULT_LIVENESS_TIMEOUT_MS = 5000;
 const LIVENESS_HEARTBEAT_INTERVAL_MS = 10_000;
@@ -1853,6 +1858,16 @@ export class DaemonClient {
     this.sendSessionMessage({
       type: "register_push_token",
       token,
+    });
+  }
+
+  async unregisterPushToken(token: string): Promise<void> {
+    const requestId = this.createRequestId();
+    await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "push.unregister.request", token, requestId },
+      responseType: "push.unregister.response",
+      timeout: PUSH_TOKEN_REVOCATION_TIMEOUT_MS,
     });
   }
 
@@ -3132,6 +3147,44 @@ export class DaemonClient {
     });
     if (!payload.accepted) {
       throw new Error(payload.error ?? "setAgentThinkingOption rejected");
+    }
+    return payload.notice ?? null;
+  }
+
+  /**
+   * Applies a whole agent-config bundle in one request. Use this instead of
+   * chaining the single-field setters when the values belong together so client
+   * interruption and other mutations cannot interleave between steps. A
+   * provider rejection can still leave earlier steps applied.
+   * Gated on `server_info.features.agentConfigApply`.
+   */
+  async applyAgentConfig(
+    agentId: string,
+    config: AgentConfigApply,
+  ): Promise<AgentProviderNotice | null> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.config.apply.request",
+      agentId,
+      config,
+      requestId,
+    });
+    const payload = await this.sendRequest({
+      requestId,
+      message,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "agent.config.apply.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "applyAgentConfig rejected");
     }
     return payload.notice ?? null;
   }
