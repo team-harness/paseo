@@ -5,12 +5,12 @@ approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776ce
 current_item: null
 active_items:
   - item: TM-ITEM-3
-    state: review_fix_round_3
+    state: review_round_4_failed
     run: 4d66b70c-cc02-4ef6-a89a-79b9b40af64d
     workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-software-delivery
     base: 6ce16c29b125742badb5e67206c0b9018bd2a46f
-next_action: 等待 TM-ITEM-3 worker 修复 prompt 语义契约的双重否定与跨句矛盾，并交回同一 reviewer 做 owner 授权的 Round 4
-blocked_by: null
+next_action: 等待 owner 决定是否授权 TM-ITEM-3 Round 5；若授权，改为冻结两个策略 prompt 的完整规范文本或摘要，不再扩充同义词检查器
+blocked_by: owner_round_5_authorization
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -37,6 +37,13 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：owner 授权的 TM-ITEM-3 change review Round 4 核对 checkpoint `4d7c7bb`、唯一父提交
+  `6ce16c29`、冻结 diff `db09ba42…a4402`。Round 3 的双重否定与跨句原始反例已关闭，但 reviewer 以
+  `放行`、`接受`、`自行签发` 等不在四个结论词中的相反策略复现新绕过；句子集合又会吞掉重复规范句。
+  结论为 1 blocking / 1 important。设计裁决已收敛：不要继续扩充自然语言同义词，而应冻结
+  `review-rounds.md` 与 `verification-gate.md` 的完整规范文本或完整内容摘要，并用有序内容比较；任何
+  改动都必须显式更新受审常量。Round 4 授权已耗尽，worker 保持候选冻结，等待 owner 是否授权 Round 5。
 
 - 2026-08-12：owner 明确授权 TM-ITEM-3 Round 4。授权只放宽本 change review 阶段的三轮复审上限；
   不改变子项契约、schema、里程碑或发布授权。Round 4 只修复 Round 3 唯一 blocking：拒绝
