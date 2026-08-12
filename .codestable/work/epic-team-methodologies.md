@@ -3,8 +3,13 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776cee0d
 current_item: null
-active_items: []
-next_action: 为 TM-ITEM-4 创建 Paseo 托管 worktree，并派发 exact bundle 到 Codex artifact plan 的 tracer bullet
+active_items:
+  - item: TM-ITEM-4
+    state: running
+    run: 4f6a8bbe-4dad-47df-9a95-38feeea4a889
+    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-codex-exporter
+    base: 134f2c15c24c6baf752e642647804ce79ba7c5c8
+next_action: 等待 TM-ITEM-4 worker 完成 Codex exact-bundle exporter、权威验证与最多三轮独立 change review
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +37,14 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：TM-ITEM-4 派发到 Paseo 托管 worktree
+  `/Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-codex-exporter`，run identity 为
+  `4f6a8bbe-4dad-47df-9a95-38feeea4a889`，基线为 TM-ITEM-3 portable 里程碑
+  `134f2c15c24c6baf752e642647804ce79ba7c5c8`。worker 使用 `claude/claude-opus-5` / high；本项冻结为
+  exact bundle ref + typed Codex config 到同一 `ExportArtifactPlan`、安全 installer 与 typed conformance
+  report 的 tracer bullet，不提前实现 Claude exporter 或 Paseo runtime。独立 reviewer 要求异构
+  `codex/gpt-5.6-sol` / xhigh，最多三轮并复用同一 lineage。
 
 - 2026-08-12：TM-ITEM-3 完成。owner 授权的 Round 5 核对冻结 checkpoint
   `efd786e08860efcc4831655722b0fd458ee176fd`、唯一父 `6ce16c29`、tree
