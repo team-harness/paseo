@@ -5,11 +5,11 @@ approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776ce
 current_item: null
 active_items:
   - item: TM-ITEM-3
-    state: dispatched
+    state: review_fix_round_1
     run: 4d66b70c-cc02-4ef6-a89a-79b9b40af64d
     workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-software-delivery
     base: 6ce16c29b125742badb5e67206c0b9018bd2a46f
-next_action: 等待 TM-ITEM-3 worker 编译 portable/software-delivery@1 并完成独立审查
+next_action: 等待 TM-ITEM-3 worker 修复首轮独立评审的 4 blocking / 2 important 并交回同一 reviewer 复审
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -37,6 +37,14 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：TM-ITEM-3 fresh change review Round 1 审查冻结暂存 diff
+  `782ea221…75df`（21 文件，`+1402/-10`），reviewer run
+  `8e3b2b0c-b48d-4a80-aa93-f0010e5db25b`（Codex `gpt-5.6-sol` / xhigh）结论不通过：4 blocking
+  分别为 exact-ref consumer 未固定外部 digest、关键 npm/Node 消费者测试可 skip、portable
+  `sources.json` 可整体省略、review waiver 提示词语义未被否定测试锁定；2 important 为 npm cache 未隔离和
+  provenance 路径未逐组件拒绝 symlink/大小写漂移。修复沿用既有 Bundle V1 schema：
+  `allowed_with_reason` 产生 `waived` 而非 `approved`，不会新增与已批准 Epic 冲突的 policy enum。
 
 - 2026-08-12：owner 确认 V1 Agent Profile 契约：Team Member 可保存 host-local Agent Profile source，
   但 `executionProfile` 始终是权威快照；Mission/recovery/replan 不读取实时 catalog，Profile 变化只能显式
