@@ -3,14 +3,9 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-5
-    state: dispatched
-    run: 9dd58277-196a-4a0e-8881-7343e246d177
-    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-claude-exporter
-    base: b4c5f38c8e5423575450337f43012031d9fd4bc1
-next_action: 等待恢复后的 TM-ITEM-5 worker 交付 Claude exporter、双安装顺序证据与独立 change review
-blocked_by: null
+active_items: []
+next_action: 等待 owner 裁决是否授权 TM-ITEM-5 在 export_claude 内窄修 C1/YAML 转义并进行 Round 4 复审
+blocked_by: review_limit:TM-ITEM-5 C1/YAML artifact safety
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -37,6 +32,16 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：TM-ITEM-5 worker 冻结单父 checkpoint
+  `29f3ae1b59e5b8f9eb1836fa69307bd4ca8523d2`（父 `b4c5f38c…`，tree
+  `fe466058ae9638220b64cb371ea160ee4273d8e0`），实现与 215/215 测试、双安装顺序、Ruff、build/check
+  和 diff-check 全绿。异构 Codex reviewer 三轮中前两轮的 YAML scalar 与 Unicode folding findings 已
+  resolved；Round 3 新增 1 blocking：共享 Bundle validator 允许部分 C1 字符，Claude frontmatter
+  原样写入后可能无法被 YAML parser 读取。两个冻结 bundle 均无该字符，因此真实 artifact 有效，但
+  对抗 bundle 路径尚未闭合。三轮上限已用尽，worker 未继续修改或开 Round 4。主流程建议在
+  feature-owned `export_claude` 内做 YAML-safe 可逆转义，而不扩大共享 Bundle validator；该方案最小化
+  upstream 热区改动并符合 `docs/changes-by-me.md` 的同步原则，等待 owner 显式授权修复与复审。
 
 - 2026-08-12：契约里程碑 `0dbf45b32` 创建后，原 TM-ITEM-5 worker
   `9dd58277-196a-4a0e-8881-7343e246d177` 在既有 Paseo 托管 worktree 上恢复成功。continuation
