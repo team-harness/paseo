@@ -2,9 +2,9 @@
 epic: ../epics/agent-teams.md
 phase: acceptance
 approved_revision: c1152303c60d9ba607440598b6825fd6f372886a0a81d6e88d3637e7611c8287
-current_item: V2-ITEM-11
-next_action: 按已批准的单一首发契约同步 V2-ITEM-11 实现并完成 fresh change review
-blocked_by: implementation_sync:V2-ITEM-11
+current_item: null
+next_action: 等待 owner 对 Agent Teams v2 执行 final acceptance；remote_publish 仍保持 final
+blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
 remote_publish: final
@@ -33,7 +33,7 @@ remote_publish: final
 - [x] V2-ITEM-8 Team 聊天与设置 UI
 - [x] V2-ITEM-9 CLI、运行时启用与确定性 E2E
 - [x] V2-ITEM-10 真实协同、QA、文档与最终验收
-- [ ] V2-ITEM-11 全局 Team 与 Mission workspace 归属
+- [x] V2-ITEM-11 全局 Team 与 Mission workspace 归属
 
 ## Agent Teams v2 规划证据
 
@@ -117,6 +117,7 @@ globalTeamProfiles + teamMethodologies`。本项必须完成 contract review →
 - 2026-08-11：owner 确认“Team 全局、Mission 绑定 workspace”。V2-ITEM-11 contract review Round 1/2 共发现 workspace archive/start TOCTOU、effective workspace 幂等、版本漂移、零 live workspace 可达性与锁反转风险；修订统一 `workspace fence → Team permit` 顺序，冻结 host-level Team 入口和双向 App/daemon capability 行为。Round 3 同一 reviewer 核对 `e13c92a…e10b3c`（459 行），判定前序 findings 全部 resolved、无 new finding，允许执行。
 - 2026-08-12：V2-ITEM-11 实现与 change review 完成。Team profile 改为 host-global，Mission 冻结显式 `workspaceId`；App/CLI 使用 host-level Team 入口，workspace archive 仅终止绑定 Mission、不归档 Team。Workspace start/archive 统一 `workspace fence → backing fence → Team permit`，durable archive intent 在首次 workspace fence 内 claim，provision/restore 与 zero-record 删除共享 canonical backing fence。定向竞态、完整相关测试、server/full typecheck、全仓 lint、format 与 diff-check 通过；同一 Paseo reviewer `27936051` follow-up 判定 previous blocking resolved，0 blocking / 0 important / 0 minor，允许进入 Epic final acceptance。
 - 2026-08-12：Agent Teams v2 final acceptance reviewer `ab10b233` 以同一 lineage 完成 3 轮 finding-driven 审查。旧 daemon 的 idle Team 保持 creation-workspace 可见性，深链与 sidebar 不再静默回落到其他 workspace；`globalTeamProfiles` 行为兼容分支全部进入 `COMPAT(...)` 清理索引。最终冻结 target `c6eafe50…f8857`（10 files / +73 / -17），previous findings 全部 resolved，0 blocking / 0 important / 0 minor，允许 `remote_publish: final` 并进入 owner final acceptance。
+- 2026-08-12：按同一游标内已冻结的实现、change review 与 final acceptance review 证据，机械关闭 V2-ITEM-11 的状态漂移；未重跑既有绿色测试。Agent Teams v2 整体仍保持 `phase: acceptance`，等待 owner final acceptance，未执行 remote publish。
 
 ## 临时决策与证据
 
