@@ -3,9 +3,14 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 等待 owner 裁决是否授权 TM-ITEM-5 在 export_claude 内窄修 C1/YAML 转义并进行 Round 4 复审
-blocked_by: review_limit:TM-ITEM-5 C1/YAML artifact safety
+active_items:
+  - item: TM-ITEM-5
+    state: dispatched
+    run: 9dd58277-196a-4a0e-8881-7343e246d177
+    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-claude-exporter
+    base: b4c5f38c8e5423575450337f43012031d9fd4bc1
+next_action: 等待 TM-ITEM-5 capsule C1/YAML 窄修、权威验证与同一 reviewer Round 4 结论
+blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -32,6 +37,12 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：owner 明确授权 TM-ITEM-5 只在 `export_claude` capsule 内窄修 C1/YAML artifact
+  safety，并沿用原 change-review lineage 进行 Round 4。授权范围排除共享 Bundle validator、schema、
+  corpus、core bundle、Codex 行为与 digest；实现必须做可逆、确定性的 YAML-safe 标量编码，以真实 parser
+  验证 U+009F、C1 边界、NEL/行段分隔与正常 Unicode 的语义往返。Round 4 若仍有 blocking/important，
+  worker 必须停止且不得自行开 Round 5。
 
 - 2026-08-12：TM-ITEM-5 worker 冻结单父 checkpoint
   `29f3ae1b59e5b8f9eb1836fa69307bd4ca8523d2`（父 `b4c5f38c…`，tree
