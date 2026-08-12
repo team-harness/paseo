@@ -38,6 +38,13 @@ remote_publish: final
 
 ## 临时决策与证据
 
+- 2026-08-12：owner 重申 Team Agent 的长期改动原则：功能代码尽量保持为独立 feature capsule，以便在任意
+  clean milestone 同步 upstream。权威规则写入 `docs/changes-by-me.md`：Team domain/application/state/UI 由
+  feature-owned 目录拥有，upstream 热核心文件只接受窄 façade、协议分发、route/panel 注册、capability
+  投影和 adapter wiring；通用修复单独上游化。此后每个 TM-ITEM 的 change review 必须列出 feature-owned
+  改动与 upstream-owned 接入补丁，并对无法收敛的核心改动给出原因、最小影响面和同步处理方式。该约束不
+  改变已批准的 Methodology 领域契约或当前子项依赖。
+
 - 2026-08-12：TM-ITEM-4 派发到 Paseo 托管 worktree
   `/Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-codex-exporter`，run identity 为
   `4f6a8bbe-4dad-47df-9a95-38feeea4a889`，基线为 TM-ITEM-3 portable 里程碑
