@@ -1,15 +1,10 @@
 ---
 epic: ../epics/team-methodologies.md
 phase: executing
-approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776cee0d
+approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-5
-    state: running
-    run: 9dd58277-196a-4a0e-8881-7343e246d177
-    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-claude-exporter
-    base: b4c5f38c8e5423575450337f43012031d9fd4bc1
-next_action: 等待 TM-ITEM-5 worker 完成共享 exporter 核心、Claude adapter、双安装顺序与最多三轮异构 review
+active_items: []
+next_action: 恢复 TM-ITEM-5 worker，按已批准的逐 archetype Claude 权限绑定契约继续实现
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -37,6 +32,41 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：owner 确认修订后的永久 Epic hash
+  `9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1`；主流程将其写入
+  `approved_revision`，解除 TM-ITEM-5 contract-review blocker。该确认只批准 Round 2 通过的逐
+  archetype Claude typed config、`host.disallowed-tools` guaranteed 与 `host.permission-mode`
+  advisory 分类，不改变 17 个子项、执行策略、commit 授权或 `remote_publish: final`。
+
+- 2026-08-12：TM-ITEM-5 contract review Round 2 冻结 Epic
+  `9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1` 与游标
+  `2d818e2536aeb457bde1f50ba7b4371ed4aa6e7e9d434f5e576436ca06b0e7e8`；同一 reviewer
+  `/root/tm5_contract_review` 复核完整候选与 Round 1 修订，结论为 0 blocking / 0 important /
+  0 nit。上一 finding 已关闭：`host.disallowed-tools` 是导出声明层的 guaranteed 能力，
+  `host.permission-mode` 因父会话模式可覆盖而是 advisory；两者分别进入 conformance report，且不把
+  禁用 `Write`/`Edit` 扩张成对 Bash、MCP 或宿主外写入的完整只读承诺。永久 Epic 已通过 contract
+  review，等待 owner 确认新 hash 后更新 `approved_revision` 并恢复 TM-ITEM-5。
+
+- 2026-08-12：TM-ITEM-5 contract review Round 1 冻结 Epic
+  `7536935cdde70fca290544a89bf4d3ad1dcfc8c50ff6ef164c9f08c7d27e0af8` 与游标
+  `620d456227c58d201acc8976fc36ef4bc170c487211915ad33ce3c5e3bc7fa18`；fresh reviewer
+  `/root/tm5_contract_review` 使用 `gpt-5.6-sol` / xhigh，结论为 0 blocking / 1 important。
+  finding 指出 typed config 只是导出声明，Claude 父会话的 `acceptEdits`、`auto` 或
+  `bypassPermissions` 可以覆盖或忽略子智能体 `permissionMode`，因此 report 不能将实际
+  permission mode 无条件声称为 guaranteed。修订将 `host.disallowed-tools` 单独列为
+  guaranteed，将 `host.permission-mode` 列为 advisory，并加入父会话覆盖的否定验收；
+  `Write`/`Edit` 禁用与 permission mode 分类独立，仍不承诺 Bash、MCP 或宿主外写入。
+
+- 2026-08-12：TM-ITEM-5 在零代码改动时发现 Epic 契约缺口：已批准的
+  `ClaudeMethodologyExportConfig` 只有全局 `permissionMode`，无法表达 reviewer/SA 只读且其他
+  archetype 可写；Bundle V1 又明确不授予宿主权限。worker
+  `9dd58277-196a-4a0e-8881-7343e246d177` 用 `paseo/standard` 的 verifier/builder 共用 audience
+  反例证明 audience、phase、id 或 prompt 推导不成立，并在 base `b4c5f38c8…` 保持 worktree clean
+  后结束。主流程已将候选契约收敛为完整覆盖 archetype 的 typed Claude config，以
+  config 为 model、permission mode、max turns 和 `disallowedTools` 的唯一权威；不修改中性
+  Bundle schema。该修订改变已批准的 TM-ITEM-5 契约，因此按 `cs-epic` 进入 fresh contract review，
+  用户确认新 hash 前不恢复实现。
 
 - 2026-08-12：TM-ITEM-5 派发到 Paseo 托管 worktree
   `/Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-claude-exporter`，run identity 为
