@@ -9,7 +9,7 @@ active_items:
     run: 6cd895ac-1f5f-454f-b1cf-2606189462eb
     workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-standard-bundle
     base: 9b35151ff372f3b5717d0258835bcb094b5c95b6
-next_action: 修复 inputText 孤立代理字符跨语言分叉，并由同一 reviewer 完成追加复审
+next_action: 修复 inputBase64 非 BMP 字符的跨语言错误说明分叉，并由同一 reviewer 完成追加复审
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -118,6 +118,12 @@ remote_publish: final
   解释分叉。候选测试为 Python 119、TypeScript 50、build/check、Ruff、离线消费与 bundle digest 全绿，
   但因跨消费者 fail-closed 契约尚未闭合，TM-ITEM-2 未交付、未 squash、未集成、未发布；等待 owner
   明确接受该 important 风险，或另行授权修复和复审。
+- 2026-08-12：owner 授权修复并复审后，候选 `f2b0b66651c6a864d763aa57bcf415d20c7f1c7f` 关闭
+  `inputText` 孤立代理分叉；同一 reviewer 确认该项 resolved，且 Python 122、TypeScript 53、完整构建、
+  Ruff、bundle digest 与 package 零改动证据均通过。完整候选仍有 1 important：`inputBase64` 含非 BMP
+  字符时，Python 按码点、TypeScript 按 UTF-16 码元计算长度，造成双方虽均 fail-closed、但错误说明
+  不一致。owner 已有的“修复并复审”授权继续覆盖该窄修复；worker 正补共享 fixture 与差分验证，再交回
+  reviewer `b3d8f2dc-e83b-49ab-9158-b298d3d43557`。
 - 2026-08-12：owner 明确选择修复而非接受 Round 4 的孤立代理字符 important，并授权沿用同一 reviewer
   做一次追加复审。本次授权只覆盖 `inputText` 中 JSON 转义孤立代理字符的双侧 fail-closed 契约、共享
   corpus 回归与对应验证；不扩大 Bundle V1、TM-ITEM-2 或后续 Methodology 子项范围。
