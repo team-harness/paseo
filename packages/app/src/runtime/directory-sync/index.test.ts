@@ -166,13 +166,19 @@ describe("DirectorySync session readiness", () => {
       mergeWindow: true,
       requestId: "after-request",
     });
+    await directory.fetchTimeline("agent-1", {
+      direction: "tail",
+      limit: 40,
+      projection: "canonical",
+      requestId: "canonical-request",
+    });
 
     expect(client.fetchAgentTimelineCalls).toEqual([
       {
         agentId: "agent-1",
         options: {
           direction: "tail",
-          limit: 40,
+          limit: 100,
           projection: "canonical",
           requestId: "tail-request",
         },
@@ -182,7 +188,7 @@ describe("DirectorySync session readiness", () => {
         options: {
           direction: "before",
           cursor,
-          limit: 40,
+          limit: 100,
           projection: "canonical",
           requestId: "before-request",
         },
@@ -192,10 +198,19 @@ describe("DirectorySync session readiness", () => {
         options: {
           direction: "after",
           cursor,
-          limit: 40,
+          limit: 100,
           projection: "canonical",
           mergeWindow: true,
           requestId: "after-request",
+        },
+      },
+      {
+        agentId: "agent-1",
+        options: {
+          direction: "tail",
+          limit: 40,
+          projection: "canonical",
+          requestId: "canonical-request",
         },
       },
     ]);

@@ -540,14 +540,14 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
 
 **状态**：fork 临时修复。
 
-**行为**：App 通过 `DirectorySync` 发出的 `tail`、`before` 和 `after` timeline 请求统一把 `projection: "projected"` 改写为 `projection: "canonical"`。旧 Host 的 projected 分页可能因跨区间 tool lifecycle 把有限页面扩成完整历史，并把十几 MiB 的加密响应作为单个 Relay frame 发送，最终以 WebSocket `1009 Message Too Big` 断开。canonical 分页严格遵守请求窗口，使客户端能够打开和翻页超长对话而不进入重连循环。
+**行为**：App 通过 `DirectorySync` 发出的 `tail`、`before` 和 `after` timeline 请求统一把 `projection: "projected"` 改写为 `projection: "canonical"`，并使用每页 100 条 canonical timeline 行。旧 Host 的 projected 分页可能因跨区间 tool lifecycle 把有限页面扩成完整历史，并把十几 MiB 的加密响应作为单个 Relay frame 发送，最终以 WebSocket `1009 Message Too Big` 断开。canonical 分页严格遵守请求窗口，使客户端能够一次加载更多聊天内容，同时避免超长对话进入重连循环。
 
 **关键文件**：
 
 - `packages/app/src/runtime/directory-sync/index.ts`
 - `packages/app/src/runtime/directory-sync/index.test.ts`
 
-**同步规则**：这是只能更新客户端时的止血路径。必须在 `DirectorySync.fetchTimeline` 中统一覆盖三种方向，不能只改 tail plan；cursor、limit、mergeWindow、requestId 等其余请求字段保持不变。等受支持 Host 的 projected timeline 具备 canonical coverage 和响应字节上限后，删除 `COMPAT(bounded-projected-timeline)` 改写并恢复 projected 请求。
+**同步规则**：这是只能更新客户端时的止血路径。必须在 `DirectorySync.fetchTimeline` 中统一覆盖三种方向，不能只改 tail plan；改写后的 canonical 页面固定为 100 条，cursor、mergeWindow、requestId 等其余请求字段保持不变。等受支持 Host 的 projected timeline 具备 canonical coverage 和响应字节上限后，删除 `COMPAT(bounded-projected-timeline)` 改写并恢复 projected 请求。
 
 **验证**：`directory-sync/index.test.ts`、`npm run typecheck`、`npm run lint`。
 

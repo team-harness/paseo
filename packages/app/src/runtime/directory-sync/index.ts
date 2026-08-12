@@ -32,6 +32,7 @@ import {
 } from "./transaction";
 
 const PAGE_LIMIT = 200;
+const BOUNDED_CANONICAL_TIMELINE_PAGE_SIZE = 100;
 const AGENT_SORT: NonNullable<FetchAgentsOptions["sort"]> = [
   { key: "updated_at", direction: "desc" },
 ];
@@ -166,7 +167,11 @@ export class DirectorySync {
     // once supported daemons guarantee projected pages stay within their requested window.
     const boundedRequest =
       requestedPage.projection === "projected"
-        ? { ...requestedPage, projection: "canonical" as const }
+        ? {
+            ...requestedPage,
+            limit: BOUNDED_CANONICAL_TIMELINE_PAGE_SIZE,
+            projection: "canonical" as const,
+          }
         : requestedPage;
     const page = await fetchAgentTimelineOnce(client, agentId, boundedRequest);
     if (page.agent) this.agents.submitTimelineAgent(token, page.agent);
