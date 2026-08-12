@@ -12,7 +12,6 @@ import type { DaemonClient, FileReadResult } from "@getpaseo/client/internal/dae
 import { Image as RNImage, ScrollView as RNScrollView, Text, View } from "react-native";
 import { StyleSheet, UnistylesRuntime, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { MarkdownRenderer } from "@/components/markdown/renderer";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import { highlightCode, type HighlightToken } from "@getpaseo/highlight";
@@ -36,6 +35,7 @@ import { useAppSettings } from "@/hooks/use-settings";
 import { useLiveFile } from "./live-file/hook";
 import { FilePanelBar } from "./bar";
 import { FileHtmlPreview } from "./html-preview";
+import { FileMarkdownPreview } from "./markdown-preview";
 import { FileEditorModel, getFileConflictCallout, type FileConflictCallout } from "./editor/model";
 import { createFileObservationSource } from "./editor/observation-source";
 import { FileEditorView } from "./editor/view";
@@ -74,14 +74,14 @@ interface FilePreviewBodyProps {
   location: WorkspaceFileLocation;
   navigationRevision: number;
   imagePreviewUri: string | null;
-  onAddReviewComment?: (selection: ReviewTextSelection, body: string) => void;
+  onAddReviewComment?: (
+    selection: ReviewTextSelection,
+    body: string,
+    source?: WorkspaceReviewCommentSource,
+  ) => void;
 }
 
 type TextExplorerFile = ExplorerFile & { kind: "text" };
-
-function isTextExplorerFile(file: ExplorerFile): file is TextExplorerFile {
-  return file.kind === "text";
-}
 
 function trimNonEmpty(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
@@ -224,6 +224,8 @@ const codeLineStyles = StyleSheet.create((theme) => ({
   },
 }));
 
+// The preview owns loading, source, rendered, and binary states in one surface.
+// oxlint-disable-next-line complexity
 function FilePreviewBody({
   preview,
   mode,
@@ -234,11 +236,59 @@ function FilePreviewBody({
   imagePreviewUri,
   onAddReviewComment,
 }: FilePreviewBodyProps) {
+  const theme = UnistylesRuntime.getTheme();
   const { t } = useTranslation();
+  const filePath = location.path;
+  // A line target means the caller wants to land on that line, so fall back to
+  // the highlighted source view even for renderable files.
+  const renderKind =
+    preview?.kind === "text" && !location.lineStart && mode !== "source"
+      ? filePreviewRenderKind(filePath)
+      : null;
+
+  const previewScrollRef = useRef<RNScrollView>(null);
+
+  const highlightedLines = useMemo(() => {
+    if (!preview || preview.kind !== "text" || renderKind) {
+      return null;
+    }
+
+    return highlightCode(preview.content ?? "", filePath);
+  }, [renderKind, preview, filePath]);
+
+  const gutterWidth = useMemo(() => {
+    if (!highlightedLines) return 0;
+    return lineNumberGutterWidth(highlightedLines.length, theme.fontSize.code);
+  }, [highlightedLines, theme.fontSize.code]);
+  const lineHeight = theme.fontSize.code * 1.45;
+  const lineSelection = useMemo(() => {
+    if (!highlightedLines) {
+      return null;
+    }
+    return clampLineSelection({
+      lineStart: location.lineStart,
+      lineEnd: location.lineEnd,
+      lineCount: highlightedLines.length,
+    });
+  }, [highlightedLines, location.lineEnd, location.lineStart]);
+
   const imageSource = useMemo(
     () => (imagePreviewUri ? { uri: imagePreviewUri } : null),
     [imagePreviewUri],
   );
+
+  useEffect(() => {
+    if (!lineSelection) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      previewScrollRef.current?.scrollTo({
+        y: Math.max(0, (lineSelection.lineStart - 1) * lineHeight),
+        animated: false,
+      });
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [lineHeight, lineSelection, navigationRevision]);
 
   if (isLoading && !preview) {
     return (
@@ -257,16 +307,90 @@ function FilePreviewBody({
     );
   }
 
-  if (isTextExplorerFile(preview)) {
+  if (preview.kind === "text") {
+    if (renderKind === "html") {
+      // The HTML document owns its own scrolling, so no ScrollView wrapper here.
+      return (
+        <View style={styles.previewScrollContainer}>
+          <FileHtmlPreview html={preview.content ?? ""} testID="file-html-preview" />
+        </View>
+      );
+    }
+
+    if (renderKind === "markdown") {
+      const markdown = <FileMarkdownPreview source={preview.content ?? ""} />;
+      const reviewableMarkdown = onAddReviewComment ? (
+        <ReviewSelectionSurface filePath={filePath} onComment={onAddReviewComment}>
+          {markdown}
+        </ReviewSelectionSurface>
+      ) : (
+        markdown
+      );
+      return (
+        <View style={styles.previewScrollContainer}>
+          <RNScrollView
+            ref={previewScrollRef}
+            style={styles.previewContent}
+            showsVerticalScrollIndicator
+          >
+            {reviewableMarkdown}
+          </RNScrollView>
+        </View>
+      );
+    }
+
+    const lines = highlightedLines ?? [[{ text: preview.content ?? "", style: null }]];
+    const keyedLines = lines.map((tokens, index) => ({
+      key: `line-${index}`,
+      tokens,
+      lineNumber: index + 1,
+    }));
+    const codeLines = (
+      <View dataSet={CODE_SURFACE_DATASET}>
+        {keyedLines.map(({ key, tokens, lineNumber }) => (
+          <CodeLine
+            key={key}
+            tokens={tokens}
+            lineNumber={lineNumber}
+            gutterWidth={gutterWidth}
+            highlighted={
+              Boolean(lineSelection) &&
+              lineNumber >= (lineSelection?.lineStart ?? 0) &&
+              lineNumber <= (lineSelection?.lineEnd ?? 0)
+            }
+          />
+        ))}
+      </View>
+    );
+    const reviewableCodeLines = onAddReviewComment ? (
+      <ReviewSelectionSurface filePath={filePath} onComment={onAddReviewComment}>
+        {codeLines}
+      </ReviewSelectionSurface>
+    ) : (
+      codeLines
+    );
+
     return (
-      <TextFilePreviewBody
-        preview={preview}
-        mode={mode}
-        isMobile={isMobile}
-        location={location}
-        navigationRevision={navigationRevision}
-        onAddReviewComment={onAddReviewComment}
-      />
+      <View style={styles.previewScrollContainer}>
+        <RNScrollView
+          ref={previewScrollRef}
+          style={styles.previewContent}
+          showsVerticalScrollIndicator
+        >
+          {isMobile ? (
+            <View style={styles.previewCodeScrollContent}>{reviewableCodeLines}</View>
+          ) : (
+            <RNScrollView
+              horizontal
+              nestedScrollEnabled
+              showsHorizontalScrollIndicator
+              contentContainerStyle={styles.previewCodeScrollContent}
+            >
+              {reviewableCodeLines}
+            </RNScrollView>
+          )}
+        </RNScrollView>
+      </View>
     );
   }
 
@@ -283,6 +407,7 @@ function FilePreviewBody({
     return (
       <View style={styles.previewScrollContainer}>
         <RNScrollView
+          ref={previewScrollRef}
           style={styles.previewContent}
           contentContainerStyle={styles.previewImageScrollContent}
           showsVerticalScrollIndicator
@@ -301,150 +426,6 @@ function FilePreviewBody({
     <View style={styles.centerState}>
       <Text style={styles.emptyText}>{t("panels.file.binaryPreviewUnavailable")}</Text>
       <Text style={styles.binaryMetaText}>{formatFileSize({ size: preview.size })}</Text>
-    </View>
-  );
-}
-
-function TextFilePreviewBody({
-  preview,
-  mode,
-  isMobile,
-  location,
-  navigationRevision,
-  onAddReviewComment,
-}: {
-  preview: TextExplorerFile;
-  mode?: "preview" | "source";
-  isMobile: boolean;
-  location: WorkspaceFileLocation;
-  navigationRevision: number;
-  onAddReviewComment?: (selection: ReviewTextSelection, body: string) => void;
-}) {
-  const theme = UnistylesRuntime.getTheme();
-  const filePath = location.path;
-  const sourceText = preview.content ?? "";
-  // A line target means the caller wants to land on that line, so fall back to
-  // the highlighted source view even for renderable files.
-  const renderKind =
-    !location.lineStart && mode !== "source" ? filePreviewRenderKind(filePath) : null;
-  const previewScrollRef = useRef<RNScrollView>(null);
-  const highlightedLines = useMemo(
-    () => (renderKind ? null : highlightCode(sourceText, filePath)),
-    [filePath, renderKind, sourceText],
-  );
-  const gutterWidth = useMemo(
-    () =>
-      highlightedLines ? lineNumberGutterWidth(highlightedLines.length, theme.fontSize.code) : 0,
-    [highlightedLines, theme.fontSize.code],
-  );
-  const lineHeight = theme.fontSize.code * 1.45;
-  const lineSelection = useMemo(
-    () =>
-      highlightedLines
-        ? clampLineSelection({
-            lineStart: location.lineStart,
-            lineEnd: location.lineEnd,
-            lineCount: highlightedLines.length,
-          })
-        : null,
-    [highlightedLines, location.lineEnd, location.lineStart],
-  );
-
-  useEffect(() => {
-    if (!lineSelection) {
-      return;
-    }
-    const timeout = setTimeout(() => {
-      previewScrollRef.current?.scrollTo({
-        y: Math.max(0, (lineSelection.lineStart - 1) * lineHeight),
-        animated: false,
-      });
-    }, 0);
-    return () => clearTimeout(timeout);
-  }, [lineHeight, lineSelection, navigationRevision]);
-
-  if (renderKind === "html") {
-    // The HTML document owns its own scrolling, so no ScrollView wrapper here.
-    return (
-      <View style={styles.previewScrollContainer}>
-        <FileHtmlPreview html={sourceText} testID="file-html-preview" />
-      </View>
-    );
-  }
-
-  if (renderKind === "markdown") {
-    const markdown = <MarkdownRenderer text={sourceText} />;
-    return (
-      <View style={styles.previewScrollContainer}>
-        <RNScrollView
-          ref={previewScrollRef}
-          style={styles.previewContent}
-          contentContainerStyle={styles.previewMarkdownScrollContent}
-          showsVerticalScrollIndicator
-        >
-          {onAddReviewComment ? (
-            <ReviewSelectionSurface filePath={filePath} onComment={onAddReviewComment}>
-              {markdown}
-            </ReviewSelectionSurface>
-          ) : (
-            markdown
-          )}
-        </RNScrollView>
-      </View>
-    );
-  }
-
-  const lines = highlightedLines ?? [[{ text: sourceText, style: null }]];
-  const keyedLines = lines.map((tokens, index) => ({
-    key: `line-${index}`,
-    tokens,
-    lineNumber: index + 1,
-  }));
-  const codeLines = (
-    <View dataSet={CODE_SURFACE_DATASET}>
-      {keyedLines.map(({ key, tokens, lineNumber }) => (
-        <CodeLine
-          key={key}
-          tokens={tokens}
-          lineNumber={lineNumber}
-          gutterWidth={gutterWidth}
-          highlighted={
-            Boolean(lineSelection) &&
-            lineNumber >= (lineSelection?.lineStart ?? 0) &&
-            lineNumber <= (lineSelection?.lineEnd ?? 0)
-          }
-        />
-      ))}
-    </View>
-  );
-  const reviewableCodeLines = onAddReviewComment ? (
-    <ReviewSelectionSurface filePath={filePath} onComment={onAddReviewComment}>
-      {codeLines}
-    </ReviewSelectionSurface>
-  ) : (
-    codeLines
-  );
-
-  return (
-    <View style={styles.previewScrollContainer}>
-      <RNScrollView
-        ref={previewScrollRef}
-        style={styles.previewContent}
-        showsVerticalScrollIndicator
-      >
-        {isMobile ? (
-          <View style={styles.previewCodeScrollContent}>{reviewableCodeLines}</View>
-        ) : (
-          <RNScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator
-            contentContainerStyle={styles.previewCodeScrollContent}
-          >
-            {reviewableCodeLines}
-          </RNScrollView>
-        )}
-      </RNScrollView>
     </View>
   );
 }
@@ -499,9 +480,7 @@ export function FilePane({
       source: WorkspaceReviewCommentSource = "preview",
     ) => {
       const filePath = readTarget?.path ?? normalizedFilePath;
-      if (!filePath) {
-        return;
-      }
+      if (!filePath) return;
       addWorkspaceReviewComment({
         key: workspaceReviewKey,
         comment: {
@@ -791,9 +770,6 @@ function EditableFilePane({
   const { t } = useTranslation();
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const [vimMode, setVimMode] = useState<string | null>(settings.vimKeybindings ? "NORMAL" : null);
-  const [sourceReviewSelection, setSourceReviewSelection] = useState<ReviewTextSelection | null>(
-    null,
-  );
   const session = useMemo(
     () => ({
       write(input: { content: string; expectedModifiedAt: string; expectedRevision?: string }) {
@@ -892,6 +868,9 @@ function EditableFilePane({
     [preview, snapshot.content, snapshot.version],
   );
   const showSource = mode !== "preview";
+  const [sourceReviewSelection, setSourceReviewSelection] = useState<ReviewTextSelection | null>(
+    null,
+  );
   const handleAddSourceReviewComment = useCallback(
     (selection: ReviewTextSelection, body: string) => onAddReviewComment(selection, body, "source"),
     [onAddReviewComment],
@@ -1014,9 +993,6 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
   previewCodeScrollContent: {
-    padding: theme.spacing[4],
-  },
-  previewMarkdownScrollContent: {
     padding: theme.spacing[4],
   },
   previewImageScrollContent: {

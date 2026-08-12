@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `7b167784d7c692a4ff8676046698fb95e0fed43f`，同步于 2026-08-12。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `7b167784d7c692a4ff8676046698fb95e0fed43f`）。
+- 最近同步基线：`upstream/main` = `4426a6b11fd9f1135d2e48076b83430a1531f973`，同步于 2026-08-13。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `4426a6b11fd9f1135d2e48076b83430a1531f973`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -23,6 +23,13 @@
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
 ## 最近同步判断
+
+### 2026-08-13: `upstream/main` `4426a6b11` / `v0.4.0-beta.1`
+
+- 合入上游 Markdown 文件预览阅读布局、YAML front matter、Mermaid/Markdown 渲染、Provider 诊断命令、终端停滞恢复、桌面正常退出、Cursor 新 token key、Codex 已完成子 Agent 状态收敛、打开中的子 Agent 保留，以及文件树、模型默认值和侧栏交互修复。
+- 文件面板采用上游新的 `FileMarkdownPreview` 文档模型；fork 的跨 File/Changes Review Comments 已重新接到该预览、Source 行号和文件面板汇总入口，保留评论删除全部、关联 Agent 投递和 workspace 隔离语义。
+- 保留 fork 的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、Threadshare 分享、完整 Composer 消息历史、Assistant 时间/分享入口、对话选区引用、固定本地签名 DMG、Web Server tar、独立 Android APK 构建链，以及 `DirectorySync.fetchTimeline` 的 bounded canonical `limit: 100` 兼容策略。
+- 上游本次 release 清理了若干 fork 专属文件和构建脚本；这些删除不代表能力已被上游替代，本轮按 fork 变更清单恢复并继续维护。上游新增的 `0.4.0-beta.1` 版本号和 lockfile 以 upstream 为准。
 
 ### 2026-08-12: `upstream/main` `7b167784d` / `v0.3.1`
 
