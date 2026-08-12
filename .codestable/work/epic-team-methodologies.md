@@ -3,14 +3,9 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-5
-    state: dispatched
-    run: 9dd58277-196a-4a0e-8881-7343e246d177
-    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-claude-exporter
-    base: b4c5f38c8e5423575450337f43012031d9fd4bc1
-next_action: 等待 TM-ITEM-5 capsule C1/YAML 窄修、权威验证与同一 reviewer Round 4 结论
-blocked_by: null
+active_items: []
+next_action: 等待 owner 裁决是否授权 TM-ITEM-5 以 PyYAML 可打印集合补集根治并进行 Round 5
+blocked_by: review_limit:TM-ITEM-5 YAML printable-set completeness
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -37,6 +32,16 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：owner 授权的 TM-ITEM-5 Round 4 核对冻结单父 checkpoint
+  `cbc059ff35514fd35f6bfb9dbba2659ca8dc3d58`（父 `b4c5f38c…`，tree
+  `69af79ab4abc410fe30b3ec5c0513177a6a80135`）。Round 3 的 C1/NEL/LS/PS、中文和星平面字符
+  case 已 resolved；217/217、Codex+Claude 定点 46/46、Ruff、build/check、双安装顺序与 digest
+  零变化证据全绿。Round 4 新增 1 blocking：枚举式 YAML 转义仍漏掉 PyYAML reader 拒绝的
+  U+FFFE/U+FFFF，validator 接受后会生成不可解析 artifact。worker 按授权停止且未开 Round 5。
+  主流程不接受该已知失败路径；建议继续保持 feature capsule 边界，将编码器改为 PyYAML 可打印集合的
+  精确补集，并用边界与性质测试证明所有 validator-accepted 字符都可解析并语义往返。等待 owner 显式
+  授权该根治与 Round 5。
 
 - 2026-08-12：owner 明确授权 TM-ITEM-5 只在 `export_claude` capsule 内窄修 C1/YAML artifact
   safety，并沿用原 change-review lineage 进行 Round 4。授权范围排除共享 Bundle validator、schema、
