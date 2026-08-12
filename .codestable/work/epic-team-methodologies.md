@@ -5,11 +5,11 @@ approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776ce
 current_item: null
 active_items:
   - item: TM-ITEM-4
-    state: running
-    run: 4f6a8bbe-4dad-47df-9a95-38feeea4a889
+    state: recovery_running
+    run: 45942a8a-acb2-4cda-8ab5-14482e513565
     workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-codex-exporter
     base: 134f2c15c24c6baf752e642647804ce79ba7c5c8
-next_action: 等待 TM-ITEM-4 worker 完成 Codex exact-bundle exporter、权威验证与最多三轮独立 change review
+next_action: 等待 TM-ITEM-4 recovery worker 从既有 16/16 GREEN 完成权威门与异构 Claude change review
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -37,6 +37,13 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：TM-ITEM-4 原 worker `4f6a8bbe-4dad-47df-9a95-38feeea4a889` 已建立 16 个准确 RED，并将
+  Codex exporter、CLI 和 installer 接线实现到 16/16 GREEN；随后连续三次在同一收尾位置触发 provider
+  context compaction，无法进入文档与 reviewer 阶段。主流程只中断该 turn，保留同一 worktree 的 4 个
+  未提交实现/测试文件；recovery worker `45942a8a-acb2-4cda-8ab5-14482e513565` 使用
+  `codex/gpt-5.6-sol` / xhigh 接管，仅负责验证、真实 finding 修复与最多三轮异构 Claude review，不重做
+  设计或改变范围。
 
 - 2026-08-12：owner 重申 Team Agent 的长期改动原则：功能代码尽量保持为独立 feature capsule，以便在任意
   clean milestone 同步 upstream。权威规则写入 `docs/changes-by-me.md`：Team domain/application/state/UI 由
