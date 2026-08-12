@@ -5,12 +5,12 @@ approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776ce
 current_item: TM-ITEM-2
 active_items:
   - item: TM-ITEM-2
-    state: awaiting_owner_risk_decision
+    state: implementing_owner_authorized_followup
     run: 6cd895ac-1f5f-454f-b1cf-2606189462eb
     workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-standard-bundle
     base: 9b35151ff372f3b5717d0258835bcb094b5c95b6
-next_action: Owner 裁决是否接受 inputText 孤立代理字符的跨语言分叉，或另行授权修复与追加复审
-blocked_by: owner_decision:TM-ITEM-2-round-4-important
+next_action: 修复 inputText 孤立代理字符跨语言分叉，并由同一 reviewer 完成追加复审
+blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -118,3 +118,6 @@ remote_publish: final
   解释分叉。候选测试为 Python 119、TypeScript 50、build/check、Ruff、离线消费与 bundle digest 全绿，
   但因跨消费者 fail-closed 契约尚未闭合，TM-ITEM-2 未交付、未 squash、未集成、未发布；等待 owner
   明确接受该 important 风险，或另行授权修复和复审。
+- 2026-08-12：owner 明确选择修复而非接受 Round 4 的孤立代理字符 important，并授权沿用同一 reviewer
+  做一次追加复审。本次授权只覆盖 `inputText` 中 JSON 转义孤立代理字符的双侧 fail-closed 契约、共享
+  corpus 回归与对应验证；不扩大 Bundle V1、TM-ITEM-2 或后续 Methodology 子项范围。
