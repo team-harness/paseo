@@ -5,11 +5,11 @@ approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776ce
 current_item: null
 active_items:
   - item: TM-ITEM-3
-    state: review_fix_round_1
+    state: review_fix_round_2
     run: 4d66b70c-cc02-4ef6-a89a-79b9b40af64d
     workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-software-delivery
     base: 6ce16c29b125742badb5e67206c0b9018bd2a46f
-next_action: 等待 TM-ITEM-3 worker 修复首轮独立评审的 4 blocking / 2 important 并交回同一 reviewer 复审
+next_action: 等待 TM-ITEM-3 worker 修复第二轮独立评审的 3 blocking 并交回同一 reviewer 做 Round 3
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -37,6 +37,13 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：TM-ITEM-3 change review Round 2 核对 checkpoint `cf0b912`、唯一父提交
+  `6ce16c29`、冻结 diff `4e80910d…b82c42`。Round 1 的 B2/B3/I1/I2 已关闭；B1/B4 仍未关闭，
+  reviewer 另将 B1 拆出两个可复现拒绝缺口：发布包消费者允许 `entry.path` 逃逸包根目录，也允许重复
+  `(bundleId, version)` 与额外 exact-ref 条目掩护篡改；prompt 语义检查可被“可以直接批准，但不得遗漏原因”
+  这类无关否定词绕过。结论为 3 blocking / 0 important，继续由原 worker 修复，并交回同一 reviewer
+  `8e3b2b0c-b48d-4a80-aa93-f0010e5db25b` 做 Round 3。
 
 - 2026-08-12：TM-ITEM-3 fresh change review Round 1 审查冻结暂存 diff
   `782ea221…75df`（21 文件，`+1402/-10`），reviewer run
