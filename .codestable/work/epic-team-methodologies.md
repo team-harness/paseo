@@ -2,14 +2,14 @@
 epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
-current_item: null
+current_item: TM-ITEM-5
 active_items:
   - item: TM-ITEM-5
-    state: dispatched
+    state: integrating
     run: 9dd58277-196a-4a0e-8881-7343e246d177
     workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-claude-exporter
     base: b4c5f38c8e5423575450337f43012031d9fd4bc1
-next_action: 等待 TM-ITEM-5 printable-set 根治、Unicode 标量性质验证与同一 reviewer Round 5 结论
+next_action: 将 reviewer 通过的 TM-ITEM-5 checkpoint 无历史推进集成到 portable 里程碑
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -37,6 +37,14 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：TM-ITEM-5 Round 5 完成。异构 Codex reviewer 对完整候选给出 0 blocking /
+  0 important / 0 nit，并独立穷举全部 1,112,064 个 Unicode scalar，以真实 PyYAML 验证逐字
+  往返。worker 将受审 tree `b82db984401f3fe9f6ae2f786dd6083de7f09703` 整理为单父 checkpoint
+  `da635da0d2dbfbd77fe9e6292b750dec5818661b`，唯一父为 TM-ITEM-4 portable 里程碑
+  `b4c5f38c8e5423575450337f43012031d9fd4bc1`；219/219、Codex+Claude 定点 48、Ruff、
+  build/check、双安装顺序、digest 零变化与 diff-check 全绿。主流程开始串行集成，不重新运行 worker
+  已报告绿色的同一测试套件；以无冲突 staged-tree 相等、定点结构检查和 code-intel review 作为集成证据。
 
 - 2026-08-12：owner 指示继续，授权 TM-ITEM-5 在 Claude capsule 内以 PyYAML 可打印集合的精确
   补集根治 YAML 标量编码，并沿用原 reviewer lineage 进行 Round 5。实现不得修改共享 validator、
