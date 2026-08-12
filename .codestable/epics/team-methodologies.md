@@ -41,6 +41,10 @@ work: ../work/epic-team-methodologies.md
 - **TM-DEC-13 - 单一首发契约：** Agent Teams 与 Team Methodology 尚未公开发布。V1 直接采用最终
   持久化、RPC 和 UI shape，不实现旧 Team schema、迁移、双写、legacy projection、字段补齐或降级路径。
   capability 仅表示当前 physical host 是否支持完整功能，不承担字段级兼容。
+- **TM-DEC-14 - 宿主权限声明显式绑定：** Methodology bundle 不授予宿主权限。Claude exporter
+  只从 typed config 的完整逐 archetype 绑定中读取 model、permission mode、max turns 与
+  禁用工具声明；不从 audience、phase、archetype id、Role 名称或 prompt 文本推导权限。
+  实际运行权限由 Claude 父会话模式与子智能体声明共同决定，不是 exporter config 的快照。
 
 ## 目标
 
@@ -1197,10 +1201,23 @@ interface CodexMethodologyExportConfig {
   approvalPolicy: "untrusted" | "on-failure" | "on-request" | "never";
 }
 
+type ClaudePermissionMode =
+  | "default"
+  | "acceptEdits"
+  | "auto"
+  | "dontAsk"
+  | "bypassPermissions"
+  | "plan";
+
+interface ClaudeArchetypeExportConfig {
+  model: string;
+  permissionMode: ClaudePermissionMode;
+  maxTurns: number;
+  disallowedTools: string[];
+}
+
 interface ClaudeMethodologyExportConfig {
-  modelByArchetypeId: Record<string, string>;
-  permissionMode: string;
-  maxTurnsByArchetypeId: Record<string, number>;
+  archetypeConfigById: Record<string, ClaudeArchetypeExportConfig>;
 }
 
 interface MethodologyExporter<TConfig> {
@@ -1215,6 +1232,16 @@ Codex 和 Claude 注册独立的 typed adapter；调用方绝不传递带不透�
 exporter 返回确定性文件计划和 conformance report。现有可移植安装器负责路径验证、受管文件 hash、
 冲突检测、拒绝 symlink、加锁和原子替换。
 
+Claude config 的 key 集必须与所选 bundle 的 archetype id 集精确相等；缺失或多余 key、未知
+`permissionMode`、非正整数 `maxTurns`、不安全 model/tool 字符串与重复 `disallowedTools`
+都在产生文件计划前失败。空 `disallowedTools` 是显式的无额外禁用工具绑定，不是缺省值。
+`portable/software-delivery@1` 的受审配置显式为 `independent-reviewer` 和 `solution-architect`
+禁用 `Write` 与 `Edit`；exporter 只验证、渲染并报告这份配置，不内置这两个 id 的语义。
+这一约束保留现有 Claude artifact 的 `disallowedTools: Write, Edit` 形状，不声称阻止 Bash、MCP
+或宿主外的文件系统写入。config 只是导出声明的唯一事实源：`disallowedTools` 从继承的
+工具集中移除列出的工具，但 `permissionMode` 可被父会话的 `acceptEdits`、`auto` 或
+`bypassPermissions` 优先级覆盖或忽略。exporter 不将声明的 permission mode 解释为实际会话权限。
+
 ```ts
 interface MethodologyConformanceReport {
   guaranteed: string[];
@@ -1226,6 +1253,11 @@ interface MethodologyConformanceReport {
 Codex 和 Claude 导出可以保证内容分发。除非目标提供等效强制能力，否则它们会把可写 scope 所有权、
 持久调度、exactly-once 已接受 turn、outbox 恢复和 Mission 完成门禁报告为建议性或不支持。如果目标会
 静默丢失标记为不可降级的策略，则必须让导出失败。
+
+Claude report 将 `host.disallowed-tools` 列为 guaranteed，因为导出的子智能体声明会从继承
+工具集中移除这些工具；它将 `host.permission-mode` 列为 advisory，因为父会话模式可以
+覆盖或忽略子智能体的 `permissionMode`。两项分类独立：`Write`/`Edit` 禁用不依赖
+`permissionMode`，report 也不把声明的 permission mode 表述成实际会话已采用的模式。
 
 Provider model map 仍是 exporter 配置，不进入中性 bundle 或 Paseo Team Methodology。Paseo
 execution profile 继续使用当前 provider catalog。
@@ -1384,6 +1416,9 @@ inspect/audit 细节，而不是产品状态。
   超过配置大小限制的内容。
 - bundle 可以要求 capability，但不能授予工具、权限、文件系统访问或 provider feature。有效
   capability 是 daemon 策略、provider 支持、execution profile 与 bundle 要求的交集。
+- Claude 的宿主权限与工具禁用声明只来自 exporter typed config。配置必须完整覆盖
+  bundle archetype，且不能从不受信任的 bundle 文本或命名中推导。实际运行权限还受父会话
+  模式优先级影响；conformance report 必须分开报告工具移除与 permission mode 声明。
 - 采用前，UI 显示 source、精确版本、digest、license 和提示词内容。外部 bundle 信任与签名不在 V1
   范围内；初期只发布内嵌 bundle。
 - 出于审计目的，提示词和模板文本属于不受信任的指令内容。它绝不绕过 Mission 工具授权或结构化
@@ -1465,6 +1500,8 @@ Mission inspect 和 audit export 包含完整的持久化 Methodology snapshot �
 | daemon 在门禁 CAS 前后崩溃                      | reconcile 到一个 outcome、至多一个 Attention 和至多一个豁免。                                                   |
 | 活跃 Mission 期间 bundle 更新                   | 当前 Mission 逐字节保持不变；在终态前不可升级 Team。                                                            |
 | 导出目标无法强制最终验证                        | 返回显式 conformance 损失；策略不可降级时失败。                                                                 |
+| Claude config 缺少 archetype 或使用未知权限值   | 在生成 artifact plan 和调用安装器前失败；不从 bundle 语义推导或补值。                                           |
+| Claude 父会话覆盖子智能体 permission mode       | artifact 保留受审声明；report 仍将 `host.permission-mode` 列为 advisory，不声称运行时已采用。                   |
 | 恢复期间缺少 bundle                             | 从持久化 snapshot 继续，不访问 bundle。                                                                         |
 
 ## 验证策略
@@ -1504,6 +1541,7 @@ Mission inspect 和 audit export 包含完整的持久化 Methodology snapshot �
    capability unknown/absent/present 三态与 canonical hub 的 cold-start 路由、静态 route 的
    loading/unsupported 状态、`HostLevelTeamList` 单一 owner、V2-ITEM-11 idle Team placement 不改变 host
    ownership、Team replica 与 Methodology catalog hydration 失败隔离、Codex/Claude 产物 golden test、
+   Claude 逐 archetype 配置完整覆盖、不推导权限与父会话覆盖 permission mode 的否定测试、
    安装器冲突测试和 conformance report。
 
 真实 provider 验收包括同一 host-global Team 在不同 workspace 中依次执行 Mission：一个正常的独立审查
@@ -1556,9 +1594,14 @@ Mission，以及一个到达审查者 Attention、获得操作者豁免、
 - **Owner / skill：** `portable-agent-team` / `cs-feat`。
 - **依赖：** TM-ITEM-1、TM-ITEM-3、TM-ITEM-4。
 - **可交付结果：** exact ref 与 typed Claude config 生成确定性 artifact plan 和 conformance report，
-  保留只读 reviewer/SA 权限约束，并闭合 Codex→Claude 与 Claude→Codex 两种安全安装顺序。
-- **验收要点：** model、permission 与 max-turn 配置严格校验；与 Codex 使用相同 ref、digest 和中性
-  prompt asset；两种安装顺序都只保留一份共享内容、正确的平台 ownership、本地修改与重复安装零变化；
+  从逐 archetype typed config 保留 reviewer/SA 的 `Write`/`Edit` 禁用约束，并闭合
+  Codex→Claude 与 Claude→Codex 两种安全安装顺序。
+- **验收要点：** config 精确覆盖全部 archetype，model、闭集 permission mode、max-turn 与
+  disallowed-tool 严格校验；reviewer/SA 的 `Write`/`Edit` 禁用只由受审 config 建立，并以缺失绑定、角色改名、
+  audience/phase/prompt 反例证明 exporter 不做语义推导；与 Codex 使用相同 ref、digest 和中性 prompt asset；
+  两种安装顺序都只保留一份共享内容、正确的平台 ownership、本地修改与重复安装零变化；
+  Claude report 将 `host.disallowed-tools` 列为 guaranteed、将可被父会话覆盖的
+  `host.permission-mode` 列为 advisory；父模式覆盖的否定验收不得声称实际会话已采用该模式。
   两个 conformance report 对共享 runtime 能力使用同一分类且不声称 Paseo 专属保证。
 
 ### TM-ITEM-6 · 建立全局 Team Hub 与 Methodology catalog
