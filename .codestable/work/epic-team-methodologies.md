@@ -5,12 +5,12 @@ approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776ce
 current_item: null
 active_items:
   - item: TM-ITEM-3
-    state: review_fix_round_2
+    state: review_round_limit_reached
     run: 4d66b70c-cc02-4ef6-a89a-79b9b40af64d
     workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-software-delivery
     base: 6ce16c29b125742badb5e67206c0b9018bd2a46f
-next_action: 等待 TM-ITEM-3 worker 修复第二轮独立评审的 3 blocking 并交回同一 reviewer 做 Round 3
-blocked_by: null
+next_action: 等待 owner 明确授权 TM-ITEM-3 Round 4；授权后只修复 prompt 语义契约的双重否定与跨句矛盾
+blocked_by: owner_round_4_authorization
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -37,6 +37,12 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：TM-ITEM-3 change review Round 3 核对 checkpoint `217f0fe`、唯一父提交
+  `6ce16c29`、冻结 diff `89310c91…f2049`。Round 2 的路径逃逸、重复身份与额外 exact-ref 绕过均已关闭；
+  prompt 语义契约仍有 1 blocking：`不得不批准`、`不能不豁免` 等双重否定，以及保留合规锚点后另起一句
+  `仍可以批准未验证交付`，都会被完整契约检查器接受。三轮 reviewer 上限已用尽，worker 保持候选冻结；
+  主流程等待 owner 明确授权 Round 4，不自行继续修改或创建新 reviewer。
 
 - 2026-08-12：TM-ITEM-3 change review Round 2 核对 checkpoint `cf0b912`、唯一父提交
   `6ce16c29`、冻结 diff `4e80910d…b82c42`。Round 1 的 B2/B3/I1/I2 已关闭；B1/B4 仍未关闭，
