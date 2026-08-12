@@ -3,9 +3,14 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 等待 owner 裁决是否授权 TM-ITEM-5 以 PyYAML 可打印集合补集根治并进行 Round 5
-blocked_by: review_limit:TM-ITEM-5 YAML printable-set completeness
+active_items:
+  - item: TM-ITEM-5
+    state: dispatched
+    run: 9dd58277-196a-4a0e-8881-7343e246d177
+    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-claude-exporter
+    base: b4c5f38c8e5423575450337f43012031d9fd4bc1
+next_action: 等待 TM-ITEM-5 printable-set 根治、Unicode 标量性质验证与同一 reviewer Round 5 结论
+blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -32,6 +37,12 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：owner 指示继续，授权 TM-ITEM-5 在 Claude capsule 内以 PyYAML 可打印集合的精确
+  补集根治 YAML 标量编码，并沿用原 reviewer lineage 进行 Round 5。实现不得修改共享 validator、
+  `export_shared`、Codex、Bundle schema/corpus/core、packages 或 digest；验收提升为 Unicode scalar
+  value 的边界与性质证明，确保 validator 可接受的每个标量均可被真实 PyYAML 解析并逐字往返。
+  Round 5 若仍有 blocking/important，worker 必须停止且不得自行开 Round 6。
 
 - 2026-08-12：owner 授权的 TM-ITEM-5 Round 4 核对冻结单父 checkpoint
   `cbc059ff35514fd35f6bfb9dbba2659ca8dc3d58`（父 `b4c5f38c…`，tree
