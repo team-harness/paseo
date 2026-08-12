@@ -5,12 +5,12 @@ approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776ce
 current_item: null
 active_items:
   - item: TM-ITEM-3
-    state: review_round_4_failed
+    state: review_fix_round_4
     run: 4d66b70c-cc02-4ef6-a89a-79b9b40af64d
     workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-software-delivery
     base: 6ce16c29b125742badb5e67206c0b9018bd2a46f
-next_action: 等待 owner 决定是否授权 TM-ITEM-3 Round 5；若授权，改为冻结两个策略 prompt 的完整规范文本或摘要，不再扩充同义词检查器
-blocked_by: owner_round_5_authorization
+next_action: 等待 TM-ITEM-3 worker 将两个策略 prompt 改为完整规范文本或摘要冻结，并交回同一 reviewer 做 owner 授权的 Round 5
+blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -37,6 +37,12 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：owner 明确授权 TM-ITEM-3 Round 5。授权只放宽本 change review 阶段到第五轮；
+  不改变子项契约、schema、里程碑或发布授权。Round 5 必须删除基于结论词、否定词和同义词的自然语言
+  推断，将 `review-rounds.md` 与 `verification-gate.md` 的完整规范文本或完整内容摘要作为唯一机械合同；
+  比较必须保留顺序与重复次数，任何增删改、同义改写或重复句都要求显式更新受审常量。仍由原 worker 和
+  同一 reviewer lineage 执行。
 
 - 2026-08-12：owner 授权的 TM-ITEM-3 change review Round 4 核对 checkpoint `4d7c7bb`、唯一父提交
   `6ce16c29`、冻结 diff `db09ba42…a4402`。Round 3 的双重否定与跨句原始反例已关闭，但 reviewer 以
