@@ -2,10 +2,15 @@
 epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776cee0d
-current_item: null
-active_items: []
-next_action: 派发 TM-ITEM-2，定义并验证 Methodology bundle schema、canonical encoder 与 corpus
-blocked_by: null
+current_item: TM-ITEM-2
+active_items:
+  - item: TM-ITEM-2
+    state: awaiting_owner_risk_decision
+    run: 6cd895ac-1f5f-454f-b1cf-2606189462eb
+    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-standard-bundle
+    base: 9b35151ff372f3b5717d0258835bcb094b5c95b6
+next_action: Owner 裁决是否接受 inputText 孤立代理字符的跨语言分叉，或另行授权修复与追加复审
+blocked_by: owner_decision:TM-ITEM-2-round-4-important
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -92,3 +97,24 @@ remote_publish: final
   集成权威验证为 45/45 单测通过、Ruff format/check 通过、`git diff --check` 通过；code-intel 对完整
   staged diff 的高风险分数仅来自 812 行改动规模与符号截断，随后定点追踪 build CLI、installer、
   fragment 与 preflight 路径，未发现具体失败路径。按 `remote_publish: final` 未推送。
+- 2026-08-12：TM-ITEM-2 派发到 Paseo 托管 worktree
+  `/Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-standard-bundle`，run identity 为
+  `6cd895ac-1f5f-454f-b1cf-2606189462eb`，基线为 portable 里程碑
+  `9b35151ff372f3b5717d0258835bcb094b5c95b6`。worker 只拥有 Bundle V1 schema、`paseo/standard@1`、
+  canonical encoder/digest、有效/无效 corpus 与 data-only package；不提前实现 TM-ITEM-3 或 Paseo runtime。
+- 2026-08-12：TM-ITEM-2 冻结候选 `04cc39b25c5b727f3b96cd45059878053174427b`（tree
+  `c998ed33f3b506f0c666b2de70242aa0445b76d8`）完成三轮独立 change review，但未获交付结论。Round 3
+  保留 1 blocking：Python 使用 `$` + `re.match`，会接受 TypeScript 拒绝的尾换行 identifier；保留 1
+  important：原始非法 UTF-8 的宿主异常 detail 不一致，且现有 `inputText` corpus 无法表达原始字节。
+  当前候选保持 clean、未 squash、未 push/publish；Python 106、TypeScript 35、valid 5 / invalid 27、
+  离线 consumer 与现有差分探针均通过。按三轮上限暂停，等待 owner 裁决是否授权同一 reviewer Round 4。
+- 2026-08-12：owner 明确授权 TM-ITEM-2 change review 追加 Round 4。该例外只覆盖 Round 3 的两个未决项：
+  identifier 尾换行接受集分叉，以及非法 UTF-8 稳定 detail / 原始字节 corpus。继续沿用 reviewer
+  `b3d8f2dc-e83b-49ab-9158-b298d3d43557`；Round 4 后若仍有 blocking/important，不再自动增加轮次。
+- 2026-08-12：Round 4 核对冻结候选 `376f506064874c9e058c3327acdbada688d3bc4d`（tree
+  `8d0a80ab124d722754050bf4e999b1fddfd059e6`）。Round 3 的 identifier 全字符串匹配与非法 UTF-8
+  稳定分类两项均 resolved；新增 1 important：conformance `inputText` 含 JSON 转义孤立代理字符时，
+  Python UTF-8 编码拒绝，TypeScript `TextEncoder` 则替换为 U+FFFD 后接受，导致同一 fixture 的字节
+  解释分叉。候选测试为 Python 119、TypeScript 50、build/check、Ruff、离线消费与 bundle digest 全绿，
+  但因跨消费者 fail-closed 契约尚未闭合，TM-ITEM-2 未交付、未 squash、未集成、未发布；等待 owner
+  明确接受该 important 风险，或另行授权修复和复审。
