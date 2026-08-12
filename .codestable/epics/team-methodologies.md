@@ -34,7 +34,13 @@ work: ../work/epic-team-methodologies.md
   声称目标无法强制执行的 Paseo 运行时保证。
 - **TM-DEC-11 - 全局 Team 归属：** Methodology binding、preset、Member archetype 和 Skill 映射
   属于 host-global Team profile。workspace 属于 Mission，而不是 Team 或 Methodology。Team wire 上的
-  `workspaceId` 只保留为创建上下文和旧客户端默认值，不能进入 Methodology 编译或限制 Team 复用。
+  `creationWorkspaceId` 只记录创建上下文，不能进入 Methodology 编译或限制 Team 复用。
+- **TM-DEC-12 - Agent Profile 来源：** Team Member 可以引用一个 host-local Agent Profile 作为
+  execution profile 的来源，但 Team 必须同时保存完整、权威的 `executionProfile` 快照。Mission 只读
+  Team/Mission 中的快照；Profile 变化只能通过显式刷新进入后续 Team revision。
+- **TM-DEC-13 - 单一首发契约：** Agent Teams 与 Team Methodology 尚未公开发布。V1 直接采用最终
+  持久化、RPC 和 UI shape，不实现旧 Team schema、迁移、双写、legacy projection、字段补齐或降级路径。
+  capability 仅表示当前 physical host 是否支持完整功能，不承担字段级兼容。
 
 ## 目标
 
@@ -53,19 +59,22 @@ work: ../work/epic-team-methodologies.md
 - V1 不让独立的 Codex 或 Claude 导出等同于 Paseo 的调度与恢复。
 - V1 不让 Methodology bundle、binding 或 preset 拥有 workspace、repository path、scope lease 或
   workspace 状态，也不提供按 Mission 覆盖 workspace-independent Team Methodology 的能力。
+- V1 不让 Agent Profile 成为 Mission 的实时依赖，也不自动把 Agent Profile 的 notes、显示 metadata、
+  passthrough 字段或未来 prompt 字段注入 Methodology 或 Agent prompt。
 
 ## 领域术语
 
-| 术语                     | 定义                                                                                                 |
-| ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| **Team methodology**     | 一组版本化的名册提案、Mission 硬策略、Playbook 和提示词资产。                                        |
-| **Methodology bundle**   | 用于分发一个 Team Methodology 的规范内容寻址产物。                                                   |
-| **Team preset**          | Member slot、Lead 选择、Skill、Level 和 archetype binding 的提案；它不会选择 workspace 或创建 Team。 |
-| **Member archetype**     | 可复用的 Role 提案，包含建议的 Skill、Level、Playbook 和 Member 数量限制。                           |
-| **Playbook**             | 面向某阶段或受众的建议性指令。可移植的 `SKILL.md` 会成为 Playbook。                                  |
-| **Methodology binding**  | host-global Team profile 采用的精确 bundle ref 和显式映射。                                          |
-| **Methodology snapshot** | 冻结到一个 Mission 中的完整编译策略和提示词 section。                                                |
-| **Review waiver**        | 仅追加的操作者决定；它满足一个无法执行的审查门禁，但不声称获得独立批准。                             |
+| 术语                         | 定义                                                                                                 |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **Team methodology**         | 一组版本化的名册提案、Mission 硬策略、Playbook 和提示词资产。                                        |
+| **Methodology bundle**       | 用于分发一个 Team Methodology 的规范内容寻址产物。                                                   |
+| **Team preset**              | Member slot、Lead 选择、Skill、Level 和 archetype binding 的提案；它不会选择 workspace 或创建 Team。 |
+| **Member archetype**         | 可复用的 Role 提案，包含建议的 Skill、Level、Playbook 和 Member 数量限制。                           |
+| **Playbook**                 | 面向某阶段或受众的建议性指令。可移植的 `SKILL.md` 会成为 Playbook。                                  |
+| **Methodology binding**      | host-global Team profile 采用的精确 bundle ref 和显式映射。                                          |
+| **Methodology snapshot**     | 冻结到一个 Mission 中的完整编译策略和提示词 section。                                                |
+| **Execution profile source** | Team Member 的可选来源记录；指向 host-local Agent Profile，并证明当前快照由哪个 resolver 物化。      |
+| **Review waiver**            | 仅追加的操作者决定；它满足一个无法执行的审查门禁，但不声称获得独立批准。                             |
 
 Paseo **Skill** 仍是 Team 拥有并用于匹配的能力。Playbook 不能作为 Skill 引用。可移植的 role 会成为
 Member archetype；Team profile 仍拥有实际的 Role、Level、Skill、execution profile 和 Lead 指定。
@@ -84,7 +93,10 @@ portable-agent-team
 Paseo TeamMethodologyModule: list + describe + compileMission
                               |
                               v
-host-global Team profile: roster + Methodology binding
+host-local Agent Profile catalog -> TeamAgentProfileMaterializer
+                              |
+                              v
+host-global Team profile: roster + execution snapshot + Methodology binding
                               |
                               v
 workspace-bound Mission: snapshot + DAG + Assignment + room + 租约 + 恢复
@@ -177,7 +189,7 @@ preset 返回提案。用户可以重命名 Role、更改 Level 和 Skill、选�
 或移除可选 slot。最终的 Team 事实仍具有权威性。每个实体化的 Member 和 Skill 都存储显式 bundle
 binding；匹配绝不比较显示名称或描述。`maxMembers` 限制绑定到该 archetype 的 Member；未绑定的
 自定义 Member 不占用此限额。preset 不包含 workspace 字段；从 workspace 页面发起创建，只会给 Team
-wire 的兼容创建上下文提供默认值，不会改变 preset 或 binding。
+的 `creationWorkspaceId` 提供创建上下文，不会改变 preset 或 binding。
 
 `portable-agent-team` 的 agent 文本不会原样写入 Team Member 的 `role`，也不会变成新的 provider
 subagent 类型。导入器把可复用身份说明转换为 archetype，把工作方式转换为 Playbook/prompt asset，把
@@ -189,6 +201,78 @@ Mission 编译按实际 roster、显式 archetype binding、Member audience 和 
 asset。它们成为该 Member 启动或 Assignment prompt 的冻结 Methodology section。实际 Agent 仍由 Member
 的 Paseo execution profile 创建；“全栈工程师”等内置选择只是 preset/archetype 提案，不是绕过 roster
 另行启动的内置 subagent。
+
+### Agent Profile 来源与快照
+
+Agent Profile 是 host-local 的可复用启动配置。它可以帮助用户给 Team Member 选择 provider、model、
+mode、thinking option 和 feature values，但不拥有 Team Role、Level、Skill、archetype、Playbook 或
+Methodology policy。Team Member 使用以下单一 V1 结构：
+
+```ts
+interface ExecutionProfileSource {
+  kind: "agent_profile";
+  profileId: string;
+  resolverVersion: 1;
+  appliedDigest: Sha256;
+}
+
+interface TeamMemberProfile {
+  memberId: string;
+  role: string;
+  level: 1 | 2 | 3 | 4 | 5;
+  skillIds: string[];
+  executionProfile: TeamExecutionProfile;
+  executionProfileSource?: ExecutionProfileSource;
+  mentionHandle: string;
+}
+```
+
+`executionProfileSource` 的可选性是产品语义，不是兼容措施。缺失 source 表示用户直接维护 inline
+execution profile。带 source 的 Member 仍必须保存完整 `executionProfile`；source 只提供来源、同步状态
+和显式刷新入口，不能替代快照。
+
+daemon 通过单一 `TeamAgentProfileMaterializer` 读取一次权威 Agent Profile catalog，并按
+`resolverVersion: 1` 产生：
+
+```ts
+interface MaterializedTeamExecutionProfile {
+  source: ExecutionProfileSource;
+  executionProfile: TeamExecutionProfile;
+}
+```
+
+V1 resolver 将 Agent Profile 的 `provider`、`model`、`modeId`、`thinkingOptionId` 和
+`featureValues` 规范化到 `TeamExecutionProfile`：缺失的可空 scalar 变为 `null`，缺失的 feature map 变为
+空对象。`appliedDigest` 是该规范快照的 canonical JSON SHA-256；对象 key 排序，array 保持原序。它不包含
+Profile 的 `name`、`icon`、`color`、`notes`、未知 passthrough 字段或任何 prompt 字段。
+
+创建、绑定或刷新时，daemon 必须按 `profileId` 找到恰好一个 Profile，完成规范化与 Team execution
+profile 校验，然后在同一个 Team CAS 中写入 source 和快照。缺失返回
+`team_agent_profile_not_found`；重复 id 返回 `team_agent_profile_ambiguous`；无法物化为合法
+`TeamExecutionProfile` 返回 `team_agent_profile_invalid`。不得按名称、数组位置或 provider 猜测。
+
+Agent Profile 编辑不会自动改 Team。Team 设置比较当前 catalog 的 V1 materialization 与
+`source.appliedDigest`，显示 `current`、`update_available`、`missing` 或 `ambiguous`。用户显式刷新后创建新
+Team revision；手动编辑 Member 的 provider/model/mode/thinking/features 会移除 source，转为 inline。
+Profile 删除或暂时不可读时，Team 继续使用最后一次快照；UI 显示 source 缺失，但 Mission 仍可启动。
+仅修改名称、图标、颜色、notes 或 passthrough 字段不会改变 digest，状态仍为 `current`。
+
+materializer 从同一份 daemon config snapshot 产生 source 与 execution snapshot，之后才尝试 Team CAS；
+两者永远成对提交。Agent Profile catalog 与 Team store 不建立跨文件事务。若 Profile 在这段时间再次变化，
+已提交 Team 仍准确记录它实际采用的 digest，下一次 inspect 显示 `update_available`。
+
+Mission start 把 `executionProfile` 与当时的 source 一并复制到冻结名册；source 只用于审计，Agent 创建
+只读快照。recovery、replan、Participant replacement 和 capability refresh 都不读取 Agent Profile
+catalog。未来 Agent Profile 新增运行时字段时，必须升级 resolver/schema，并由用户显式刷新。未来
+Profile prompt 字段也不会自动进入 Team：Member 方法说明由 Methodology archetype/Playbook/prompt
+asset 提供，Agent 身份、workspace 和工具由 Paseo 运行时 section 提供。
+
+| 输入来源                                        | V1 prompt 所有权                                                |
+| ----------------------------------------------- | --------------------------------------------------------------- |
+| Agent Profile                                   | 不提供 Team prompt；只物化运行配置。                            |
+| Methodology archetype / Playbook / prompt asset | 生成按 Member audience 与 Mission phase 冻结的方法说明。        |
+| Paseo Team runtime                              | 生成 Member/Mission 身份、workspace、工具、当前状态与下一动作。 |
+| Assignment Contract                             | 追加本次 Assignment 的不可变目标、scope、依赖和验收事实。       |
 
 ### Playbook 与提示词资产
 
@@ -305,14 +389,15 @@ interface MethodologyRosterProjection {
 map 或未渲染的私有 metadata。`compileMission` 仅从 `binding.ref` 解析一个 ref；调用方不能提交两个
 不一致的 ref。启动服务从权威 snapshot 派生名册 projection，并规范化每个 id array。它排除时间戳、
 运行时 Agent id、实时 Participant 状态、可变的 `providerAvailable` 配置位，以及 Team 创建上下文、
-Mission `effectiveWorkspaceId` 和 workspace path。workspace 独立性是接口约束：相同的 binding、Team
+Mission `workspaceId`、workspace path 和 `executionProfileSource`。Agent Profile provenance 与
+Methodology 选择无关；编译只读取名册中已经冻结的结构 capability 事实。workspace 独立性是接口约束：相同的 binding、Team
 revision、结构化名册和 Mission 语义输入在 workspace A 与 B 中产生相同的 Methodology snapshot。
 编译是确定性的：相同的 binding、Team revision、结构化名册 projection、Mission 输入和编译器版本
 会生成逐字节相同的策略与提示词输出。
 
 该接口返回结果或稳定的 domain error。它不更改 Team、Mission、room、Agent 或文件系统，也不解析
 workspace。Paseo 在最终 Agent prompt 装配阶段从已持久化 Mission 或 start intent 生成独立的运行时
-section，其中包含当前 Mission id、`effectiveWorkspaceId`、workspace path、工具和状态。该 section
+section，其中包含当前 Mission id、`Mission.workspaceId`、workspace path、工具和状态。该 section
 不属于 Methodology snapshot 或 `promptDigest`，也不是隐藏的编译输入。
 
 ### 错误码
@@ -354,117 +439,84 @@ interface TeamMethodologyBinding {
 不变量和最终验证仍为必需，可写 Workstream 的审查由 Lead 决定。`portable/software-delivery@1` 要求对
 可写 Workstream 进行独立审查，并添加规格、协调、审查和文档 Playbook。
 
-默认选择由 daemon 命令边界而非 UI 负责。在调用 Team domain service 前，它将省略的产品级选择解析为
-精确的内嵌 `paseo/standard@1` ref。domain service 只接受完整 binding，因此后续每条路径都使用同一个
-编译器。
+App 和 CLI 将默认产品选择显式解析为精确的内嵌 `paseo/standard@1` ref 并随创建请求发送。daemon
+只接受完整 binding，因此所有 Team 从第一次写入起都使用同一个编译器路径；不存在缺失 binding 的
+运行时补齐。
 
 Team profile 固定一个精确 Methodology。V1 不公开 Mission 覆盖。仅当 Team 没有非终态 Mission 时，
 Team 设置才可规划升级。升级会比较当前 binding、下一个 descriptor 和当前 Team 事实，然后要求用户
 处理已移除的 archetype、Skill 或必需策略，之后才提交一个 Team revision。
 
 binding、preset id、Member archetype 和 Skill 映射都随全局 Team profile 持久化，可由同一 Team 在
-不同 workspace 的后续 Mission 中复用。Team wire 上的 `workspaceId` 不参与 binding 校验、Team 列表、
-Methodology catalog、升级资格或编译 digest；它只用于旧客户端兼容和缺省 Mission workspace。创建
-上下文 workspace 被归档后，Team 与 Methodology 设置仍存在并可从 host-global 入口访问。
+不同 workspace 的后续 Mission 中复用。Team 的 `creationWorkspaceId` 不参与 binding 校验、Team 列表、
+Methodology catalog、升级资格、Mission workspace 选择或编译 digest。创建上下文 workspace 被归档后，
+Team 与 Methodology 设置仍存在并可从 host-global 入口访问。
 
-实现此设计期间，该功能仍处于预发布状态。没有 binding 的开发数据通过显式维护操作重置或转换。
-运行时读取不携带永久的缺失 binding 回退。
+实现此设计期间，该功能仍处于预发布状态。开发数据直接重置；运行时不读取缺失 binding、旧 Team
+shape 或没有 `executionProfile` 的 Member。
 
 独立审查要求特意不纳入启动时 capability 拒绝条件。即使 Team 没有合格的独立审查者，也可以启动
 Mission、规划可写工作并执行交付。只有在所有结构事实均已知且无人合格时，已完成的可写 Workstream
 才进入 `review_gate_reviewer_unavailable`；未知事实走不可豁免的 capability 解析路径。
 这样可保留实用的单人和小型 Team 工作流，又不会把独立审查变成无法验证的提示词约定。
 
-## 协议与持久化变更
+## 协议与持久化 V1 契约
 
-domain 与 wire 的要求不同。持久化的 Team aggregate 要求 Methodology binding；WebSocket schema 保持
-可追加，使旧 app 能解析新 daemon 的 snapshot。
+Agent Teams V2 与 Team Methodology V1 作为同一个首发产品契约落地。wire command、domain aggregate
+与持久化各自采用适合其职责的唯一 V1 shape，并共享同一组必需业务事实；开发期旧 Team 文件直接重置。实现不得增加 Team migration、dual write、legacy
+adapter、旧 projection、缺失字段 normalizer、旧 RPC fallback 或 Team 专属 `COMPAT(...)` shim。
 
-| Aggregate 或 request      | V1 变更                                                                                                                  | 兼容规则                                                                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TeamV2`                  | 添加必需的 domain `methodologyBinding`；binding 属于 host-global profile                                                 | 在兼容下限提升前，snapshot 字段在 wire 上可选。进入 domain 前完成规范化；现有 `workspaceId` 只作创建上下文与旧客户端默认值。                |
-| Team profile 创建/更新    | 接受精确 Methodology ref 和显式 binding                                                                                  | 通过 `server_info.features.teamMethodologies` 和 `team_methodologies` socket capability 对 UI 与 RPC 设门禁。                               |
-| Mission start wire/domain | wire 添加 optional `expectedMethodologyRef`，并沿用 global-Team 设计的 optional `workspaceId`；domain 规范化后两者都必需 | 两个字段分别受 `teamMethodologies` 与 `globalTeamProfiles` 控制；daemon 在协议外规范化旧请求，再比较权威 binding 并锁定 Mission workspace。 |
-| `TeamMission`             | 添加 Methodology snapshot、审查豁免和 capability replan request                                                          | Wire snapshot 字段采用追加方式并受 capability gate 控制；持久化 Mission 状态包含完整的仅追加记录。                                          |
-| Workstream                | 用 `MissionReviewGate` 替换可空审查者字段                                                                                | 先引入新的可辨识结构，再停止接受旧结构。在协议边界规范化一次。                                                                              |
-| 验证 Workstream           | 添加 `finalVerificationGate`                                                                                             | 该字段在 wire 上可选；旧 owner 字段仍是规划 owner projection，绝不暗示验证者选择。                                                          |
-| Attention item            | 添加可辨识的 Mission 或 Workstream 阻塞 scope                                                                            | 旧记录规范化为 Mission scope；有 scope 的 item 使用 null `priorMissionStatus`，并要求新 capability。                                        |
-| Attention resolution      | 添加 `waive_review` 和结构门禁重新规划证据                                                                               | `waive_review` 仅限控制器。现有 `replan` 分支在 wire 上增加可选名册 revision；新 domain 对结构门禁 Attention 要求该字段。                   |
-| 内部 Mission 恢复         | 为每个 capability replan request 追加一次现有格式的 recipient delivery                                                   | 恢复保持内部实现，并复用当前 outbox、重试、确认、取消和 binding-successor 机制。                                                            |
-| Assignment Contract       | 添加 Methodology 和门禁 fingerprint                                                                                      | 新字段在 wire 上可选；历史 Assignment 保留其原始 revision，绝不继承之后的 Team 变更。                                                       |
-| 名册 Member capability    | 添加结构化 `capabilityFacts`                                                                                             | 在旧 wire projection 中保留必需的 `providerAvailable`、`capabilityIds` 和 `toolIds`；新字段在 wire 上可选。                                 |
+| Aggregate 或 request   | V1 必需结构                                                                                                                                     |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TeamV2`               | `creationWorkspaceId`、完整 roster、每个 Member 的 `executionProfile`、可选产品语义的 `executionProfileSource`，以及完整 `methodologyBinding`。 |
+| Team profile 创建/更新 | 发送精确 Methodology ref/binding；每个 Member 的 execution selection 明确为 inline snapshot 或 `agent_profile` source。                         |
+| Mission start          | `workspaceId`、`expectedTeamRevision` 与 `expectedMethodologyRef` 全部必需。                                                                    |
+| `TeamMission`          | 完整 Methodology snapshot、review/final gate、Attention、waiver 和 capability replan request。                                                  |
+| Workstream             | 权威 `MissionReviewGate`；不保留可空 reviewer projection。验证 Workstream 另有权威 `finalVerificationGate`。                                    |
+| Attention              | 必需 `scope` 和与 kind 对应的 typed details；resolution 使用完整可辨识 union。                                                                  |
+| Assignment Contract    | 必需 Methodology、subject gate 和 final gate fingerprint；历史 Assignment 保留原 revision。                                                     |
+| 名册 Member capability | 必需结构化 `capabilityFacts`；不保留 `providerAvailable`/capability/tool 的兼容双投影。                                                         |
+| 内部 Mission 恢复      | capability replan request 复用现有 recipient outbox；恢复状态不进入 Session snapshot。                                                          |
 
-由于 Agent Teams V2 尚未作为公开格式发布，实现会直接更改首版 Team domain contract，并重置本地
-开发数据。如果当前 Team create wire 结构在本设计落地前发布，daemon 会在协议规范化边界暂时将
-创建时缺失的 binding 映射到 `paseo/standard@1`。该 shim 必须带有注明日期的 `COMPAT(...)` tag。
-它仍进入唯一的编译器路径，不会创建第二种运行时行为。
+Team profile 命令以明确的 execution selection 接收 Member 输入：
 
-兼容窗口期间，Workstream snapshot 同时发送可选 `reviewGate` 和现有必需的 `reviewPolicy` 加
-`reviewer*` projection。带已分配 selection 的必需门禁投影为现有必需审查字段；等待 selection 的
-门禁投影为 `reviewPolicy: "required"`、requirements 和 null 审查者字段；`none` 投影为现有 none
-结构。新 app 通过 feature gate 后读取 `reviewGate`，旧 app 继续解析旧 projection。daemon 将旧计划
-草稿结构作为审查偏好接收并规范化一次，绝不让可空 projection 进入新的 domain aggregate。出站
-projection 和入站 normalizer 各自带有注明日期的 `COMPAT(...)` tag。
+```ts
+type TeamExecutionProfileSelection =
+  | { kind: "inline"; executionProfile: TeamExecutionProfile }
+  | { kind: "agent_profile"; profileId: string };
 
-验证 Workstream 保留现有必需 owner 字段，作为计划的协调 owner。该 owner 不是最终验证者。新 socket
-读取可选 `finalVerificationGate`；旧 socket 看到 owner 和 Workstream 状态，绝不从新字段推断验证
-Assignment。仅当门禁已分配验证者后，验证 Assignment 才添加可选的最终门禁和 Methodology
-fingerprint。这些 projection 和 normalizer 带有注明日期的 `COMPAT(...)` tag。
+interface RefreshTeamMemberExecutionProfileInput {
+  idempotencyKey: string;
+  teamId: string;
+  memberId: string;
+  expectedTeamRevision: number;
+}
 
-名册 snapshot 在新 domain 结构中持久化权威的结构化 `capabilityFacts`。兼容窗口期间，出站 snapshot
-也为每个 socket 保留现有必需的 `runtimeSnapshot` 字段。`capabilityFacts` 在 wire schema 中可选，
-仅在通过 `team_methodologies` capability gate 后使用。双重 projection 及其移除位置带有注明日期的
-`COMPAT(...)` tag；编译读取结构化字段，不从旧 projection 重建。结构上未知的 declaration 投影为
-`providerAvailable: false` 和空的旧 capability/tool array；这让旧 schema 可解析，但不参与新的
-合格性逻辑。
+type RefreshTeamMemberExecutionProfileResult =
+  | { disposition: "unchanged"; teamRevision: number; appliedDigest: Sha256 }
+  | { disposition: "updated"; team: TeamV2 };
+```
 
-`MissionCapabilityReplanRequest` 是仅追加的 domain 状态。其受 capability gate 控制的 wire
-projection 包含 request id、排序后的源 Attention id、名册 snapshot revision、创建时间和消费时间。
-它省略内部幂等 fingerprint 和 recipient delivery id。不带 `team_methodologies` 的 socket 不接收
-request array。Session projection 绝不 join 或公开原始 Mission 恢复状态。
+`agent_profile` selection 只能由 daemon materializer 产生持久化 source 与 snapshot。inline selection
+直接写快照且没有 source。编辑现有 Member 的 execution profile 使用同一 union；选择 inline 会明确
+detach。刷新操作只允许带已有 `executionProfileSource` 的 Member，重新解析同一 `profileId`，并在
+expected-revision Team CAS 中同时更新快照、digest 和 Team revision。materialized digest 未变化时返回
+`unchanged` 且逐字节零写入；inline Member 返回 `team_agent_profile_source_required`。
 
-`waive_review` 也是新的可辨识 union 分支，因此仅把豁免字段改为可选并不满足 wire 兼容。Session
-snapshot projection 能感知 capability。带 `team_methodologies` 的 socket 接收权威审查门禁、有
-scope 的 Attention、豁免和 `waive_review` resolution。不带该 capability 的 socket 不接收
-Methodology 或豁免字段，不论 resolution 如何都省略所有已打开或已解决的 Workstream scope
-Attention item，并且只接收旧 Workstream projection。因此，它绝不会看到活跃 Mission 与旧 client
-会解释为全局暂停的 Attention item 同时存在。持久化 aggregate 绝不为该视图改写。兼容性测试必须
-使用精确的旧出站 schema 解析活跃的有 scope 审查和豁免后的 snapshot，不能只用省略字段的新 schema。
+所有 Methodology、review gate、Attention scope、capability fact 与 final gate 字段从首版起即为 wire
+必需字段。`MissionCapabilityReplanRequest` 的 Session projection 只包含 request id、排序后的源
+Attention id、名册 snapshot revision、创建时间和消费时间；内部幂等 fingerprint、recipient delivery id
+和原始恢复状态只出现在 daemon inspect/audit。
 
-`expectedMethodologyRef` 在 wire schema 中可选，在规范化后的 domain command 中必需。规范化基于发出
-request 的物理 socket，而不是同一 client label 或其他连接的 capability：
+feature flag 只做完整功能的可用性判断。App/CLI 使用 physical host 的 `teamMissions`、
+`globalTeamProfiles` 和 `teamMethodologies` 结果决定 loading、unsupported 或 supported；首发版本要求三者
+共同存在才开放完整 Team mutation 和 snapshot。缺少任一 flag 时显示升级 host，不运行 standard-only、
+workspace-bound 或字段省略的降级 Team。Session 按 physical source 授权完整 V1 RPC；不得聚合同 client
+label 的其他 socket 或其他 host 的 capability，也不为不同 source 生成字段不同的 Team snapshot。
 
-1. 声明 `team_methodologies` 的 source 必须发送 ref；缺失时拒绝，不猜默认值。
-2. 未声明该 capability 的 source 不得提交显式 ref。若相同 idempotency key 已有 receipt/start intent，
-   daemon 从该记录冻结的 Methodology ref 补齐 request 后再比较 fingerprint，使旧请求在 Team 后续变更
-   后仍能精确 replay。
-3. 若没有既有记录，旧 source 只有在权威 Team binding 为精确的内嵌 `paseo/standard@1` 时才由协议→
-   domain normalizer 补入该 ref；非标准 binding 返回 host-upgrade error，不启动 Mission。
-4. 省略 ref 的旧请求与 capable source 显式发送相同 `paseo/standard@1` ref 规范化为同一 fingerprint。
-
-同一规则适用于 Team create：旧 source 的省略选择只会规范化到精确的内嵌 standard ref。该 shim 与
-Mission start normalizer 都带注明日期和删除条件的 `COMPAT(...)` 标记，并进入唯一编译路径。
-
-Methodology 与全局 Team 使用两个正交能力，在 App、CLI 和 Session 的同一个按物理 source 接入边界组合。
-以下矩阵假定基础 `teamMissions` 已存在；缺失该硬门时整个 Team 功能要求升级 host：
-
-| `globalTeamProfiles` | `teamMethodologies` | Team 可见性与 Mission start                                                                                                              |
-| -------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| 否                   | 否                  | 按创建 workspace 过滤；省略 workspace/ref；仅可创建或启动 daemon 规范化为 `paseo/standard@1` 的 Team。                                   |
-| 否                   | 是                  | 按创建 workspace 过滤并省略 workspace；显示 catalog/binding，发送 Team revision 与精确 ref。                                             |
-| 是                   | 否                  | 使用 host-global Team catalog 并显式发送目标 workspace；隐藏 Methodology 控件，只允许 daemon 规范化的 standard 创建/启动。               |
-| 是                   | 是                  | 使用 host-global Team catalog；发送目标 workspace、Team revision 与精确 ref，启用完整 Methodology、scope Attention 和 audit projection。 |
-
-Methodology 字段不会隐式启用跨 workspace 行为，全局 Team 也不会隐式启用 Methodology mutation。新 App
-连接缺少 `teamMethodologies` 的 daemon 时，只在 Methodology 专属页面或非标准 binding 操作处显示 host
-升级状态；它不会禁用该 daemon 已声明的 standard Team/Mission 操作。客户端不通过旧 RPC 拼装缺失能力。
-
-入站 Methodology mutation 授权与出站 Methodology projection 都调用 physical-source 版本的 capability
-检查，例如 `supportsForSource(source, "team_methodologies")`。Session 不得把多个 socket 的
-`supports()`、相同自报 client label 或另一个 host 的 server feature 聚合成授权。`globalTeamProfiles`
-是当前 source 所连 daemon 的行为标志；App 只对该 host 的 Team replica 启用全局路由和 workspace
-字段。混合 socket 测试必须证明同一 daemon 上只有声明 Methodology capability 的连接收到新 projection
-并可调用相关 mutation。
+Team 代码不维护 old/new App、CLI 或 daemon 的字段矩阵。版本测试只验证：不支持完整 V1 的连接被整体
+拒绝且得到可读 unsupported 状态；支持 V1 的连接收发同一个 schema；同 Session 混合 physical source
+不会泄漏 projection 或 mutation 权限。
 
 新 RPC 仍位于现有 namespace 下：
 
@@ -473,6 +525,7 @@ team.methodology.list.request / response
 team.methodology.get.request / response
 team.profile.create.request / response
 team.profile.update.request / response
+team.profile.member.execution.refresh.request / response
 team.mission.start.request / response
 team.mission.capability.refresh.request / response
 team.mission.attention.resolve.request / response
@@ -482,21 +535,10 @@ catalog 读取由 daemon 负责。app 不自行读取 bundle 文件或计算 dig
 
 ## Mission 启动与恢复
 
-wire request 保持追加式；进入 application service 前转换为必需字段完整的 domain command：
+wire 与 application service 使用同一个字段完整的 V1 command：
 
 ```ts
-interface StartMissionWireInput {
-  idempotencyKey: string;
-  teamId: string;
-  workspaceId?: string;
-  expectedTeamRevision: number;
-  expectedMethodologyRef?: ExactMethodologyRef;
-  objective: string;
-  constraints: string[];
-  acceptanceCriteria: string[];
-}
-
-interface NormalizedStartMissionInput {
+interface StartMissionInput {
   idempotencyKey: string;
   teamId: string;
   workspaceId: string;
@@ -510,27 +552,24 @@ interface NormalizedStartMissionInput {
 
 Mission 启动服从全局 Team 设计的 workspace lifecycle fence 与 Team permit 顺序：
 
-1. 协议边界读取一次 Team profile，只为计算并规范化
-   `effectiveWorkspaceId = request.workspaceId ?? team.workspaceId`。这里的 `team.workspaceId` 仅是旧请求
-   的兼容默认值，不是所有权事实。
-2. 先取得 `effectiveWorkspaceId` 的 workspace lifecycle fence，再取得该 Team 的单一 permit。涉及多个
+1. 规范化并验证请求中必需的 `workspaceId`，不读取 Team 的 `creationWorkspaceId` 作为默认值。
+2. 先取得请求 `workspaceId` 的 workspace lifecycle fence，再取得该 Team 的单一 permit。涉及多个
    workspace 的生命周期操作先按规范 workspace id 排序取得全部 fence。任何路径都不得持有 Team
    permit 等待 workspace fence。
-3. 在两层许可内重读权威 Team，重新计算 `effectiveWorkspaceId` 并确认它仍等于已锁定 workspace，再用
-   补齐后的规范请求计算 idempotency fingerprint。fingerprint 包含 `effectiveWorkspaceId`、Team
+3. 在两层许可内重读权威 Team 和 workspace，再用完整请求计算 idempotency fingerprint。fingerprint
+   包含请求 `workspaceId`、Team
    revision、精确 Methodology ref 和规范化 Mission 语义输入。
 4. 先查询持久 start receipt、Mission 和 start intent，再校验新 mutation。相同 key 搭配不同 fingerprint
    返回 idempotency conflict；相同 fingerprint 返回既有终态 Mission，或只从既有 intent 恢复未完成
    启动。精确 replay 不重新应用当前 Team revision、当前 Methodology ref 或 active-Mission 栅栏。只有
    没有 receipt/intent 的新请求才验证 workspace 存在且未归档、Team revision 与 ref 未陈旧、Team
-   可用且该 Team 没有非终态 Mission。workspace 必须为 active 且没有 archive intent。省略 workspace
-   与显式传入 Team 创建 workspace 是同一请求；同 key 指向 workspace B 与 C 必须返回 idempotency
-   conflict。
+   可用且该 Team 没有非终态 Mission。workspace 必须为 active 且没有 archive intent。同 key 指向
+   workspace B 与 C 必须返回 idempotency conflict。
 5. 解析精确的本地 bundle 并验证 digest，创建名册和 provider capability snapshot，再派生不含
    workspace 与时间戳的结构化 projection 来编译 Methodology。
-6. 在持久启动 intent 中原子记录 `effectiveWorkspaceId`、完整名册 snapshot、完整 Methodology
+6. 在持久启动 intent 中原子记录请求 `workspaceId`、完整名册 snapshot、完整 Methodology
    snapshot、预分配 identity 和规范 fingerprint。
-7. 只根据该 intent 创建 Mission aggregate 和 room，并把 `effectiveWorkspaceId` 写入
+7. 只根据该 intent 创建 Mission aggregate 和 room，并把 intent 的 `workspaceId` 写入
    `Mission.workspaceId`。
 8. 在 `Mission.workspaceId` 中供应 Lead，并由持久化 Mission 运行时 section 与冻结 Methodology
    section 组装启动提示词。
@@ -581,7 +620,8 @@ snapshot，但不会重新编译 Methodology，也不会更改其 ref、策略�
 
 V1 冻结活跃 Mission 的名册组成。Team profile 新增项和 Member 事实变更仍是面向未来 Mission 的有效
 Team 更新，但运行中的 Mission 不采用这些变更。capability refresh 复制相同的 Mission Member、
-Skill、Lead、execution profile 和 binding，只更改 provider 声明的结构化 capability 事实。添加或
+Skill、Lead、execution profile、execution profile source 和 binding，只更改 provider 声明的结构化
+capability 事实。添加或
 替换 Mission Member 需要供应 Participant 并重新编译 Methodology，不在本版本范围内。
 
 ## 策略层级
@@ -725,13 +765,13 @@ delivery。这比普通 pending/notified binding-successor 快捷路径更严格
 因此，binding 更新与追加 delivery 之间的崩溃可修复。在现有 request 被消费前，第二次 capability
 declaration 变更有意不创建 snapshot；如果后续计划仍被阻塞，操作者针对其新 Attention 再次 refresh。
 
-持久 request 是该 daemon 生成控制消息的来源记录。它在 `TeamMission` 上仅追加持久化，只向带
-`team_methodologies` 的 socket 公开；原始 recipient 恢复状态保持内部可见。具备能力的 UI 将 request
+持久 request 是该 daemon 生成控制消息的来源记录。它在 `TeamMission` 上仅追加持久化，只向获准使用
+完整 V1 Team 功能的 physical source 公开；原始 recipient 恢复状态保持内部可见。UI 将 request
 标记为 Paseo 控制操作，并在设置 `consumedAt` 前显示为等待 Lead 重新规划。daemon 侧 Mission inspect
 与 audit 可以将 `deliveryId` join 到内部 delivery 状态，但普通 Mission snapshot 绝不复制
 pending/notified/acknowledged 状态。
-delivery 保留现有 Lead 自消息 wire 结构，只为让旧 client 可以解析；audit 或新 UI 都不会把其 body
-归因于个人或自主 Agent 决策。
+delivery 使用统一的 Lead 自消息结构以复用 recipient outbox；audit 或 UI 都不会把其 body 归因于个人
+或自主 Agent 决策。
 
 随后 Lead 调用现有 `mission_plan`。规划始终在串行化 domain 边界内读取
 `activeRosterSnapshotRevision`；调用方无法绑定陈旧 snapshot。计划 CAS 用 `replan` 解决旧结构门禁
@@ -750,7 +790,7 @@ item。因此，该阻塞仍限定于相应依赖闭包，不会冻结其他重�
 
 domain `replan` resolution 携带 `rosterSnapshotRevision: number | null`。无论 revision 是否由最近一次
 refresh 创建，四种结构门禁 kind 都记录替代计划所用的正数活跃名册 revision；其他 replan resolution
-使用 null。兼容窗口期间，该 wire 字段可选，协议规范化将缺失的历史值映射为 null。
+使用 null。该字段从首版起必需。
 
 纯 capability refresh 不供应 Participant、不更改 `bindingEpoch`，也不改写之前的 snapshot。Lead
 替换仍是唯一更改 Participant binding 的重新规划路径，因此保留现有 epoch 增量。并发的 Lead 替换、
@@ -819,11 +859,10 @@ fingerprint 还包含 `planRevision`，因此可标识一个门禁实例。审�
 fingerprint。有 scope 的 Attention、豁免和门禁 outcome 绑定门禁 fingerprint。最终验证证据同时携带
 两者。仅当 report 的 subject 与 subject key 完全相等时，审查 report 才有效。
 
-`MissionReviewGate` 是 daemon 拥有的输出，不是 Agent 工具输入。`mission_plan` 继续提交 Workstream
+`MissionReviewGate` 是 daemon 拥有的输出，不是 Agent 工具输入。`mission_plan` 提交 Workstream
 objective、dependency、scope、requirements；只有编译策略允许 Lead 决定审查时，才提交审查偏好。
-daemon 应用硬策略、计算候选者并实体化门禁。在 `portable/software-delivery@1` 下，传入的旧
-`reviewPolicy: "none"` 不能禁用审查；规范化会生成 `assigned` 或 `awaiting_reviewer`，并返回权威计划
-snapshot。
+daemon 应用硬策略、计算候选者并实体化门禁。在 `portable/software-delivery@1` 下，Lead 的 none 偏好
+不能禁用审查；daemon 会生成 `assigned` 或 `awaiting_reviewer`，并返回权威计划 snapshot。
 
 `portable/software-delivery@1` 要求每个可写交付和集成 Workstream 都为 `required`，且 selection
 已分配或等待中。只读 Workstream 可使用 `none`。包含等待 selection 的计划有效，其交付 Assignment
@@ -882,10 +921,8 @@ interface FinalVerifierAttentionDetails {
 
 持久化 Attention domain 结构按 scope 区分。Mission scope item 保留现有必需的 `priorMissionStatus`，
 因为它暂停 Mission，之后再恢复。Workstream scope item 存储 `priorMissionStatus: null`，因为它绝不
-更改 Mission 状态。wire 字段以追加方式拓宽，仅在能感知 capability 的有 scope item 上接受 null；
-旧存储记录在 domain 验证前规范化为 Mission scope。wire `scope` 字段可选，使新 client 能解析旧
-daemon 的 snapshot。纯 wire schema 原样返回缺失值；protocol-to-domain 边界将缺失 scope 解释为
-Mission scope，不使用 `.default()`、`.catch()` 或其他 schema transform。
+更改 Mission 状态。`scope` 与 `priorMissionStatus` 从首版起都是 wire/domain 必需字段；schema 直接
+表达两种有效组合，不接受缺失 scope，也不在 protocol-to-domain 边界补值。
 
 现有 Attention kind 默认采用 Mission scope。现有 `reviewer_unavailable` kind 保持当前含义：审查或
 验证 Participant 在运行时不可用。它仍为 Mission scope，使用基于 Assignment 的 identity，只允许
@@ -986,7 +1023,8 @@ accepted。并发重新规划、subject 替换、名册变更、未知 capabilit
 或门禁冲突，而不会记录陈旧豁免。重复相同幂等 key 会返回原始豁免。
 
 控制器 refresh 绝不解决 Attention。后续 `mission_plan` 根据活跃名册 revision 解决结构门禁 item，
-并可采用追加 snapshot 中新近合格的 Member。取消遵循现有 Mission 完成 saga。refresh、规划、豁免和
+并可采用同一冻结 Member 集合中因结构 capability declaration 更新而新近合格的 Member。取消遵循现有
+Mission 完成 saga。refresh、规划、豁免和
 取消各自使用自己的预期 revision 与幂等 key。
 
 ### 门禁持久性与恢复
@@ -1238,8 +1276,8 @@ host 专属的强制结果分离。
 
 CLI 提供 catalog list/inspect 和 Team Methodology 选择。解析后显示精确版本与 digest。V1 不接受本地
 bundle 路径。client SDK 在创建 profile 前执行 catalog lookup，使 UI 与 CLI 共享相同的权威 ref 和陈旧
-表单栅栏。`globalTeamProfiles` 存在时，CLI 从全局 Team catalog 选择 Team，并要求 Mission start 提供
-`--workspace`；Methodology 选择本身不接受 workspace 参数。
+表单栅栏。完整 Team V1 可用时，CLI 从全局 Team catalog 选择 Team，并要求 Mission start 提供
+`--workspace` 和精确 Methodology ref；Methodology 选择本身不接受 workspace 参数。
 
 ## 产品流程
 
@@ -1251,16 +1289,19 @@ snapshot 可见。每个 server/source 分别缓存 catalog，不把一个 host 
 host。
 
 App 在 host layout 中始终静态注册 host-owned `/h/[serverId]/teams` 路由叶子；不能按单个 host 的
-capability 条件增删 `Stack.Screen`。`globalTeamProfiles` 控制 host 导航入口、host index 决策和叶子内容，
-不控制 route registration。该路由是 `HostLevelTeamList` 的唯一挂载 owner，不受 remembered workspace
+capability 条件增删 `Stack.Screen`。完整 Team V1 capability set 控制 host 导航入口、host index 决策和
+叶子内容，不控制 route registration。该路由是 `HostLevelTeamList` 的唯一挂载 owner，不受 remembered workspace
 跳转、live workspace 数量、Team 数量或 Team replica 成功状态控制；空 Team 列表仍显示创建入口和空
 状态。现有 host index 的 `renderTeams` 分支被删除。host index 与 route leaf 都按 physical host connection
-判定 `globalTeamProfiles` 三态：
+判定完整 Team V1 支持三态：
 
-1. capability 未知或握手仍在进行时显示 loading，不做终局重定向；直接 route 访问也显示 loading；
-2. capability 确定不存在时隐藏 host 导航入口，host index 保留旧 Open Project 行为；直接 route 访问
+1. physical host 尚未连接时显示带 Retry/Back 的 `waitingForHost`，不进入无限 loading；
+2. host 已连接但 capability handshake 尚未落地时显示 loading，不做终局重定向；直接 route 访问也显示
+   loading；
+3. capability 确定不存在时隐藏 host 导航入口，host index 进入 Open Project fallback；直接 route 访问
    显示可读的 unsupported 状态和返回操作；
-3. capability 确定存在时，有可恢复 workspace 可以继续恢复该 workspace；没有可恢复的 live workspace
+4. `teamMissions`、`globalTeamProfiles` 和 `teamMethodologies` 均存在时，有可恢复 workspace 可以继续
+   恢复该 workspace；没有可恢复的 live workspace
    时，无论 Team 数量以及 replica 处于 pending、ready 或 failed，都重定向到 `/h/[serverId]/teams`。
 
 因此，在支持全局 Team 的 host 上，index 不把 Open Project 当作 canonical 落地面；Open Project 只由
@@ -1286,15 +1327,17 @@ layout；遵循 `docs/expo-router.md` 的 host layout ownership 规则，避免 
 ### 创建 Team
 
 1. 从 host-global Team hub 或 workspace 页面进入创建流程，并选择一个 live workspace 作为创建上下文；
-   workspace 页面会预选当前 workspace。该上下文只用于 provider/execution-profile 表单解析和旧客户端
-   默认值，不是 Team owner。零 live workspace 时仍可浏览和设置既有 Team，但 V1 禁用创建并提示先创建
+   workspace 页面会预选当前 workspace。该上下文只用于 provider/execution-profile 表单解析和 idle
+   Team 的显示位置，不是 Team owner 或 Mission 默认值。零 live workspace 时仍可浏览和设置既有 Team，但 V1 禁用创建并提示先创建
    或打开 workspace。
 2. 显示必需的 Methodology 控件，默认选中 `Paseo Standard`。
 3. 选择 Methodology 后加载其 descriptor 和可选 Team preset。
 4. 选择 preset 后填充建议的 Skill 和 Member slot。
-5. 用户为每个 Member 确认 Role、Level、Skill、Lead 和 execution profile。
-6. 确认后存储 host-global Team 事实、精确 Methodology binding 和一个 Team revision。preset 与
-   binding 不捕获当前 workspace。
+5. 用户为每个 Member 确认 Role、Level、Skill、Lead，并选择 inline execution profile 或一个 Agent
+   Profile source。
+6. daemon 解析所有 Agent Profile source，并在一个 Team CAS 中保存每个 Member 的完整
+   `executionProfile`、可选 source、host-global Team 事实、精确 Methodology binding 和 Team revision。
+   preset 与 binding 不捕获当前 workspace。
 
 确认页面区分 capability 与 Playbook。用户创建 Team 前，页面会显示 Mission 硬策略。
 
@@ -1302,9 +1345,8 @@ layout；遵循 `docs/expo-router.md` 的 host layout ownership 规则，避免 
 
 表单把目标 workspace 作为运行位置选择，把 Team 和 Methodology 作为独立的只读组织事实，之后依次
 显示 objective、constraint 和验收标准。策略摘要列出独立审查、审查豁免行为、最终验证和建议性规格
-Playbook。`globalTeamProfiles` 存在时，client 显式发送所选 workspace；`teamMethodologies` 存在时，
-client 发送表单中看到的精确 ref。Team revision 是基础 `teamMissions` mutation 栅栏，client 始终发送，
-不受 Methodology capability 控制。两组新增字段在同一提交中独立受各自 capability 控制。
+Playbook。client 始终发送所选 workspace、表单中看到的精确 ref 和 Team revision；缺少完整 Team V1
+支持时不显示提交入口，也不发送字段省略请求。
 
 ### Team 设置
 
@@ -1314,6 +1356,11 @@ workspace 时，idle Team 与该页面仍可访问。Mission 处于非终态时�
 预览列出受影响的 archetype、Skill、Playbook 和硬策略。活跃 Mission 的 panel、sidebar 和 deep link
 使用 `Mission.workspaceId` 放置；Mission snapshot 尚未 hydrate 时显示 loading，不回退到 Team 创建
 workspace。
+
+同一设置面为每个 Member 显示 execution profile source 与 `current`、`update_available`、`missing`、
+`ambiguous` 状态。显式刷新只更新该 Member 的 snapshot/source digest 和 Team revision；选择其他 Agent
+Profile 会重新绑定；手动编辑运行参数会 detach。这些操作可以在 Mission 活跃时更新 Team，但只影响
+未来 Mission，不改活跃 Mission 的名册或 Participant。Methodology binding 升级仍要求没有非终态 Mission。
 
 ### Attention 与完成
 
@@ -1353,6 +1400,8 @@ inspect/audit 细节，而不是产品状态。
 - bundle id、版本、digest、编译器版本和编译后 digest；
 - Team id、Mission id、`Mission.workspaceId` 和 Methodology snapshot revision；不把 Team 创建
   workspace 记录为 Mission 归属；
+- 每个 Member 的 execution profile source kind、Profile id、resolver version 与 applied digest；不记录
+  Agent Profile notes、显示 metadata 或 passthrough 内容；
 - 编译耗时、outcome、稳定 error code，以及失败的 binding 或 JSON path；
 - 策略摘要和提示词 section id/digest；
 - 每个计划和 Assignment 上的 Methodology snapshot revision；
@@ -1369,17 +1418,23 @@ Mission inspect 和 audit export 包含完整的持久化 Methodology snapshot �
 | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Team 在 workspace A 创建、Mission 从 B 启动     | 复用同一 binding；snapshot 不含 A；全部 Participant 与 workspace 副作用只落在 B。                               |
 | 创建上下文 workspace A 被归档                   | idle Team 与 Methodology 设置仍可见，并可从 live workspace B 启动 Mission。                                     |
-| 同 key 省略 workspace 后显式传入 A              | 规范化为同一请求并重放；不创建第二个 intent、Mission、room 或 Lead。                                            |
+| 同 key 重放逐字节相同的完整 start request       | 返回或恢复原 intent；不创建第二个 Mission、room 或 Lead。                                                       |
 | 同 key 先后传入 workspace B 与 C                | 返回 idempotency conflict；原 intent 和 Methodology snapshot 逐字节不变。                                       |
 | workspace archive 与 Mission start 竞争         | 按 lifecycle fence 决出单一结果；无 orphan snapshot、错误 workspace Agent 或遗留 lease。                        |
 | start intent 后、Mission 物化前 crash + archive | archive recovery 从 intent 物化并取消 Mission，不供应 Lead；start recovery 不并发执行。                         |
 | intent 与 Mission workspace 不一致              | 写持久化 Attention 并停止恢复；不回退到 Team 创建 workspace，也不重新编译。                                     |
-| 旧 socket 启动 standard Team                    | 从既有 receipt/intent 或权威 standard binding 补精确 ref；与显式相同 ref 的 fingerprint 一致。                  |
-| 旧 socket 启动非 standard Team                  | 返回 host-upgrade error；不创建 intent、Mission、room 或 Participant。                                          |
+| Mission start 缺少 workspace 或 Methodology ref | schema 拒绝；不读取创建上下文补值，不创建 intent、Mission、room 或 Participant。                                |
+| Team create 缺少完整 Methodology binding        | schema 拒绝；不默认补齐，也不写 Team。                                                                          |
+| Agent Profile 在 Team create 前被编辑           | daemon 物化提交时看到的权威 Profile，并返回保存后的 source digest 与 execution snapshot。                       |
+| Agent Profile 在 Team 创建后被编辑              | Team 与 Mission 不变；设置显示 `update_available`，仅显式刷新产生新 Team revision。                             |
+| Agent Profile 被删除                            | Team 继续使用最后快照；设置显示 `missing`，Mission start 不访问 catalog。                                       |
+| Agent Profile id 重复                           | 创建、绑定和刷新返回 `team_agent_profile_ambiguous`；不按位置选择，不写 Team。                                  |
+| 用户手动编辑带 source 的 Member 运行配置        | 同一 Team CAS 写新 snapshot 并移除 source；之后不再显示 Profile 更新。                                          |
 | Team replica hydration 失败                     | Hub 与 Team deep link 留在当前 route shell 并显示 Retry；Team-dependent mutation 禁用，不跳到 Open Project。    |
 | Methodology catalog hydration 失败              | `/h/[serverId]/teams`、deep link 和 placement 继续；Methodology 控件显示可重试错误，相关 mutation 禁用。        |
 | host capability 尚未完成握手                    | host index 保持 loading；不因暂时的 false 值跳到 Open Project，也不进入尚未确认支持的 Hub。                     |
-| host 确定不支持 global Team                     | 隐藏 Hub 导航并保留旧 Open Project 流程；直接访问静态 route 显示 unsupported 与返回操作。                       |
+| remembered host 离线或无法建立连接              | route 显示带 Retry/Back 的 `waitingForHost`；不把永久未知 capability 渲染成无出口 loading。                     |
+| host 确定不支持完整 Team V1                     | 隐藏 Hub 导航并进入 Open Project fallback；直接访问静态 route 显示 unsupported 与返回操作。                     |
 | host 冷启动且没有 live workspace 或 Team        | 支持 capability 时 host index 进入空 Hub；Team create 禁用，Add/Open 流程保留返回 Hub 的目标。                  |
 | idle Team 的创建上下文已归档但仍存在 B/C        | deep link 使用稳定排序的首个 live workspace 作为显示位置；Team 仍属 host，启动 Mission 时再显式选择 workspace。 |
 | Methodology 升级后 Team 表单陈旧                | 返回 `team_revision_conflict` 或 `methodology_ref_conflict`；不产生 Mission 副作用。                            |
@@ -1418,10 +1473,13 @@ Mission inspect 和 audit export 包含完整的持久化 Methodology snapshot �
    placeholder、大小限制、确定性输出，以及排除时间戳和可变 provider 配置/就绪状态的结构化名册
    projection。相同 Team/名册/Mission 语义在 workspace A 与 B 编译出相同 Methodology snapshot；只有
    Paseo 运行时 prompt section 随 `Mission.workspaceId` 改变。
-2. **Methodology 接口：** `describe` 提案、显式 Team binding、确定性编译、fail-closed error，以及
-   通过公共接口替换内存 source。
-3. **Mission 生命周期：** 陈旧栅栏、workspace lifecycle fence → Team permit 锁序、规范化
-   `effectiveWorkspaceId` fingerprint、在新 mutation 校验前完成 receipt/intent replay 判定、副作用前
+2. **Methodology 与 Agent Profile 接口：** `describe` 提案、显式 Team binding、确定性编译、fail-closed
+   error、通过公共接口替换内存 source，以及 Agent Profile materializer 的 canonical digest、缺失/重复 id、
+   source + snapshot 原子写入、显式 refresh 与 manual detach。Agent Profile catalog fake 在 Team 物化后改为
+   throw；Mission start、recovery、普通 replan、Participant replacement/rebind 和 capability refresh 仍只读冻结
+   execution snapshot/source provenance，路径成功或返回自身的领域结果，且 catalog 调用计数保持零。
+3. **Mission 生命周期：** 陈旧栅栏、workspace lifecycle fence → Team permit 锁序、必需
+   `workspaceId` fingerprint、在新 mutation 校验前完成 receipt/intent replay 判定、副作用前
    编译、携带 workspace 的持久启动 intent、无需访问 bundle 或 Team 创建 workspace 的崩溃重放、
    archive/start 两种获胜顺序、archive 接管已落 intent 但未物化 Mission 的重启窗口、intent/Mission
    workspace 不一致隔离、
@@ -1437,11 +1495,11 @@ Mission inspect 和 audit export 包含完整的持久化 Methodology snapshot �
    包括等待中的最终门禁没有 Assignment、已分配门禁恰好有一个绑定 Assignment、恰好一个验证
    Workstream，以及拒绝任何 scope 下每个打开 Attention 的完成 predicate。
 5. **产品与 exporter 证据：** host-global Team catalog、零 live workspace 的 idle Team 设置、目标
-   workspace 与只读 Methodology 分离的桌面/紧凑 Mission 表单、`teamMethodologies × globalTeamProfiles`
-   四种 capability 组合、active Mission 按 `Mission.workspaceId` 放置、Attention 流程、snapshot inspect、有 scope 的
-   Attention 打开时和豁免后对已知及未知 capability projection 的旧 schema 解析、旧 socket 省略
-   capability replan request、capability refresh 的未变/等待/已消费 UI、逐 request 连接 label、自报
-   client label UI、逐 physical source 的入站授权/出站 projection、`/h/[serverId]/teams` 在 remembered
+   workspace 与只读 Methodology 分离的桌面/紧凑 Mission 表单、完整 Team V1 的
+   supported/unsupported 边界、active Mission 按 `Mission.workspaceId` 放置、Attention 流程、snapshot
+   inspect、capability refresh 的未变/等待/已消费 UI、逐 request 连接 label、自报 client label UI、逐
+   physical source 的整体验权与同一 V1 snapshot、Agent Profile source 的创建/刷新/detach/missing/ambiguous
+   状态、`/h/[serverId]/teams` 在 remembered
    workspace、零 workspace、存在 live workspace 但无可恢复 selection、空 Team 下的可达性、host index
    capability unknown/absent/present 三态与 canonical hub 的 cold-start 路由、静态 route 的
    loading/unsupported 状态、`HostLevelTeamList` 单一 owner、V2-ITEM-11 idle Team placement 不改变 host
@@ -1506,7 +1564,7 @@ Mission，以及一个到达审查者 Attention、获得操作者豁免、
 ### TM-ITEM-6 · 建立全局 Team Hub 与 Methodology catalog
 
 - **Owner / skill：** Paseo / `cs-feat`。
-- **依赖：** `agent-teams:V2-ITEM-11`、TM-ITEM-3。
+- **依赖：** `agent-teams:V2-ITEM-11` 完成新契约重新批准、实现同步与 change review；TM-ITEM-3。
 - **可交付结果：** Paseo lockfile 固定已发布 package，allowlist sync 两个 exact bundle 到内嵌 catalog，
   以严格 typed decoder/shared corpus 验证 digest；同时交付静态 host route、单一 `HostLevelTeamList` owner、
   独立 catalog hydration、`team.methodology.list/get` 与 CLI list/inspect。
@@ -1519,18 +1577,23 @@ Mission，以及一个到达审查者 Attention、获得操作者豁免、
 - **Owner / skill：** Paseo / `cs-feat`。
 - **依赖：** TM-ITEM-3、TM-ITEM-6。
 - **可交付结果：** App/CLI 从 exact Methodology preset 创建 Team，用户确认实际 Role、Level、Skill、
-  Lead 和 execution profile，daemon 持久化完整 binding。
-- **验收要点：** wire additive optional、domain required；输入 Member 通过唯一 `clientMemberKey` 关联
-  daemon 分配的 `memberId`，禁止按 Role、显示名或数组位置猜测；创建不产生 Mission、room 或 Agent。
+  Lead，并为每个 Member 选择 inline execution profile 或 Agent Profile source；daemon materializer 在一个
+  Team CAS 中持久化完整 execution snapshot、可选 source 和 Methodology binding。
+- **验收要点：** wire/domain 使用同一个必需 V1 shape，不提供旧字段或降级路径；输入 Member 通过唯一
+  `clientMemberKey` 关联 daemon 分配的 `memberId`，禁止按 Role、显示名、Profile 名称或数组位置猜测；
+  Profile id 缺失/重复/无效零写入，digest 只覆盖规范运行字段；创建不产生 Mission、room 或 Agent。
 
 ### TM-ITEM-8 · Mission 启动时冻结并编译 Methodology
 
 - **Owner / skill：** Paseo / `cs-feat`。
 - **依赖：** TM-ITEM-7。
 - **可交付结果：** 在 workspace fence 与 Team permit 内冻结 exact ref、Team revision、结构化名册与
-  capability facts，持久化 Methodology snapshot 和按顺序装配的 prompt section。
+  capability facts，持久化包含 execution snapshot/source provenance 的名册、Methodology snapshot 和按
+  顺序装配的 prompt section。
 - **验收要点：** replay 在 fresh mutation 栅栏前执行；workspace、时间、runtime Agent id 与实时
-  provider readiness 不进入 digest；编译失败发生在 intent、Mission、room 和 Lead 副作用之前。
+  provider readiness 和 Agent Profile source 不进入 Methodology digest；启动、恢复与普通 replan 不读取
+  Agent Profile catalog；把 catalog port 配成 throw 仍只读冻结 execution snapshot/source provenance。编译
+  失败发生在 intent、Mission、room 和 Lead 副作用之前。
 
 ### TM-ITEM-9 · 恢复 Methodology start saga 与 archive takeover
 
@@ -1541,14 +1604,17 @@ Mission，以及一个到达审查者 Attention、获得操作者豁免、
 - **验收要点：** 恢复不访问 Team binding 或 bundle；archive 接管不创建 room/Lead；两种锁序和每个
   crash window 都没有 orphan Participant、错误 workspace、残留 lease 或重复 provider work。
 
-### TM-ITEM-10 · 升级 idle Team 的 Methodology
+### TM-ITEM-10 · 升级 idle Team 的 Methodology 与 execution source
 
 - **Owner / skill：** Paseo / `cs-feat`。
 - **依赖：** TM-ITEM-7、TM-ITEM-8。
-- **可交付结果：** host-global 设置与 CLI profile update 提供 exact ref、binding 和策略差异预览；
-  commit 时 daemon 权威重验完整 next binding。
-- **验收要点：** 页面不依赖 live/creation workspace；非终态 Mission 或 start intent 存在时拒绝升级；
-  stale revision/ref 零副作用；历史 snapshot 不变，后续 Mission 使用新 ref。
+- **可交付结果：** host-global 设置与 CLI profile update 提供 exact ref、binding 和策略差异预览，并
+  显示每个 Member 的 Agent Profile source 状态；显式 refresh/rebind/detach 在 commit 时由 daemon 权威
+  重验 materialization 与完整 next binding。
+- **验收要点：** 页面不依赖 live/creation workspace；非终态 Mission 或 start intent 只阻止 Methodology
+  binding 升级，不阻止仅面向未来 Mission 的 execution source refresh/rebind/detach；stale revision/ref
+  零副作用；Profile edit/delete 不自动改 Team，refresh 产生新 Team revision，inline 编辑移除 source；
+  digest 未变的 refresh 零写入；历史 snapshot 不变，后续 Mission 使用新 ref 与 execution snapshot。
 
 ### TM-ITEM-11 · 持久化独立审查门禁
 
@@ -1569,8 +1635,8 @@ Mission，以及一个到达审查者 Attention、获得操作者豁免、
   阻塞相关 Workstream 与依赖闭包；App/CLI 将 blocker 归属到具体 Workstream，并继续显示独立路径的
   running/ready 状态。
 - **验收要点：** known-empty 与 capability-unknown 使用不同 kind；Workstream item 不暂停 Mission；
-  混合 scope 恢复不传播 null status；UI 不把 scoped item 误报为整 Mission 暂停；旧 socket 不接收 scoped
-  item，但任何 open item 仍阻塞完成；forked-DAG 真实 daemon E2E 证明无关 Workstream 继续派发。
+  混合 scope 恢复不传播 null status；UI 不把 scoped item 误报为整 Mission 暂停；任何 open item 仍阻塞
+  完成；forked-DAG 真实 daemon E2E 证明无关 Workstream 继续派发。
 
 ### TM-ITEM-13 · 实体化不可豁免的最终验证
 
@@ -1592,7 +1658,8 @@ Mission，以及一个到达审查者 Attention、获得操作者豁免、
   capability-gated controller 命令，inspect/audit/final evidence 显示不可变操作者标签与原因。
 - **验收要点：** Agent tool catalog 不暴露该操作；仅 current known-empty 且 policy 允许的 gate 可用；
   capability unknown、运行时 reviewer failure 与 final gate 不可豁免；replan 不继承 waiver；真实浏览器
-  E2E 从 scoped Attention 打开 dialog、提交 waiver、继续 final verification，并验证旧 source 看不到操作。
+  E2E 从 scoped Attention 打开 dialog、提交 waiver、继续 final verification，并验证未获完整 Team V1
+  权限的 physical source 无法调用操作。
 
 ### TM-ITEM-15 · 刷新结构 capability 并请求 Lead 重新规划
 
@@ -1603,7 +1670,8 @@ Mission，以及一个到达审查者 Attention、获得操作者豁免、
   `unchanged` 或“已请求 Lead 重新规划”、活跃 roster revision 与 request pending/consumed 状态。
 - **验收要点：** 声明未变时 aggregate 逐字节零写入；refresh 不解决 Attention 或修改 plan、Participant、
   binding epoch、workspace、Methodology snapshot；同 key 不同 fingerprint 返回命名冲突错误；UI 文案不把
-  refresh 描述为 plan commit，旧 source 不接收 request projection 或 mutation control。
+  refresh 描述为 plan commit，未获完整 Team V1 权限的 physical source 不接收 request 或 mutation control；
+  Agent Profile catalog port 配成 throw 时仍只解析 provider declaration，不访问 Profile catalog。
 
 ### TM-ITEM-16 · 让 capability replan 经受重启与 Lead 替换
 
@@ -1615,20 +1683,24 @@ Mission，以及一个到达审查者 Attention、获得操作者豁免、
 - **验收要点：** 旧 delivery 已 acknowledged 时仍可 re-arm；崩溃后收敛且无 late wake；无关普通
   replan 不隐式 refresh 或被拒绝；blocked successor 使用当前 plan fingerprint；fault injection 覆盖
   acknowledged old delivery→Lead replacement/restart→replan，并以真实 provider smoke 证明 recipient
-  delivery 会驱动 Lead 提交新计划而非只更新持久化状态。
+  delivery 会驱动 Lead 提交新计划而非只更新持久化状态。普通 replan、Lead replacement、Participant
+  replacement/rebind 与 startup reconcile 均在 Agent Profile catalog port 抛错时使用冻结快照完成，不产生
+  catalog 调用。
 
-### TM-ITEM-17 · 闭合版本漂移、导出一致性与真实协同验收
+### TM-ITEM-17 · 闭合首发契约、导出一致性与真实协同验收
 
 - **Owner / skill：** Paseo / `cs-feat`。
 - **依赖：** TM-ITEM-4、TM-ITEM-5、TM-ITEM-9、TM-ITEM-10、TM-ITEM-13、TM-ITEM-14、
   TM-ITEM-16。
-- **可交付结果：** Paseo 关闭 Methodology 版本漂移、跨 workspace 产品流程、审计 UI 与真实协同发布门；
+- **可交付结果：** Paseo 关闭单一 Team V1 schema、跨 workspace 产品流程、审计 UI 与真实协同发布门；
   portable exporter/install conformance 只消费 TM-ITEM-4/5 已冻结证据，不在本项跨仓库改实现。
-- **验收要点：** 分别运行 old/new App × daemon 四格、old/new CLI × daemon 四格，以及
-  `teamMethodologies × globalTeamProfiles` 四种 capability 组合；每格验证 schema parse、逐 physical-source
-  projection、mutation authorization 和同 Session 混合 socket 无泄漏。跨 workspace browser、archive/start
+- **验收要点：** 精确 V1 schema fixture 覆盖所有必需字段，仓库中不存在 Team migration、dual write、
+  legacy projection、normalizer 或 `COMPAT(...)`；supported/unsupported physical source 验证整体验权、
+  同一 snapshot shape 和同 Session 无泄漏。跨 workspace browser、Agent Profile source 全生命周期、archive/start
   crash、真实 provider 独立审查、waiver、最终验证，以及 capability refresh→acknowledged delivery→Lead
-  replacement/restart→replan→final verification 场景通过，并保留 desktop/compact/native 证据。
+  replacement/restart→replan→final verification 场景通过；在 Team source 物化后关闭 Agent Profile catalog，
+  Mission start/recovery/replan/replacement/rebind/capability refresh 的集成场景仍通过且读取计数为零，并保留
+  desktop/compact/native 证据。
 
 ## 最终交付索引
 
@@ -1639,15 +1711,17 @@ proposed 阶段为空。执行期间的活动进度、证据与 commit 指针只
 ## 整体验收
 
 - 每个 host-global Team profile 都有一个精确 Methodology binding，每个 workspace-bound Mission 都有
-  一个完整冻结的 Methodology snapshot。Team 创建 `workspaceId` 不是 binding、catalog 或编译所有权。
+  一个完整冻结的 Methodology snapshot。Team 的 `creationWorkspaceId` 不是 binding、catalog 或编译所有权。
+- 每个 Team Member 都有完整 `executionProfile`；可选 `executionProfileSource` 只表示 inline 或 Agent
+  Profile 来源。Profile 更新不自动写 Team，显式 refresh/rebind/detach 才产生 Team revision。
 - 同一 Team 可以在不同 workspace 中依次启动 Mission，沿用 Team binding 和 Member 映射；每个 Mission
   单独持久化其 `workspaceId`、名册与 Methodology snapshot。
 - 编译 intent 持久化后，Mission 启动与恢复绝不依赖可变 bundle 内容。
 - 编译只使用结构化名册 projection；snapshot 时间戳、实时 provider 可用性、Team 创建 workspace、
-  Mission workspace 和 workspace path 不能改变编译后 digest。
+  Mission workspace、workspace path 和 Agent Profile source 不能改变编译后 digest。
 - Mission start 先取得规范 workspace lifecycle fence，再取得 Team permit，并在两层许可内重读 Team、
-  workspace 与 active Mission。省略 workspace 和显式创建 workspace 具有相同 fingerprint；不同
-  workspace 具有不同 fingerprint。
+  workspace 与 active Mission。`workspaceId` 和 `expectedMethodologyRef` 都是首版必需字段；不同
+  workspace 具有不同 fingerprint，Team 创建上下文绝不补值。
 - 在当前 Team revision/ref/active-Mission 栅栏前检查持久 receipt 与 start intent。精确 replay 返回或
   恢复原请求；相同 key 的不同规范 fingerprint 始终返回 conflict。
 - start intent 是崩溃恢复的唯一 workspace 事实，Mission 物化后 `Mission.workspaceId` 是全部
@@ -1657,19 +1731,18 @@ proposed 阶段为空。执行期间的活动进度、证据与 commit 指针只
   物化确定性 Mission 后直接取消，不创建 room 或供应 Lead；重启不得让独立 start recovery 与其竞争。
 - host-global Team catalog 和 Methodology 设置在零 live workspace 时仍可访问；活跃 Mission 只按
   `Mission.workspaceId` 放置，snapshot 未 hydrate 时保持 loading。
-- `teamMethodologies` 与 `globalTeamProfiles` 独立门控。四种新旧 capability 组合都保持 wire 可解析，
-  且不会静默跨 workspace 或发送对端未声明的 Methodology mutation。
-- `expectedMethodologyRef` 在 wire 上可选、在 domain command 中必需。旧 socket 只能被规范化到精确的
-  `paseo/standard@1`；receipt/intent replay 优先使用冻结 ref。Methodology capability 授权和 projection
-  按 physical source 判定，不使用 Session 聚合结果。
+- `teamMissions`、`globalTeamProfiles` 与 `teamMethodologies` 共同表示完整 Team V1 可用。缺少任一项时
+  整体显示 unsupported，不运行字段省略或 standard-only 降级。授权按 physical source 判定，不使用
+  Session 聚合结果。
 - Team replica 与 Methodology catalog 独立 hydrate；任一失败都不改变 route ownership。Team replica
   失败时 Hub/deep link 原地显示 Retry 并禁用 Team-dependent mutation；catalog 失败不隐藏 Team 或改变
   Mission placement。零 live workspace 时既有 Team/设置仍可达，但 V1 Team create 要求一个 live
   创建上下文。
-- `/h/[serverId]/teams` 静态注册；capability 未知时显示 loading，确定缺失时显示 unsupported，确定存在
+- `/h/[serverId]/teams` 静态注册；host 离线时显示 `waitingForHost`，在线握手未完成时显示 loading，
+  capability 确定缺失时显示 unsupported，确定存在
   时在 remembered workspace、零 live workspace、存在 live workspace 但无可恢复 selection、空 Team 和
   Team replica failed 场景下始终可达。`HostLevelTeamList` 只在该 route 挂载。host index 在 capability
-  未知时 loading、确定缺失时保留旧流程、确定存在且无可恢复 workspace 时进入该 hub。workspace sidebar
+  未知时 loading、确定缺失时进入 Open Project fallback、确定存在且无可恢复 workspace 时进入该 hub。workspace sidebar
   只能链接它，不能拥有或过滤全局 Team catalog。idle Team deep link 的 workspace presentation 遵守
   V2-ITEM-11，但不会转移 Team ownership 或影响 Mission workspace 选择。
 - `paseo/standard@1` 保留中性审查选择；`portable/software-delivery@1` 要求可写 Workstream 接受
@@ -1690,8 +1763,8 @@ proposed 阶段为空。执行期间的活动进度、证据与 commit 指针只
 - 每个 Mission 最多存在一个未消费 capability replan request。延续操作在同一个计划 CAS 中解决每个
   旧 item，并追加其当前计划 successor。
 - 会产生 mutation 的 refresh 幂等 key 只重放逐字节相同的输入；不同输入返回
-  `team_mission_capability_refresh_idempotency_conflict`。旧 socket 绝不接收 capability replan
-  request 或原始 recipient 恢复状态。
+  `team_mission_capability_refresh_idempotency_conflict`。未获完整 Team V1 权限的 source 不接收
+  capability replan request 或原始 recipient 恢复状态。
 - 每次 scheduler Attention 写入都使用能感知 scope 的 transition helper；运行时
   `reviewer_unavailable` 保持 Mission scope，不能使用 `waive_review`。
 - 只有打开的 Workstream scope Attention 要求当前存在 blocked Workstream 和 pending 门禁；豁免、
@@ -1709,21 +1782,21 @@ proposed 阶段为空。执行期间的活动进度、证据与 commit 指针只
   Assignment。每个计划恰好有一个验证 Workstream。
 - 用户、Lead、bundle 或 exporter 都不能豁免最终验证。
 - Mission 完成要求 Mission 与 Workstream 两种 scope 下都没有打开的 Attention item。
-- 旧出站 schema 能解析已知和未知的名册 capability projection，且绝不接收 Workstream scope
-  Attention，包括门禁被阻塞时和豁免后。
-- 新 wire parser 接受没有 `scope` 的旧 Attention；domain 规范化在纯 schema 外将缺失值视为 Mission
-  scope。
+- 首版 wire schema 要求结构化名册 capability、Attention scope、review/final gate、Methodology binding
+  和 Mission workspace/ref；缺失字段直接拒绝，不做协议外补齐。
+- Team 代码不包含实验格式 migration、dual write、legacy adapter/projection、旧 RPC fallback 或 Team
+  专属 `COMPAT(...)` 标签。
 - bundle 不能执行代码、授予 capability 或修改 Team/Mission 状态。
 - Codex 和 Claude 导出会说明强制能力损失，而不是声称不受支持的保证。
-- 功能成为公开 Team 格式的一部分前，上述全部 schema、生命周期、策略、UI、恢复、exporter 和真实
+- 功能首次公开前，上述全部 schema、生命周期、策略、UI、恢复、exporter 和真实
   provider 门禁都必须通过。
 
 ## 遗留风险
 
-- `agent-teams:V2-ITEM-11` 当前仍在执行；TM-ITEM-6 之后的全局 Team 产品面必须以它最终通过 review 的
-  contract 为准，不能复制未冻结的中间实现。
+- `agent-teams:V2-ITEM-11` 已因 Agent Profile/Methodology 契约同步重新打开；TM-ITEM-6 必须等待其新契约
+  重新批准、实现同步并通过 change review，不能消费旧勾选状态或复制未冻结的中间实现。
 - `@team-harness/methodologies` 跨仓库发布需要可重放的 package/version/digest 证据；Paseo 运行时只消费
   lockfile 固定且已同步的内嵌产物，不在 Mission 路径访问 registry。
 - waiver 审计中的 connection id 与 client label 只用于相关性，不提供加密级操作者归属证明。
-- 真实 provider 验收存在模型波动；确定性状态机、fault injection 与版本漂移测试仍是发布硬门槛，真实
+- 真实 provider 验收存在模型波动；确定性状态机、fault injection 与首版 schema 测试仍是发布硬门槛，真实
   provider 连续通过只补充行为证据。

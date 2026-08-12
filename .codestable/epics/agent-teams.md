@@ -19,7 +19,7 @@ Paseo 已有多 agent 基元（agent-scoped `create_agent` 委派、subagents tr
 - **V2-DEC-1 · Team 全局、Mission 绑定 workspace**：Team 是 daemon host 内可跨项目复用的组织，拥有稳定 roster；Mission 是 Team 在一个明确 workspace 中执行的一次顶层任务。创建 Team 不创建 Mission，Mission 完成也不归档 Team；workspace ownership、文件审计和 scope lease 都只属于 Mission。
 - **V2-DEC-2 · 单活跃 Mission**：v2 首版中，一个 Team 同时最多有一个 active Mission。新 Mission 只能在前一个 Mission 进入终态后启动，避免成员容量、共享 workspace ownership、聊天室上下文和调度状态跨任务互相污染。
 - **V2-DEC-3 · 首发格式**：v2 是 Agent Teams 的首个公开持久化、RPC 和 UI 格式；开发期旧数据可清理，不实现迁移、双写、legacy adapter、format marker 或降级恢复。
-- **V2-DEC-4 · 追加式跨版本启用**：现有 Team wire shape 保留 `workspaceId` 作为创建上下文和旧客户端默认值；Mission start 追加 optional `workspaceId`，新 App 只在 daemon 声明 `globalTeamProfiles` 后启用跨 workspace 选择。旧客户端仍可解析新 daemon snapshot，新客户端连接旧 daemon 时保持 workspace-bound 行为，不静默把 Mission 跑到另一个 workspace。
+- **V2-DEC-4 · 单一首发启用**：Team 使用 `creationWorkspaceId` 记录创建上下文，Mission start 必须显式携带 `workspaceId`。v2 不提供字段省略、workspace-bound、旧 projection 或 standard-only 降级形态；`teamMissions`、`globalTeamProfiles` 与 `teamMethodologies` 共同表示当前 physical host 是否支持完整 Team v2，缺少任一项都不开放 Team surface 或 mutation。
 
 这四个决定是后续 Role、Level、Skill、动态 Workstream 和 Assignment Contract 设计的前提。
 
@@ -31,13 +31,13 @@ Paseo 已有多 agent 基元（agent-scoped `create_agent` 委派、subagents tr
 
 | 概念                    | 定义                                                                                                    | 所有者               |
 | ----------------------- | ------------------------------------------------------------------------------------------------------- | -------------------- |
-| **Team**                | daemon host 内全局可复用的组织；保存 roster，不拥有 workspace 或当前任务                                 | 用户                 |
+| **Team**                | daemon host 内全局可复用的组织；保存 roster，不拥有 workspace 或当前任务                                | 用户                 |
 | **Member**              | Team 中一个稳定席位，以 `memberId` 标识；没有 Mission 时不要求存在运行中的 Agent session                | 用户                 |
 | **Role**                | Member 的专业方向短名称，例如“软件工程师”或“架构师”；可重复，不表示本次职责                             | 用户                 |
 | **Level**               | Member 可承担工作的自主性和复杂度等级，使用稳定的 1–5 排序值                                            | 用户                 |
 | **Skill**               | Team 内可复用的能力标签，包含稳定 skill id、名称和可选描述；Member 可拥有多个，匹配不比较自然语言相似度 | 用户                 |
 | **Execution profile**   | Member 的 provider、model、mode、thinking 等运行配置；Level 不自动推断 model                            | 用户                 |
-| **Mission**             | Team 在一个明确 workspace 中执行的一次顶层任务，拥有目标、约束、验收标准、计划、聊天室和终态             | 用户启动，系统持久化 |
+| **Mission**             | Team 在一个明确 workspace 中执行的一次顶层任务，拥有目标、约束、验收标准、计划、聊天室和终态            | 用户启动，系统持久化 |
 | **Mission participant** | 一个 Mission 中 `memberId → agentId` 的运行时绑定；Agent session 可以在 Mission 结束后归档              | 系统                 |
 | **Workstream**          | Mission 内动态生成的所有权边界，描述交付物、所需技能、最低 Level、依赖和可写范围                        | Lead 提议，系统校验  |
 | **Assignment Contract** | Workstream 内一次可执行工作的结构化契约，不再只是自由文本 prompt                                        | Lead 创建，系统执行  |
@@ -76,7 +76,7 @@ Assignment Contract 至少持久化：
 
 派发状态和工作语义分开：daemon 观察到 turn 结束，只能证明一次运行结束；成员通过结构化工具报告 `completed`、`blocked` 或 `failed`。报告允许在 accepted turn 尚在运行时先落盘为 `reportRecorded`，但不能提前推进；`completed` 需要结构化报告和对应 turn 的成功终态同时成立，Workstream 才能推进。turn 已结算而报告缺失时进入 `needs_report`，捕获 post-turn delta 后释放 Member slot 与 execution lease，并把相关 scope 转成持久 `report_hold`，不能被当作完成或让冲突工作穿过。
 
-Mission 启动时追加第一份 roster snapshot。Role、Level、Skills 或 Execution profile 的后续修改不改写既有 snapshot 或 Assignment Contract；Lead 通过带 `adoptTeamRevision` 的显式 replan 才能为未派发的新工作追加一份 snapshot。Plan 和 Assignment 都引用具体 snapshot revision。仍有开放 Assignment 或 active participant 的 Member 不能直接移除，必须先取消/转移工作并完成 replan。
+Mission 启动时追加第一份 roster snapshot，并在整个非终态生命周期冻结 Member、Role、Level、Skills、Execution profile、可选 Agent Profile source、Lead 与 Methodology binding。普通 replan 不采用后续 Team revision，也不改写既有 snapshot 或 Assignment Contract。控制器 capability refresh 可以追加一份 Member 事实逐字节相同、只更新 provider 结构 capability declaration 的 snapshot；它不供应或替换 Member。Plan 和 Assignment 都引用具体 snapshot revision。仍有开放 Assignment 或 active participant 的 Member 不能直接移除；涉及当前 Mission 冻结 Member 或 Lead 的移除/替换必须等 Mission 终态。
 
 ### 协同算法
 
@@ -88,7 +88,7 @@ Mission 启动时追加第一份 roster snapshot。Role、Level、Skills 或 Exe
 
 这套算法不把语义规划硬编码进 daemon：模型仍负责理解任务和提出 Workstream；daemon 负责匹配、约束校验、状态机、依赖、并发、投递、恢复和完成门。Prompt 只负责唤醒模型并说明下一动作，不是团队事实或协作协议的权威来源。
 
-Provider/runtime capability 的事实源是 Paseo provider registry 与 adapter manifest，不是 Role/Skill 文本或一次 live auth 探测。Mission start/replan 把 provider、model、mode、tool support 和 capability ids 冻结进 roster snapshot；matcher 只读该 snapshot，dispatch adapter 再验证当前 provider/model 是否仍存在。认证失败由 provider 正常返回并转入上述故障状态，不在领域测试中添加 auth 检查。
+Provider/runtime capability 的事实源是 Paseo provider registry 与 adapter manifest，不是 Role/Skill 文本或一次 live auth 探测。Mission start 把 provider、model、mode、tool support 和 capability ids 冻结进 roster snapshot；普通 replan 只读该 snapshot。显式 capability refresh 只重新解析 provider 的结构 capability declaration，并追加保持 Member、Skill、Lead、execution profile、source 与 Methodology 不变的 snapshot。matcher 只读 Mission snapshot，dispatch adapter 再验证当前 provider/model 是否仍存在。认证失败由 provider 正常返回并转入上述故障状态，不在领域测试中添加 auth 检查。
 
 ### Shared workspace 的 ownership 执行
 
@@ -123,7 +123,7 @@ v2 先做**逻辑 feature capsule**，不立即增加新的 npm workspace packag
 
 | 层                                      | 目标边界                                                                                         |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `packages/protocol/src/team/`           | 只放追加式 wire schema、快照和能力门控；新 RPC 使用 dotted namespace                             |
+| `packages/protocol/src/team/`           | 只放首版 Team wire schema、快照和能力门控；新 RPC 使用 dotted namespace                          |
 | `server/team/domain/`                   | 纯领域类型、状态转换、计划校验和成员匹配；不得 import AgentManager、chat、WebSocket 或文件系统   |
 | `server/team/application/`              | Mission service、scheduler、outbox 和 reconciliation；只依赖 feature-owned contracts             |
 | `server/team/adapters/paseo/`           | 唯一允许接触 AgentManager、AgentStorage、tool catalog、workspace 和 session event 的位置         |
@@ -134,12 +134,12 @@ v2 先做**逻辑 feature capsule**，不立即增加新的 npm workspace packag
 
 ### 首发与能力门
 
-1. `teamMissions` 是 Team 功能硬门和 socket snapshot 广播门；App 在一个接入边界判断，声明该 client capability 的 socket 才接收 Team/Mission snapshot。`globalTeamProfiles` 是同一边界读取的 optional server 行为标志，不新增第二套协议或同步驱动。
-2. 新 App 遇到未声明 `teamMissions` 的 daemon 时要求升级 host，不用旧 RPC 拼装降级路径。daemon 只有在 Team runtime 与本次全局 Team reconciliation 都 ready 后才同时广告 `teamMissions` 和 `globalTeamProfiles`。
+1. 完整 Team v2 只有一个产品门：physical host 必须同时声明 `teamMissions`、`globalTeamProfiles` 与 `teamMethodologies`。三者分别证明 Team runtime、全局 Team reconciliation 与 Methodology catalog/compiler 已 ready；App、CLI 与 Session mutation authorization 在同一个接入边界判断完整集合，不允许只凭其中一项开放部分 Team surface。
+2. App 遇到未完整声明 Team v2 的 daemon 时要求升级 host，不用旧 RPC、字段省略、standard-only 或 workspace-bound 视图拼装降级路径。daemon 可以按各自 owner 的 readiness 发布单项事实，但只有完整集合成立的 physical source 才接收唯一形状的 Team/Mission snapshot 和 mutation control。
 3. Team profile 是唯一 roster authority；所有新 Member 必须一次提供 Role、Level、至少一个 Skill 与 execution profile。
 4. 创建 Team 只写 roster；启动 Mission 才创建 room、Lead participant 和后续选中的 participants。Mission 结束归档 participant sessions，不归档 Team。
 5. 开发期实验数据不迁移。测试使用独立 `PASEO_HOME`，本地验证需要时直接清理旧 Team 数据。
-6. `globalTeamProfiles` 存在时，新 App 和新 CLI 必须在 Mission start 中发送目标 workspace，CLI 要求 `--workspace`；标志缺失时客户端按 Team snapshot 的 `workspaceId` 过滤可见 Team 并省略新增字段。旧 App 连接新 daemon 仍只看创建 workspace，新 App 连接旧 daemon 也保持单 workspace 可见性和实际派发；两种组合都不能静默跨 workspace。
+6. App 和 CLI 的 Mission start 必须发送目标 workspace，CLI 要求 `--workspace`。缺少完整 Team v2 支持时客户端不显示可提交的 Team surface；不会按创建上下文过滤 Team，也不会省略字段。
 
 ### Replan、成员与故障状态机
 
@@ -147,8 +147,8 @@ v2 先做**逻辑 feature capsule**，不立即增加新的 npm workspace packag
 
 | 事件                                 | 状态与允许动作                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Team Member add/edit                 | profile revision 增加，只影响未来 Mission。当前 Lead 可在没有受影响 active Assignment 时用 `adoptTeamRevision` replan，向 Mission 追加 snapshot；旧 Assignment 继续引用旧 snapshot。                                                                                                                                  |
-| Team Member remove / lead change     | handle 形成永久 tombstone，永不复用。当前 Mission 涉及时，普通 profile mutation 拒绝；必须用原子“cancel/transfer open work → archive participant → append adopted snapshot → profile tombstone/新 lead”操作。旧 Assignment 仍引用旧 snapshot。                                                                        |
+| Team Member add/edit                 | profile revision 增加，只影响未来 Mission；包括 Agent Profile source refresh/rebind/detach。普通 replan 不采用 Team revision。当前 Mission 继续逐字节使用冻结的 Member、Skill、Lead、execution profile/source 与 Methodology；只有独立 capability refresh 可在保持这些事实不变时追加结构 capability snapshot。        |
+| Team Member remove / lead change     | handle 形成永久 tombstone，永不复用。若 Member 或 Lead 出现在非终态 Mission 的冻结 snapshot 中，profile mutation 拒绝到 Mission 终态；不通过 replan 改写当前名册。Mission 内的 Lead participant replacement 只从冻结 snapshot 选择新 binding，不修改 Team lead。                                                      |
 | Lead participant archive/hard-delete | Mission 进入 `needs_attention`，停止新 dispatch，保留 assignments、leases 和 outbox。用户显式选择 snapshot 内替代 Lead 并 replan，或 cancel Mission；daemon 不自动猜替代者。                                                                                                                                          |
 | Assignee archive/hard-delete         | queued 工作取消并交回 Lead；accepted Assignment 进入 `needs_attention`，不自动重放。hard-delete 的 turn 记 unknown/failed reason 后才释放 lease；新 participant 只接新 Assignment。                                                                                                                                   |
 | Reviewer archive/hard-delete         | 未 dispatch 的 review 可按同一 snapshot 重新匹配并生成新 id；accepted review 不自动重放，捕获证据后进入 `needs_attention`，由 Lead replan 或用户取消。final verification reviewer 同样处理。                                                                                                                          |
@@ -179,7 +179,7 @@ v2 先做**逻辑 feature capsule**，不立即增加新的 npm workspace packag
 
 以下两项与上面的 v2 方向一起冻结：
 
-- **Mission 冻结可解释快照**：Mission 不只保存 `rosterRevision`，还冻结启动时的 Member、Skill 与 execution profile 快照；显式 replan 采用新 Team revision 时追加 snapshot，不覆盖旧版本。历史 Assignment 的匹配理由、provider 配置和 mention 身份始终可重建。
+- **Mission 冻结可解释快照**：Mission 不只保存 `rosterRevision`，还冻结启动时的 Member、Skill、Lead、execution profile、可选 source 与 Methodology。普通 replan 不采用新 Team revision；独立 capability refresh 只能追加 Member 事实相同而结构 capability declaration 更新的 snapshot。历史 Assignment 的匹配理由、provider 配置和 mention 身份始终可重建。
 - **最终验收进入 DAG**：Workstream 显式区分 delivery、integration 与 verification。每个 Mission 计划必须有一个依赖全部交付路径的 verification Workstream；存在满足硬要求的其他 Member 时，其 owner 必须不同于所有可写 delivery owner，否则保存 override reason。它的结构化报告与成功 turn 同时落盘后，Mission 才能从 `verifying` 进入 `completed`。
 
 ## Agent Teams v2 执行拆解
@@ -210,10 +210,10 @@ v2 先做**逻辑 feature capsule**，不立即增加新的 npm workspace packag
 
 **依赖**：V2-ITEM-1。**范围**：protocol/client，不接 server 业务。
 
-- 新增单一 `server_info.features.teamMissions` 能力门和对应 per-socket client capability；v2 UI 只在这一处判定，不把若干子能力拼成推断。
+- 定义完整首发产品门为 `server_info.features.teamMissions + globalTeamProfiles + teamMethodologies`。本项拥有基础 `teamMissions` 协议事实和对应 per-socket client capability；V2-ITEM-11 与 Team Methodologies TM-ITEM-6 分别闭合其余 readiness。v2 UI、CLI 和 mutation authorization 不得只凭 `teamMissions` 开放 Team surface。
 - 新增 `team.profile.*` 的 create/list/inspect/update/archive 与 `team.mission.*` 的 start/list/inspect/cancel/attention-resolve 请求/响应，以及 profile/mission authoritative snapshot 广播；共 10 组 RPC，全部使用 dotted namespace 和 correlated request id。
-- 请求使用 idempotency key 或 expected revision；wire schema 不 transform/catch/preprocess，不收窄既有消息。Team/Mission 新消息只发送给声明 `teamMissions` 的 socket。
-- 验收：new client 遇到未声明 capability 的 daemon 不发送 Team/Mission mutation；混合 socket 中只有声明 capability 的连接收到 authoritative snapshot；生成 inbound validator、client build 和定向测试通过。
+- 请求使用 idempotency key 或 expected revision；wire schema 不 transform/catch/preprocess。Team/Mission 新消息只发送给声明完整 Team v2 client capability set 的 physical source。
+- 验收：client 在完整三项 server feature 未 ready 时不发送 Team/Mission mutation；混合 physical source 中只有完整获权连接收到 authoritative snapshot，缺任一项都得到同一个 unsupported 结果；生成 inbound validator、client build 和定向测试通过。
 
 ### V2-ITEM-3 · 持久化与恢复
 
@@ -276,9 +276,9 @@ v2 先做**逻辑 feature capsule**，不立即增加新的 npm workspace packag
 **依赖**：V2-ITEM-8。**范围**：CLI surface、daemon E2E、capability 漂移和恢复矩阵。
 
 - CLI 支持 profile create/list/inspect/update/archive，以及 mission start/list/inspect/cancel；Role/Level/Skills/provider/model 可重复声明并有机器可读输出。
-- 新 app/CLI 对缺少 `teamMissions` 的 daemon 明确要求升级，不尝试把 Team/Mission 请求降级成实验实现的 RPC 或 task。
-- runtime 安装并完成 v2 startup reconciliation 后才对 production socket 广告 `teamMissions`。隔离真实 daemon E2E 覆盖“创建无 session → Mission 只启 Lead → plan/match → lazy participants → 并行/DAG → report/verify → 归档 participants”，以及每个持久化 crash window。
-- 验收：逐项覆盖混合 socket capability、重连 gap、CAS 冲突、重复请求、Lead/assignee/reviewer hard-delete、provider unavailable、participant unarchive/rebind、replan、Mission cancel 和 Team archive；全部只走 v2 外部接口。production 只在 runtime ready 且 v2 reconciliation 完成后广告 `teamMissions`。
+- 新 app/CLI 对缺少 `teamMissions`、`globalTeamProfiles` 或 `teamMethodologies` 任一项的 daemon 明确要求升级，不尝试把 Team/Mission 请求降级成实验实现的 RPC、task 或 standard-only 路径。
+- runtime 安装并完成 v2 startup reconciliation 后才广告它拥有的 `teamMissions` readiness；完整产品面继续等待 global reconciliation 与 Methodology catalog/compiler 的 readiness。隔离真实 daemon E2E 覆盖“创建无 session → Mission 只启 Lead → plan/match → lazy participants → 并行/DAG → report/verify → 归档 participants”，以及每个持久化 crash window。
+- 验收：逐项覆盖三项 server feature 的完整/缺失组合、同 Session 混合 physical source、重连 gap、CAS 冲突、重复请求、Lead/assignee/reviewer hard-delete、provider unavailable、participant unarchive/rebind、replan、Mission cancel 和 Team archive；全部只走唯一 v2 外部接口。任一 readiness 缺失时不发送 mutation 或 snapshot。
 
 ### V2-ITEM-10 · 真实协同、QA、文档与最终验收
 
@@ -291,16 +291,17 @@ v2 先做**逻辑 feature capsule**，不立即增加新的 npm workspace packag
 
 ### V2-ITEM-11 · 全局 Team 与 Mission workspace 归属
 
-**依赖**：V2-ITEM-10。**范围**：Team/Mission protocol、start saga、App/CLI 选择面、workspace 归属校验与 canonical docs。
+**依赖**：V2-ITEM-10。**范围**：Team/Mission protocol、start saga、replan/capability refresh、Session 能力门、App/CLI 选择面、workspace 归属校验与 canonical docs。
 
-- Team profile 不再以 `workspaceId` 作为业务 owner；保留该 wire 字段作为创建上下文与旧客户端默认 workspace，不允许领域逻辑、列表或新 UI 用它限制 Team 的可复用范围。
-- `team.mission.start` 追加 optional `workspaceId`。daemon 先计算 `effectiveWorkspaceId = request.workspaceId ?? team.workspaceId`，确认该 workspace 存在且未归档，再用补齐后的规范化请求计算 fingerprint，并把 `effectiveWorkspaceId` 写入 start intent；Mission 只能从 intent 物化。相同 key 的省略值与显式相同值是同一请求，B/C 两个值必须 conflict。
+- Team profile 不以 workspace 作为业务 owner；必需的 `creationWorkspaceId` 只记录创建上下文，不允许领域逻辑、列表或新 UI 用它限制 Team 的可复用范围，也不能作为 Mission workspace 默认值。
+- `team.mission.start` 必须显式携带 `workspaceId`。daemon 确认该 workspace 存在且未归档，再用完整请求计算 fingerprint，并把该 `workspaceId` 写入 start intent；Mission 只能从 intent 物化。同 key 指向 B/C 两个 workspace 必须 conflict，缺失 workspace 在 schema 边界拒绝。
 - start intent 已存在时，所有 crash replay 只读 intent workspace；Mission 已存在后，Participant、replacement/rebind、recovery、reviewer、final verifier、baseline、delta、ownership interval、lease 与 audit 只读 `Mission.workspaceId`。intent/Mission workspace 不一致落持久化 Attention 并停止恢复，禁止回落到 Team 的创建字段。
-- 新 daemon 对未携带 workspace 的旧请求使用 Team 的创建上下文；新 App 连接未声明 `globalTeamProfiles` 的旧 daemon 时按 Team 创建 workspace 过滤并省略新增字段。兼容分支带 `COMPAT(...)` 标签和移除条件；旧 App/new daemon、new App/old daemon 都要验证可见性与最终 participant workspace，而不只验证 schema parse。
+- v2 是首个公开 Team wire/domain/persistence 形态。实现直接删除实验 `workspaceId` Team 字段、optional Mission workspace、兼容 normalizer、双 projection 和 Team 专属 `COMPAT(...)`；开发数据重置。App/CLI 只在 physical host 声明完整 Team v2 支持时开放 Team surface，否则整体显示 unsupported，不发送字段省略请求。
+- 完整 Team v2 支持固定为 `teamMissions + globalTeamProfiles + teamMethodologies`。该集合只表达首发功能是否 ready，不表达字段版本；V2-ITEM-11 重新批准与实现同步必须删除只看 `teamMissions` 或两项能力的 UI、CLI、Session 与测试门控。
 - App 的 Mission start 在标志开启时列出 host 内全部 active Team；CLI 在标志开启时要求 `--workspace`。`activeMissionId != null` 时 Team panel、sidebar 与 deep link 只认对应 `Mission.workspaceId`，Mission snapshot 尚未 hydrate 时保持 unplaced/loading，禁止回落创建 workspace；Mission 终结后已打开 tab 保持原位，新导航优先使用仍有效的创建 workspace，否则使用 host 内稳定排序的第一个 live workspace。host 另提供不依赖 workspace 的全局 Team 列表与设置入口；没有任何 live workspace 时，idle Team 的 deep link 与设置从该入口打开，不能消失或伪造 workspace。
 - Team 仍保持全 host 单活跃 Mission；同一个 Team 不能同时在两个 workspace 执行。跨 Team 的 writable scope 冲突继续按 Mission workspace 隔离与排队。
 - workspace archive 与 Team Mission start 共享 workspace lifecycle fence：archive 先赢时 start 在落 intent/Mission 前拒绝；start 先赢时 archive 必须先幂等取消该 workspace 的非终态 Mission、释放 lease、归档 Participants，再完成 workspace teardown。所有相关路径统一先按 workspace id 稳定排序取得全部 workspace fence，再取得单个 Team permit，并在两层许可内重读 workspace、Team revision 与 active Mission；任何代码不得持 Team permit 等待 workspace fence。Team profile 永不随 workspace archive 归档，daemon 重启可从两个 intent 继续同一顺序。
-- 验收：在 workspace A 创建 Team 后，可从 B 选中并启动，创建上下文 A 归档后 Team 仍可列出并从 B 启动，完成后同一 Team 可在 C 再次使用；唯一 workspace A 归档后，全局 Team 列表、idle Team deep link 与设置仍可达。B/C 并发 start 只产生一个 Mission、room 和 Lead。用 barrier 控制的并发测试覆盖锁反转、archive/start 两种获胜顺序和重启恢复；逐个 start crash stage 验证不回落；Lead、lazy participant、replacement/rebind、recovery、reviewer、final verifier，以及 baseline、delta、ownership interval、lease 全部绑定 effective workspace。错误/归档 workspace 在落 intent/Mission 前拒绝。更新 `architecture.md`、`data-model.md`、`agent-lifecycle.md`、`glossary.md`、`protocol-compatibility.md`、`expo-router.md`；定向测试、typecheck、lint、format 与 fresh change review 通过。
+- 验收：在 workspace A 创建 Team 后，可从 B 选中并启动，创建上下文 A 归档后 Team 仍可列出并从 B 启动，完成后同一 Team 可在 C 再次使用；唯一 workspace A 归档后，全局 Team 列表、idle Team deep link 与设置仍可达。B/C 并发 start 只产生一个 Mission、room 和 Lead。用 barrier 控制的并发测试覆盖锁反转、archive/start 两种获胜顺序和重启恢复；逐个 start crash stage 验证不回落；Lead、lazy participant、replacement/rebind、recovery、reviewer、final verifier，以及 baseline、delta、ownership interval、lease 全部绑定 request/intent workspace。普通 replan 不采用后续 Team revision；active Mission 的 Member、Skill、Lead、execution profile/source 与 Methodology 保持冻结，只有 capability refresh 可在这些事实不变时追加结构 capability snapshot。错误、缺失或归档 workspace 在落 intent/Mission 前拒绝。完整三项 feature set 逐 physical source 门控；Team protocol/persistence/App 不含实验 shape migration、legacy projection、normalizer、dual write 或 Team 专属 `COMPAT(...)`。更新 `architecture.md`、`data-model.md`、`agent-lifecycle.md`、`glossary.md`、`protocol-compatibility.md`、`expo-router.md`；定向测试、typecheck、lint、format 与 fresh change review 通过。
 
 ## v2 横切执行约束
 
@@ -337,7 +338,7 @@ v2 先做**逻辑 feature capsule**，不立即增加新的 npm workspace packag
 1. 全部子项按设计文档对应章节实现，`npm run typecheck`、`npm run lint` 通过，每个子项的新增测试按 `docs/testing.md` 单文件跑绿，全量验证以 CI 为准；每个子项的证据包含测试命令与原始输出。
 2. 设计文档 §10 测试计划的场景**逐条绑定**在下方子项验收要点中，全部有自动化覆盖。
 3. 端到端三层证据：① 确定性 daemon 级 E2E（两个不同 provider adapter，覆盖创建 → lead 派发 → 成员完成 → room 汇报含 human actor 插话与 @mention → 多成员 permission 请求与 allow/deny RPC → archive 收敛，ITEM-5）；② App 级 Playwright + 隔离 daemon E2E（team 面板权限聚合两条目独立 allow/deny、关键动作三态，ITEM-7）；③ 按 `docs/qa.md` 至少一次真实 provider 手工 smoke 证据，采用**既有六行 App 平台矩阵**（iOS、Android、Web、Desktop macOS/Windows/Linux）+ 桌面/compact 两档；daemon 侧（存储、迁移 rename）说明 macOS/Linux 覆盖与 Windows/Docker 的覆盖或不适用理由。
-4. 协议兼容：老 app + 新 daemon、新 app + 老 daemon 双向不破（feature/caps 按 socket 门控生效）；所有兼容点带**含版本与移除条件**的完整 `COMPAT(...)` 标签；旧协议 fixture 解析测试通过（含 `StoredAgentRecord.turnOutcomes` 的 legacy 解析）。
+4. BASE-0 当时曾验证实验实现的双向协议；该结果只保留为历史证据。V2-DEC-3/4 已废止其中所有 Team 兼容要求，V2 实现必须删除对应 Team `COMPAT(...)`、legacy fixture 和分支；`StoredAgentRecord.turnOutcomes` 等非 Team 核心兼容不受此决定影响。
 5. 文档同步：每份正式 doc 的更新归属于具体子项（见子项契约括号内 docs 清单）；设计文档并入正式 docs 并删除的动作在 final acceptance 阶段执行并回写本 Epic。
 
 ## 共享语言与概念边界
