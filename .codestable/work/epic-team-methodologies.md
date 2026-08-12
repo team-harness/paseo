@@ -3,13 +3,8 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776cee0d
 current_item: null
-active_items:
-  - item: TM-ITEM-3
-    state: review_fix_round_4
-    run: 4d66b70c-cc02-4ef6-a89a-79b9b40af64d
-    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-software-delivery
-    base: 6ce16c29b125742badb5e67206c0b9018bd2a46f
-next_action: 等待 TM-ITEM-3 worker 将两个策略 prompt 改为完整规范文本或摘要冻结，并交回同一 reviewer 做 owner 授权的 Round 5
+active_items: []
+next_action: 为 TM-ITEM-4 创建 Paseo 托管 worktree，并派发 exact bundle 到 Codex artifact plan 的 tracer bullet
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -20,7 +15,7 @@ remote_publish: final
 
 - [x] TM-ITEM-1
 - [x] TM-ITEM-2
-- [ ] TM-ITEM-3
+- [x] TM-ITEM-3
 - [ ] TM-ITEM-4
 - [ ] TM-ITEM-5
 - [ ] TM-ITEM-6
@@ -37,6 +32,20 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：TM-ITEM-3 完成。owner 授权的 Round 5 核对冻结 checkpoint
+  `efd786e08860efcc4831655722b0fd458ee176fd`、唯一父 `6ce16c29`、tree
+  `c733ff2c6cde63c09d08c4cb073c6129b6025caa` 与完整 diff `35ace679…367a`；同一 reviewer
+  `8e3b2b0c-b48d-4a80-aa93-f0010e5db25b` 给出 0 blocking / 0 important / 0 nit。完整 prompt 文本以有序
+  byte equality 冻结，顺序、重复、空白、标点和尾换行变异均被拒绝；Round 1 至 4 的路径逃逸、重复身份、
+  exact-ref、可跳过 consumer、provenance 和自然语言推断绕过均无回退。主流程无历史推进地将该 tree 应用到
+  integration worktree，确认 staged tree 同值后创建 portable 里程碑
+  `134f2c15c24c6baf752e642647804ce79ba7c5c8`（`feat(methodologies): add portable software delivery bundle`）。
+  集成验证为 Python 171、TypeScript 55、`build_methodologies.py --check`、Ruff check/format、
+  `git diff --check` 全绿；两个 bundle 摘要分别为 `sha256:d5001287…9697` / 10078 bytes 与
+  `sha256:5c86942a…e56c` / 16154 bytes。code-intel 的高风险信号来自 21 文件、1999 行增量与符号映射截断；
+  定点源码复核确认 source/provenance 逐组件拒绝绝对路径、空段、`.`、`..` 与逃逸解析结果，未发现具体失败
+  路径。按 `remote_publish: final` 未 push/publish。
 
 - 2026-08-12：owner 明确授权 TM-ITEM-3 Round 5。授权只放宽本 change review 阶段到第五轮；
   不改变子项契约、schema、里程碑或发布授权。Round 5 必须删除基于结论词、否定词和同义词的自然语言
