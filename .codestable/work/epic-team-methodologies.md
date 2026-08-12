@@ -4,7 +4,7 @@ phase: executing
 approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776cee0d
 current_item: null
 active_items: []
-next_action: 恢复 TM-ITEM-1 checkpoint 集成；TM-ITEM-6 继续等待 agent-teams:V2-ITEM-11 实现同步与 change review
+next_action: 派发 TM-ITEM-2，定义并验证 Methodology bundle schema、canonical encoder 与 corpus
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -13,7 +13,7 @@ remote_publish: final
 
 ## 子项进度
 
-- [ ] TM-ITEM-1
+- [x] TM-ITEM-1
 - [ ] TM-ITEM-2
 - [ ] TM-ITEM-3
 - [ ] TM-ITEM-4
@@ -86,3 +86,9 @@ remote_publish: final
   及 3 个未提交修复文件；integration worktree
   `/Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodologies-integration` 保留旧 checkpoint 的 5 个暂存
   文件。worker 与额外 explorer 均已停止，未创建正式 portable 里程碑，TM-ITEM-2 未启动。
+- 2026-08-12：TM-ITEM-1 恢复并完成。worker 追加 CRLF 等价修复 checkpoint `ecb2b82`，主流程将最终
+  5 文件逐一校验到 integration worktree 后创建 portable 里程碑
+  `9b35151ff372f3b5717d0258835bcb094b5c95b6`（`refactor(export): share deterministic artifact plans`）。
+  集成权威验证为 45/45 单测通过、Ruff format/check 通过、`git diff --check` 通过；code-intel 对完整
+  staged diff 的高风险分数仅来自 812 行改动规模与符号截断，随后定点追踪 build CLI、installer、
+  fragment 与 preflight 路径，未发现具体失败路径。按 `remote_publish: final` 未推送。
