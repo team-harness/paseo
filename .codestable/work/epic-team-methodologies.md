@@ -2,14 +2,9 @@
 epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
-current_item: TM-ITEM-5
-active_items:
-  - item: TM-ITEM-5
-    state: integrating
-    run: 9dd58277-196a-4a0e-8881-7343e246d177
-    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-claude-exporter
-    base: b4c5f38c8e5423575450337f43012031d9fd4bc1
-next_action: 将 reviewer 通过的 TM-ITEM-5 checkpoint 无历史推进集成到 portable 里程碑
+current_item: null
+active_items: []
+next_action: 核对 agent-teams:V2-ITEM-11 的实现同步与游标终态，满足后派发 TM-ITEM-6
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -22,7 +17,7 @@ remote_publish: final
 - [x] TM-ITEM-2
 - [x] TM-ITEM-3
 - [x] TM-ITEM-4
-- [ ] TM-ITEM-5
+- [x] TM-ITEM-5
 - [ ] TM-ITEM-6
 - [ ] TM-ITEM-7
 - [ ] TM-ITEM-8
@@ -37,6 +32,15 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：TM-ITEM-5 完成。主流程在 integration worktree 以 `cherry-pick -n` 应用 worker
+  checkpoint，staged tree 与受审 tree 均为 `b82db984401f3fe9f6ae2f786dd6083de7f09703`；随后创建
+  portable 正式里程碑 `ef5dd37f0e42a3442d42a0d43a1eec573de188c5`（唯一父 `b4c5f38c…`）。
+  feature-owned 改动为 `export_shared.py`、`export_claude.py`、`export_codex.py` 与 Claude 定点/性质测试；
+  upstream-owned 接入只在 `install.py` 和 `export_methodology.py` 注册 exporter、受管根与共享错误类型。
+  code-intel 的 high 信号来自 2,082 行增量与 Python 动态符号映射告警；定点数据流核对未发现具体失败
+  路径。worker 已报告 219/219、定点 48、双安装顺序、Ruff、build/check、digest 零变化与 Round 5
+  0 blocking / 0 important / 0 nit，主流程按规则未重复运行同一绿色测试。未 push/publish。
 
 - 2026-08-12：TM-ITEM-5 Round 5 完成。异构 Codex reviewer 对完整候选给出 0 blocking /
   0 important / 0 nit，并独立穷举全部 1,112,064 个 Unicode scalar，以真实 PyYAML 验证逐字
