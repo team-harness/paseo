@@ -3,13 +3,8 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776cee0d
 current_item: null
-active_items:
-  - item: TM-ITEM-4
-    state: recovery_running
-    run: 45942a8a-acb2-4cda-8ab5-14482e513565
-    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-codex-exporter
-    base: 134f2c15c24c6baf752e642647804ce79ba7c5c8
-next_action: 等待 TM-ITEM-4 recovery worker 从既有 16/16 GREEN 完成权威门与异构 Claude change review
+active_items: []
+next_action: 为 TM-ITEM-5 创建 Paseo 托管 worktree，并派发复用 Codex exact-ref 核心的 Claude exporter tracer bullet
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -21,7 +16,7 @@ remote_publish: final
 - [x] TM-ITEM-1
 - [x] TM-ITEM-2
 - [x] TM-ITEM-3
-- [ ] TM-ITEM-4
+- [x] TM-ITEM-4
 - [ ] TM-ITEM-5
 - [ ] TM-ITEM-6
 - [ ] TM-ITEM-7
@@ -37,6 +32,23 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：TM-ITEM-4 完成。最终 worker checkpoint
+  `af2a0af4d877bad958503182de3949b9d1e9dfa8` 唯一父为 `134f2c15`，tree
+  `3681ef43142d14b8aa0a5be9958f2738e7b487a8`；主流程无历史推进应用同一 tree 后创建 portable 里程碑
+  `b4c5f38c8e5423575450337f43012031d9fd4bc1`（`feat(methodologies): export Codex methodology artifacts`）。
+  验证为定点 18/18、portable 全量 189/189、Ruff check/format、`build_methodologies.py --check`、两次
+  adapter build bytes/path 确定性与 `git diff --check` 全绿。独立 Claude reviewer 首轮发现 1 important：
+  `@` 落在 digest 后的非精确 ref 泄漏裸 `ValueError`；Round 2 在 feature-owned parser 修复并补 parser、
+  CLI 无 traceback、installer 写前零变化回归后给出 APPROVED，0 blocking / 0 important。首个 Opus 5
+  reviewer `6a5b24fd…` 因终态输出前反复 context compaction 无法产出结论，不计审查轮次；替代同层 reviewer
+  `3260cc6e-6976-414f-9434-bf2b18f61380` 使用 Claude Opus 4.8 1M/high 完成冻结审查。code-intel 的高风险
+  信号来自 `install.py` 广影响与测试链接缺失；定点追踪和真实测试确认 methodology plan 在
+  `generated_files`、路径/symlink、conflict、stale 与 atomic write 前合并，无具体绕过路径。
+  upstream-sync 边界满足：领域导出留在 `scripts/methodology/export_codex.py`，CLI/测试为 feature-owned，
+  `scripts/install.py` 只接参、合并 plan 并复用既有安全写路径；`core/` 零改动。保留两个 minor：CLI 与
+  installer 的 Codex exporter 注册器重复，以及通用 `merge_plans` 尚在 `install.py`；二者当前无行为影响，
+  后续只有在跨平台共享正确性需要时才收敛。按 `remote_publish: final` 未 push/publish。
 
 - 2026-08-12：TM-ITEM-4 原 worker `4f6a8bbe-4dad-47df-9a95-38feeea4a889` 已建立 16 个准确 RED，并将
   Codex exporter、CLI 和 installer 接线实现到 16/16 GREEN；随后连续三次在同一收尾位置触发 provider
