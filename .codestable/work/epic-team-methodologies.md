@@ -3,8 +3,13 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776cee0d
 current_item: null
-active_items: []
-next_action: 为 TM-ITEM-5 创建 Paseo 托管 worktree，并派发复用 Codex exact-ref 核心的 Claude exporter tracer bullet
+active_items:
+  - item: TM-ITEM-5
+    state: running
+    run: 9dd58277-196a-4a0e-8881-7343e246d177
+    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-claude-exporter
+    base: b4c5f38c8e5423575450337f43012031d9fd4bc1
+next_action: 等待 TM-ITEM-5 worker 完成共享 exporter 核心、Claude adapter、双安装顺序与最多三轮异构 review
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +37,15 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：TM-ITEM-5 派发到 Paseo 托管 worktree
+  `/Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-claude-exporter`，run identity 为
+  `9dd58277-196a-4a0e-8881-7343e246d177`，基线为 TM-ITEM-4 portable 里程碑
+  `b4c5f38c8e5423575450337f43012031d9fd4bc1`。worker 使用 Claude Opus 4.8 1M/high，避免上一项短上下文
+  reviewer 的压缩问题；独立 reviewer 指定 Codex `gpt-5.6-sol` / xhigh。派发硬约束为先把 Codex 中真实
+  平台中立的 exact-ref、package load/digest 与 report 分类提取到 feature-owned 共享深模块，再新增 Claude
+  adapter；`install.py` 只做注册、接参和 plan 合并。验收必须覆盖 Codex→Claude 与 Claude→Codex 两种安装
+  顺序、共享中性 prompt/digest、只读 reviewer/SA 权限与同一 capability 分类。
 
 - 2026-08-12：TM-ITEM-4 完成。最终 worker checkpoint
   `af2a0af4d877bad958503182de3949b9d1e9dfa8` 唯一父为 `134f2c15`，tree
