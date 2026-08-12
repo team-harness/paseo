@@ -3,8 +3,13 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 从已发布的 @team-harness/methodologies@0.2.0 派发 TM-ITEM-6
+active_items:
+  - item: TM-ITEM-6
+    state: dispatched
+    run: paseo-agent:e51a205a-3203-492b-a537-512127d836d5
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-catalog-hub
+    base: d6bbcfbf1
+next_action: 等待 TM-ITEM-6 worker 完成实现、定点验证与 fresh change review；交付后串行集成
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +37,16 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-6 派发到 Paseo 托管 worktree
+  `/Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-catalog-hub`，run identity 为
+  `e51a205a-3203-492b-a537-512127d836d5`，基线为主分支提交 `d6bbcfbf1`。worker 使用
+  `codex/gpt-5.6-sol` / full-access，原因是本项主要为 TypeScript 架构、协议、daemon、CLI 与路由实现；
+  UI 必须沿现有设计系统完成。范围冻结为已发布 package pin/allowlist sync/typed decoder/内嵌 catalog、
+  `team.methodology.list/get`、CLI list/inspect、physical-source 完整三 capability 门、静态 host Team Hub、
+  独立 replica/catalog hydration 与真实跨端证据；不得提前实现 TM-ITEM-7 至 17。独立 reviewer 要求优先
+  Paseo agent-scoped Claude Opus 最强稳定模型，最多三轮并沿用同一 lineage；worker 不得写 Epic/游标或
+  远端发布。
 
 - 2026-08-13：owner 明确授权按已批准设计提前发布纯数据 package；该授权不包含 git push 或 Paseo
   发布。npmjs 用户 `dafang` 完成发布专用 Web 认证后，`@team-harness/methodologies@0.2.0` 发布成功。
