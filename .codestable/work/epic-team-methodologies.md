@@ -4,8 +4,8 @@ phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
 active_items: []
-next_action: 等待 owner 授权提前发布并恢复 npmjs 凭证；随后发布 @team-harness/methodologies@0.2.0、验证 registry identity，再派发 TM-ITEM-6
-blocked_by: npm_publish:@team-harness/methodologies@0.2.0
+next_action: 从已发布的 @team-harness/methodologies@0.2.0 派发 TM-ITEM-6
+blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -32,6 +32,16 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：owner 明确授权按已批准设计提前发布纯数据 package；该授权不包含 git push 或 Paseo
+  发布。npmjs 用户 `dafang` 完成发布专用 Web 认证后，`@team-harness/methodologies@0.2.0` 发布成功。
+  Registry 反查与远端 tarball 均得到 43 个文件、22,092 bytes、shasum
+  `381d317f03c222eff0257585bc89086727751d51`、integrity
+  `sha512-nq9zniu8DjtA5h5W5uDnZVIfyOp1rTdCe388WQNEGqj1fYo6VT5bgZCGPow3AUPMq89nr/7L33ndnB2NT6UbFg==`；远端
+  manifest 同时包含 `paseo/standard@1` digest `sha256:d5001287…9697` 与
+  `portable/software-delivery@1` digest `sha256:5c86942a…e56c`。发布源仍为 portable 里程碑
+  `ef5dd37f0e42a3442d42a0d43a1eec573de188c5` / tree `b82db984…9703`，工作树 clean。TM-ITEM-6 的
+  已发布 package 前置已解除。
 
 - 2026-08-12：`agent-teams:V2-ITEM-11` 的游标状态漂移已按其既有实现、change review 与 final
   acceptance review 证据机械关闭；Agent Teams v2 整体仍等待 owner final acceptance，未发布。TM-ITEM-6
