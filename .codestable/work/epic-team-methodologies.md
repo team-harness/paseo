@@ -2,14 +2,14 @@
 epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776cee0d
-current_item: TM-ITEM-2
+current_item: null
 active_items:
-  - item: TM-ITEM-2
-    state: implementing_owner_authorized_followup
-    run: 6cd895ac-1f5f-454f-b1cf-2606189462eb
-    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-standard-bundle
-    base: 9b35151ff372f3b5717d0258835bcb094b5c95b6
-next_action: 修复 inputBase64 非 BMP 字符的跨语言错误说明分叉，并由同一 reviewer 完成追加复审
+  - item: TM-ITEM-3
+    state: dispatched
+    run: 4d66b70c-cc02-4ef6-a89a-79b9b40af64d
+    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-software-delivery
+    base: 6ce16c29b125742badb5e67206c0b9018bd2a46f
+next_action: 等待 TM-ITEM-3 worker 编译 portable/software-delivery@1 并完成独立审查
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -19,7 +19,7 @@ remote_publish: final
 ## 子项进度
 
 - [x] TM-ITEM-1
-- [ ] TM-ITEM-2
+- [x] TM-ITEM-2
 - [ ] TM-ITEM-3
 - [ ] TM-ITEM-4
 - [ ] TM-ITEM-5
@@ -124,6 +124,23 @@ remote_publish: final
   字符时，Python 按码点、TypeScript 按 UTF-16 码元计算长度，造成双方虽均 fail-closed、但错误说明
   不一致。owner 已有的“修复并复审”授权继续覆盖该窄修复；worker 正补共享 fixture 与差分验证，再交回
   reviewer `b3d8f2dc-e83b-49ab-9158-b298d3d43557`。
+- 2026-08-12：TM-ITEM-2 完成。worker 将 reviewer 通过的 tree
+  `9ca4a6bcafaaf08ba93ea56b8d8fe7e208798773` 压成单一 checkpoint
+  `3737e4e0d2beaf3f209afed1a85e421bb5c0035c`，唯一父为 TM-ITEM-1 portable 里程碑
+  `9b35151ff372f3b5717d0258835bcb094b5c95b6`。同一 reviewer Round 6 对完整候选给出 0 blocking /
+  0 important / 0 minor；其独立差分覆盖 19,551 个 Base64/Unicode 输入，0 分叉。主流程把该 tree
+  无历史推进地应用到 integration worktree，确认 staged tree 同值后创建 portable 里程碑
+  `6ce16c29b125742badb5e67206c0b9018bd2a46f`（`feat(methodologies): add standard Bundle V1 contract`）。
+  集成验证为 Python 123、TypeScript 54、`build_methodologies.py --check`、Ruff check/format、
+  `git diff --check` 全绿；跨语言 digest 为 `sha256:d5001287…9697` / 10078 bytes。真实 `npm pack`
+  离线消费得到 42 文件、5 个纯 JSON 导出、1 bundle、valid 5 / invalid 30 / raw bytes 2，且无入口、
+  脚本或依赖。按 `remote_publish: final` 未 push/publish。
+- 2026-08-12：TM-ITEM-3 派发到 Paseo 托管 worktree
+  `/Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-software-delivery`，run identity 为
+  `4d66b70c-cc02-4ef6-a89a-79b9b40af64d`，基线为 TM-ITEM-2 portable 里程碑
+  `6ce16c29b125742badb5e67206c0b9018bd2a46f`。worker 使用最强稳定 `claude/claude-opus-5`；本项
+  涉及跨语言 canonical bundle 与方法论源映射，设计密度高，不降档。独立 reviewer 指定异构
+  `codex/gpt-5.6-sol`、thinking `xhigh`。
 - 2026-08-12：owner 明确选择修复而非接受 Round 4 的孤立代理字符 important，并授权沿用同一 reviewer
   做一次追加复审。本次授权只覆盖 `inputText` 中 JSON 转义孤立代理字符的双侧 fail-closed 契约、共享
   corpus 回归与对应验证；不扩大 Bundle V1、TM-ITEM-2 或后续 Methodology 子项范围。
