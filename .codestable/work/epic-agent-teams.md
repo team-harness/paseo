@@ -1,10 +1,10 @@
 ---
 epic: ../epics/agent-teams.md
 phase: acceptance
-approved_revision: e13c92a152e546753556eebe03d9c239bd22125c425df1ff938ba2e1c0e10b3c
-current_item: null
-next_action: 等待 owner 安装验证 DMG 后最终接受并完成 Epic 毕业
-blocked_by: null
+approved_revision: c1152303c60d9ba607440598b6825fd6f372886a0a81d6e88d3637e7611c8287
+current_item: V2-ITEM-11
+next_action: 按已批准的单一首发契约同步 V2-ITEM-11 实现并完成 fresh change review
+blocked_by: implementation_sync:V2-ITEM-11
 item_progression: continuous
 milestone_commit: authorized
 remote_publish: final
@@ -33,12 +33,27 @@ remote_publish: final
 - [x] V2-ITEM-8 Team 聊天与设置 UI
 - [x] V2-ITEM-9 CLI、运行时启用与确定性 E2E
 - [x] V2-ITEM-10 真实协同、QA、文档与最终验收
-- [x] V2-ITEM-11 全局 Team 与 Mission workspace 归属
+- [ ] V2-ITEM-11 全局 Team 与 Mission workspace 归属
 
 ## Agent Teams v2 规划证据
 
+- 2026-08-12：owner 再次确认 Agent Teams 尚未上线，不考虑任何 Team 兼容措施。V2-DEC-4 与
+  V2-ITEM-11 改为单一首发契约：`creationWorkspaceId` 仅作创建上下文，Mission `workspaceId` 必需；删除
+  optional workspace、旧 projection/normalizer、dual write、legacy fallback 与 Team 专属 `COMPAT(...)`。
+  该契约修订使上一 accepted revision 失效，等待 fresh contract review 后再进入最终接受。
+- 2026-08-12：Agent Profile/Methodology 契约复审重新打开 V2-ITEM-11。同步后的首发契约冻结 active
+  Mission 的 Member、Skill、Lead、execution profile/source 与 Methodology；普通 replan 不再采用 Team
+  revision，结构 capability 仅由独立 refresh snapshot 更新。完整产品门统一为 `teamMissions +
+globalTeamProfiles + teamMethodologies`。本项必须完成 contract review → implementation sync → change review
+  后才能重新勾选；此前的实现与验收证据只保留为历史基线。
+- 2026-08-12：同一契约 reviewer 复核冻结 Agent Teams Epic `c1152303…c8287`、游标
+  `695f68b9…f4f9f3`、Methodology Epic `7fd70f79…cee0d` 与其游标 `d6f4a811…d21bc`；active Mission
+  冻结、V2-ITEM-11 重开、三项完整 capability set 与零 Agent Profile catalog 读取全部 resolved，结论
+  0 blocking / 0 important / 0 minor。Owner 确认该单一首发契约；V2-ITEM-11 保持未完成，等待实现同步与
+  fresh change review。
+
 - 2026-08-08：owner 将 v1 设计改为“用户维护 Role/Level/Skills/execution profile；Lead 按 Mission 动态生成职责”，并要求 Team 模块降低对 Paseo 核心的耦合。原批准 hash 仅覆盖 v1，新增 v2 契约后失效，故 `approved_revision` 重置为 `pending`；phase 保持 `executing`，不回退历史状态。
-- 2026-08-08：owner 明确 Agent Teams 尚未上线，v2 是首个公开持久化、RPC 与 UI 格式。删除旧 Team 数据迁移、legacy adapter、双写、format marker、降级恢复、Legacy Mission UI/E2E 与 `needs_configuration`；Member 创建时必须具备完整 Role/Level/Skills/execution profile。单一 `teamMissions` capability gate 继续负责未来 App/daemon 版本漂移。owner 直接批准删除性收敛后的 Epic revision `075d13827cf8aa470b484f6a99d5ba444a0ea70c115333efb6b01b1d1d798104`。
+- 2026-08-08：owner 明确 Agent Teams 尚未上线，v2 是首个公开持久化、RPC 与 UI 格式。删除旧 Team 数据迁移、legacy adapter、双写、format marker、降级恢复、Legacy Mission UI/E2E 与 `needs_configuration`；Member 创建时必须具备完整 Role/Level/Skills/execution profile。当时批准的单一 `teamMissions` gate 已由 2026-08-12 的完整三项首发门取代；旧 Epic revision `075d13827cf8aa470b484f6a99d5ba444a0ea70c115333efb6b01b1d1d798104` 仅作历史证据。
 - 当前 worktree 的实验实现 follow-up 已有 3/3 真实协同稳定性证据、desktop/compact 截图和定向自动化结果，但尚未形成独立里程碑；先执行 BASE-0，避免与 v2 实现混成一个不可归因 diff。
 - V2-ITEM-1 已有 10 个文件 / 92 个测试的起始实现，以及一次 12/12 hash 一致的独立只读 review。规划复核发现旧 Member 不可无损映射到必填 Level/Skills、`rosterRevision` 无法单独解释历史 Mission、Mission 缺少显式最终 verification 三个契约缺口，因此该子项暂不勾完成。
 - 实验实现的真实 provider 经验继续作为 v2 设计约束：fake E2E 不能证明模型实际调用 Team tools；`chat_wait` 会阻塞无抢占派发；role mention 若不是稳定 handle 会失效。v2 最终门同时要求确定性 runtime E2E、真实 provider 连续评分和消息/地址截图。

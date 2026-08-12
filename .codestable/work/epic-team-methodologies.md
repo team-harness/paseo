@@ -1,10 +1,10 @@
 ---
 epic: ../epics/team-methodologies.md
 phase: executing
-approved_revision: 6d5f23c7f52fecc4eb3a4ea5841f9e7a46a0632d7fee9d6fc41e95e92c73e186
+approved_revision: 7fd70f79d1d18ea0d6f2f0f4419ae8082007d9b7f80670d39a7b0f9f776cee0d
 current_item: null
 active_items: []
-next_action: 执行首个依赖已满足的 TM-ITEM-1，并在交付后串行集成与创建里程碑 commit
+next_action: 恢复 TM-ITEM-1 checkpoint 集成；TM-ITEM-6 继续等待 agent-teams:V2-ITEM-11 实现同步与 change review
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -33,6 +33,25 @@ remote_publish: final
 
 ## 临时决策与证据
 
+- 2026-08-12：owner 确认 V1 Agent Profile 契约：Team Member 可保存 host-local Agent Profile source，
+  但 `executionProfile` 始终是权威快照；Mission/recovery/replan 不读取实时 catalog，Profile 变化只能显式
+  refresh，手动运行配置编辑会 detach。Agent Profile 的显示 metadata、notes、passthrough 与未来 prompt
+  字段不进入 Methodology 或 snapshot digest。
+- 2026-08-12：owner 明确 Agent Teams 尚未上线，不需要任何 Team 兼容措施。当前候选删除 Methodology
+  设计中的 optional-wire、旧 projection、normalizer、dual write、old/new capability 矩阵和 legacy
+  fixture，保留 capability 仅作为 physical host 对完整 V1 功能的可用性判断；同步修正上游
+  `agent-teams.md` 中与首发格式决定冲突的 V2-DEC-4/V2-ITEM-11。上一 approved revision 在本次契约
+  复审和 owner 接受前仍仅代表旧设计，执行继续暂停。
+- 2026-08-12：fresh contract review 首轮发现 active Mission adoption、跨 Epic 里程碑状态和完整 capability
+  set 三处冲突，并要求补齐所有 Mission 路径的零 Agent Profile catalog 读取证据。候选已同步：普通 replan
+  永不采用 Team/Profile/Methodology 新事实；V2-ITEM-11 重新打开并要求重新批准、实现同步与 change review；
+  完整门统一为 `teamMissions + globalTeamProfiles + teamMethodologies`；start/recovery/replan/replacement/
+  rebind/capability refresh 都以 throwing catalog fake 验证只读冻结 snapshot。等待同一 reviewer 窄复核。
+- 2026-08-12：同一 reviewer 复核冻结 Epic `7fd70f79…cee0d`、Methodology 游标
+  `d6f4a811…d21bc`、Agent Teams Epic `c1152303…c8287` 与其游标 `695f68b9…f4f9f3`；上一轮 3 blocking
+  和 1 important 全部 resolved，本轮 0 blocking / 0 important / 0 minor。Owner 已确认 V1 Agent Profile
+  source 契约与单一首发格式，不保留任何 Team compatibility；该 Epic revision 正式批准。
+
 - 2026-08-11：恢复唯一 proposed 永久 Epic `.codestable/epics/team-methodologies.md`；未发现重复 work
   游标或可应用 lesson。
 - 2026-08-11：`agent-teams:V2-ITEM-11` 是 TM-ITEM-6 的跨 Epic 前置；TM-ITEM-1 至 TM-ITEM-5 的
@@ -54,3 +73,16 @@ remote_publish: final
   `null` 继续。
 - 2026-08-11：Round 3 核对 Epic `7b22855b…b34633` 与游标 `f4fcaa5a…1608c3`；Round 2 的 1 个
   blocking 与 3 个 minor 全部 resolved，本轮 0 blocking / 0 important，允许提交 owner gate。
+- 2026-08-12：派发 TM-ITEM-1 到 Paseo 托管 worktree
+  `/Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-export-plan`，run identity 为
+  `6bd4c265-120d-4f6e-ae4f-12963fbdde51`，基线为 `e70cc89d7647a0ae0b073dede528fa161667f4e3`。实现
+  worker 使用编排偏好的 `claude/claude-opus-5`；当前仅一项就绪，因此本轮按串行退化执行。
+- 2026-08-12：TM-ITEM-1 worker 交付 checkpoint `f4c1f05d0e64a5a9b96abbb634b9ab53d4a4409a`；checkpoint
+  以派发基线为唯一父提交，只修改约定的 5 个文件。worker 的三轮独立 review 最终 0 blocking / 0
+  important；主流程开始在 `wks_3223f88a26d1f246` 串行集成。
+- 2026-08-12：owner 要求暂停并评估今早同步的 Agent Profile。TM-ITEM-1 尚未集成：主流程权威测试
+  42/42 通过，但 Windows CRLF bytes 等价 finding 未关闭。worker worktree
+  `/Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-export-plan` 保留 checkpoint `f4c1f05d…4409a`
+  及 3 个未提交修复文件；integration worktree
+  `/Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodologies-integration` 保留旧 checkpoint 的 5 个暂存
+  文件。worker 与额外 explorer 均已停止，未创建正式 portable 里程碑，TM-ITEM-2 未启动。
