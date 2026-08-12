@@ -3,8 +3,13 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 恢复 TM-ITEM-5 worker，按已批准的逐 archetype Claude 权限绑定契约继续实现
+active_items:
+  - item: TM-ITEM-5
+    state: dispatched
+    run: 9dd58277-196a-4a0e-8881-7343e246d177
+    workspace: /Users/wyattfang/.paseo/worktrees/1lpt315b/team-methodology-claude-exporter
+    base: b4c5f38c8e5423575450337f43012031d9fd4bc1
+next_action: 等待恢复后的 TM-ITEM-5 worker 交付 Claude exporter、双安装顺序证据与独立 change review
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +37,13 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-12：契约里程碑 `0dbf45b32` 创建后，原 TM-ITEM-5 worker
+  `9dd58277-196a-4a0e-8881-7343e246d177` 在既有 Paseo 托管 worktree 上恢复成功。continuation
+  packet 固定新 `approved_revision`、逐 archetype typed config、`disallowedTools` guaranteed /
+  `permissionMode` advisory 分类、禁止语义推导与 feature-capsule/upstream-sync 约束；worker 继续负责
+  TDD、Codex→Claude 与 Claude→Codex 安装顺序、fresh 异构 change review 和单父 checkpoint，不写
+  Epic/游标、不 push/publish。
 
 - 2026-08-12：owner 确认修订后的永久 Epic hash
   `9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1`；主流程将其写入
