@@ -11,12 +11,12 @@ active_items:
     base: 1206406b9
   - item: TM-ITEM-10
     state: dispatched
-    run: paseo-agent:d24b74a5-b936-486a-9698-8dd9b0c5db61
+    run: subagent:/root/tm10_recovery
     workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-profile-upgrade
     base: 1206406b9
   - item: TM-ITEM-11
     state: dispatched
-    run: paseo-agent:44892a51-1b68-450a-96c1-9a923263ebbd
+    run: subagent:/root/tm11_recovery
     workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-gates
     base: 1206406b9
 next_action: 等待 TM-ITEM-9/10/11 workers 完成并按完成顺序串行集成；每项集成后重算其余分支冲突与验证面
@@ -47,6 +47,13 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-10/11 的 Claude Opus workers 在恢复后再次同时遇到相同 gateway
+  503/no available accounts，达到同一基础设施失败的有界回退条件。两者已分别产生 partial candidate：
+  TM-ITEM-10 有 RPC RED 测试与 execution-source status 深模块草稿；TM-ITEM-11 有 protocol gate types 与
+  domain gate 深模块草稿。主流程冻结并保留这些改动，不重置 worktree；停止重试旧 Claude sessions，改由
+  宿主结构化 workers `/root/tm10_recovery` 与 `/root/tm11_recovery` 原地接管。每个 worker 只拥有其
+  Paseo worktree，基线仍为 `1206406b9`；旧 provider 失败不计实现或 review 轮次，TM-ITEM-9 不受影响。
 
 - 2026-08-13：TM-ITEM-11 worker `44892a51-1b68-450a-96c1-9a923263ebbd` 在原 session
   `e992eebc-c63f-4651-98a5-5eaa78592200` 中遇到同一 inference gateway 503/no available accounts。
