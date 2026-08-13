@@ -3,8 +3,13 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 从里程碑 f4235cc51 创建 Paseo 托管 worktree，并派发 TM-ITEM-7 preset-driven Team create
+active_items:
+  - item: TM-ITEM-7
+    state: dispatched
+    run: paseo-agent:03fd0ec5-c089-427e-909a-7153e0a7bdb6
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-preset-team-create
+    base: ea14cce90
+next_action: 等待 TM-ITEM-7 worker 完成 preset-driven Team create、定点验证与 fresh change review；交付后串行集成
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +37,17 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-7 派发到 Paseo 托管 worktree
+  `/Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-preset-team-create`，run identity 为
+  `03fd0ec5-c089-427e-909a-7153e0a7bdb6`，基线为 TM-ITEM-6 完成游标提交 `ea14cce90`。worker 使用
+  `codex/gpt-5.6-sol` / full-access，负责 exact preset 到真实 host-global Team 的完整 tracer bullet：用户确认
+  Role/Level/Skill/Lead，Member 以唯一 `clientMemberKey` 关联 daemon 分配 id，并选择 inline execution snapshot
+  或 Agent Profile source。materializer 必须在一次 config snapshot 上产生规范 execution profile 与 digest，
+  replay 先于 catalog read/materialization/id allocation，三种 Profile 错误零写入，创建不产生 Mission、room
+  或 Agent。Team V1 未上线，因此禁止兼容、迁移、fallback、dual write 与 legacy shape；refresh/detach 留给
+  TM-ITEM-10，Mission 编译留给 TM-ITEM-8。worker 必须遵守 feature capsule、完成定点跨端证据与 fresh
+  独立 change review，且不得写 Epic/游标或 push/publish。
 
 - 2026-08-13：TM-ITEM-6 完成。worker checkpoint
   `ecdc7d68919c86edbd8143d1a7193da8da395d9a`（父 `d6bbcfbf1…`，tree
