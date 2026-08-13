@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MissionAttentionItem, TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
-import { testTeamMethodologyBinding } from "@/teams/test-fixtures";
+import { testMissionMethodologySnapshot, testTeamMethodologyBinding } from "@/teams/test-fixtures";
 
 vi.stubGlobal("React", React);
 
@@ -112,7 +112,6 @@ function rosterMember(
   memberId: string,
   role: string,
   mentionHandle: string,
-  providerAvailable = true,
 ): TeamMission["rosterSnapshots"][number]["members"][number] {
   return {
     memberId,
@@ -127,7 +126,7 @@ function rosterMember(
       featureValues: {},
     },
     mentionHandle,
-    runtimeSnapshot: { providerAvailable, toolIds: [], capabilityIds: [] },
+    capabilityFacts: { kind: "known", capabilityIds: [] },
   };
 }
 
@@ -199,6 +198,8 @@ function createMission(overrides: Partial<TeamMission> = {}): TeamMission {
         rosterMember("member-reviewer", "Reviewer", "reviewer"),
       ]),
     ],
+    methodologySnapshot: testMissionMethodologySnapshot(1, 2),
+    methodologyCompiledAt: "2026-08-10T00:00:00.000Z",
     planRevision: 1,
     revision: 4,
     workspaceAuditPolicy: {
@@ -275,12 +276,7 @@ describe("TeamAttentionSettingsPage", () => {
 
   it("shows a localized empty state when no eligible replacement Lead exists", () => {
     const leadUnavailableMission = createMission({
-      rosterSnapshots: [
-        rosterSnapshot([
-          rosterMember("member-lead", "Lead", "lead"),
-          rosterMember("member-offline", "Reviewer", "offline", false),
-        ]),
-      ],
+      rosterSnapshots: [rosterSnapshot([rosterMember("member-lead", "Lead", "lead")])],
       attentionItems: [attention("lead_unavailable", 0)],
     });
 

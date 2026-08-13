@@ -31,26 +31,23 @@ export class PaseoTeamAssignmentDispatchAdapter implements TeamAssignmentDispatc
   async dispatch(input: DispatchInput) {
     return this.dispatchPrompt(
       input,
-      [
-        `Assignment "${input.assignmentId}" is ready in Mission "${input.missionId}".`,
-        `Call mission_status with missionId "${input.missionId}" now, execute only the persisted Assignment contract, then call assignment_report.`,
-      ].join("\n"),
+      `Call mission_status with missionId "${input.missionId}" now.`,
+      `Assignment "${input.assignmentId}" is ready. Execute only the persisted Assignment contract, then call assignment_report.`,
     );
   }
 
   async requestReport(input: ReportRecoveryInput) {
     return this.dispatchPrompt(
       input,
-      [
-        `Assignment "${input.assignmentId}" in Mission "${input.missionId}" is waiting for its structured report (recovery attempt ${input.attempt}).`,
-        `Call mission_status with missionId "${input.missionId}" and then call assignment_report. Do not repeat the implementation work.`,
-      ].join("\n"),
+      `Call mission_status with missionId "${input.missionId}" now.`,
+      `Assignment "${input.assignmentId}" is waiting for its structured report (recovery attempt ${input.attempt}). Call assignment_report without repeating the implementation work.`,
     );
   }
 
   private async dispatchPrompt(
     input: DispatchInput | ReportRecoveryInput,
-    body: string,
+    runtimeBody: string,
+    assignmentFacts: string,
   ): Promise<Awaited<ReturnType<TeamAssignmentDispatchPort["dispatch"]>>> {
     const replayTurnId = await this.findAcceptedTurnId(input.agentId, input.messageId);
     if (replayTurnId) return { kind: "accepted", turnId: replayTurnId };
@@ -68,11 +65,16 @@ export class PaseoTeamAssignmentDispatchAdapter implements TeamAssignmentDispatc
     }
 
     try {
+      const promptBody = [
+        runtimeBody,
+        ...input.methodologyPromptSections.map((section) => section.content),
+        assignmentFacts,
+      ].join("\n\n");
       const result = await sendPromptToAgent({
         agentManager: this.options.agentManager,
         agentStorage: this.options.agentStorage,
         agentId: input.agentId,
-        prompt: formatSystemNotificationPrompt(body),
+        prompt: formatSystemNotificationPrompt(promptBody),
         messageId: input.messageId,
         fenceUnknownAcceptance: true,
         unarchive: false,

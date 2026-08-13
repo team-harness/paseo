@@ -1136,7 +1136,7 @@ function projectRosterSnapshot(snapshot: Record<string, unknown>): Record<string
 }
 
 function projectRosterMember(member: Record<string, unknown>): Record<string, unknown> {
-  const runtime = asRecord(member.runtimeSnapshot);
+  const capabilityFacts = asRecord(member.capabilityFacts);
   const execution = asRecord(member.executionProfile);
   return {
     memberId: structuralScalar(member, "memberId"),
@@ -1153,11 +1153,12 @@ function projectRosterMember(member: Record<string, unknown>): Record<string, un
           featureValuesDigest: digestValue(execution.featureValues),
         }
       : null,
-    runtimeSnapshot: runtime
+    capabilityFacts: capabilityFacts
       ? {
-          providerAvailable: structuralScalar(runtime, "providerAvailable"),
-          toolIds: structuralStringArray(runtime.toolIds),
-          capabilityIds: structuralStringArray(runtime.capabilityIds),
+          kind: structuralScalar(capabilityFacts, "kind"),
+          providerId: structuralScalar(capabilityFacts, "providerId"),
+          reason: structuralScalar(capabilityFacts, "reason"),
+          capabilityIds: structuralStringArray(capabilityFacts.capabilityIds),
         }
       : null,
   };

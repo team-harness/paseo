@@ -1,6 +1,5 @@
 import type {
   MissionMemberMatchExplanation,
-  MissionMemberRuntimeSnapshot,
   MissionMutableScope,
   MissionRosterMemberSnapshot,
   TeamMemberLevel,
@@ -37,17 +36,14 @@ export type WorkstreamOwnerMatch =
 
 type EligibleMatchCandidate = WorkstreamMatchCandidate & {
   profile: MissionRosterMemberSnapshot & {
-    runtimeSnapshot: MissionMemberRuntimeSnapshot;
+    capabilityFacts: { kind: "known"; capabilityIds: string[] };
   };
 };
 
 function isEligibleCandidate(
   candidate: WorkstreamMatchCandidate,
 ): candidate is EligibleMatchCandidate {
-  return (
-    candidate.profile.runtimeSnapshot !== null &&
-    candidate.profile.runtimeSnapshot.providerAvailable
-  );
+  return candidate.profile.capabilityFacts.kind === "known";
 }
 
 function matchingSkillCount(
@@ -85,7 +81,7 @@ function matchWorkstreamMember(input: MatchWorkstreamMemberInput): WorkstreamOwn
       candidate.profile.level >= input.minimumLevel &&
       [...requiredSkills].every((skillId) => candidate.profile.skillIds.includes(skillId)) &&
       [...requiredRuntimeCapabilities].every((capabilityId) =>
-        candidate.profile.runtimeSnapshot.capabilityIds.includes(capabilityId),
+        candidate.profile.capabilityFacts.capabilityIds.includes(capabilityId),
       ),
   );
   const excludedMemberIds = new Set(input.excludedMemberIds);

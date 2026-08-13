@@ -10,6 +10,7 @@ import {
 } from "./messages.js";
 
 const timestamp = "2026-08-08T08:00:00.000Z";
+const digest = `sha256:${"0".repeat(64)}`;
 const team = {
   id: "team-platform",
   name: "Platform",
@@ -51,6 +52,33 @@ const team = {
   archivedAt: null,
 };
 
+const methodologySnapshot = {
+  revision: 1 as const,
+  ref: team.methodologyBinding.ref,
+  compilerVersion: 1 as const,
+  teamRevision: team.revision,
+  rosterSnapshotRevision: 1,
+  hardPolicy: {
+    review: {
+      writableWorkstreams: "lead_discretion" as const,
+      independentMeans: "different_from_subject_owner" as const,
+      unavailable: "review_gate_reviewer_unavailable_attention" as const,
+      unknownCapabilities: "review_gate_capability_unknown_attention" as const,
+      operatorWaiver: "allowed_with_reason" as const,
+    },
+    verification: {
+      required: true as const,
+      mutableScope: "read_only" as const,
+      reviewerSelection: "prefer_independent_record_exception" as const,
+      operatorWaiver: "forbidden" as const,
+    },
+  },
+  promptSections: [],
+  hardPolicyDigest: digest,
+  promptDigest: digest,
+  compiledDigest: digest,
+};
+
 const mission = {
   id: "mission-sdk",
   teamId: team.id,
@@ -61,6 +89,8 @@ const mission = {
   status: "planning" as const,
   suspendedStatus: null,
   activeRosterSnapshotRevision: 1,
+  methodologySnapshot,
+  methodologyCompiledAt: timestamp,
   rosterSnapshots: [
     {
       revision: 1,
@@ -71,9 +101,8 @@ const mission = {
       members: [
         {
           ...team.members[0],
-          runtimeSnapshot: {
-            providerAvailable: true,
-            toolIds: ["mission_status"],
+          capabilityFacts: {
+            kind: "known" as const,
             capabilityIds: ["structured-tools"],
           },
         },
@@ -175,6 +204,8 @@ describe("Team Missions session unions", () => {
         idempotencyKey: "idem-6",
         teamId: team.id,
         expectedTeamRevision: 1,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
         objective: mission.objective,
         constraints: [],
         acceptanceCriteria: mission.acceptanceCriteria,

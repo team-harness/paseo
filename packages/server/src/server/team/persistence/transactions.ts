@@ -301,6 +301,8 @@ function missionFromStartIntent(
     suspendedStatus: null,
     activeRosterSnapshotRevision: intent.rosterSnapshot.revision,
     rosterSnapshots: [intent.rosterSnapshot],
+    methodologySnapshot: intent.methodologySnapshot,
+    methodologyCompiledAt: intent.methodologyCompiledAt,
     planRevision: 0,
     workspaceAuditPolicy: intent.workspaceAuditPolicy,
     chatRoomId: intent.chatRoomId,

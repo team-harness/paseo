@@ -67,6 +67,59 @@ export const TeamMethodologyBindingSchema = z.object({
 });
 export type TeamMethodologyBinding = z.infer<typeof TeamMethodologyBindingSchema>;
 
+export const MissionCapabilityFactsSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("known"),
+    capabilityIds: z.array(z.string().min(1)),
+  }),
+  z.object({
+    kind: z.literal("unknown"),
+    providerId: z.string().min(1),
+    reason: z.literal("provider_declaration_unavailable"),
+  }),
+]);
+export type MissionCapabilityFacts = z.infer<typeof MissionCapabilityFactsSchema>;
+
+export const FrozenPromptSectionSchema = z.object({
+  sectionId: z.string().min(1),
+  audience: z.enum(["lead", "delivery", "review", "verification"]),
+  phase: z.enum(["startup", "planning", "assignment", "review", "completion"]),
+  content: z.string().min(1),
+  contentDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+});
+export type FrozenPromptSection = z.infer<typeof FrozenPromptSectionSchema>;
+
+export const CompiledMissionPolicyV1Schema = z.object({
+  review: z.object({
+    writableWorkstreams: z.enum(["lead_discretion", "independent_required"]),
+    independentMeans: z.literal("different_from_subject_owner"),
+    unavailable: z.literal("review_gate_reviewer_unavailable_attention"),
+    unknownCapabilities: z.literal("review_gate_capability_unknown_attention"),
+    operatorWaiver: z.enum(["allowed_with_reason", "forbidden"]),
+  }),
+  verification: z.object({
+    required: z.literal(true),
+    mutableScope: z.literal("read_only"),
+    reviewerSelection: z.literal("prefer_independent_record_exception"),
+    operatorWaiver: z.literal("forbidden"),
+  }),
+});
+export type CompiledMissionPolicyV1 = z.infer<typeof CompiledMissionPolicyV1Schema>;
+
+export const MissionMethodologySnapshotSchema = z.object({
+  revision: z.literal(1),
+  ref: ExactMethodologyRefSchema,
+  compilerVersion: z.literal(1),
+  teamRevision: z.number().int().nonnegative(),
+  rosterSnapshotRevision: z.number().int().positive(),
+  hardPolicy: CompiledMissionPolicyV1Schema,
+  promptSections: z.array(FrozenPromptSectionSchema),
+  hardPolicyDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+  promptDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+  compiledDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+});
+export type MissionMethodologySnapshot = z.infer<typeof MissionMethodologySnapshotSchema>;
+
 export const TeamLifecycleRecoveryFailureSchema = z.object({
   operation: z.enum(["mission_finish", "team_archive"]),
   intentId: z.string().min(1),
@@ -97,15 +150,8 @@ export const TeamV2Schema = z.object({
 });
 export type TeamV2 = z.infer<typeof TeamV2Schema>;
 
-export const MissionMemberRuntimeSnapshotSchema = z.object({
-  providerAvailable: z.boolean(),
-  toolIds: z.array(z.string().min(1)),
-  capabilityIds: z.array(z.string().min(1)),
-});
-export type MissionMemberRuntimeSnapshot = z.infer<typeof MissionMemberRuntimeSnapshotSchema>;
-
 export const MissionRosterMemberSnapshotSchema = TeamMemberProfileSchema.extend({
-  runtimeSnapshot: MissionMemberRuntimeSnapshotSchema.nullable(),
+  capabilityFacts: MissionCapabilityFactsSchema,
 });
 export type MissionRosterMemberSnapshot = z.infer<typeof MissionRosterMemberSnapshotSchema>;
 
@@ -200,6 +246,7 @@ export const MissionWorkstreamSchema = z.object({
   minimumLevel: TeamMemberLevelSchema,
   planRevision: z.number().int().positive(),
   rosterSnapshotRevision: z.number().int().positive(),
+  methodologySnapshotRevision: z.literal(1),
   dependencyWorkstreamIds: z.array(z.string().min(1)),
   mutableScope: MissionMutableScopeSchema,
   ownerMemberId: z.string().min(1),
@@ -450,6 +497,7 @@ export const MissionAssignmentContractSchema = z.object({
   priority: z.number().int().nonnegative(),
   planRevision: z.number().int().positive(),
   rosterSnapshotRevision: z.number().int().positive(),
+  methodologySnapshotRevision: z.literal(1),
   supersededBy: z.string().min(1).nullable(),
   terminationReason: z
     .enum([
@@ -510,6 +558,8 @@ export const TeamMissionSchema = z.object({
   suspendedStatus: z.enum(["planning", "active", "verifying"]).nullable(),
   activeRosterSnapshotRevision: z.number().int().positive(),
   rosterSnapshots: z.array(MissionRosterSnapshotSchema).min(1),
+  methodologySnapshot: MissionMethodologySnapshotSchema,
+  methodologyCompiledAt: TimestampSchema,
   planRevision: z.number().int().nonnegative(),
   revision: z.number().int().nonnegative(),
   workspaceAuditPolicy: MissionWorkspaceAuditPolicySchema,

@@ -344,6 +344,7 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
               idempotencyKey: request.idempotencyKey,
               teamId: request.teamId,
               expectedTeamRevision: request.expectedTeamRevision,
+              expectedMethodologyRef: request.expectedMethodologyRef,
               workspaceId: request.workspaceId,
               objective: request.objective,
               constraints: request.constraints,

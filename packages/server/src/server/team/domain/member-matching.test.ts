@@ -9,7 +9,7 @@ function member(
   level: number,
   skillIds: ReadonlyArray<string> = ["typescript"],
   capabilityIds: ReadonlyArray<string> = ["structured-tools"],
-  providerAvailable = true,
+  capabilityFactsKnown = true,
 ): MissionRosterMemberSnapshot {
   return {
     memberId,
@@ -24,11 +24,13 @@ function member(
       featureValues: {},
     },
     mentionHandle: memberId,
-    runtimeSnapshot: {
-      providerAvailable,
-      toolIds: ["mission_status", "assignment_report"],
-      capabilityIds: [...capabilityIds],
-    },
+    capabilityFacts: capabilityFactsKnown
+      ? { kind: "known", capabilityIds: [...capabilityIds] }
+      : {
+          kind: "unknown",
+          providerId: "codex",
+          reason: "provider_declaration_unavailable",
+        },
   };
 }
 
@@ -101,7 +103,7 @@ describe("workstream owner matching", () => {
     expect(result).toMatchObject({ kind: "matched", memberId: "member-idle" });
   });
 
-  it("filters out a provider-ineligible member before ranking", () => {
+  it("filters out a member with unknown structural capability facts before ranking", () => {
     const result = matchWorkstreamOwner({
       candidates: [
         {

@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
-import { testTeamMethodologyBinding } from "@/teams/test-fixtures";
+import { testMissionMethodologySnapshot, testTeamMethodologyBinding } from "@/teams/test-fixtures";
 
 vi.stubGlobal("React", React);
 
@@ -164,7 +164,7 @@ const MISSION: TeamMission = {
           skillIds: [],
           executionProfile: EXECUTION_PROFILE,
           mentionHandle: "lead",
-          runtimeSnapshot: { providerAvailable: true, toolIds: [], capabilityIds: [] },
+          capabilityFacts: { kind: "known", capabilityIds: [] },
         },
         {
           memberId: "member-server",
@@ -173,7 +173,7 @@ const MISSION: TeamMission = {
           skillIds: [],
           executionProfile: EXECUTION_PROFILE,
           mentionHandle: "server",
-          runtimeSnapshot: { providerAvailable: true, toolIds: [], capabilityIds: [] },
+          capabilityFacts: { kind: "known", capabilityIds: [] },
         },
         {
           memberId: "member-server-2",
@@ -182,12 +182,14 @@ const MISSION: TeamMission = {
           skillIds: [],
           executionProfile: EXECUTION_PROFILE,
           mentionHandle: "server-2",
-          runtimeSnapshot: { providerAvailable: true, toolIds: [], capabilityIds: [] },
+          capabilityFacts: { kind: "known", capabilityIds: [] },
         },
       ],
       createdAt: "2026-08-10T00:00:00.000Z",
     },
   ],
+  methodologySnapshot: testMissionMethodologySnapshot(3, 2),
+  methodologyCompiledAt: "2026-08-10T00:00:00.000Z",
   planRevision: 1,
   workspaceAuditPolicy: {
     revision: 1,

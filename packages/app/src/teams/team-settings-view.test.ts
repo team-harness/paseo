@@ -9,7 +9,7 @@ import {
   selectTeamMissionHistory,
   selectTeamPlanRows,
 } from "@/teams/team-settings-view";
-import { testTeamMethodologyBinding } from "./test-fixtures";
+import { testMissionMethodologySnapshot, testTeamMethodologyBinding } from "./test-fixtures";
 
 function team(): TeamV2 {
   return {
@@ -68,7 +68,7 @@ function team(): TeamV2 {
 function mission(): TeamMission {
   const rosterMembers = team().members.map((member) =>
     Object.assign({}, member, {
-      runtimeSnapshot: { providerAvailable: true, toolIds: [], capabilityIds: [] },
+      capabilityFacts: { kind: "known" as const, capabilityIds: [] },
     }),
   );
   return {
@@ -92,6 +92,8 @@ function mission(): TeamMission {
         createdAt: "2026-08-09T00:00:00.000Z",
       },
     ],
+    methodologySnapshot: testMissionMethodologySnapshot(2, 1),
+    methodologyCompiledAt: "2026-08-09T00:00:00.000Z",
     planRevision: 1,
     revision: 4,
     workspaceAuditPolicy: {
@@ -153,6 +155,7 @@ function acceptedAssignment(
     priority: 1,
     planRevision: 1,
     rosterSnapshotRevision: 1,
+    methodologySnapshotRevision: 1,
     supersededBy: null,
     terminationReason: null,
     scopeLease: null,
@@ -187,13 +190,21 @@ describe("Team settings view", () => {
         ...template,
         memberId: "member-offline",
         mentionHandle: "reviewer-4",
-        runtimeSnapshot: { providerAvailable: false, toolIds: [], capabilityIds: [] },
+        capabilityFacts: {
+          kind: "unknown",
+          providerId: "codex",
+          reason: "provider_declaration_unavailable",
+        },
       },
       {
         ...template,
         memberId: "member-unknown",
         mentionHandle: "reviewer-5",
-        runtimeSnapshot: null,
+        capabilityFacts: {
+          kind: "unknown",
+          providerId: "codex",
+          reason: "provider_declaration_unavailable",
+        },
       },
     );
     aggregate.assignments.push(
@@ -301,6 +312,7 @@ describe("Team settings view", () => {
       minimumLevel: 3,
       planRevision: 1,
       rosterSnapshotRevision: 1,
+      methodologySnapshotRevision: 1,
       dependencyWorkstreamIds: [],
       mutableScope: { kind: "paths", pathPrefixes: ["packages/app/src/components/teams"] },
       ownerMemberId: "member-lead",
@@ -337,6 +349,7 @@ describe("Team settings view", () => {
       priority: 1,
       planRevision: 1,
       rosterSnapshotRevision: 1,
+      methodologySnapshotRevision: 1,
       supersededBy: null,
       terminationReason: null,
       scopeLease: null,

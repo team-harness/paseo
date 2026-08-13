@@ -8,6 +8,7 @@ import type {
 } from "@getpaseo/protocol/team/v2-types";
 
 import type { AcceptedTurnFact } from "./assignment-contract-validation.js";
+import { testMissionMethodologySnapshot } from "../test-fixtures.js";
 import {
   resolveMissionAssignmentCoverage,
   validateMissionAttentionResolution,
@@ -53,6 +54,7 @@ function workstream(workstreamId: string): MissionWorkstream {
     minimumLevel: 3,
     planRevision: 1,
     rosterSnapshotRevision: 1,
+    methodologySnapshotRevision: 1,
     dependencyWorkstreamIds: [],
     mutableScope: { kind: "read_only" },
     ownerMemberId: "member-engineer",
@@ -140,6 +142,7 @@ function assignment(
     priority: 1,
     planRevision: 1,
     rosterSnapshotRevision: 1,
+    methodologySnapshotRevision: 1,
     supersededBy: null,
     terminationReason: null,
     scopeLease: null,
@@ -193,6 +196,8 @@ function mission(): TeamMission {
     status: "planning",
     suspendedStatus: null,
     activeRosterSnapshotRevision: 1,
+    methodologySnapshot: testMissionMethodologySnapshot(1, 1),
+    methodologyCompiledAt: "2026-08-07T11:00:00.000Z",
     rosterSnapshots: [
       {
         revision: 1,
@@ -217,9 +222,8 @@ function mission(): TeamMission {
               featureValues: {},
             },
             mentionHandle: "engineer",
-            runtimeSnapshot: {
-              providerAvailable: true,
-              toolIds: ["mission_status", "assignment_report"],
+            capabilityFacts: {
+              kind: "known",
               capabilityIds: ["structured-tools"],
             },
           },
@@ -236,9 +240,8 @@ function mission(): TeamMission {
               featureValues: {},
             },
             mentionHandle: "verifier",
-            runtimeSnapshot: {
-              providerAvailable: true,
-              toolIds: ["mission_status", "assignment_report"],
+            capabilityFacts: {
+              kind: "known",
               capabilityIds: ["structured-tools"],
             },
           },

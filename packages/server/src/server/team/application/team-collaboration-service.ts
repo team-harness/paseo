@@ -2363,6 +2363,7 @@ function buildMissionWorkstreams(input: BuildMissionWorkstreamsInput): MissionWo
       reviewerSelection,
       planRevision: input.planRevision,
       rosterSnapshotRevision: input.mission.activeRosterSnapshotRevision,
+      methodologySnapshotRevision: input.mission.methodologySnapshot.revision,
     });
     workstreamsById.set(draft.workstreamId, workstream);
     if (draft.kind !== "verification" && draft.mutableScope.kind !== "read_only") {
@@ -2493,6 +2494,7 @@ function createPlannedWorkstream(input: {
   reviewerSelection: SelectedMatch | null;
   planRevision: number;
   rosterSnapshotRevision: number;
+  methodologySnapshotRevision: 1;
 }): MissionWorkstream {
   return {
     workstreamId: input.draft.workstreamId,
@@ -2507,6 +2509,7 @@ function createPlannedWorkstream(input: {
     minimumLevel: input.draft.minimumLevel,
     planRevision: input.planRevision,
     rosterSnapshotRevision: input.rosterSnapshotRevision,
+    methodologySnapshotRevision: input.methodologySnapshotRevision,
     dependencyWorkstreamIds: structuredClone(input.draft.dependencyWorkstreamIds),
     mutableScope: structuredClone(input.draft.mutableScope),
     ownerMemberId: input.ownerSelection.memberId,
@@ -3028,6 +3031,7 @@ function buildAssignment(input: {
     priority: input.draft.priority,
     planRevision: input.mission.planRevision,
     rosterSnapshotRevision: input.mission.activeRosterSnapshotRevision,
+    methodologySnapshotRevision: input.mission.methodologySnapshot.revision,
     supersededBy: null,
     terminationReason: null,
     scopeLease: null,

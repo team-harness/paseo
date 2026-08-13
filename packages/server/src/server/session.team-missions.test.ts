@@ -6,6 +6,10 @@ import type { TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 import { Session } from "./session.js";
 import type { TeamRuntimeSessionDeps } from "./team/team-runtime.js";
+import {
+  testMissionMethodologySnapshot,
+  testTeamMethodologyBinding,
+} from "./team/test-fixtures.js";
 
 const timestamp = "2026-08-08T08:00:00.000Z";
 
@@ -13,7 +17,7 @@ function teamProfile(): TeamV2 {
   return {
     id: "team-v2",
     name: "V2 Team",
-    workspaceId: "wks-platform",
+    creationWorkspaceId: "wks-platform",
     leadMemberId: "member-lead",
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
     members: [
@@ -32,8 +36,10 @@ function teamProfile(): TeamV2 {
         mentionHandle: "lead-engineer",
       },
     ],
+    methodologyBinding: testTeamMethodologyBinding(["member-lead"], ["typescript"]),
     lifecycle: "active",
     activeMissionId: "mission-v2",
+    lifecycleRecoveryFailure: null,
     revision: 2,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -45,13 +51,15 @@ function teamMission(team: TeamV2): TeamMission {
   return {
     id: "mission-v2",
     teamId: team.id,
-    workspaceId: team.workspaceId,
+    workspaceId: team.creationWorkspaceId,
     objective: "Verify per-socket snapshot routing.",
     constraints: [],
     acceptanceCriteria: ["Old sockets receive no v2 snapshot."],
     status: "planning",
     suspendedStatus: null,
     activeRosterSnapshotRevision: 1,
+    methodologySnapshot: testMissionMethodologySnapshot(team.revision, 1),
+    methodologyCompiledAt: timestamp,
     rosterSnapshots: [
       {
         revision: 1,
@@ -62,9 +70,8 @@ function teamMission(team: TeamV2): TeamMission {
         members: [
           {
             ...team.members[0]!,
-            runtimeSnapshot: {
-              providerAvailable: true,
-              toolIds: ["mission_status"],
+            capabilityFacts: {
+              kind: "known",
               capabilityIds: ["structured-tools"],
             },
           },
@@ -96,6 +103,7 @@ function teamMission(team: TeamV2): TeamMission {
     workstreamPlanSnapshots: [],
     assignments: [],
     attentionItems: [],
+    lifecycleRecoveryFailure: null,
     createdAt: timestamp,
     updatedAt: timestamp,
     completedAt: null,

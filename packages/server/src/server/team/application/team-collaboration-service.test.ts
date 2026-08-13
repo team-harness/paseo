@@ -138,6 +138,8 @@ describe("TeamCollaborationService queries", () => {
       idempotencyKey: "start-pending-tools",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Implement a deterministic parser",
       constraints: ["Keep the public grammar stable"],
       acceptanceCriteria: ["Parser tests pass"],
@@ -449,6 +451,8 @@ describe("TeamCollaborationService queries", () => {
       idempotencyKey: "start-verifier-ranking",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Implement a deterministic parser",
       constraints: ["Keep the public grammar stable"],
       acceptanceCriteria: ["Parser tests pass"],
@@ -3823,8 +3827,7 @@ function createFixture(
   };
   const capabilities: ProviderCapabilityResolver = {
     resolve: async () => ({
-      providerAvailable: true,
-      toolIds: ["team_status", "mission_status", "team_member_history"],
+      kind: "known",
       capabilityIds: ["structured-tools"],
     }),
   };
@@ -4020,6 +4023,8 @@ async function createMission(service: TeamMissionService) {
     idempotencyKey: "start-mission",
     teamId: team.id,
     expectedTeamRevision: team.revision,
+    expectedMethodologyRef: team.methodologyBinding.ref,
+    workspaceId: team.creationWorkspaceId,
     objective: "Implement a deterministic parser",
     constraints: ["Keep the public grammar stable"],
     acceptanceCriteria: ["Parser tests pass"],

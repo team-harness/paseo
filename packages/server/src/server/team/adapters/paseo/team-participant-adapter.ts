@@ -12,6 +12,7 @@ import {
 import type { AgentStorage } from "../../../agent/agent-storage.js";
 import { archiveAgentCommand } from "../../../agent/lifecycle-command.js";
 import type { TeamParticipantPort } from "../../application/ports.js";
+import { TeamApplicationError } from "../../application/errors.js";
 import type { TeamParticipantProvisionPort } from "../../application/team-mission-scheduler.js";
 
 export const TEAM_MISSION_ID_LABEL = "paseo.team-mission-id";
@@ -106,6 +107,9 @@ export class PaseoTeamParticipantAdapter
         },
       );
     } catch (error) {
+      if (isProviderUnavailableError(error)) {
+        throw new TeamApplicationError("provider_unavailable", error.message);
+      }
       if (!(error instanceof AgentAlreadyExistsError)) throw error;
       if (!ownsParticipant(error.record.labels, input)) throw error;
       await ensureUnarchivedAgentLoaded(input.agentId, {
@@ -189,16 +193,20 @@ export class PaseoTeamParticipantAdapter
   ): Promise<void> {
     if (await this.agentManager.getAcceptedTurnId(input.agentId, messageId)) return;
 
+    const runtimeSection = recovery
+      ? [
+          `Resume Lead planning for Mission "${input.missionId}" in Team "${input.teamId}" after the previous wake was interrupted.`,
+          `Call mission_status with missionId "${input.missionId}" now. If planRevision is 0, use one mission_plan call with the complete Workstream DAG and its assignments field covering every delivery and integration Workstream. If the Mission is planning with an existing staged plan, use one assign_task batch to complete it. If it is active, do not rewrite it.`,
+        ].join("\n")
+      : [
+          `You are Team Member "${input.memberId}" (@${input.mentionHandle}), the Lead for Mission "${input.missionId}" in Team "${input.teamId}".`,
+          `Call mission_status with missionId "${input.missionId}" now. Then use one mission_plan call with the complete Workstream DAG and its assignments field covering every delivery and integration Workstream, including nodes whose dependencies are not ready yet. The daemon derives Assignment dependencies from the Workstream DAG, gates dispatch, and materializes required review and final verification Assignments.`,
+        ].join("\n");
+    const methodologySections = input.methodologyPromptSections
+      .map((section) => section.content)
+      .join("\n\n");
     const prompt = formatSystemNotificationPrompt(
-      recovery
-        ? [
-            `Resume Lead planning for Mission "${input.missionId}" in Team "${input.teamId}" after the previous wake was interrupted.`,
-            `Call mission_status with missionId "${input.missionId}" now. If planRevision is 0, use one mission_plan call with the complete Workstream DAG and its assignments field covering every delivery and integration Workstream. If the Mission is planning with an existing staged plan, use one assign_task batch to complete it. If it is active, do not rewrite it.`,
-          ].join("\n")
-        : [
-            `You are Team Member "${input.memberId}" (@${input.mentionHandle}), the Lead for Mission "${input.missionId}" in Team "${input.teamId}".`,
-            `Call mission_status with missionId "${input.missionId}" now. Then use one mission_plan call with the complete Workstream DAG and its assignments field covering every delivery and integration Workstream, including nodes whose dependencies are not ready yet. The daemon derives Assignment dependencies from the Workstream DAG, gates dispatch, and materializes required review and final verification Assignments.`,
-          ].join("\n"),
+      methodologySections ? `${runtimeSection}\n\n${methodologySections}` : runtimeSection,
     );
     const result = await sendPromptToAgent({
       agentManager: this.agentManager,
@@ -215,6 +223,14 @@ export class PaseoTeamParticipantAdapter
       await waitForAgentRunStartWithTimeout(this.agentManager, input.agentId);
     }
   }
+}
+
+function isProviderUnavailableError(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    (/^Provider '.*' is disabled$/.test(error.message) ||
+      /^Provider '.*' is not available\./.test(error.message))
+  );
 }
 
 function ownsParticipant(

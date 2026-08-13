@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
+import { isSystemInjectedEnvelope } from "../../../agent/agent-prompt.js";
 import { AgentManager } from "../../../agent/agent-manager.js";
 import { AgentStorage } from "../../../agent/agent-storage.js";
 import { createTestAgentClients } from "../../../test-utils/fake-agent-client.js";
@@ -66,6 +67,15 @@ describe("PaseoTeamAssignmentDispatchAdapter", () => {
       agentId,
       bindingEpoch: 1,
       messageId: "team-mission:mission-1:assignment:assignment-api:dispatch",
+      methodologyPromptSections: [
+        {
+          sectionId: "delivery-contract",
+          audience: "delivery" as const,
+          phase: "assignment" as const,
+          content: "Frozen methodology delivery contract.",
+          contentDigest: `sha256:${"0".repeat(64)}`,
+        },
+      ],
     };
 
     const first = await adapter.dispatch(input);
@@ -87,6 +97,14 @@ describe("PaseoTeamAssignmentDispatchAdapter", () => {
       type: "user_message",
       text: expect.stringContaining('Call mission_status with missionId "mission-1"'),
     });
+    const promptText = prompts[0]?.item.type === "user_message" ? prompts[0].item.text : "";
+    expect(isSystemInjectedEnvelope(promptText)).toBe(true);
+    expect(promptText.indexOf("Call mission_status")).toBeLessThan(
+      promptText.indexOf("Frozen methodology delivery contract."),
+    );
+    expect(promptText.indexOf("Frozen methodology delivery contract.")).toBeLessThan(
+      promptText.indexOf('Assignment "assignment-api" is ready'),
+    );
 
     await manager.closeAgent(agentId);
     await Promise.all([manager.flush(), storage.flush()]);
@@ -132,6 +150,7 @@ describe("PaseoTeamAssignmentDispatchAdapter", () => {
       agentId,
       bindingEpoch: 1,
       messageId: "team-mission:mission-1:assignment:assignment-api:dispatch",
+      methodologyPromptSections: [],
     };
     const firstAdapter = new PaseoTeamAssignmentDispatchAdapter({
       agentManager: manager,
@@ -226,6 +245,7 @@ describe("PaseoTeamAssignmentDispatchAdapter", () => {
       agentId,
       bindingEpoch: 1,
       messageId: "team-mission:mission-1:assignment:assignment-api:dispatch",
+      methodologyPromptSections: [],
     };
 
     await new PaseoTeamAssignmentDispatchAdapter({

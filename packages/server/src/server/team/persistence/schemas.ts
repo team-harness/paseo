@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  MissionMethodologySnapshotSchema,
   MissionMutableScopeSchema,
   MissionAssignmentTerminalEvidenceSchema,
   MissionRosterSnapshotSchema,
@@ -37,6 +38,8 @@ export const TeamMissionStartIntentSchema = z.object({
   constraints: z.array(z.string().min(1)),
   acceptanceCriteria: z.array(z.string().min(1)).min(1),
   rosterSnapshot: MissionRosterSnapshotSchema,
+  methodologySnapshot: MissionMethodologySnapshotSchema,
+  methodologyCompiledAt: TimestampSchema,
   workspaceAuditPolicy: MissionWorkspaceAuditPolicySchema,
   stage: TeamMissionStartStageSchema,
   requestedAt: TimestampSchema,
