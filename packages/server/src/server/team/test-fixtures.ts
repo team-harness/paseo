@@ -1,9 +1,7 @@
-import type {
-  TeamProfileCreateMemberInput,
-  TeamProfileMemberInput,
-} from "@getpaseo/protocol/team/v2-rpc-schemas";
+import type { TeamProfileCreateMemberInput } from "@getpaseo/protocol/team/v2-rpc-schemas";
 import type {
   MissionMethodologySnapshot,
+  TeamExecutionProfile,
   TeamMethodologyBinding,
 } from "@getpaseo/protocol/team/v2-types";
 
@@ -51,7 +49,7 @@ export function testCreateMethodologyBinding(
 
 export function testCreateMember(
   clientMemberKey: string,
-  member: TeamProfileMemberInput,
+  member: TestInlineTeamMemberInput,
 ): TeamProfileCreateMemberInput {
   return {
     clientMemberKey,
@@ -63,6 +61,13 @@ export function testCreateMember(
       executionProfile: member.executionProfile,
     },
   };
+}
+
+export interface TestInlineTeamMemberInput {
+  role: string;
+  level: 1 | 2 | 3 | 4 | 5;
+  skillIds: string[];
+  executionProfile: TeamExecutionProfile;
 }
 
 export function testTeamCreationDependencies() {

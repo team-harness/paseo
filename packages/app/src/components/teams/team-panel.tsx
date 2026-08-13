@@ -4,6 +4,7 @@ import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { RotateCw } from "lucide-react-native";
 
+import { useAgentProfiles } from "@/agent-profiles/internal/use-agent-profiles";
 import { MissionStartSheet } from "@/components/teams/mission-start-sheet";
 import { TeamProfileFormSheet } from "@/components/teams/team-profile-form-sheet";
 import { TeamRoom } from "@/components/teams/team-room";
@@ -20,6 +21,10 @@ const EMPTY_AGENTS: ReadonlyMap<string, Agent> = new Map();
 const EMPTY_REPLICA = createTeamMissionsReplica();
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const mutedSpinner = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+
+function profileEditAction(supported: boolean, open: () => void): (() => void) | undefined {
+  return supported ? open : undefined;
+}
 
 export interface TeamPanelProps {
   serverId: string;
@@ -47,6 +52,10 @@ export function TeamPanel({
   );
   const agents = useSessionStore((state) => state.sessions[serverId]?.agents ?? EMPTY_AGENTS);
   const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
+  const profileUpgradesSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.teamProfileUpgrades === true,
+  );
+  const { profiles: agentProfiles } = useAgentProfiles(serverId);
   const view = useMemo(
     () => selectTeamPanelView(replica, teamId, agents, localMissionId),
     [agents, localMissionId, replica, teamId],
@@ -70,6 +79,7 @@ export function TeamPanel({
     setProfileEditOpen(true);
   }, []);
   const closeProfileEdit = useCallback(() => setProfileEditOpen(false), []);
+  const editProfile = profileEditAction(profileUpgradesSupported, openProfileEdit);
   const selectMission = useCallback((missionId: string) => {
     setLocalMissionId(missionId);
     setSettingsOpen(false);
@@ -142,7 +152,7 @@ export function TeamPanel({
         mission={view.mission}
         visible={settingsOpen}
         onClose={closeSettings}
-        onEditProfile={creationWorkspace ? openProfileEdit : undefined}
+        onEditProfile={editProfile}
         onStartMission={canStartMission ? openMissionStart : undefined}
         onOpenAgent={onOpenAgent}
         onSelectMission={selectMission}
@@ -157,17 +167,16 @@ export function TeamPanel({
           onStarted={missionStarted}
         />
       ) : null}
-      {creationWorkspace ? (
-        <TeamProfileFormSheet
-          serverId={serverId}
-          workspaceId={view.team.creationWorkspaceId}
-          cwd={creationWorkspace.workspaceDirectory}
-          profile={view.team}
-          visible={profileEditOpen}
-          onClose={closeProfileEdit}
-          onSaved={closeProfileEdit}
-        />
-      ) : null}
+      <TeamProfileFormSheet
+        serverId={serverId}
+        workspaceId={view.team.creationWorkspaceId}
+        cwd={creationWorkspace?.workspaceDirectory}
+        profile={view.team}
+        agentProfiles={agentProfiles ?? []}
+        visible={profileEditOpen && profileUpgradesSupported}
+        onClose={closeProfileEdit}
+        onSaved={closeProfileEdit}
+      />
     </View>
   );
 }

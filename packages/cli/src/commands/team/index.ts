@@ -13,6 +13,7 @@ import {
   runProfileCreateCommand,
   runProfileInspectCommand,
   runProfileListCommand,
+  runProfileRefreshExecutionCommand,
   runProfileUpdateCommand,
 } from "./profile.js";
 
@@ -153,10 +154,36 @@ export function createTeamCommand(): Command {
       "Added member feature value by declaration key; repeat",
       collect,
     )
+    .option("--add-agent-profile <key=id>", "Added member Agent Profile source; repeat", collect)
     .option("--update-role <member-id=value>", "Replacement Role; repeat", collect)
-    .option("--remove-member <id>", "Member ID to remove; repeat", collect);
+    .option(
+      "--update-agent-profile <member-id=id>",
+      "Rebind member execution to an Agent Profile; repeat",
+      collect,
+    )
+    .option("--remove-member <id>", "Member ID to remove; repeat", collect)
+    .option("--methodology <bundle-id@version>", "Upgrade to an exact catalog Methodology")
+    .option("-y, --yes", "Confirm the displayed Methodology upgrade preview")
+    .option("--preset <id>", "Preset for the upgraded Methodology")
+    .option("--archetype <member-id=id>", "Upgraded Methodology archetype binding; repeat", collect)
+    .option(
+      "--methodology-skill <team-skill=id>",
+      "Upgraded Methodology Skill binding; repeat",
+      collect,
+    );
   update = addExecutionOptions(update, "update-");
   addJsonAndDaemonHostOptions(addMutationKey(update)).action(withOutput(runProfileUpdateCommand));
+
+  addJsonAndDaemonHostOptions(
+    addMutationKey(
+      profile
+        .command("refresh-execution")
+        .description("Refresh a Member from its Agent Profile source")
+        .argument("<team-id>", "Team ID")
+        .argument("<member-id>", "Member ID")
+        .requiredOption("--expected-revision <revision>", "Expected Team profile revision"),
+    ),
+  ).action(withOutput(runProfileRefreshExecutionCommand));
 
   addJsonAndDaemonHostOptions(
     addMutationKey(

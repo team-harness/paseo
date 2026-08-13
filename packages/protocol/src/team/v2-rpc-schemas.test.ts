@@ -27,6 +27,8 @@ import {
   TeamProfileInspectResponseSchema,
   TeamProfileListRequestSchema,
   TeamProfileListResponseSchema,
+  TeamProfileMemberExecutionRefreshRequestSchema,
+  TeamProfileMemberExecutionRefreshResponseSchema,
   TeamProfileMemberInputSchema,
   TeamProfileMemberPatchSchema,
   TeamProfileSnapshotMessageSchema,
@@ -181,7 +183,7 @@ describe("Team profile v2 RPC schemas", () => {
     for (const incomplete of [
       { ...memberInput, level: null },
       { ...memberInput, skillIds: [] },
-      { ...memberInput, executionProfile: null },
+      { ...memberInput, executionProfileSelection: null },
     ]) {
       expect(TeamProfileMemberInputSchema.safeParse(incomplete).success).toBe(false);
     }
@@ -191,13 +193,13 @@ describe("Team profile v2 RPC schemas", () => {
         memberId: "member-existing",
         level: 3,
         skillIds: ["typescript"],
-        executionProfile,
+        executionProfileSelection: { kind: "inline", executionProfile },
       }).success,
     ).toBe(true);
     expect(
       TeamProfileMemberPatchSchema.safeParse({
         memberId: "member-engineer",
-        executionProfile: null,
+        executionProfileSelection: null,
       }).success,
     ).toBe(false);
     expect(
@@ -218,7 +220,7 @@ describe("Team profile v2 RPC schemas", () => {
         requestId: "req-incomplete-add",
         teamId: team.id,
         expectedRevision: team.revision,
-        memberAdds: [{ ...memberInput, executionProfile: null }],
+        memberAdds: [{ ...memberInput, executionProfileSelection: null }],
       }).success,
     ).toBe(false);
   });
@@ -286,14 +288,19 @@ describe("Team profile v2 RPC schemas", () => {
       name: "Platform runtime",
       skills: team.skills,
       leadMemberId: "member-lead",
-      memberAdds: [memberInput],
+      memberAdds: [
+        {
+          ...memberInput,
+          executionProfileSelection: { kind: "inline" as const, executionProfile },
+        },
+      ].map(({ executionProfile: _executionProfile, ...member }) => member),
       memberUpdates: [
         {
           memberId: "member-lead",
           role: "Staff software engineer",
           level: 4,
           skillIds: ["typescript"],
-          executionProfile,
+          executionProfileSelection: { kind: "inline", executionProfile },
         },
       ],
       memberRemovals: ["member-retired"],
@@ -305,7 +312,141 @@ describe("Team profile v2 RPC schemas", () => {
     ).toBe(false);
   });
 
-  it("accepts a profile update from a client without update idempotency", () => {
+  it("expresses rebind and detach with the same selection union as creation", () => {
+    const rebind = {
+      type: "team.profile.update.request" as const,
+      requestId: "req-profile-rebind",
+      idempotencyKey: "idem-profile-rebind",
+      teamId: team.id,
+      expectedRevision: team.revision,
+      memberUpdates: [
+        {
+          memberId: "member-lead",
+          executionProfileSelection: { kind: "agent_profile", profileId: "profile-review" },
+        },
+      ],
+    };
+    const detach = {
+      ...rebind,
+      requestId: "req-profile-detach",
+      idempotencyKey: "idem-profile-detach",
+      memberUpdates: [
+        {
+          memberId: "member-lead",
+          executionProfileSelection: { kind: "inline", executionProfile },
+        },
+      ],
+    };
+
+    expect(TeamProfileUpdateRequestSchema.parse(rebind)).toEqual(rebind);
+    expect(TeamProfileUpdateRequestSchema.parse(detach)).toEqual(detach);
+  });
+
+  it("keeps parsing legacy inline member updates during the compatibility window", () => {
+    const request = {
+      type: "team.profile.update.request" as const,
+      requestId: "req-legacy-profile-update",
+      teamId: team.id,
+      expectedRevision: team.revision,
+      memberAdds: [memberInput],
+      memberUpdates: [{ memberId: "member-lead", executionProfile }],
+    };
+
+    expect(TeamProfileUpdateRequestSchema.parse(request)).toEqual(request);
+  });
+
+  it("plans a Methodology upgrade against the exact ref the form was built from", () => {
+    const request = {
+      type: "team.profile.update.request" as const,
+      requestId: "req-profile-methodology",
+      idempotencyKey: "idem-profile-methodology",
+      teamId: team.id,
+      expectedRevision: team.revision,
+      methodologyUpgrade: {
+        expectedRef: team.methodologyBinding.ref,
+        ref: { bundleId: "paseo/standard", version: "2", digest: `sha256:${"b".repeat(64)}` },
+        presetId: "standard",
+        memberArchetypeBindings: [{ memberId: "member-lead", archetypeId: "generalist" }],
+        skillBindings: [{ teamSkillId: "typescript", methodologySkillId: "typescript" }],
+      },
+    };
+
+    expect(TeamProfileUpdateRequestSchema.parse(request)).toEqual(request);
+    expect(
+      TeamProfileUpdateRequestSchema.safeParse({
+        ...request,
+        methodologyUpgrade: { ...request.methodologyUpgrade, expectedRef: undefined },
+      }).success,
+    ).toBe(false);
+    expect(
+      TeamProfileUpdateRequestSchema.safeParse({
+        ...request,
+        methodologyUpgrade: { ...request.methodologyUpgrade, memberArchetypeBindings: undefined },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("refreshes one Member execution snapshot and reports its disposition", () => {
+    const request = {
+      type: "team.profile.member.execution.refresh.request" as const,
+      requestId: "req-execution-refresh",
+      idempotencyKey: "idem-execution-refresh",
+      teamId: team.id,
+      memberId: "member-lead",
+      expectedTeamRevision: team.revision,
+    };
+
+    expect(TeamProfileMemberExecutionRefreshRequestSchema.parse(request)).toEqual(request);
+    expect(
+      TeamProfileMemberExecutionRefreshRequestSchema.safeParse({
+        ...request,
+        idempotencyKey: undefined,
+      }).success,
+    ).toBe(false);
+
+    const unchanged = {
+      type: "team.profile.member.execution.refresh.response" as const,
+      payload: {
+        requestId: request.requestId,
+        disposition: "unchanged" as const,
+        teamRevision: team.revision,
+        appliedDigest: digest,
+        team: null,
+        error: null,
+        errorCode: null,
+      },
+    };
+    const updated = {
+      type: "team.profile.member.execution.refresh.response" as const,
+      payload: {
+        requestId: request.requestId,
+        disposition: "updated" as const,
+        teamRevision: team.revision + 1,
+        appliedDigest: digest,
+        team,
+        error: null,
+        errorCode: null,
+      },
+    };
+    const failed = {
+      type: "team.profile.member.execution.refresh.response" as const,
+      payload: {
+        requestId: request.requestId,
+        disposition: null,
+        teamRevision: null,
+        appliedDigest: null,
+        team: null,
+        error: "Agent Profile profile-review does not exist",
+        errorCode: "team_agent_profile_not_found",
+      },
+    };
+
+    for (const response of [unchanged, updated, failed]) {
+      expect(TeamProfileMemberExecutionRefreshResponseSchema.parse(response)).toEqual(response);
+    }
+  });
+
+  it("keeps parsing a profile update without update idempotency during compatibility", () => {
     const request = {
       type: "team.profile.update.request" as const,
       requestId: "req-profile-update-without-idempotency",
@@ -314,7 +455,7 @@ describe("Team profile v2 RPC schemas", () => {
       name: "Platform runtime",
     };
 
-    expect(TeamProfileUpdateRequestSchema.parse(request)).toEqual(request);
+    expect(TeamProfileUpdateRequestSchema.safeParse(request).success).toBe(true);
   });
 
   it("round-trips list, inspect and archive", () => {

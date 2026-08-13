@@ -5,6 +5,7 @@ import {
   runProfileCreateCommand,
   runProfileInspectCommand,
   runProfileListCommand,
+  runProfileRefreshExecutionCommand,
   runProfileUpdateCommand,
 } from "./profile.js";
 
@@ -12,13 +13,20 @@ const { connectToDaemon, client } = vi.hoisted(() => ({
   connectToDaemon: vi.fn(),
   client: {
     getLastServerInfoMessage: () => ({
-      features: { teamMissions: true, globalTeamProfiles: true, teamMethodologies: true },
+      features: {
+        teamMissions: true,
+        globalTeamProfiles: true,
+        teamMethodologies: true,
+        teamProfileUpgrades: true,
+      },
     }),
     createTeamProfile: vi.fn(),
     listTeamMethodologies: vi.fn(),
     listTeamProfiles: vi.fn(),
+    getDaemonConfig: vi.fn(),
     inspectTeamProfile: vi.fn(),
     updateTeamProfile: vi.fn(),
+    refreshTeamMemberExecution: vi.fn(),
     archiveTeamProfile: vi.fn(),
     close: vi.fn(async () => {}),
   },
@@ -39,6 +47,10 @@ const standard = {
   presets: [{ presetId: "lean-delivery" }],
   archetypes: [{ archetypeId: "lead" }, { archetypeId: "builder" }],
   skills: [{ skillId: "implementation" }],
+  policySummary: {
+    review: { operatorWaiver: "allowed_with_reason" },
+    verification: { required: true },
+  },
 };
 const team = {
   id: "team-1",
@@ -85,6 +97,7 @@ beforeEach(() => {
     error: null,
     errorCode: null,
   });
+  client.getDaemonConfig.mockResolvedValue({ requestId: "config", config: { agentProfiles: [] } });
 });
 
 describe("Team profile commands", () => {
@@ -288,15 +301,21 @@ describe("Team profile commands", () => {
           expect.objectContaining({
             role: "builder",
             level: 4,
-            executionProfile: expect.objectContaining({
-              provider: "codex",
-              model: "gpt-5.6-sol",
+            executionProfileSelection: expect.objectContaining({
+              kind: "inline",
+              executionProfile: expect.objectContaining({
+                provider: "codex",
+                model: "gpt-5.6-sol",
+              }),
             }),
           }),
           expect.objectContaining({
             role: "builder",
             level: 2,
-            executionProfile: expect.objectContaining({ provider: "claude", model: "sonnet" }),
+            executionProfileSelection: expect.objectContaining({
+              kind: "inline",
+              executionProfile: expect.objectContaining({ provider: "claude", model: "sonnet" }),
+            }),
           }),
         ],
         memberUpdates: [
@@ -305,7 +324,10 @@ describe("Team profile commands", () => {
             role: "review lead",
             level: 5,
             skillIds: ["ts"],
-            executionProfile: expect.objectContaining({ provider: "claude", model: "opus" }),
+            executionProfileSelection: expect.objectContaining({
+              kind: "inline",
+              executionProfile: expect.objectContaining({ provider: "claude", model: "opus" }),
+            }),
           }),
         ],
         memberRemovals: ["member-old"],
@@ -333,5 +355,200 @@ describe("Team profile commands", () => {
       expectedRevision: 4,
       name: "Renamed",
     });
+  });
+
+  it("rebinds and detaches Member execution sources explicitly", async () => {
+    client.updateTeamProfile.mockResolvedValue({ team, error: null, errorCode: null });
+
+    await runProfileUpdateCommand(
+      "team-1",
+      {
+        expectedRevision: "4",
+        updateAgentProfile: ["member-lead=profile-reviewer"],
+        idempotencyKey: "rebind-key",
+      },
+      null as never,
+    );
+    await runProfileUpdateCommand(
+      "team-1",
+      {
+        expectedRevision: "4",
+        updateProvider: ["member-lead=codex"],
+        idempotencyKey: "detach-key",
+      },
+      null as never,
+    );
+
+    expect(client.updateTeamProfile).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        memberUpdates: [
+          {
+            memberId: "member-lead",
+            executionProfileSelection: {
+              kind: "agent_profile",
+              profileId: "profile-reviewer",
+            },
+          },
+        ],
+      }),
+    );
+    expect(client.updateTeamProfile).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        memberUpdates: [
+          {
+            memberId: "member-lead",
+            executionProfileSelection: expect.objectContaining({ kind: "inline" }),
+          },
+        ],
+      }),
+    );
+  });
+
+  it("upgrades an exact Methodology with complete binding arrays", async () => {
+    const next = {
+      ...standard,
+      ref: { ...standard.ref, version: "2", digest: `sha256:${"a".repeat(64)}` },
+    };
+    client.inspectTeamProfile.mockResolvedValue({ team, error: null, errorCode: null });
+    client.listTeamMethodologies.mockResolvedValue({
+      methodologies: [standard, next],
+      error: null,
+      errorCode: null,
+    });
+    client.updateTeamProfile.mockResolvedValue({ team, error: null, errorCode: null });
+
+    await runProfileUpdateCommand(
+      "team-1",
+      {
+        expectedRevision: "4",
+        methodology: "paseo/standard@2",
+        yes: true,
+        archetype: ["member-lead=lead"],
+        idempotencyKey: "methodology-key",
+      },
+      null as never,
+    );
+
+    expect(client.updateTeamProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        methodologyUpgrade: {
+          expectedRef: standard.ref,
+          ref: next.ref,
+          presetId: "lean-delivery",
+          memberArchetypeBindings: [{ memberId: "member-lead", archetypeId: "lead" }],
+          skillBindings: [{ teamSkillId: "ts", methodologySkillId: null }],
+        },
+      }),
+    );
+  });
+
+  it("prints the exact Methodology preview and requires confirmation before mutation", async () => {
+    const next = {
+      ...standard,
+      ref: { ...standard.ref, version: "2", digest: `sha256:${"a".repeat(64)}` },
+      policySummary: {
+        ...standard.policySummary,
+        review: { operatorWaiver: "forbidden" },
+      },
+    };
+    client.inspectTeamProfile.mockResolvedValue({ team, error: null, errorCode: null });
+    client.listTeamMethodologies.mockResolvedValue({
+      methodologies: [standard, next],
+      error: null,
+      errorCode: null,
+    });
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    await expect(
+      runProfileUpdateCommand(
+        "team-1",
+        {
+          expectedRevision: "4",
+          methodology: "paseo/standard@2",
+          archetype: ["member-lead=lead"],
+          idempotencyKey: "unconfirmed-methodology",
+        },
+        null as never,
+      ),
+    ).rejects.toMatchObject({
+      code: "METHODOLOGY_CONFIRMATION_REQUIRED",
+      details: expect.stringContaining("Policy after:"),
+    });
+    expect(stderr).toHaveBeenCalledWith(
+      expect.stringContaining("Member bindings: member-lead (lead)=lead"),
+    );
+    expect(client.updateTeamProfile).not.toHaveBeenCalled();
+    stderr.mockRestore();
+  });
+
+  it("refreshes a sourced Member through the dedicated RPC", async () => {
+    const sourcedTeam = {
+      ...team,
+      members: [
+        {
+          ...team.members[0],
+          executionProfile: { ...team.members[0].executionProfile, model: "gpt-5.6-sol" },
+          executionProfileSource: {
+            kind: "agent_profile" as const,
+            profileId: "profile-lead",
+            resolverVersion: 1,
+            appliedDigest: `sha256:${"0".repeat(64)}`,
+          },
+        },
+      ],
+    };
+    client.refreshTeamMemberExecution.mockResolvedValue({
+      disposition: "updated",
+      team: sourcedTeam,
+      error: null,
+      errorCode: null,
+    });
+    client.getDaemonConfig.mockResolvedValue({
+      requestId: "config-after-refresh",
+      config: {
+        agentProfiles: [{ id: "profile-lead", provider: "codex", model: "gpt-5.6-sol" }],
+      },
+    });
+
+    const result = await runProfileRefreshExecutionCommand(
+      "team-1",
+      "member-lead",
+      { expectedRevision: "4", idempotencyKey: "refresh-key" },
+      null as never,
+    );
+
+    expect(client.refreshTeamMemberExecution).toHaveBeenCalledWith({
+      teamId: "team-1",
+      memberId: "member-lead",
+      expectedTeamRevision: 4,
+      idempotencyKey: "refresh-key",
+    });
+    expect(client.getDaemonConfig).toHaveBeenCalledOnce();
+    expect(client.getDaemonConfig.mock.invocationCallOrder[0]).toBeLessThan(
+      client.refreshTeamMemberExecution.mock.invocationCallOrder[0]!,
+    );
+    expect(result.data.roster[0]).toMatchObject({
+      executionSource: "profile-lead",
+      executionSourceStatus: "current",
+    });
+  });
+
+  it("does not send a refresh when the Agent Profile catalog cannot be read", async () => {
+    client.getDaemonConfig.mockRejectedValueOnce(new Error("config unavailable"));
+
+    await expect(
+      runProfileRefreshExecutionCommand(
+        "team-1",
+        "member-lead",
+        { expectedRevision: "4", idempotencyKey: "refresh-config-failed" },
+        null as never,
+      ),
+    ).rejects.toMatchObject({
+      code: "TEAM_PROFILE_REFRESH_FAILED",
+      message: expect.stringContaining("config unavailable"),
+    });
+    expect(client.refreshTeamMemberExecution).not.toHaveBeenCalled();
   });
 });

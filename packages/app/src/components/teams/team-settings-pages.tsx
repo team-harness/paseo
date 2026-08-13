@@ -6,6 +6,8 @@ import { Archive, ChevronRight, ExternalLink, Pencil, Play, X } from "lucide-rea
 
 import type { MissionAttentionItem, TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
 import type { TeamMissionAttentionResolutionInput } from "@getpaseo/protocol/team/v2-rpc-schemas";
+import type { MethodologyDescriptor } from "@getpaseo/protocol/team/v2-rpc-schemas";
+import type { AgentProfileExecutionFacts } from "@getpaseo/protocol/team/execution-source-status";
 
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -18,6 +20,8 @@ import {
   selectTeamMemberSettingsRows,
   selectTeamMissionHistory,
   selectTeamPlanRows,
+  buildTeamMethodologyUpgradePreview,
+  type TeamMethodologyUpgradePreview,
   type TeamPlanRow,
 } from "@/teams/team-settings-view";
 
@@ -48,6 +52,8 @@ export interface TeamSettingsPageActions {
   readonly onCancelMission?: () => void;
   readonly onArchiveTeam?: () => void;
   readonly onSelectMission?: (missionId: string) => void;
+  readonly onRefreshMemberExecution?: (memberId: string) => void;
+  readonly onUpgradeMethodology?: (methodology: MethodologyDescriptor) => void;
   readonly onResolveAttention?: (
     attentionId: string,
     resolution: TeamSettingsAttentionResolution,
@@ -141,9 +147,16 @@ export function TeamOverviewSettingsPage({
   );
 }
 
-export function TeamMembersSettingsPage({ team, mission, actions }: SharedPageProps): ReactElement {
+export function TeamMembersSettingsPage({
+  team,
+  mission,
+  actions,
+  agentProfiles = [],
+}: SharedPageProps & {
+  readonly agentProfiles?: readonly AgentProfileExecutionFacts[];
+}): ReactElement {
   const { t } = useTranslation();
-  const rows = selectTeamMemberSettingsRows(team, mission);
+  const rows = selectTeamMemberSettingsRows(team, mission, agentProfiles);
   const editButton = useMemo(
     () =>
       actions.onEditProfile ? (
@@ -166,9 +179,151 @@ export function TeamMembersSettingsPage({ team, mission, actions }: SharedPagePr
         flush
       >
         {rows.map((row) => (
-          <MemberSettingsCard key={row.memberId} row={row} onOpenAgent={actions.onOpenAgent} />
+          <MemberSettingsCard
+            key={row.memberId}
+            row={row}
+            onOpenAgent={actions.onOpenAgent}
+            actions={actions}
+          />
         ))}
       </SettingsSection>
+      <ActionError message={actions.actionError} />
+    </View>
+  );
+}
+
+export function TeamMethodologySettingsPage({
+  team,
+  methodologies,
+  actions,
+}: SharedPageProps & {
+  readonly methodologies: readonly MethodologyDescriptor[];
+}): ReactElement {
+  const { t } = useTranslation();
+  const current = methodologies.find(
+    (item) =>
+      item.ref.bundleId === team.methodologyBinding.ref.bundleId &&
+      item.ref.version === team.methodologyBinding.ref.version &&
+      item.ref.digest === team.methodologyBinding.ref.digest,
+  );
+  const exactRef = `${team.methodologyBinding.ref.bundleId}@${team.methodologyBinding.ref.version}#${team.methodologyBinding.ref.digest}`;
+  const candidates = current
+    ? methodologies
+        .filter((item) => item.ref.digest !== current.ref.digest)
+        .map((item) => buildTeamMethodologyUpgradePreview(team, current, item))
+    : [];
+  return (
+    <View testID="team-settings-page-methodology">
+      <SettingsSection title={t("teams.v2Settings.methodology.current")}>
+        <View style={settingsStyles.card}>
+          <DataRow label={t("teams.v2Settings.methodology.exactRef")} value={exactRef} />
+          <DataRow
+            bordered
+            label={t("teams.v2Settings.methodology.preset")}
+            value={team.methodologyBinding.presetId ?? "—"}
+          />
+          <DataRow
+            bordered
+            label={t("teams.v2Settings.methodology.bindings")}
+            value={team.methodologyBinding.memberArchetypeBindings
+              .map((binding) => `${binding.memberId}=${binding.archetypeId ?? "-"}`)
+              .join(", ")}
+          />
+          <DataRow
+            bordered
+            label={t("teams.v2Settings.methodology.skillBindings")}
+            value={team.methodologyBinding.skillBindings
+              .map((binding) => `${binding.teamSkillId}=${binding.methodologySkillId ?? "-"}`)
+              .join(", ")}
+          />
+          <DataRow
+            bordered
+            label={t("teams.v2Settings.methodology.policy")}
+            value={current ? JSON.stringify(current.policySummary) : "-"}
+          />
+        </View>
+      </SettingsSection>
+      {candidates.length > 0 ? (
+        <SettingsSection title={t("teams.v2Settings.methodology.upgrades")} flush>
+          {candidates.map((preview) => (
+            <MethodologyUpgradeCard
+              key={preview.methodology.ref.digest}
+              preview={preview}
+              missionActive={team.activeMissionId !== null}
+              actions={actions}
+            />
+          ))}
+        </SettingsSection>
+      ) : null}
+      <ActionError message={actions.actionError} />
+    </View>
+  );
+}
+
+function MethodologyUpgradeCard({
+  preview,
+  missionActive,
+  actions,
+}: {
+  readonly preview: TeamMethodologyUpgradePreview;
+  readonly missionActive: boolean;
+  readonly actions: TeamSettingsPageActions;
+}): ReactElement {
+  const { t } = useTranslation();
+  const { onUpgradeMethodology } = actions;
+  const upgrade = useCallback(() => {
+    onUpgradeMethodology?.(preview.methodology);
+  }, [onUpgradeMethodology, preview.methodology]);
+  return (
+    <View style={settingsStyles.card}>
+      <DataRow
+        label={`${preview.methodology.ref.bundleId}@${preview.methodology.ref.version}`}
+        value={preview.methodology.ref.digest}
+      />
+      <DataRow
+        bordered
+        label={t("teams.v2Settings.methodology.nextMemberBindings")}
+        value={preview.memberBindingPreview}
+      />
+      <DataRow
+        bordered
+        label={t("teams.v2Settings.methodology.nextSkillBindings")}
+        value={preview.skillBindingPreview}
+      />
+      <DataRow
+        bordered
+        label={t("teams.v2Settings.methodology.policyBefore")}
+        value={preview.currentPolicyPreview}
+      />
+      <DataRow
+        bordered
+        label={t("teams.v2Settings.methodology.policyAfter")}
+        value={preview.nextPolicyPreview}
+      />
+      <DataRow
+        bordered
+        label={t("teams.v2Settings.methodology.diff")}
+        value={t("teams.v2Settings.methodology.diffCounts", {
+          archetypeChanges: preview.archetypeChanges,
+          skillChanges: preview.skillChanges,
+          playbookChanges: preview.playbookChanges,
+          policyChanges: preview.policyChanges,
+        })}
+      />
+      {onUpgradeMethodology ? (
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={missionActive}
+            loading={actions.pendingActionKey === `methodology:${preview.methodology.ref.digest}`}
+            onPress={upgrade}
+            testID={`team-methodology-upgrade-${preview.methodology.ref.digest}`}
+          >
+            {t("teams.v2Settings.methodology.upgrade")}
+          </Button>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -489,14 +644,20 @@ function HistoryMissionRow({
 function MemberSettingsCard({
   row,
   onOpenAgent,
+  actions,
 }: {
   row: ReturnType<typeof selectTeamMemberSettingsRows>[number];
   onOpenAgent?: (agentId: string) => void;
+  actions: TeamSettingsPageActions;
 }): ReactElement {
   const { t } = useTranslation();
+  const { onRefreshMemberExecution } = actions;
   const open = useCallback(() => {
     if (row.participantAgentId) onOpenAgent?.(row.participantAgentId);
   }, [onOpenAgent, row.participantAgentId]);
+  const refreshExecution = useCallback(() => {
+    onRefreshMemberExecution?.(row.memberId);
+  }, [onRefreshMemberExecution, row.memberId]);
   return (
     <View style={settingsStyles.card} testID={`team-member-${row.memberId}`}>
       <View style={settingsStyles.row}>
@@ -533,6 +694,24 @@ function MemberSettingsCard({
         label={t("teams.v2Settings.members.execution")}
         value={[row.provider, row.model].filter(Boolean).join(" · ")}
       />
+      <DataRow
+        bordered
+        label={t("teams.v2Settings.members.executionSource")}
+        value={t(`teams.v2Settings.executionSource.${row.executionSourceStatus.kind}`)}
+      />
+      {row.executionSourceStatus.kind === "update_available" && onRefreshMemberExecution ? (
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <Button
+            variant="outline"
+            size="sm"
+            loading={actions.pendingActionKey === `refresh:${row.memberId}`}
+            onPress={refreshExecution}
+            testID={`team-member-${row.memberId}-refresh`}
+          >
+            {t("teams.v2Settings.members.refreshExecution")}
+          </Button>
+        </View>
+      ) : null}
       <DataRow
         bordered
         label={t("teams.v2Settings.members.participant")}

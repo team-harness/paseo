@@ -91,7 +91,11 @@ describe("Team profile output", () => {
         mode: null,
         thinking: "high",
         featureValues: {},
+        executionSourceKind: "inline",
         executionSource: null,
+        executionSourceStatus: "inline",
+        executionSourceResolver: null,
+        executionSourceDigest: null,
         mention: "lead",
       },
     ]);

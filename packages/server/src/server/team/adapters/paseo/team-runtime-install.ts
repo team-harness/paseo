@@ -296,6 +296,7 @@ export async function installPaseoTeamRuntimeAdapter(
     listTeams: (includeArchived) => service.listTeams(includeArchived),
     inspectTeam: (teamId) => service.inspectTeam(teamId),
     updateTeam: (input) => service.updateTeam(input),
+    refreshMemberExecution: (input) => service.refreshMemberExecution(input),
     archiveTeam: async (input) => {
       const team = await service.archiveTeam(input);
       const terminalMissions = (await service.listMissions(team.id, true)).filter(

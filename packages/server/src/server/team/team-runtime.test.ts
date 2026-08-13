@@ -75,6 +75,7 @@ describe("TeamRuntime v2 façade", () => {
       teamMissions: true,
       globalTeamProfiles: true,
       teamMethodologies: true,
+      teamProfileUpgrades: true,
     });
     const session = runtime.sessionDeps();
     expect(session).not.toBeNull();
@@ -450,6 +451,10 @@ class FakeTeamRuntimeService implements TeamRuntimeService {
   }
 
   async updateTeam(): Promise<TeamV2> {
+    throw new Error("not used");
+  }
+
+  async refreshMemberExecution(): ReturnType<TeamRuntimeService["refreshMemberExecution"]> {
     throw new Error("not used");
   }
 

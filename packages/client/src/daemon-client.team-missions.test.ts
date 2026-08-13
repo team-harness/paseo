@@ -226,13 +226,16 @@ test("detects whether the daemon supports host-global Team profiles", async () =
     teamMissions: true,
     globalTeamProfiles: true,
     teamMethodologies: true,
+    teamProfileUpgrades: true,
   });
   const legacy = await connectedClient({ teamMissions: true });
 
   expect(modern.client.supportsGlobalTeamProfiles()).toBe(true);
   expect(modern.client.supportsTeamMethodologies()).toBe(true);
+  expect(modern.client.supportsTeamProfileUpgrades()).toBe(true);
   expect(legacy.client.supportsGlobalTeamProfiles()).toBe(false);
   expect(legacy.client.supportsTeamMethodologies()).toBe(false);
+  expect(legacy.client.supportsTeamProfileUpgrades()).toBe(false);
 });
 
 test("a daemon without the capability is rejected locally without sending a mutation", async () => {
@@ -266,11 +269,44 @@ test("a daemon without the capability is rejected locally without sending a muta
   expect(mock.sent).toHaveLength(sentBefore);
 });
 
+test("a pre-upgrade daemon rejects TM-ITEM-10 mutations locally", async () => {
+  const { client, mock } = await connectedClient({
+    teamMissions: true,
+    globalTeamProfiles: true,
+    teamMethodologies: true,
+  });
+  const sentBefore = mock.sent.length;
+
+  await expect(
+    client.updateTeamProfile({
+      idempotencyKey: "idem-upgrade",
+      teamId: team.id,
+      expectedRevision: 1,
+      memberUpdates: [
+        {
+          memberId: "member-lead",
+          executionProfileSelection: { kind: "inline", executionProfile },
+        },
+      ],
+    }),
+  ).rejects.toThrow("Update the host to use Team profile upgrades");
+  await expect(
+    client.refreshTeamMemberExecution({
+      idempotencyKey: "idem-refresh",
+      teamId: team.id,
+      memberId: "member-lead",
+      expectedTeamRevision: 1,
+    }),
+  ).rejects.toThrow("Update the host to use Team profile upgrades");
+  expect(mock.sent).toHaveLength(sentBefore);
+});
+
 test("the SDK sends all Team profile and Mission correlated RPCs", async () => {
   const { client, mock } = await connectedClient({
     teamMissions: true,
     globalTeamProfiles: true,
     teamMethodologies: true,
+    teamProfileUpgrades: true,
   });
 
   const cases = [
@@ -321,6 +357,22 @@ test("the SDK sends all Team profile and Mission correlated RPCs", async () => {
           name: "Runtime",
         }),
       result: { team: null },
+    },
+    {
+      type: "team.profile.member.execution.refresh.request",
+      invoke: () =>
+        client.refreshTeamMemberExecution({
+          idempotencyKey: "idem-execution-refresh",
+          teamId: team.id,
+          memberId: "member-lead",
+          expectedTeamRevision: 1,
+        }),
+      result: {
+        disposition: "unchanged",
+        teamRevision: 1,
+        appliedDigest: digest,
+        team: null,
+      },
     },
     {
       type: "team.profile.archive.request",

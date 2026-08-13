@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import type { TeamProfileMemberInput } from "@getpaseo/protocol/team/v2-rpc-schemas";
+import type { TestInlineTeamMemberInput } from "../test-fixtures.js";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import type { AcceptedTurnFact } from "../domain/assignment-contract-validation.js";
@@ -36,7 +36,7 @@ import {
 
 const NOW = "2026-08-08T10:00:00.000Z";
 
-const LEAD: TeamProfileMemberInput = {
+const LEAD: TestInlineTeamMemberInput = {
   role: "Technical lead",
   level: 5,
   skillIds: ["typescript"],
@@ -49,7 +49,7 @@ const LEAD: TeamProfileMemberInput = {
   },
 };
 
-const MEMBER: TeamProfileMemberInput = {
+const MEMBER: TestInlineTeamMemberInput = {
   role: "Software engineer",
   level: 3,
   skillIds: ["typescript"],

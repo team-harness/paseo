@@ -4,18 +4,13 @@ phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
 active_items:
-  - item: TM-ITEM-10
-    state: awaiting_owner
-    run: subagent:/root/tm10_recovery
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-profile-upgrade
-    base: 1206406b9
   - item: TM-ITEM-11
-    state: awaiting_owner
+    state: dispatched
     run: subagent:/root/tm11_recovery
     workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-gates
     base: 1206406b9
-next_action: 等待 owner 裁决 TM-ITEM-10 轮后修复证据是否可直接集成，以及是否授权 TM-ITEM-11 修复唯一 blocker 并进行 Round 4
-blocked_by: "owner decision: TM-ITEM-10 post-review repair; TM-ITEM-11 blocker repair and Round 4"
+next_action: 等待 TM-ITEM-11 修复历史 Workstream contract 继承校验并完成唯一 Round 4；0/0 后串行集成并推进 TM-ITEM-12
+blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -32,7 +27,7 @@ remote_publish: final
 - [x] TM-ITEM-7
 - [x] TM-ITEM-8
 - [x] TM-ITEM-9
-- [ ] TM-ITEM-10
+- [x] TM-ITEM-10
 - [ ] TM-ITEM-11
 - [ ] TM-ITEM-12
 - [ ] TM-ITEM-13
@@ -42,6 +37,26 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-10 集成验证通过。checkpoint `46f30319c57fd0757bdaf525a6b07638f32adf9b`
+  以无历史 staged apply 落到 TM-ITEM-9 后基线，Git 只自动合并了
+  `team-runtime-install.test.ts` 与 `team-mission-service.test.ts`；主流程重跑这两个交叉面
+  `116/116`，并通过 build/server、全仓 typecheck、lint 0/0、38 个变更文件 format-check 与
+  双 diff-check。code-intel 对完整分支历史给出的高风险来自未跟踪审计/截图目录与旧变更；
+  对 protocol/client/runtime/service/profile-store 的定点追踪没有发现 TM-ITEM-9 start recovery 与
+  Team Profile upgrade 的共享状态或具体失败路径。未重跑 worker 已报绿的 294 条测试。
+
+- 2026-08-13：TM-ITEM-10 经 owner 明确接受 Round 3 后机械修复证据例外后，worker 将冻结
+  diff `845991d7db88be9efaf19882e4a9a41f6d8742e61432c85a6dd0fb97716fa233`
+  整理为单父 checkpoint `46f30319c57fd0757bdaf525a6b07638f32adf9b`（父
+  `1206406b9…`，tree `5d032c88c36459f409b15f12eb734e4dfa0fe741`）。主流程以
+  `cherry-pick -n` 无历史应用到 TM-ITEM-9 后的当前基线；无冲突，仅有两个 server 测试文件
+  发生 Git 自动合并，因此集成验证只重跑这两个交叉面与全仓静态门。
+
+- 2026-08-13：owner 选择 A：明确接受 TM-ITEM-10 Round 3 后机械修复的证据例外，授权直接
+  整理 checkpoint 并集成；同时授权 TM-ITEM-11 只修复旧 approved review 继承时的历史
+  Workstream 不可变 contract 比对，并进行唯一一次 Round 4。Round 4 若仍非
+  0 blocking / 0 important 则立即停止，不得开 Round 5 或自动重试 reviewer。
 
 - 2026-08-13：TM-ITEM-10 与 TM-ITEM-11 均已停止执行，没有 reviewer 或 worker 在自动重试。
   TM-ITEM-10 三轮审查后唯一 blocker 已作机械修复，聚焦测试 13/13、原 changed tests

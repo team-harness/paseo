@@ -4,6 +4,7 @@ import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   ChevronRight,
+  BookOpen,
   CircleAlert,
   ClipboardList,
   ListTree,
@@ -23,6 +24,7 @@ import {
   TeamAttentionSettingsPage,
   TeamMembersSettingsPage,
   TeamMissionSettingsPage,
+  TeamMethodologySettingsPage,
   TeamOverviewSettingsPage,
   TeamPlanSettingsPage,
   teamAttentionActionKey,
@@ -30,14 +32,23 @@ import {
   type TeamSettingsPageActions,
 } from "@/components/teams/team-settings-pages";
 import { Button } from "@/components/ui/button";
+import { useAgentProfiles } from "@/agent-profiles/internal/use-agent-profiles";
 import { getHostRuntimeStore, useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
 import type { Theme } from "@/styles/theme";
 import type { PendingPermission } from "@/types/shared";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import { buildTeamMethodologyUpgradePreview } from "@/teams/team-settings-view";
 
-type TeamSettingsPage = "root" | "team" | "members" | "mission" | "plan" | "attention";
+type TeamSettingsPage =
+  | "root"
+  | "team"
+  | "members"
+  | "methodology"
+  | "mission"
+  | "plan"
+  | "attention";
 
 interface TeamPendingPermission {
   readonly memberId: string;
@@ -75,11 +86,18 @@ function OpenTeamSettingsSheet({
 }: TeamSettingsSheetProps): ReactElement {
   const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
+  const { profiles: agentProfiles } = useAgentProfiles(serverId);
   const [page, setPage] = useState<TeamSettingsPage>("root");
   const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const actionGeneration = useRef(0);
   const replica = useSessionStore((state) => state.sessions[serverId]?.teamMissionsReplica);
+  const methodologies = useSessionStore(
+    (state) => state.sessions[serverId]?.methodologyCatalogReplica.methodologies ?? [],
+  );
+  const profileUpgradesSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.teamProfileUpgrades === true,
+  );
   const pendingPermissions = useSessionStore(
     (state) => state.sessions[serverId]?.pendingPermissions ?? EMPTY_PERMISSIONS,
   );
@@ -196,12 +214,72 @@ function OpenTeamSettingsSheet({
     [client, mission, run],
   );
 
+  const refreshMemberExecution = useCallback(
+    (memberId: string) => {
+      if (!client) return;
+      void run(`refresh:${memberId}`, () =>
+        client.refreshTeamMemberExecution({
+          teamId: team.id,
+          memberId,
+          expectedTeamRevision: team.revision,
+          idempotencyKey: actionId("refresh", memberId, team.revision),
+        }),
+      );
+    },
+    [client, run, team.id, team.revision],
+  );
+
+  const upgradeMethodology = useCallback(
+    (methodology: (typeof methodologies)[number]) => {
+      if (!client) return;
+      const current = methodologies.find(
+        (item) =>
+          item.ref.bundleId === team.methodologyBinding.ref.bundleId &&
+          item.ref.version === team.methodologyBinding.ref.version &&
+          item.ref.digest === team.methodologyBinding.ref.digest,
+      );
+      if (!current) return;
+      const preview = buildTeamMethodologyUpgradePreview(team, current, methodology);
+      void (async () => {
+        const confirmed = await confirmDialog({
+          title: t("teams.v2Settings.methodology.upgrade"),
+          message: t("teams.v2Settings.methodology.confirm", {
+            ref: `${methodology.ref.bundleId}@${methodology.ref.version}#${methodology.ref.digest}`,
+            archetypeChanges: preview.archetypeChanges,
+            skillChanges: preview.skillChanges,
+            playbookChanges: preview.playbookChanges,
+            policyChanges: preview.policyChanges,
+            memberBindings: preview.memberBindingPreview,
+            skillBindings: preview.skillBindingPreview,
+            policyBefore: preview.currentPolicyPreview,
+            policyAfter: preview.nextPolicyPreview,
+          }),
+          confirmLabel: t("teams.v2Settings.methodology.upgrade"),
+          cancelLabel: t("common.actions.cancel"),
+        });
+        if (!confirmed) return;
+        await run(`methodology:${methodology.ref.digest}`, () =>
+          client.updateTeamProfile({
+            teamId: team.id,
+            expectedRevision: team.revision,
+            idempotencyKey: actionId("methodology", team.id, team.revision),
+            methodologyUpgrade: preview.upgrade,
+          }),
+        );
+      })();
+    },
+    [client, methodologies, run, t, team],
+  );
+
   const actions = useMemo<TeamSettingsPageActions>(
     () => ({
       onEditProfile,
       onStartMission,
       onOpenAgent,
       onSelectMission,
+      onRefreshMemberExecution:
+        client && profileUpgradesSupported ? refreshMemberExecution : undefined,
+      onUpgradeMethodology: client && profileUpgradesSupported ? upgradeMethodology : undefined,
       onCancelMission: client && mission ? cancelMission : undefined,
       onArchiveTeam: client ? archiveTeam : undefined,
       onResolveAttention: client && mission ? resolveAttention : undefined,
@@ -219,7 +297,10 @@ function OpenTeamSettingsSheet({
       onSelectMission,
       onStartMission,
       pendingActionKey,
+      profileUpgradesSupported,
+      refreshMemberExecution,
       resolveAttention,
+      upgradeMethodology,
     ],
   );
   const permissionRowsNode = useMemo(
@@ -268,7 +349,20 @@ function OpenTeamSettingsSheet({
         <TeamOverviewSettingsPage team={team} mission={mission} actions={actions} />
       ) : null}
       {page === "members" ? (
-        <TeamMembersSettingsPage team={team} mission={mission} actions={actions} />
+        <TeamMembersSettingsPage
+          team={team}
+          mission={mission}
+          agentProfiles={agentProfiles ?? []}
+          actions={actions}
+        />
+      ) : null}
+      {page === "methodology" ? (
+        <TeamMethodologySettingsPage
+          team={team}
+          mission={mission}
+          methodologies={methodologies}
+          actions={actions}
+        />
       ) : null}
       {page === "mission" ? (
         <TeamMissionSettingsPage
@@ -319,6 +413,11 @@ function SettingsNavigation({
       key: "members",
       hint: t("teams.v2Settings.navigation.membersHint", { count: team.members.length }),
       icon: ThemedUsers,
+    },
+    {
+      key: "methodology",
+      hint: `${team.methodologyBinding.ref.bundleId}@${team.methodologyBinding.ref.version}`,
+      icon: ThemedBookOpen,
     },
     {
       key: "mission",
@@ -515,6 +614,7 @@ const mutedIcon = (theme: Theme) => ({
 });
 const ThemedChevronRight = withUnistyles(ChevronRight, mutedIcon);
 const ThemedSettings = withUnistyles(Settings, mutedIcon);
+const ThemedBookOpen = withUnistyles(BookOpen, mutedIcon);
 const ThemedUsers = withUnistyles(Users, mutedIcon);
 const ThemedClipboardList = withUnistyles(ClipboardList, mutedIcon);
 const ThemedListTree = withUnistyles(ListTree, mutedIcon);

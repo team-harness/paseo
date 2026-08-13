@@ -61,6 +61,7 @@ describe("installPaseoTeamRuntime", () => {
       teamMissions: true,
       globalTeamProfiles: true,
       teamMethodologies: true,
+      teamProfileUpgrades: true,
     });
     await expect(access(join(rootDirectory, "team-missions", "profiles"))).resolves.toBeUndefined();
     await expect(access(join(rootDirectory, "team-missions", "missions"))).resolves.toBeUndefined();
@@ -555,6 +556,7 @@ describe("installPaseoTeamRuntime", () => {
         teamMissions: true,
         globalTeamProfiles: true,
         teamMethodologies: true,
+        teamProfileUpgrades: true,
       });
     } finally {
       runtime?.stop();
@@ -688,6 +690,7 @@ describe("installPaseoTeamRuntime", () => {
         teamMissions: true,
         globalTeamProfiles: true,
         teamMethodologies: true,
+        teamProfileUpgrades: true,
       });
     } finally {
       runtime?.stop();
@@ -755,6 +758,7 @@ describe("installPaseoTeamRuntime", () => {
         teamMissions: true,
         globalTeamProfiles: true,
         teamMethodologies: true,
+        teamProfileUpgrades: true,
       });
     } finally {
       runtime?.stop();

@@ -39,6 +39,7 @@ export interface CreateTeamProfileFromFactoryInput {
 export interface UpdateTeamProfileRecordInput {
   idempotencyKey?: string;
   requestFingerprint?: string;
+  persistReceiptOnNoChange?: boolean;
   teamId: string;
   expectedRevision: number;
   update: (
@@ -409,11 +410,10 @@ export class TeamProfileStore {
         isDeepStrictEqual(nextProfile, current.profile) &&
         isDeepStrictEqual(retiredMentionHandles, current.retiredMentionHandles)
       );
-      const updateReceipts = appendUpdateReceipt(
-        current,
-        input,
-        current.profile.revision + (profileChanged ? 1 : 0),
-      );
+      const updateReceipts =
+        profileChanged || input.persistReceiptOnNoChange !== false
+          ? appendUpdateReceipt(current, input, current.profile.revision + (profileChanged ? 1 : 0))
+          : current.updateReceipts;
       if (!profileChanged) {
         if (isDeepStrictEqual(updateReceipts, current.updateReceipts ?? [])) return current;
         const updated = StoredTeamProfileSchema.parse({

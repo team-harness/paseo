@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { TeamProfileCreateMemberInput } from "@getpaseo/protocol/team/v2-rpc-schemas";
+import type { TeamExecutionProfileSelection } from "@getpaseo/protocol/team/v2-rpc-schemas";
 import {
   TeamExecutionProfileSchema,
   type TeamExecutionProfile,
@@ -28,9 +28,14 @@ export interface MaterializedTeamMemberExecution {
   executionProfileSource?: TeamExecutionProfileSource;
 }
 
+export interface TeamMemberExecutionSelection {
+  clientMemberKey: string;
+  executionProfileSelection: TeamExecutionProfileSelection;
+}
+
 export interface TeamAgentProfileMaterializer {
   materialize(
-    members: readonly TeamProfileCreateMemberInput[],
+    members: readonly TeamMemberExecutionSelection[],
   ): Promise<MaterializedTeamMemberExecution[]>;
 }
 
@@ -38,7 +43,7 @@ export class DaemonTeamAgentProfileMaterializer implements TeamAgentProfileMater
   constructor(private readonly catalog: TeamAgentProfileCatalogPort) {}
 
   async materialize(
-    members: readonly TeamProfileCreateMemberInput[],
+    members: readonly TeamMemberExecutionSelection[],
   ): Promise<MaterializedTeamMemberExecution[]> {
     const needsCatalog = members.some(
       (member) => member.executionProfileSelection.kind === "agent_profile",
