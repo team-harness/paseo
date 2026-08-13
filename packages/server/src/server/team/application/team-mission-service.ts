@@ -1,5 +1,6 @@
 import type {
   MethodologyDescriptor,
+  TeamExecutionProfileSelection,
   TeamMissionAttentionResolutionInput,
   TeamProfileCreateMemberInput,
   TeamProfileMemberInput,
@@ -9,6 +10,7 @@ import type {
   MissionAttentionResolution,
   MissionCapabilityFacts,
   MissionRosterSnapshot,
+  TeamMemberProfile,
   TeamMission,
   TeamMethodologyBinding,
   TeamSkill,
@@ -55,7 +57,10 @@ import type {
   TeamRuntimeEventPort,
   TeamWorkspaceAvailabilityPort,
 } from "./ports.js";
-import type { TeamAgentProfileMaterializer } from "./team-agent-profile-materializer.js";
+import type {
+  MaterializedTeamMemberExecution,
+  TeamAgentProfileMaterializer,
+} from "./team-agent-profile-materializer.js";
 import { TeamApplicationError } from "./errors.js";
 export { TeamApplicationError } from "./errors.js";
 import { TeamOperationCoordinator } from "./team-operation-coordinator.js";
@@ -127,7 +132,25 @@ export interface UpdateTeamInput {
   memberAdds?: TeamProfileMemberInput[];
   memberUpdates?: TeamProfileMemberPatch[];
   memberRemovals?: string[];
+  methodologyUpgrade?: {
+    expectedRef: MethodologyDescriptor["ref"];
+    ref: MethodologyDescriptor["ref"];
+    presetId: string | null;
+    memberArchetypeBindings: TeamMethodologyBinding["memberArchetypeBindings"];
+    skillBindings: TeamMethodologyBinding["skillBindings"];
+  };
 }
+
+export interface RefreshTeamMemberExecutionInput {
+  idempotencyKey: string;
+  teamId: string;
+  memberId: string;
+  expectedTeamRevision: number;
+}
+
+export type RefreshTeamMemberExecutionResult =
+  | { disposition: "unchanged"; teamRevision: number; appliedDigest: string }
+  | { disposition: "updated"; team: TeamV2 };
 
 export interface ArchiveTeamInput {
   idempotencyKey: string;
@@ -365,6 +388,7 @@ export class TeamMissionService {
           memberAdds: input.memberAdds,
           memberUpdates: input.memberUpdates,
           memberRemovals: input.memberRemovals,
+          methodologyUpgrade: input.methodologyUpgrade,
         })
       : undefined;
     const stored = await this.profiles.update({
@@ -372,7 +396,7 @@ export class TeamMissionService {
       requestFingerprint,
       teamId: input.teamId,
       expectedRevision: input.expectedRevision,
-      update: (current, context) => {
+      update: async (current, context) => {
         if (current.lifecycle !== "active") {
           throw new TeamApplicationError("team_archived", `Team ${current.id} is archived`);
         }
@@ -383,8 +407,31 @@ export class TeamMissionService {
           );
         }
         assertMemberMutationTargets(current, input);
-        assertAgentProfileSourceMutationAllowed(current, input);
         assertRosterMutationAllowed(current, context.startIntent, input);
+        validateMethodologyUpgrade(current, context.startIntent, input, this.methodologies);
+        const selections = [
+          ...(input.memberAdds ?? []).map((member, index) => ({
+            clientMemberKey: `add:${index}`,
+            executionProfileSelection: memberExecutionSelection(member),
+          })),
+          ...(input.memberUpdates ?? []).flatMap((member) =>
+            memberPatchExecutionSelection(member)
+              ? [
+                  {
+                    clientMemberKey: `update:${member.memberId}`,
+                    executionProfileSelection: requireValue(
+                      memberPatchExecutionSelection(member),
+                      `Member ${member.memberId} execution selection disappeared`,
+                    ),
+                  },
+                ]
+              : [],
+          ),
+        ];
+        const materialized = await this.agentProfiles.materialize(selections);
+        const executionByKey = new Map(
+          materialized.map((execution) => [execution.clientMemberKey, execution]),
+        );
         const removed = new Set(input.memberRemovals ?? []);
         const retiredMentionHandles = current.members
           .filter((member) => removed.has(member.memberId))
@@ -394,12 +441,25 @@ export class TeamMissionService {
         );
         const retained = current.members
           .filter((member) => !removed.has(member.memberId))
-          .map((member) => Object.assign({}, member, patches.get(member.memberId)));
-        const additions = (input.memberAdds ?? []).map((member) =>
-          Object.assign({ memberId: this.ids.next("member") }, structuredClone(member), {
+          .map((member) => applyMemberPatch(member, patches.get(member.memberId), executionByKey));
+        const additions = (input.memberAdds ?? []).map((member, index) => {
+          const execution = requireValue(
+            executionByKey.get(`add:${index}`),
+            `Added Member ${index} was not materialized`,
+          );
+          const addition: TeamMemberProfile = {
+            memberId: this.ids.next("member"),
+            role: member.role,
+            level: member.level,
+            skillIds: structuredClone(member.skillIds),
+            executionProfile: structuredClone(execution.executionProfile),
             mentionHandle: "",
-          }),
-        );
+          };
+          if (execution.executionProfileSource) {
+            addition.executionProfileSource = structuredClone(execution.executionProfileSource);
+          }
+          return addition;
+        });
         const members = assignMentionHandles(
           [...retained, ...additions],
           [...context.retiredMentionHandles, ...retiredMentionHandles],
@@ -410,6 +470,18 @@ export class TeamMissionService {
           ...(input.skills ? { skills: structuredClone(input.skills) } : {}),
           ...(input.leadMemberId ? { leadMemberId: input.leadMemberId } : {}),
           members,
+          ...(input.methodologyUpgrade
+            ? {
+                methodologyBinding: {
+                  ref: structuredClone(input.methodologyUpgrade.ref),
+                  presetId: input.methodologyUpgrade.presetId,
+                  memberArchetypeBindings: structuredClone(
+                    input.methodologyUpgrade.memberArchetypeBindings,
+                  ),
+                  skillBindings: structuredClone(input.methodologyUpgrade.skillBindings),
+                },
+              }
+            : {}),
         };
         assertValidTeamProfile(next);
         return { profile: next, retireMentionHandles: retiredMentionHandles };
@@ -417,6 +489,75 @@ export class TeamMissionService {
     });
     await this.events.publishTeam(stored.profile);
     return stored.profile;
+  }
+
+  async refreshMemberExecution(
+    input: RefreshTeamMemberExecutionInput,
+  ): Promise<RefreshTeamMemberExecutionResult> {
+    const requestFingerprint = fingerprint("team.profile.member.execution.refresh", input);
+    const stored = await this.profiles.update({
+      idempotencyKey: input.idempotencyKey,
+      requestFingerprint,
+      persistReceiptOnNoChange: false,
+      teamId: input.teamId,
+      expectedRevision: input.expectedTeamRevision,
+      update: async (current, context) => {
+        assertMutableTeam(current, context.archiveIntent);
+        const member = current.members.find((candidate) => candidate.memberId === input.memberId);
+        if (!member) {
+          throw new TeamApplicationError(
+            "member_not_found",
+            `Member ${input.memberId} does not belong to Team ${current.id}`,
+          );
+        }
+        const source = member.executionProfileSource;
+        if (!source) {
+          throw new TeamApplicationError(
+            "team_agent_profile_source_required",
+            `Member ${input.memberId} has no Agent Profile source`,
+          );
+        }
+        const [execution] = await this.agentProfiles.materialize([
+          {
+            clientMemberKey: member.memberId,
+            executionProfileSelection: { kind: "agent_profile", profileId: source.profileId },
+          },
+        ]);
+        if (!execution?.executionProfileSource) {
+          throw new Error(`Member ${input.memberId} source was not materialized`);
+        }
+        if (execution.executionProfileSource.appliedDigest === source.appliedDigest) return current;
+        const members = current.members.map((candidate) =>
+          candidate.memberId === member.memberId
+            ? {
+                ...candidate,
+                executionProfile: structuredClone(execution.executionProfile),
+                executionProfileSource: structuredClone(execution.executionProfileSource),
+              }
+            : candidate,
+        );
+        const next = { ...current, members };
+        assertValidTeamProfile(next);
+        return next;
+      },
+    });
+    const member = requireValue(
+      stored.profile.members.find((candidate) => candidate.memberId === input.memberId),
+      `Member ${input.memberId} disappeared during refresh`,
+    );
+    const source = requireValue(
+      member.executionProfileSource,
+      `Member ${input.memberId} lost its source during refresh`,
+    );
+    if (stored.profile.revision === input.expectedTeamRevision) {
+      return {
+        disposition: "unchanged",
+        teamRevision: stored.profile.revision,
+        appliedDigest: source.appliedDigest,
+      };
+    }
+    await this.events.publishTeam(stored.profile);
+    return { disposition: "updated", team: stored.profile };
   }
 
   async archiveTeam(input: ArchiveTeamInput): Promise<TeamV2> {
@@ -2558,19 +2699,182 @@ function assertMemberMutationTargets(team: TeamV2, input: UpdateTeamInput): void
   }
 }
 
-function assertAgentProfileSourceMutationAllowed(team: TeamV2, input: UpdateTeamInput): void {
-  const sourcedMemberIds = new Set(
-    team.members
-      .filter((member) => member.executionProfileSource !== undefined)
-      .map((member) => member.memberId),
+function applyMemberPatch(
+  member: TeamMemberProfile,
+  patch: TeamProfileMemberPatch | undefined,
+  executionByKey: ReadonlyMap<string, MaterializedTeamMemberExecution>,
+): TeamMemberProfile {
+  if (!patch) return member;
+  const executionProfileSelection = memberPatchExecutionSelection(patch);
+  const base: TeamMemberProfile = {
+    ...member,
+    ...(patch.role !== undefined ? { role: patch.role } : {}),
+    ...(patch.level !== undefined ? { level: patch.level } : {}),
+    ...(patch.skillIds !== undefined ? { skillIds: structuredClone(patch.skillIds) } : {}),
+  };
+  if (!executionProfileSelection) return base;
+  const execution = requireValue(
+    executionByKey.get(`update:${member.memberId}`),
+    `Member ${member.memberId} execution selection was not materialized`,
   );
-  const changesSourcedExecutionProfile = (input.memberUpdates ?? []).some(
-    (member) => member.executionProfile !== undefined && sourcedMemberIds.has(member.memberId),
-  );
-  if (changesSourcedExecutionProfile) {
+  const { executionProfileSource: _previousSource, ...withoutSource } = base;
+  return {
+    ...withoutSource,
+    executionProfile: structuredClone(execution.executionProfile),
+    ...(execution.executionProfileSource
+      ? { executionProfileSource: structuredClone(execution.executionProfileSource) }
+      : {}),
+  };
+}
+
+// COMPAT(teamProfileMemberExecutionSelection): added in v0.3.1, remove after
+// 2027-02-13 once legacy inline member inputs have aged out.
+function memberExecutionSelection(member: TeamProfileMemberInput): TeamExecutionProfileSelection {
+  const explicit = (member as { executionProfileSelection?: TeamExecutionProfileSelection })
+    .executionProfileSelection;
+  if (explicit) return explicit;
+  return {
+    kind: "inline",
+    executionProfile: (
+      member as unknown as {
+        executionProfile: TeamMemberProfile["executionProfile"];
+      }
+    ).executionProfile,
+  };
+}
+
+// COMPAT(teamProfileMemberExecutionSelection): added in v0.3.1, remove after
+// 2027-02-13 once legacy inline member patches have aged out.
+function memberPatchExecutionSelection(
+  patch: TeamProfileMemberPatch,
+): TeamExecutionProfileSelection | undefined {
+  const explicit = (patch as { executionProfileSelection?: TeamExecutionProfileSelection })
+    .executionProfileSelection;
+  if (explicit) return explicit;
+  const legacy = (patch as { executionProfile?: TeamMemberProfile["executionProfile"] })
+    .executionProfile;
+  if (legacy) {
+    return { kind: "inline", executionProfile: legacy };
+  }
+  return undefined;
+}
+
+function assertMutableTeam(team: TeamV2, archiveIntent: StoredTeamProfile["archiveIntent"]): void {
+  if (team.lifecycle !== "active") {
+    throw new TeamApplicationError("team_archived", `Team ${team.id} is archived`);
+  }
+  if (archiveIntent) {
     throw new TeamApplicationError(
-      "team_agent_profile_source_update_unsupported",
-      "Agent Profile sourced execution snapshots cannot be changed before refresh or detach is supported",
+      "team_archive_in_progress",
+      `Team ${team.id} has an archive in progress`,
+    );
+  }
+}
+
+function validateMethodologyUpgrade(
+  current: TeamV2,
+  startIntent: StoredTeamProfile["startIntent"],
+  input: UpdateTeamInput,
+  methodologies: TeamMissionServiceOptions["methodologies"],
+): void {
+  const upgrade = input.methodologyUpgrade;
+  if (!upgrade) return;
+  if (!exactMethodologyRefsEqual(current.methodologyBinding.ref, upgrade.expectedRef)) {
+    throw new TeamApplicationError(
+      "methodology_ref_conflict",
+      `Team ${current.id} Methodology changed after the upgrade was planned`,
+    );
+  }
+  if (current.activeMissionId || startIntent) {
+    throw new TeamApplicationError(
+      "methodology_upgrade_requires_idle_team",
+      `Team ${current.id} must be idle before its Methodology can be upgraded`,
+    );
+  }
+  if (input.memberAdds?.length || input.memberRemovals?.length || input.skills) {
+    throw new TeamApplicationError(
+      "methodology_binding_invalid",
+      "Methodology upgrade cannot be combined with Team catalog or roster shape changes",
+    );
+  }
+  const methodology = methodologies.get(upgrade.ref);
+  if (!methodology) {
+    throw new TeamApplicationError(
+      "methodology_not_found",
+      `Methodology ${upgrade.ref.bundleId}@${upgrade.ref.version} was not found`,
+    );
+  }
+  validatePersistedMethodologyBinding(
+    {
+      ...current,
+      methodologyBinding: {
+        ref: structuredClone(upgrade.ref),
+        presetId: upgrade.presetId,
+        memberArchetypeBindings: structuredClone(upgrade.memberArchetypeBindings),
+        skillBindings: structuredClone(upgrade.skillBindings),
+      },
+    },
+    methodology,
+  );
+}
+
+function validatePersistedMethodologyBinding(
+  team: TeamV2,
+  methodology: MethodologyDescriptor,
+): void {
+  const presetId = team.methodologyBinding.presetId;
+  if (presetId !== null && !methodology.presets.some((preset) => preset.presetId === presetId)) {
+    throw new TeamApplicationError(
+      "methodology_binding_invalid",
+      `Methodology preset ${presetId} does not exist`,
+    );
+  }
+  const memberIds = new Set(team.members.map((member) => member.memberId));
+  const boundMemberIds = new Set<string>();
+  for (const binding of team.methodologyBinding.memberArchetypeBindings) {
+    const archetypeExists = methodology.archetypes.some(
+      (archetype) => archetype.archetypeId === binding.archetypeId,
+    );
+    if (
+      !memberIds.has(binding.memberId) ||
+      boundMemberIds.has(binding.memberId) ||
+      (binding.archetypeId !== null && !archetypeExists)
+    ) {
+      throw new TeamApplicationError(
+        "methodology_binding_invalid",
+        `Invalid Member binding for ${binding.memberId}`,
+      );
+    }
+    boundMemberIds.add(binding.memberId);
+  }
+  if (boundMemberIds.size !== memberIds.size) {
+    throw new TeamApplicationError(
+      "methodology_binding_invalid",
+      "Every Team Member must have one Methodology archetype binding",
+    );
+  }
+  const skillIds = new Set(team.skills.map((skill) => skill.skillId));
+  const boundSkillIds = new Set<string>();
+  for (const binding of team.methodologyBinding.skillBindings) {
+    const methodologySkillExists = methodology.skills.some(
+      (skill) => skill.skillId === binding.methodologySkillId,
+    );
+    if (
+      !skillIds.has(binding.teamSkillId) ||
+      boundSkillIds.has(binding.teamSkillId) ||
+      (binding.methodologySkillId !== null && !methodologySkillExists)
+    ) {
+      throw new TeamApplicationError(
+        "methodology_binding_invalid",
+        `Invalid Skill binding for ${binding.teamSkillId}`,
+      );
+    }
+    boundSkillIds.add(binding.teamSkillId);
+  }
+  if (boundSkillIds.size !== skillIds.size) {
+    throw new TeamApplicationError(
+      "methodology_binding_invalid",
+      "Every Team Skill must have one Methodology Skill binding",
     );
   }
 }

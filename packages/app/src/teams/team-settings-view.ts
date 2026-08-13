@@ -5,6 +5,15 @@ import type {
   TeamMission,
   TeamV2,
 } from "@getpaseo/protocol/team/v2-types";
+import type {
+  AgentProfileExecutionFacts,
+  TeamMemberExecutionSourceStatus,
+} from "@getpaseo/protocol/team/execution-source-status";
+import { selectTeamMemberExecutionSourceStatus } from "@getpaseo/protocol/team/execution-source-status";
+import type {
+  ExactMethodologyRef,
+  MethodologyDescriptor,
+} from "@getpaseo/protocol/team/v2-rpc-schemas";
 
 export type TeamParticipantState = "not_started" | "active" | "archived";
 
@@ -19,6 +28,7 @@ export interface TeamMemberSettingsRow {
   readonly isLead: boolean;
   readonly participantAgentId: string | null;
   readonly participantState: TeamParticipantState;
+  readonly executionSourceStatus: TeamMemberExecutionSourceStatus;
 }
 
 export interface TeamPlanMember {
@@ -76,6 +86,7 @@ function participantForMember(mission: TeamMission | null, memberId: string) {
 export function selectTeamMemberSettingsRows(
   team: TeamV2,
   mission: TeamMission | null,
+  agentProfiles: readonly AgentProfileExecutionFacts[] = [],
 ): TeamMemberSettingsRow[] {
   const skillNames = new Map(team.skills.map((skill) => [skill.skillId, skill.name]));
   return team.members.map((member) => {
@@ -93,8 +104,141 @@ export function selectTeamMemberSettingsRows(
       isLead: member.memberId === team.leadMemberId,
       participantAgentId: participant?.agentId ?? null,
       participantState,
+      executionSourceStatus: selectTeamMemberExecutionSourceStatus(member, agentProfiles),
     };
   });
+}
+
+export interface TeamMethodologyUpgrade {
+  readonly expectedRef: ExactMethodologyRef;
+  readonly ref: ExactMethodologyRef;
+  readonly presetId: string | null;
+  readonly memberArchetypeBindings: {
+    memberId: string;
+    archetypeId: string | null;
+  }[];
+  readonly skillBindings: {
+    teamSkillId: string;
+    methodologySkillId: string | null;
+  }[];
+}
+
+export interface TeamMethodologyUpgradePreview {
+  readonly methodology: MethodologyDescriptor;
+  readonly upgrade: TeamMethodologyUpgrade;
+  readonly archetypeChanges: number;
+  readonly skillChanges: number;
+  readonly playbookChanges: number;
+  readonly policyChanges: number;
+  readonly memberBindingPreview: string;
+  readonly skillBindingPreview: string;
+  readonly currentPolicyPreview: string;
+  readonly nextPolicyPreview: string;
+}
+
+export function buildTeamMethodologyUpgradePreview(
+  team: TeamV2,
+  current: MethodologyDescriptor,
+  methodology: MethodologyDescriptor,
+): TeamMethodologyUpgradePreview {
+  const validArchetypes = new Set(methodology.archetypes.map((item) => item.archetypeId));
+  const validSkills = new Set(methodology.skills.map((item) => item.skillId));
+  const memberBindings = new Map(
+    team.methodologyBinding.memberArchetypeBindings.map((item) => [
+      item.memberId,
+      item.archetypeId,
+    ]),
+  );
+  const skillBindings = new Map(
+    team.methodologyBinding.skillBindings.map((item) => [
+      item.teamSkillId,
+      item.methodologySkillId,
+    ]),
+  );
+  const nextMemberBindings = team.members.map((member) => {
+    const prior = memberBindings.get(member.memberId) ?? null;
+    return {
+      memberId: member.memberId,
+      archetypeId: prior && validArchetypes.has(prior) ? prior : null,
+    };
+  });
+  const nextSkillBindings = team.skills.map((skill) => {
+    const prior = skillBindings.get(skill.skillId) ?? null;
+    return {
+      teamSkillId: skill.skillId,
+      methodologySkillId: prior && validSkills.has(prior) ? prior : null,
+    };
+  });
+  return {
+    methodology,
+    upgrade: {
+      expectedRef: team.methodologyBinding.ref,
+      ref: methodology.ref,
+      presetId: methodology.presets.some(
+        (preset) => preset.presetId === team.methodologyBinding.presetId,
+      )
+        ? team.methodologyBinding.presetId
+        : null,
+      memberArchetypeBindings: nextMemberBindings,
+      skillBindings: nextSkillBindings,
+    },
+    archetypeChanges: symmetricIdDifference(
+      current.archetypes.map((item) => item.archetypeId),
+      methodology.archetypes.map((item) => item.archetypeId),
+    ),
+    skillChanges: symmetricIdDifference(
+      current.skills.map((item) => item.skillId),
+      methodology.skills.map((item) => item.skillId),
+    ),
+    playbookChanges: symmetricIdDifference(
+      current.playbooks.map((item) => item.playbookId),
+      methodology.playbooks.map((item) => item.playbookId),
+    ),
+    policyChanges: countLeafDifferences(current.policySummary, methodology.policySummary),
+    memberBindingPreview: nextMemberBindings
+      .map((binding) => `${binding.memberId}=${binding.archetypeId ?? "-"}`)
+      .join(", "),
+    skillBindingPreview: nextSkillBindings
+      .map((binding) => `${binding.teamSkillId}=${binding.methodologySkillId ?? "-"}`)
+      .join(", "),
+    currentPolicyPreview: JSON.stringify(current.policySummary),
+    nextPolicyPreview: JSON.stringify(methodology.policySummary),
+  };
+}
+
+function symmetricIdDifference(left: readonly string[], right: readonly string[]): number {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  return (
+    left.filter((value) => !rightSet.has(value)).length +
+    right.filter((value) => !leftSet.has(value)).length
+  );
+}
+
+function countLeafDifferences(left: unknown, right: unknown): number {
+  if (left === right) return 0;
+  if (
+    !left ||
+    !right ||
+    typeof left !== "object" ||
+    typeof right !== "object" ||
+    Array.isArray(left) ||
+    Array.isArray(right)
+  ) {
+    return 1;
+  }
+  const keys = new Set([
+    ...Object.keys(left as Record<string, unknown>),
+    ...Object.keys(right as Record<string, unknown>),
+  ]);
+  return Array.from(keys).reduce(
+    (count, key) =>
+      countLeafDifferences(
+        (left as Record<string, unknown>)[key],
+        (right as Record<string, unknown>)[key],
+      ) + count,
+    0,
+  );
 }
 
 function memberForPlan(team: TeamV2, mission: TeamMission, memberId: string): TeamPlanMember {

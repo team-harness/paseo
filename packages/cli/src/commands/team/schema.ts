@@ -1,4 +1,7 @@
 import type { TeamMission, TeamSkill, TeamV2 } from "@getpaseo/protocol/team/v2-types";
+import type { MethodologyDescriptor } from "@getpaseo/protocol/team/v2-rpc-schemas";
+import type { AgentProfileExecutionFacts } from "@getpaseo/protocol/team/execution-source-status";
+import { selectTeamMemberExecutionSourceStatus } from "@getpaseo/protocol/team/execution-source-status";
 import type { AnyCommandResult, OutputOptions, OutputSchema } from "../../output/index.js";
 
 export interface TeamProfileRow {
@@ -41,7 +44,11 @@ export interface TeamProfileMemberRow {
   thinking: string | null;
   featureValues: Record<string, unknown>;
   mention: string;
+  executionSourceKind: "inline" | "agent_profile";
   executionSource: string | null;
+  executionSourceStatus: string;
+  executionSourceResolver: number | null;
+  executionSourceDigest: string | null;
 }
 
 export interface TeamProfileDetail extends TeamProfileRow {
@@ -49,13 +56,23 @@ export interface TeamProfileDetail extends TeamProfileRow {
   roster: TeamProfileMemberRow[];
   methodology: string;
   preset: string | null;
+  memberArchetypeBindings: TeamV2["methodologyBinding"]["memberArchetypeBindings"];
+  methodologySkillBindings: TeamV2["methodologyBinding"]["skillBindings"];
+  methodologyPolicy: MethodologyDescriptor["policySummary"] | null;
 }
 
-export function toTeamProfileDetail(team: TeamV2): TeamProfileDetail {
+export function toTeamProfileDetail(
+  team: TeamV2,
+  agentProfiles: readonly AgentProfileExecutionFacts[] = [],
+  methodology: MethodologyDescriptor | null = null,
+): TeamProfileDetail {
   return {
     ...toTeamProfileRow(team),
     methodology: `${team.methodologyBinding.ref.bundleId}@${team.methodologyBinding.ref.version} ${team.methodologyBinding.ref.digest}`,
     preset: team.methodologyBinding.presetId,
+    memberArchetypeBindings: team.methodologyBinding.memberArchetypeBindings,
+    methodologySkillBindings: team.methodologyBinding.skillBindings,
+    methodologyPolicy: methodology?.policySummary ?? null,
     catalog: team.skills,
     roster: team.members.map((member) => ({
       memberId: member.memberId,
@@ -68,7 +85,11 @@ export function toTeamProfileDetail(team: TeamV2): TeamProfileDetail {
       thinking: member.executionProfile.thinkingOptionId,
       featureValues: member.executionProfile.featureValues,
       mention: member.mentionHandle,
+      executionSourceKind: member.executionProfileSource ? "agent_profile" : "inline",
       executionSource: member.executionProfileSource?.profileId ?? null,
+      executionSourceStatus: selectTeamMemberExecutionSourceStatus(member, agentProfiles).kind,
+      executionSourceResolver: member.executionProfileSource?.resolverVersion ?? null,
+      executionSourceDigest: member.executionProfileSource?.appliedDigest ?? null,
     })),
   };
 }
@@ -100,6 +121,11 @@ function renderTeamProfileBlock(team: TeamProfileDetail): string {
     `${team.name} [${team.id}] - ${team.lifecycle} (revision ${team.revision})`,
     `  workspace: ${team.workspace}`,
     `  active Mission: ${team.activeMission}`,
+    `  methodology: ${team.methodology}`,
+    `  preset: ${team.preset ?? "-"}`,
+    `  member archetypes: ${team.memberArchetypeBindings.map((binding) => `${binding.memberId}=${binding.archetypeId ?? "-"}`).join(", ")}`,
+    `  methodology skills: ${team.methodologySkillBindings.map((binding) => `${binding.teamSkillId}=${binding.methodologySkillId ?? "-"}`).join(", ")}`,
+    `  policy: ${team.methodologyPolicy ? JSON.stringify(team.methodologyPolicy) : "catalog entry unavailable"}`,
     `  skills: ${team.catalog.map((skill) => `${skill.skillId} (${skill.name})`).join(", ")}`,
     "",
     "  ROLE                 LVL PROVIDER       MODEL                 SKILLS",
@@ -109,6 +135,12 @@ function renderTeamProfileBlock(team: TeamProfileDetail): string {
       `  ${member.role.padEnd(20)} ${String(member.level).padEnd(3)} ` +
         `${member.provider.padEnd(14)} ${(member.model ?? "-").padEnd(21)} ` +
         member.skillIds.join(","),
+    );
+    lines.push(
+      `    source: ${member.executionSourceKind}` +
+        (member.executionSource
+          ? ` ${member.executionSource} (${member.executionSourceStatus}, resolver ${member.executionSourceResolver}, ${member.executionSourceDigest})`
+          : ""),
     );
   }
   return lines.join("\n");

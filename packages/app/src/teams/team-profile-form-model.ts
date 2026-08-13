@@ -145,10 +145,21 @@ export interface TeamProfileUpdatePayload {
   name?: string;
   skills?: TeamSkill[];
   leadMemberId?: string;
-  memberAdds?: TeamProfileMemberInput[];
-  memberUpdates?: TeamProfileMemberPatch[];
+  memberAdds?: ExplicitTeamProfileMemberInput[];
+  memberUpdates?: ExplicitTeamProfileMemberPatch[];
   memberRemovals?: string[];
 }
+
+type ExplicitTeamProfileMemberInput = Extract<
+  TeamProfileMemberInput,
+  { executionProfileSelection: unknown }
+>;
+type ExplicitTeamProfileMemberPatch = Omit<
+  Extract<TeamProfileMemberPatch, { executionProfileSelection: unknown }>,
+  "executionProfileSelection"
+> & {
+  executionProfileSelection?: ExplicitTeamProfileMemberInput["executionProfileSelection"];
+};
 
 export type TeamProfileSubmitIntent =
   | {
@@ -439,18 +450,31 @@ function toSkill(row: TeamProfileSkillRow): TeamSkill {
   };
 }
 
-function toMemberInput(row: TeamProfileMemberRow): TeamProfileMemberInput {
+function toMemberInput(row: TeamProfileMemberRow): ExplicitTeamProfileMemberInput {
   return {
     role: row.role.trim(),
     level: row.level,
     skillIds: normalizeSkillIds(row.skillIds),
-    executionProfile: {
-      provider: row.executionProfile.provider ?? "",
-      model: row.executionProfile.model?.trim() || null,
-      modeId: row.executionProfile.modeId?.trim() || null,
-      thinkingOptionId: row.executionProfile.thinkingOptionId?.trim() || null,
-      featureValues: structuredClone(row.executionProfile.featureValues),
-    },
+    executionProfileSelection:
+      row.executionSelection.kind === "agent_profile"
+        ? {
+            kind: "agent_profile",
+            profileId: row.executionSelection.profileId.trim(),
+          }
+        : {
+            kind: "inline",
+            executionProfile: toExecutionProfile(row),
+          },
+  };
+}
+
+function toExecutionProfile(row: TeamProfileMemberRow): TeamExecutionProfile {
+  return {
+    provider: row.executionProfile.provider ?? "",
+    model: row.executionProfile.model?.trim() || null,
+    modeId: row.executionProfile.modeId?.trim() || null,
+    thinkingOptionId: row.executionProfile.thinkingOptionId?.trim() || null,
+    featureValues: structuredClone(row.executionProfile.featureValues),
   };
 }
 
@@ -472,14 +496,21 @@ function valuesEqual(left: unknown, right: unknown): boolean {
 function memberPatch(
   row: TeamProfileMemberRow,
   original: TeamV2["members"][number],
-): TeamProfileMemberPatch | null {
+): ExplicitTeamProfileMemberPatch | null {
   const current = toMemberInput(row);
-  const patch: TeamProfileMemberPatch = { memberId: original.memberId };
+  const patch: ExplicitTeamProfileMemberPatch = { memberId: original.memberId };
   if (current.role !== original.role) patch.role = current.role;
   if (current.level !== original.level) patch.level = current.level;
   if (!valuesEqual(current.skillIds, original.skillIds)) patch.skillIds = current.skillIds;
-  if (!valuesEqual(current.executionProfile, original.executionProfile)) {
-    patch.executionProfile = current.executionProfile;
+  if (row.executionSelection.kind === "agent_profile") {
+    if (original.executionProfileSource?.profileId !== row.executionSelection.profileId) {
+      patch.executionProfileSelection = current.executionProfileSelection;
+    }
+  } else if (
+    original.executionProfileSource ||
+    !valuesEqual(toExecutionProfile(row), original.executionProfile)
+  ) {
+    patch.executionProfileSelection = current.executionProfileSelection;
   }
   return Object.keys(patch).length > 1 ? patch : null;
 }
@@ -570,7 +601,7 @@ function buildSubmitIntent(
               }
             : {
                 kind: "inline" as const,
-                executionProfile: toMemberInput(member).executionProfile,
+                executionProfile: toExecutionProfile(member),
               },
       })),
       methodologyBinding: {
@@ -1078,7 +1109,6 @@ export function openTeamProfileForm(snapshot: TeamProfileFormSnapshot): TeamProf
             ? {
                 ...member,
                 executionSelection: { kind: "inline" },
-                executionProfileModified: true,
               }
             : member,
         ),

@@ -117,6 +117,7 @@ import type {
   TeamProfileListRequest,
   TeamProfileInspectRequest,
   TeamProfileUpdateRequest,
+  TeamProfileMemberExecutionRefreshRequest,
   TeamProfileArchiveRequest,
   TeamMissionStartRequest,
   TeamMissionListRequest,
@@ -568,6 +569,10 @@ type TeamProfileUpdatePayload = Extract<
   SessionOutboundMessage,
   { type: "team.profile.update.response" }
 >["payload"];
+type TeamProfileMemberExecutionRefreshPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.profile.member.execution.refresh.response" }
+>["payload"];
 type TeamProfileArchivePayload = Extract<
   SessionOutboundMessage,
   { type: "team.profile.archive.response" }
@@ -798,6 +803,8 @@ export type GetTeamMethodologyOptions = TeamMissionsRequestOptions<TeamMethodolo
 export type ListTeamProfilesOptions = TeamMissionsRequestOptions<TeamProfileListRequest>;
 export type InspectTeamProfileOptions = TeamMissionsRequestOptions<TeamProfileInspectRequest>;
 export type UpdateTeamProfileOptions = TeamMissionsRequestOptions<TeamProfileUpdateRequest>;
+export type RefreshTeamMemberExecutionOptions =
+  TeamMissionsRequestOptions<TeamProfileMemberExecutionRefreshRequest>;
 export type ArchiveTeamProfileOptions = TeamMissionsRequestOptions<TeamProfileArchiveRequest>;
 export type StartTeamMissionOptions = TeamMissionsRequestOptions<TeamMissionStartRequest>;
 export type ListTeamMissionsOptions = TeamMissionsRequestOptions<TeamMissionListRequest>;
@@ -5392,6 +5399,10 @@ export class DaemonClient {
     return this.lastServerInfoMessage?.features?.teamMethodologies === true;
   }
 
+  supportsTeamProfileUpgrades(): boolean {
+    return this.lastServerInfoMessage?.features?.teamProfileUpgrades === true;
+  }
+
   async listTeamMethodologies(requestId?: string): Promise<TeamMethodologyListPayload> {
     this.requireTeamMethodologiesSupport();
     return this.sendNamespacedCorrelatedSessionRequest({
@@ -5438,10 +5449,28 @@ export class DaemonClient {
 
   async updateTeamProfile(options: UpdateTeamProfileOptions): Promise<TeamProfileUpdatePayload> {
     this.requireTeamMissionsSupport();
+    if (
+      options.methodologyUpgrade ||
+      options.memberAdds?.some((member) => "executionProfileSelection" in member) ||
+      options.memberUpdates?.some((member) => "executionProfileSelection" in member)
+    ) {
+      this.requireTeamProfileUpgradesSupport();
+    }
     const { requestId, ...params } = options;
     return this.sendNamespacedCorrelatedSessionRequest({
       requestId,
       message: { type: "team.profile.update.request", ...params },
+    });
+  }
+
+  async refreshTeamMemberExecution(
+    options: RefreshTeamMemberExecutionOptions,
+  ): Promise<TeamProfileMemberExecutionRefreshPayload> {
+    this.requireTeamProfileUpgradesSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.profile.member.execution.refresh.request", ...params },
     });
   }
 
@@ -5700,6 +5729,14 @@ export class DaemonClient {
     // the daemon floor advertises Team Missions. Missing capability is a hard gate.
     if (!this.supportsTeamMissions()) {
       throw new Error("Update the host to use Team Missions.");
+    }
+  }
+
+  private requireTeamProfileUpgradesSupport(): void {
+    // COMPAT(teamProfileUpgrades): added in v0.3.2, remove after 2027-02-13 once
+    // the daemon floor implements source refresh/rebind/detach and Methodology upgrades.
+    if (!this.supportsTeamProfileUpgrades()) {
+      throw new Error("Update the host to use Team profile upgrades.");
     }
   }
 

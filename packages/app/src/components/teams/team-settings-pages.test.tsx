@@ -4,7 +4,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MissionAttentionItem, TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
-import { testMissionMethodologySnapshot, testTeamMethodologyBinding } from "@/teams/test-fixtures";
+import {
+  TEST_METHODOLOGY,
+  testMissionMethodologySnapshot,
+  testTeamMethodologyBinding,
+} from "@/teams/test-fixtures";
 
 vi.stubGlobal("React", React);
 
@@ -71,6 +75,8 @@ vi.mock("@/screens/settings/settings-section", async () => {
 
 import {
   TeamAttentionSettingsPage,
+  TeamMembersSettingsPage,
+  TeamMethodologySettingsPage,
   TeamOverviewSettingsPage,
   type TeamSettingsPageActions,
 } from "./team-settings-pages";
@@ -225,6 +231,43 @@ function createMission(overrides: Partial<TeamMission> = {}): TeamMission {
 }
 
 const MISSION = createMission({ attentionItems: ATTENTION_KINDS.map(attention) });
+
+const SOURCED_TEAM: TeamV2 = {
+  ...TEAM,
+  activeMissionId: null,
+  skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
+  members: [
+    {
+      ...rosterMember("member-lead", "Lead", "lead"),
+      skillIds: ["typescript"],
+      executionProfileSource: {
+        kind: "agent_profile",
+        profileId: "profile-lead",
+        resolverVersion: 1,
+        appliedDigest: `sha256:${"0".repeat(64)}`,
+      },
+    },
+  ],
+};
+const REFRESH_MEMBER_EXECUTION = vi.fn();
+const MEMBER_REFRESH_ACTIONS: TeamSettingsPageActions = {
+  onRefreshMemberExecution: REFRESH_MEMBER_EXECUTION,
+};
+const MEMBER_REFRESH_ERROR_ACTIONS: TeamSettingsPageActions = {
+  ...MEMBER_REFRESH_ACTIONS,
+  actionError: "revision conflict",
+};
+const IDLE_METHODOLOGY_TEAM: TeamV2 = {
+  ...SOURCED_TEAM,
+  methodologyBinding: testTeamMethodologyBinding(["member-lead"]),
+};
+const ACTIVE_METHODOLOGY_TEAM: TeamV2 = {
+  ...IDLE_METHODOLOGY_TEAM,
+  activeMissionId: "mission-active",
+};
+const METHODOLOGY_UPGRADE_ACTIONS: TeamSettingsPageActions = {
+  onUpgradeMethodology: vi.fn(),
+};
 
 const ACTIONS = { onResolveAttention: vi.fn() };
 
@@ -431,5 +474,90 @@ describe("TeamOverviewSettingsPage", () => {
 
     expect(screen.queryByText("0d293cb7-9ed1-46ab-8432-f5bbb75df28e")).toBeNull();
     expect(screen.getByText("teams.v2Settings.team.leadUnavailable")).toBeTruthy();
+  });
+});
+
+describe("TeamMembersSettingsPage", () => {
+  afterEach(cleanup);
+
+  it("shows an available Agent Profile refresh action", () => {
+    REFRESH_MEMBER_EXECUTION.mockClear();
+
+    render(
+      <TeamMembersSettingsPage
+        team={SOURCED_TEAM}
+        mission={null}
+        agentProfiles={[{ id: "profile-lead", provider: "codex", model: "changed" }]}
+        actions={MEMBER_REFRESH_ACTIONS}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("team-member-member-lead-refresh"));
+
+    expect(REFRESH_MEMBER_EXECUTION).toHaveBeenCalledWith("member-lead");
+    expect(screen.getByText("teams.v2Settings.executionSource.update_available")).toBeTruthy();
+  });
+
+  it("renders a refresh failure on the Members page", () => {
+    render(
+      <TeamMembersSettingsPage
+        team={SOURCED_TEAM}
+        mission={null}
+        actions={MEMBER_REFRESH_ERROR_ACTIONS}
+      />,
+    );
+
+    expect(screen.getByTestId("team-settings-action-error").textContent).toBe("revision conflict");
+  });
+});
+
+describe("TeamMethodologySettingsPage", () => {
+  afterEach(cleanup);
+
+  it("allows an idle Team upgrade while a terminal historical Mission is selected", () => {
+    const next = {
+      ...TEST_METHODOLOGY,
+      ref: {
+        ...TEST_METHODOLOGY.ref,
+        version: "2",
+        digest: `sha256:${"1".repeat(64)}`,
+      },
+    };
+    render(
+      <TeamMethodologySettingsPage
+        team={IDLE_METHODOLOGY_TEAM}
+        mission={createMission({ status: "completed", completedAt: "2026-08-10T01:00:00.000Z" })}
+        methodologies={[TEST_METHODOLOGY, next]}
+        actions={METHODOLOGY_UPGRADE_ACTIONS}
+      />,
+    );
+
+    expect(
+      (screen.getByTestId(`team-methodology-upgrade-${next.ref.digest}`) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  it("blocks an active Team upgrade while a terminal historical Mission is selected", () => {
+    const next = {
+      ...TEST_METHODOLOGY,
+      ref: {
+        ...TEST_METHODOLOGY.ref,
+        version: "2",
+        digest: `sha256:${"2".repeat(64)}`,
+      },
+    };
+    render(
+      <TeamMethodologySettingsPage
+        team={ACTIVE_METHODOLOGY_TEAM}
+        mission={createMission({ status: "completed", completedAt: "2026-08-10T01:00:00.000Z" })}
+        methodologies={[TEST_METHODOLOGY, next]}
+        actions={METHODOLOGY_UPGRADE_ACTIONS}
+      />,
+    );
+
+    expect(
+      (screen.getByTestId(`team-methodology-upgrade-${next.ref.digest}`) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 });

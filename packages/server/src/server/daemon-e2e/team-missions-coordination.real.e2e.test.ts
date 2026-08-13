@@ -6,7 +6,6 @@ import path from "node:path";
 import type {
   MissionAssignmentContract,
   TeamMission,
-  TeamProfileMemberInput,
   TeamV2,
 } from "@getpaseo/protocol/team/v2-types";
 import pino from "pino";
@@ -14,7 +13,11 @@ import { describe, expect, test } from "vitest";
 
 import { CodexAppServerAgentClient } from "../agent/providers/codex-app-server-agent.js";
 import type { TeamPersistenceFaultPoint } from "../team/persistence/transactions.js";
-import { testCreateMember, testCreateMethodologyBinding } from "../team/test-fixtures.js";
+import {
+  testCreateMember,
+  testCreateMethodologyBinding,
+  type TestInlineTeamMemberInput,
+} from "../team/test-fixtures.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { createTestPaseoDaemon, type TestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import type { UsageLedger, UsageTotalsDelta } from "../usage-ledger/index.js";
@@ -67,8 +70,8 @@ interface ShapeDefinition {
   constraints: string[];
   acceptanceCriteria: string[];
   skills: Array<{ skillId: string; name: string; description: string }>;
-  lead: TeamProfileMemberInput;
-  members: TeamProfileMemberInput[];
+  lead: TestInlineTeamMemberInput;
+  members: TestInlineTeamMemberInput[];
   scaffold(workspaceRoot: string): void;
   minimumParallelAssignments: number;
   injectedFaultPoint: TeamPersistenceFaultPoint | null;
@@ -673,7 +676,7 @@ function recoveryShape(): ShapeDefinition {
   };
 }
 
-function profileMember(role: string, level: 4 | 5, skillIds: string[]): TeamProfileMemberInput {
+function profileMember(role: string, level: 4 | 5, skillIds: string[]): TestInlineTeamMemberInput {
   return {
     role,
     level,

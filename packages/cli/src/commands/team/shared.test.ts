@@ -40,6 +40,7 @@ describe("connecting for a team command", () => {
         teamMissions: true,
         globalTeamProfiles: true,
         teamMethodologies: true,
+        teamProfileUpgrades: true,
       }),
     );
 
@@ -73,12 +74,15 @@ describe("reading a v2 profile off the command line", () => {
         role: "lead",
         level: 5,
         skillIds: ["ts", "qa"],
-        executionProfile: {
-          provider: "codex",
-          model: "gpt-5.6-sol",
-          modeId: null,
-          thinkingOptionId: "high",
-          featureValues: { sandbox: "workspace-write", network: true },
+        executionProfileSelection: {
+          kind: "inline",
+          executionProfile: {
+            provider: "codex",
+            model: "gpt-5.6-sol",
+            modeId: null,
+            thinkingOptionId: "high",
+            featureValues: { sandbox: "workspace-write", network: true },
+          },
         },
       },
       {
@@ -86,12 +90,15 @@ describe("reading a v2 profile off the command line", () => {
         role: "reviewer",
         level: 3,
         skillIds: ["qa"],
-        executionProfile: {
-          provider: "claude",
-          model: null,
-          modeId: "plan",
-          thinkingOptionId: null,
-          featureValues: {},
+        executionProfileSelection: {
+          kind: "inline",
+          executionProfile: {
+            provider: "claude",
+            model: null,
+            modeId: "plan",
+            thinkingOptionId: null,
+            featureValues: {},
+          },
         },
       },
     ]);
@@ -111,12 +118,16 @@ describe("reading a v2 profile off the command line", () => {
       expect.objectContaining({
         role: "implementer",
         level: 4,
-        executionProfile: expect.objectContaining({ provider: "codex", model: "gpt-5.6-sol" }),
+        executionProfileSelection: expect.objectContaining({
+          executionProfile: expect.objectContaining({ provider: "codex", model: "gpt-5.6-sol" }),
+        }),
       }),
       expect.objectContaining({
         role: "implementer",
         level: 2,
-        executionProfile: expect.objectContaining({ provider: "claude", model: "sonnet" }),
+        executionProfileSelection: expect.objectContaining({
+          executionProfile: expect.objectContaining({ provider: "claude", model: "sonnet" }),
+        }),
       }),
     ]);
   });

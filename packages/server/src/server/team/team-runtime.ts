@@ -10,6 +10,7 @@ import {
   type CancelMissionInput,
   type CreateTeamInput,
   type ResolveMissionAttentionInput,
+  type RefreshTeamMemberExecutionInput,
   type StartMissionInput,
   type TeamMissionService,
   type UpdateTeamInput,
@@ -33,6 +34,7 @@ export type TeamRuntimeRequest = Extract<
       | "team.profile.list.request"
       | "team.profile.inspect.request"
       | "team.profile.update.request"
+      | "team.profile.member.execution.refresh.request"
       | "team.profile.archive.request"
       | "team.mission.start.request"
       | "team.mission.list.request"
@@ -73,6 +75,9 @@ export interface TeamRuntimeService {
   listTeams(includeArchived?: boolean): ReturnType<TeamMissionService["listTeams"]>;
   inspectTeam(teamId: string): ReturnType<TeamMissionService["inspectTeam"]>;
   updateTeam(input: UpdateTeamInput): ReturnType<TeamMissionService["updateTeam"]>;
+  refreshMemberExecution(
+    input: RefreshTeamMemberExecutionInput,
+  ): ReturnType<TeamMissionService["refreshMemberExecution"]>;
   archiveTeam(input: ArchiveTeamInput): ReturnType<TeamMissionService["archiveTeam"]>;
   startMission(input: StartMissionInput): ReturnType<TeamMissionService["startMission"]>;
   listMissions(
@@ -108,7 +113,12 @@ export interface TeamRuntimeSessionDeps {
 }
 
 export interface TeamRuntimeHostBoundary {
-  serverFeatures(): { teamMissions?: true; globalTeamProfiles?: true; teamMethodologies?: true };
+  serverFeatures(): {
+    teamMissions?: true;
+    globalTeamProfiles?: true;
+    teamMethodologies?: true;
+    teamProfileUpgrades?: true;
+  };
   sessionDeps(): TeamRuntimeSessionDeps | null;
 }
 
@@ -212,9 +222,19 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
     return this.state === "ready";
   }
 
-  serverFeatures(): { teamMissions?: true; globalTeamProfiles?: true; teamMethodologies?: true } {
+  serverFeatures(): {
+    teamMissions?: true;
+    globalTeamProfiles?: true;
+    teamMethodologies?: true;
+    teamProfileUpgrades?: true;
+  } {
     return this.isReady()
-      ? { teamMissions: true, globalTeamProfiles: true, teamMethodologies: true }
+      ? {
+          teamMissions: true,
+          globalTeamProfiles: true,
+          teamMethodologies: true,
+          teamProfileUpgrades: true,
+        }
       : {};
   }
 
@@ -264,29 +284,7 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
       request.type === "team.methodology.list.request" ||
       request.type === "team.methodology.get.request"
     ) {
-      const catalog = new MethodologyCatalog();
-      if (request.type === "team.methodology.list.request")
-        return {
-          type: "team.methodology.list.response",
-          payload: {
-            requestId: request.requestId,
-            methodologies: catalog.list(),
-            error: null,
-            errorCode: null,
-          },
-        };
-      const methodology = catalog.get(request.ref);
-      return {
-        type: "team.methodology.get.response",
-        payload: {
-          requestId: request.requestId,
-          methodology,
-          error: methodology
-            ? null
-            : `Methodology not found: ${request.ref.bundleId}@${request.ref.version}`,
-          errorCode: methodology ? null : "methodology_not_found",
-        },
-      };
+      return methodologyResponse(request);
     }
     const service = this.requireService();
     try {
@@ -326,6 +324,37 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
             request.requestId,
             await service.updateTeam(request),
           );
+        case "team.profile.member.execution.refresh.request": {
+          const result = await service.refreshMemberExecution({
+            idempotencyKey: request.idempotencyKey,
+            teamId: request.teamId,
+            memberId: request.memberId,
+            expectedTeamRevision: request.expectedTeamRevision,
+          });
+          return {
+            type: "team.profile.member.execution.refresh.response",
+            payload:
+              result.disposition === "updated"
+                ? {
+                    requestId: request.requestId,
+                    disposition: "updated",
+                    teamRevision: result.team.revision,
+                    appliedDigest: null,
+                    team: result.team,
+                    error: null,
+                    errorCode: null,
+                  }
+                : {
+                    requestId: request.requestId,
+                    disposition: "unchanged",
+                    teamRevision: result.teamRevision,
+                    appliedDigest: result.appliedDigest,
+                    team: null,
+                    error: null,
+                    errorCode: null,
+                  },
+          };
+        }
         case "team.profile.archive.request":
           return teamResponse(
             "team.profile.archive.response",
@@ -462,6 +491,38 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
   }
 }
 
+function methodologyResponse(
+  request: Extract<
+    TeamRuntimeRequest,
+    { type: "team.methodology.list.request" | "team.methodology.get.request" }
+  >,
+): SessionOutboundMessage {
+  const catalog = new MethodologyCatalog();
+  if (request.type === "team.methodology.list.request") {
+    return {
+      type: "team.methodology.list.response",
+      payload: {
+        requestId: request.requestId,
+        methodologies: catalog.list(),
+        error: null,
+        errorCode: null,
+      },
+    };
+  }
+  const methodology = catalog.get(request.ref);
+  return {
+    type: "team.methodology.get.response",
+    payload: {
+      requestId: request.requestId,
+      methodology,
+      error: methodology
+        ? null
+        : `Methodology not found: ${request.ref.bundleId}@${request.ref.version}`,
+      errorCode: methodology ? null : "methodology_not_found",
+    },
+  };
+}
+
 export function isTeamMissionsRequest(message: { type: string }): message is TeamRuntimeRequest {
   return TEAM_MISSIONS_REQUEST_TYPES.has(message.type);
 }
@@ -531,6 +592,8 @@ export function teamMissionsUnavailableResponse(
       return teamError("team.profile.inspect.response", request.requestId, reason, "unsupported");
     case "team.profile.update.request":
       return teamError("team.profile.update.response", request.requestId, reason, "unsupported");
+    case "team.profile.member.execution.refresh.request":
+      return memberExecutionRefreshError(request.requestId, reason, "unsupported");
     case "team.profile.archive.request":
       return teamError("team.profile.archive.response", request.requestId, reason, "unsupported");
     case "team.mission.start.request":
@@ -561,6 +624,7 @@ const TEAM_MISSIONS_REQUEST_TYPES = new Set<string>([
   "team.profile.list.request",
   "team.profile.inspect.request",
   "team.profile.update.request",
+  "team.profile.member.execution.refresh.request",
   "team.profile.archive.request",
   "team.mission.start.request",
   "team.mission.list.request",
@@ -600,6 +664,25 @@ function missionResponse(
     type,
     payload: { requestId, mission, error: null, errorCode: null },
   } as SessionOutboundMessage;
+}
+
+function memberExecutionRefreshError(
+  requestId: string,
+  error: string,
+  errorCode: string,
+): SessionOutboundMessage {
+  return {
+    type: "team.profile.member.execution.refresh.response",
+    payload: {
+      requestId,
+      disposition: null,
+      teamRevision: null,
+      appliedDigest: null,
+      team: null,
+      error,
+      errorCode,
+    },
+  };
 }
 
 function teamError(
@@ -719,6 +802,8 @@ function errorResponse(request: TeamRuntimeRequest, error: unknown): SessionOutb
       return teamError("team.profile.inspect.response", request.requestId, message, errorCode);
     case "team.profile.update.request":
       return teamError("team.profile.update.response", request.requestId, message, errorCode);
+    case "team.profile.member.execution.refresh.request":
+      return memberExecutionRefreshError(request.requestId, message, errorCode);
     case "team.profile.archive.request":
       return teamError("team.profile.archive.response", request.requestId, message, errorCode);
     case "team.mission.start.request":
@@ -740,6 +825,7 @@ function errorResponse(request: TeamRuntimeRequest, error: unknown): SessionOutb
 function errorCodeFor(error: unknown): string {
   if (error instanceof TeamApplicationError) return error.code;
   if (!(error instanceof Error)) return "internal_error";
+  if (error.name === "TeamProfileRevisionConflictError") return "team_revision_conflict";
   if (error.name.includes("RevisionConflict")) return "revision_conflict";
   if (error.name.includes("NotFound")) return "not_found";
   if (error.name.includes("Conflict")) return "conflict";
