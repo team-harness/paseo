@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
+import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Pressable, StyleSheet as RNStyleSheet, Text, View } from "react-native";
@@ -70,6 +71,7 @@ import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
+import { resolveNewWorkspaceSuccessRoute } from "@/utils/host-routes";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import {
   getHostProjectSourceDirectory,
@@ -176,6 +178,8 @@ interface NewWorkspaceScreenProps {
   projectId?: string;
   displayName?: string;
   draftId?: string;
+  success?: string;
+  successServerId?: string;
 }
 
 // A terminal launch sends argv, not a message: there is nothing to attach and
@@ -1543,6 +1547,8 @@ export function NewWorkspaceScreen({
   projectId,
   displayName: displayNameProp,
   draftId,
+  success,
+  successServerId,
 }: NewWorkspaceScreenProps) {
   const queryClient = useQueryClient();
   const { theme } = useUnistyles();
@@ -2057,8 +2063,16 @@ export function NewWorkspaceScreen({
             payload,
             ensureWorkspace,
             serverId: selectedServerId,
-            navigate: (targetServerId, workspaceId) =>
-              navigateToWorkspace({ serverId: targetServerId, workspaceId }),
+            navigate: (targetServerId, workspaceId) => {
+              const successRoute = resolveNewWorkspaceSuccessRoute({
+                success,
+                successServerId,
+                routeServerId: serverId,
+                targetServerId,
+              });
+              if (successRoute) router.replace(successRoute);
+              else navigateToWorkspace({ serverId: targetServerId, workspaceId });
+            },
           });
           return;
         }
@@ -2092,6 +2106,9 @@ export function NewWorkspaceScreen({
       ensureWorkspace,
       forkDraftSetup,
       launchTarget,
+      serverId,
+      success,
+      successServerId,
       selectedServerId,
       supportsForgeSearch,
       t,

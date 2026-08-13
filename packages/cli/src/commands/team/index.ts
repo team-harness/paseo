@@ -7,6 +7,7 @@ import {
   runMissionListCommand,
   runMissionStartCommand,
 } from "./mission.js";
+import { runMethodologyInspectCommand, runMethodologyListCommand } from "./methodology.js";
 import {
   runProfileArchiveCommand,
   runProfileCreateCommand,
@@ -53,6 +54,18 @@ export function createTeamCommand(): Command {
   const team = new Command("team").description("Manage Team profiles and Missions");
   const profile = team.command("profile").description("Manage reusable Team profiles");
   const mission = team.command("mission").description("Manage Team Missions");
+  const methodology = team.command("methodology").description("Inspect the Methodology catalog");
+  addJsonAndDaemonHostOptions(methodology.command("list").description("List Methodologies")).action(
+    withOutput(runMethodologyListCommand),
+  );
+  addJsonAndDaemonHostOptions(
+    methodology
+      .command("inspect")
+      .description("Inspect a Methodology")
+      .argument("<bundle-id>", "Exact bundle ID")
+      .argument("<version>", "Exact bundle version")
+      .argument("<digest>", "Exact sha256 digest"),
+  ).action(withOutput(runMethodologyInspectCommand));
 
   addJsonAndDaemonHostOptions(
     addMutationKey(

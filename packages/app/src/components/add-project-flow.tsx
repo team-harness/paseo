@@ -450,10 +450,11 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
           projectId: project.projectId,
           sourceDirectory: project.projectRootPath,
           displayName: project.projectDisplayName,
+          ...(request.successIntent ? { successIntent: request.successIntent } : {}),
         }),
       );
     },
-    [onClose],
+    [onClose, request.successIntent],
   );
 
   const openAddedProject = useCallback(
