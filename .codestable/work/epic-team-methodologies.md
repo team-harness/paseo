@@ -3,13 +3,8 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-7
-    state: dispatched
-    run: paseo-agent:03fd0ec5-c089-427e-909a-7153e0a7bdb6
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-preset-team-create
-    base: ea14cce90
-next_action: 等待 TM-ITEM-7 worker 完成 preset-driven Team create、定点验证与 fresh change review；交付后串行集成
+active_items: []
+next_action: 从 TM-ITEM-7 完成游标提交创建 Paseo 托管 worktree，并派发 TM-ITEM-8 Mission Methodology 冻结与编译
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -24,7 +19,7 @@ remote_publish: final
 - [x] TM-ITEM-4
 - [x] TM-ITEM-5
 - [x] TM-ITEM-6
-- [ ] TM-ITEM-7
+- [x] TM-ITEM-7
 - [ ] TM-ITEM-8
 - [ ] TM-ITEM-9
 - [ ] TM-ITEM-10
@@ -37,6 +32,22 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-7 完成。worker checkpoint
+  `478df99fed0136c0e7fbcd4ec5ec3575ccde505d`（父 `ea14cce90…`，tree
+  `37458eb22e34db5f3d1b76388167ed455ac909b2`）以无冲突 staged apply 集成；主流程核对完整 diff
+  SHA-256 `c8460a5e5fbce2b60a0337f1a376866b831d0e4b367d61821df27d782e863890` 未变化后，创建 Paseo
+  里程碑 `8a374cfbb4ac4878743fa676c8ee7d99c657a1bd`。最终功能交付 exact preset 驱动的 host-global Team
+  创建、用户确认 Role/Level/Skill/Lead、唯一 `clientMemberKey`、inline 或 Agent Profile execution source、
+  daemon 权威 materialization 与零 Mission/room/Agent 副作用；Team V1 未上线，因此没有兼容、fallback、
+  migration 或 dual-write。I-3 修复将 catalog ready 限定为表单打开前准入，打开后保留 catalog snapshot
+  与 form model，短暂断线与 retry 不再丢失用户输入。worker 报告核心定点 434/434、迁移集 276/276、
+  I-3 10/10、隔离 Playwright 1/1、daemon E2E 1/1、build/typecheck/lint/format/diff-check 全绿；主流程按
+  规则未重复测试，只重跑 build/server、全仓 typecheck、lint、目标格式与 commit hooks，全部通过。fresh
+  reviewer `2c5fdf33-5789-4590-b983-fbcb4444d4dd` Round 2 给出 0 blocking / 0 important。保留 owner
+  已冻结的 A4 advisory：edit UI 的 Agent Profile 来源显示仍为占位文本，但禁用态与提交 payload 正确；真实
+  provider coordination E2E 两次越过新 payload/schema 后等待外部 Mission 终态超时，不构成本项契约失败。
+  feature capsule 保留于 Team 目录，upstream-owned protocol/bootstrap/route/sidebar 文件仅承载 façade 与 wiring。
 
 - 2026-08-13：TM-ITEM-7 新 change-review 阶段 Round 3 清零 blocking 但发现 1 important I-3：catalog
   状态从 ready 短暂断线时，已打开且已填写的 Team create 表单会被卸载并重建，导致用户输入丢失。owner
