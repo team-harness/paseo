@@ -3,13 +3,8 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-8
-    state: dispatched
-    run: paseo-agent:cc85d821-e952-43a7-aeae-8681c292c3f0
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-mission-snapshot
-    base: 221955064
-next_action: 等待 TM-ITEM-8 worker 完成 Mission Methodology 冻结、编译、定点验证与 fresh change review；交付后串行集成
+active_items: []
+next_action: 从 TM-ITEM-8 完成游标提交创建三个 Paseo 托管 worktree，并行派发 TM-ITEM-9、TM-ITEM-10 与 TM-ITEM-11
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -25,7 +20,7 @@ remote_publish: final
 - [x] TM-ITEM-5
 - [x] TM-ITEM-6
 - [x] TM-ITEM-7
-- [ ] TM-ITEM-8
+- [x] TM-ITEM-8
 - [ ] TM-ITEM-9
 - [ ] TM-ITEM-10
 - [ ] TM-ITEM-11
@@ -37,6 +32,26 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-8 完成。worker checkpoint
+  `a012c51a9e44345067aa5ac0c0163ba85c532be3`（父 `221955064…`，tree
+  `21f8d0d42cb86f8266fc634939d2541402d58444`）以无冲突 staged apply 集成；主流程核对完整 diff
+  SHA-256 `3a70441531f2e6c4fb13562a5f5e4edfdfce9f5bfb56b7dbc5491d9ee4cb6fd5` 未变化后，创建 Paseo
+  里程碑 `606836df2c3feba29e16f051521c4607346623bd`。交付在 workspace fence 与 Team permit 内冻结
+  exact Methodology binding、Team/roster revision、结构 capability facts、canonical execution snapshot 与
+  source provenance，并持久化确定性的 Methodology snapshot、hard policy digest 与有序 prompt sections；
+  replay 早于 fresh compile/catalog read，Lead 与 Assignment prompt 只消费冻结 section。workspace/path、
+  time、runtime Agent id、live provider readiness 和 Agent Profile source 不进入 Methodology digest；启动、
+  恢复与普通 replan 不回读 Agent Profile catalog。worker 报告 29 个 changed Vitest 文件 620/620、
+  build/server、format、lint 全绿；其 worktree 的全仓 typecheck 被改动外 `draggable-list.native.tsx:122`
+  基线错误阻断，因此 checkpoint 使用 `--no-verify`。主流程集成后该错误未复现，build/server、全仓
+  typecheck、lint、目标格式与 commit hooks 全部通过。fresh reviewer
+  `c02f60cc-0268-42ae-a212-95b78c81ac9e` 使用 Claude Opus 5/ultracode，只读三轮从
+  3 blocking/4 important 收敛到 0 blocking/0 important；code-intel 精确 range 的两处映射告警经定点
+  追踪确认仅为脱敏 evidence projection 与冻结 roster 的计划消费链，无 live Team/Profile/catalog 回读。
+  保留三个 suggestion：provider error 后续可统一 typed error、清理死 `toolIds` 管道、改动外旧 daemon
+  Mission-start UI capability gate；均不扩大本项。feature capsule 位于 Team domain/compiler/persistence，
+  protocol/client/App/CLI/session 只承载必需 V1 façade 与 wiring；未添加兼容或 dual-write。
 
 - 2026-08-13：TM-ITEM-8 worker `cc85d821-e952-43a7-aeae-8681c292c3f0` 在原 session
   `019ffa03-aff4-7941-b2a9-d0e575a83285` 中因 provider 返回临时 503 中断。主流程核对 Agent 仍具备
