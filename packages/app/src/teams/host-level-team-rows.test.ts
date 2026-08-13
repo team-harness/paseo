@@ -3,15 +3,17 @@ import { describe, expect, it } from "vitest";
 import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 import { createTeamMissionsReplica } from "@/runtime/team-missions-sync/replica";
+import { testTeamMethodologyBinding } from "./test-fixtures";
 import { selectHostLevelTeamRows } from "./host-level-team-rows";
 
 function team(input: Pick<TeamV2, "id" | "name"> & Partial<TeamV2>): TeamV2 {
   return {
-    workspaceId: "workspace-removed",
+    creationWorkspaceId: "workspace-removed",
     leadMemberId: "member-lead",
     skills: [],
     lifecycle: "active",
     members: [],
+    methodologyBinding: testTeamMethodologyBinding(),
     activeMissionId: null,
     revision: 1,
     lifecycleRecoveryFailure: null,

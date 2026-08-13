@@ -28,6 +28,14 @@ export interface CreateTeamProfileRecordInput {
   profile: Omit<TeamV2, "revision" | "createdAt" | "updatedAt">;
 }
 
+export interface CreateTeamProfileFromFactoryInput {
+  idempotencyKey: string;
+  requestFingerprint: string;
+  create: () =>
+    | Omit<TeamV2, "revision" | "createdAt" | "updatedAt">
+    | Promise<Omit<TeamV2, "revision" | "createdAt" | "updatedAt">>;
+}
+
 export interface UpdateTeamProfileRecordInput {
   idempotencyKey?: string;
   requestFingerprint?: string;
@@ -308,7 +316,14 @@ export class TeamProfileStore {
   }
 
   async createIfAbsent(input: CreateTeamProfileRecordInput): Promise<StoredTeamProfile> {
-    assertRecordId(input.profile.id);
+    return this.createFromFactory({
+      idempotencyKey: input.idempotencyKey,
+      requestFingerprint: input.requestFingerprint,
+      create: () => input.profile,
+    });
+  }
+
+  async createFromFactory(input: CreateTeamProfileFromFactoryInput): Promise<StoredTeamProfile> {
     return this.serialize(`create:${input.idempotencyKey}`, async () => {
       const existing = await this.findByCreateKey(input.idempotencyKey);
       if (existing) {
@@ -318,20 +333,22 @@ export class TeamProfileStore {
         return existing;
       }
 
-      return this.serialize(`team:${input.profile.id}`, async () => {
-        const idState = await this.read(input.profile.id);
+      const profile = await input.create();
+      assertRecordId(profile.id);
+      return this.serialize(`team:${profile.id}`, async () => {
+        const idState = await this.read(profile.id);
         if (idState.kind === "unreadable") {
-          throw new TeamProfileUnreadableError(input.profile.id);
+          throw new TeamProfileUnreadableError(profile.id);
         }
         if (idState.kind === "success") {
-          throw new TeamProfileIdConflictError(input.profile.id);
+          throw new TeamProfileIdConflictError(profile.id);
         }
 
         const now = this.now();
         const created = StoredTeamProfileSchema.parse({
           storageRevision: 1,
           profile: {
-            ...input.profile,
+            ...profile,
             revision: 1,
             createdAt: now,
             updatedAt: now,
@@ -412,7 +429,7 @@ export class TeamProfileStore {
       }
       const changedIdentity =
         nextProfile.id !== current.profile.id ||
-        nextProfile.workspaceId !== current.profile.workspaceId ||
+        nextProfile.creationWorkspaceId !== current.profile.creationWorkspaceId ||
         nextProfile.createdAt !== current.profile.createdAt;
       if (changedIdentity) {
         throw new TeamProfileIdentityConflictError(input.teamId);

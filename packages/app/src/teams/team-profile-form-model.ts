@@ -5,6 +5,8 @@ import type {
   ProviderSnapshotEntry,
 } from "@getpaseo/protocol/agent-types";
 import type {
+  MethodologyDescriptor,
+  TeamProfileCreateMemberInput,
   TeamProfileMemberInput,
   TeamProfileMemberPatch,
 } from "@getpaseo/protocol/team/v2-rpc-schemas";
@@ -41,6 +43,7 @@ export interface TeamProfileFormProviderSnapshot extends TeamProfileProviderSnap
 export interface TeamProfileFormCreateSnapshot {
   mode: "create";
   workspaceId: string;
+  methodologies?: readonly MethodologyDescriptor[];
   hostSnapshot?: TeamProfileFormHostSnapshot;
   newRowKey: () => string;
   newIdempotencyKey: () => string;
@@ -66,6 +69,8 @@ export interface TeamProfileSkillRow {
 export interface TeamProfileMemberRow {
   key: string;
   memberId: string | null;
+  presetSlotId: string | null;
+  archetypeId: string | null;
   role: string;
   level: number;
   skillIds: string[];
@@ -73,6 +78,7 @@ export interface TeamProfileMemberRow {
   executionProfileDisplay: TeamExecutionProfileDisplay;
   executionProfileModified: boolean;
   executionProfileAvailability: "unresolved" | "available" | "unavailable" | "retained";
+  executionSelection: { kind: "inline" } | { kind: "agent_profile"; profileId: string };
   modeOptions: AgentMode[];
   availableThinkingOptions: NonNullable<AgentModelDefinition["thinkingOptions"]>;
 }
@@ -107,15 +113,29 @@ export type TeamProfileFormValidationIssue =
   | { kind: "unknown_member_skill"; rowKey: string; skillId: string }
   | { kind: "member_execution_profile_required"; rowKey: string }
   | { kind: "member_execution_profile_unavailable"; rowKey: string }
-  | { kind: "lead_required" };
+  | { kind: "lead_required" }
+  | { kind: "methodology_required" }
+  | { kind: "preset_required" };
 
 export interface TeamProfileCreatePayload {
   idempotencyKey: string;
   name: string;
-  workspaceId: string;
+  creationWorkspaceId: string;
   skills: TeamSkill[];
-  lead: TeamProfileMemberInput;
-  members: TeamProfileMemberInput[];
+  leadClientMemberKey: string;
+  members: TeamProfileCreateMemberInput[];
+  methodologyBinding: {
+    ref: MethodologyDescriptor["ref"];
+    presetId: string | null;
+    memberArchetypeBindings: Array<{
+      clientMemberKey: string;
+      archetypeId: string | null;
+    }>;
+    skillBindings: Array<{
+      teamSkillId: string;
+      methodologySkillId: string | null;
+    }>;
+  };
 }
 
 export interface TeamProfileUpdatePayload {
@@ -162,6 +182,9 @@ export interface TeamProfileFormState {
   skills: TeamProfileSkillRow[];
   members: TeamProfileMemberRow[];
   leadRowKey: string | null;
+  methodologies: readonly MethodologyDescriptor[];
+  selectedMethodology: MethodologyDescriptor | null;
+  selectedPresetId: string | null;
   idempotencyKey: string;
   providerResolution: "idle" | "pending" | "complete";
   providerScope: TeamProfileProviderSnapshotRequest | null;
@@ -180,17 +203,21 @@ export interface TeamProfileFormModel {
   setName: (value: string) => void;
   applyHostSnapshot: (snapshot: TeamProfileFormHostSnapshot) => void;
   applyProviderSnapshot: (snapshot: TeamProfileFormProviderSnapshot) => void;
+  setMethodology: (ref: MethodologyDescriptor["ref"]) => void;
   addSkill: () => void;
   removeSkill: (key: string) => void;
   setSkillId: (key: string, value: string) => void;
   setSkillName: (key: string, value: string) => void;
   setSkillDescription: (key: string, value: string) => void;
   addMember: () => void;
+  applyPreset: (presetId: string) => void;
   removeMember: (key: string) => void;
   setMemberRole: (key: string, value: string) => void;
   setMemberLevel: (key: string, value: number) => void;
   setMemberSkillIds: (key: string, skillIds: readonly string[]) => void;
   setMemberExecutionProfile: (key: string, profile: TeamExecutionProfile) => void;
+  setMemberAgentProfile: (key: string, profileId: string) => void;
+  setMemberInlineExecution: (key: string) => void;
   setMemberModel: (key: string, provider: AgentProvider, modelId: string) => void;
   setMemberMode: (key: string, modeId: string | null) => void;
   setMemberThinking: (key: string, thinkingOptionId: string | null) => void;
@@ -261,7 +288,11 @@ function validateMembers(
         issues.push({ kind: "unknown_member_skill", rowKey: member.key, skillId });
       }
     }
-    if (!member.executionProfile.provider) {
+    if (member.executionSelection.kind === "agent_profile") {
+      if (!member.executionSelection.profileId.trim()) {
+        issues.push({ kind: "member_execution_profile_required", rowKey: member.key });
+      }
+    } else if (!member.executionProfile.provider) {
       issues.push({ kind: "member_execution_profile_required", rowKey: member.key });
     } else if (
       member.executionProfileAvailability === "unavailable" ||
@@ -282,6 +313,10 @@ function validate(state: TeamProfileFormState): TeamProfileFormValidationIssue[]
   issues.push(...validateMembers(state.members, knownSkillIds));
   if (!state.leadRowKey || !state.members.some((member) => member.key === state.leadRowKey)) {
     issues.push({ kind: "lead_required" });
+  }
+  if (state.mode === "create") {
+    if (!state.selectedMethodology) issues.push({ kind: "methodology_required" });
+    if (!state.selectedPresetId) issues.push({ kind: "preset_required" });
   }
   return issues;
 }
@@ -511,16 +546,49 @@ function buildSubmitIntent(
   }
   const lead = state.members.find((member) => member.key === state.leadRowKey);
   if (!lead) throw new Error("Create Team profile form is missing its lead");
+  const methodology = state.selectedMethodology;
+  if (!methodology) throw new Error("Create Team profile form is missing its Methodology");
   return {
     mode: "create",
     attemptKey: state.idempotencyKey,
     payload: {
       idempotencyKey: state.idempotencyKey,
       name: state.name.trim(),
-      workspaceId: state.workspaceId.trim(),
+      creationWorkspaceId: state.workspaceId.trim(),
       skills: state.skills.map(toSkill),
-      lead: toMemberInput(lead),
-      members: state.members.filter((member) => member.key !== lead.key).map(toMemberInput),
+      leadClientMemberKey: lead.key,
+      members: state.members.map((member) => ({
+        clientMemberKey: member.key,
+        role: member.role.trim(),
+        level: member.level,
+        skillIds: normalizeSkillIds(member.skillIds),
+        executionProfileSelection:
+          member.executionSelection.kind === "agent_profile"
+            ? {
+                kind: "agent_profile" as const,
+                profileId: member.executionSelection.profileId.trim(),
+              }
+            : {
+                kind: "inline" as const,
+                executionProfile: toMemberInput(member).executionProfile,
+              },
+      })),
+      methodologyBinding: {
+        ref: structuredClone(methodology.ref),
+        presetId: state.selectedPresetId,
+        memberArchetypeBindings: state.members.map((member) => ({
+          clientMemberKey: member.key,
+          archetypeId: member.archetypeId,
+        })),
+        skillBindings: state.skills.map((skill) => ({
+          teamSkillId: skill.skillId.trim(),
+          methodologySkillId: methodology.skills.some(
+            (candidate) => candidate.skillId === skill.skillId.trim(),
+          )
+            ? skill.skillId.trim()
+            : null,
+        })),
+      },
     },
   };
 }
@@ -629,64 +697,102 @@ function applyAgentFormAction(
   };
 }
 
-export function openTeamProfileForm(snapshot: TeamProfileFormSnapshot): TeamProfileFormModel {
-  const listeners = new Set<() => void>();
-  let closed = false;
+function createInitialSkillRows(
+  profile: TeamV2 | null,
+  newRowKey: () => string,
+): TeamProfileSkillRow[] {
+  if (!profile) return [{ key: newRowKey(), skillId: "", name: "", description: "" }];
+  return profile.skills.map((skill) => ({
+    key: newRowKey(),
+    skillId: skill.skillId,
+    name: skill.name,
+    description: skill.description ?? "",
+  }));
+}
+
+function createInitialMemberRows(
+  profile: TeamV2 | null,
+  newRowKey: () => string,
+): TeamProfileMemberRow[] {
+  if (profile) {
+    return profile.members.map((member) => ({
+      key: newRowKey(),
+      memberId: member.memberId,
+      presetSlotId: null,
+      archetypeId:
+        profile.methodologyBinding.memberArchetypeBindings.find(
+          (binding) => binding.memberId === member.memberId,
+        )?.archetypeId ?? null,
+      role: member.role,
+      level: member.level,
+      skillIds: [...member.skillIds],
+      executionProfile: structuredClone(member.executionProfile),
+      executionProfileDisplay: captureExecutionProfileDisplay(member.executionProfile, []),
+      executionProfileModified: false,
+      executionProfileAvailability: "retained",
+      executionSelection: member.executionProfileSource
+        ? { kind: "agent_profile", profileId: member.executionProfileSource.profileId }
+        : { kind: "inline" },
+      modeOptions: [],
+      availableThinkingOptions: [],
+    }));
+  }
+  return [
+    {
+      key: newRowKey(),
+      memberId: null,
+      presetSlotId: null,
+      archetypeId: null,
+      role: "",
+      level: 3,
+      skillIds: [],
+      executionProfile: {
+        provider: null,
+        model: null,
+        modeId: null,
+        thinkingOptionId: null,
+        featureValues: {},
+      },
+      executionProfileDisplay: {
+        provider: null,
+        model: null,
+        mode: null,
+        thinking: null,
+      },
+      executionProfileModified: true,
+      executionProfileAvailability: "unresolved",
+      executionSelection: { kind: "inline" },
+      modeOptions: [],
+      availableThinkingOptions: [],
+    },
+  ];
+}
+
+function createFormInitialization(snapshot: TeamProfileFormSnapshot) {
   const profile = snapshot.mode === "edit" ? snapshot.profile : null;
-  const originalProfile = profile ? structuredClone(profile) : null;
   const workspaceId =
-    snapshot.mode === "edit" ? snapshot.profile.workspaceId : snapshot.workspaceId;
-  const skills: TeamProfileSkillRow[] = profile
-    ? profile.skills.map((skill) => ({
-        key: snapshot.newRowKey(),
-        skillId: skill.skillId,
-        name: skill.name,
-        description: skill.description ?? "",
-      }))
-    : [{ key: snapshot.newRowKey(), skillId: "", name: "", description: "" }];
-  const members: TeamProfileMemberRow[] = profile
-    ? profile.members.map((member) => ({
-        key: snapshot.newRowKey(),
-        memberId: member.memberId,
-        role: member.role,
-        level: member.level,
-        skillIds: [...member.skillIds],
-        executionProfile: structuredClone(member.executionProfile),
-        executionProfileDisplay: captureExecutionProfileDisplay(member.executionProfile, []),
-        executionProfileModified: false,
-        executionProfileAvailability: "retained",
-        modeOptions: [],
-        availableThinkingOptions: [],
-      }))
-    : [
-        {
-          key: snapshot.newRowKey(),
-          memberId: null,
-          role: "",
-          level: 3,
-          skillIds: [],
-          executionProfile: {
-            provider: null,
-            model: null,
-            modeId: null,
-            thinkingOptionId: null,
-            featureValues: {},
-          },
-          executionProfileDisplay: {
-            provider: null,
-            model: null,
-            mode: null,
-            thinking: null,
-          },
-          executionProfileModified: true,
-          executionProfileAvailability: "unresolved",
-          modeOptions: [],
-          availableThinkingOptions: [],
-        },
-      ];
+    snapshot.mode === "edit" ? snapshot.profile.creationWorkspaceId : snapshot.workspaceId;
+  const methodologies = snapshot.mode === "create" ? (snapshot.methodologies ?? []) : [];
+  const standardMethodology =
+    methodologies.find(
+      (methodology) =>
+        methodology.ref.bundleId === "paseo/standard" && methodology.ref.version === "1",
+    ) ?? null;
+  const skills = createInitialSkillRows(profile, snapshot.newRowKey);
+  const members = createInitialMemberRows(profile, snapshot.newRowKey);
   const leadRowKey = profile
     ? (members.find((member) => member.memberId === profile.leadMemberId)?.key ?? null)
     : (members[0]?.key ?? null);
+  const selectedMethodology = profile ? null : standardMethodology;
+  return { profile, workspaceId, methodologies, skills, members, leadRowKey, selectedMethodology };
+}
+
+export function openTeamProfileForm(snapshot: TeamProfileFormSnapshot): TeamProfileFormModel {
+  const listeners = new Set<() => void>();
+  let closed = false;
+  const { profile, workspaceId, methodologies, skills, members, leadRowKey, selectedMethodology } =
+    createFormInitialization(snapshot);
+  const originalProfile = profile ? structuredClone(profile) : null;
   const providerSnapshotRequest = toProviderSnapshotRequest(workspaceId, snapshot.hostSnapshot);
   let providerScope = providerSnapshotRequest;
   let providerEntries: readonly ProviderSnapshotEntry[] = [];
@@ -701,6 +807,9 @@ export function openTeamProfileForm(snapshot: TeamProfileFormSnapshot): TeamProf
       skills,
       members,
       leadRowKey,
+      methodologies,
+      selectedMethodology,
+      selectedPresetId: profile?.methodologyBinding.presetId ?? null,
       idempotencyKey: snapshot.newIdempotencyKey(),
       providerResolution: providerSnapshotRequest ? "pending" : "idle",
       providerScope: providerSnapshotRequest,
@@ -764,6 +873,18 @@ export function openTeamProfileForm(snapshot: TeamProfileFormSnapshot): TeamProf
         modelSelectorProviders: buildSelectableProviderSelectorProviders([...providerEntries]),
       });
     },
+    setMethodology(ref) {
+      if (state.mode !== "create") return;
+      const nextMethodology =
+        state.methodologies.find(
+          (candidate) =>
+            candidate.ref.bundleId === ref.bundleId &&
+            candidate.ref.version === ref.version &&
+            candidate.ref.digest === ref.digest,
+        ) ?? null;
+      if (!nextMethodology) return;
+      publish({ ...state, selectedMethodology: nextMethodology, selectedPresetId: null });
+    },
     addSkill() {
       publish({
         ...state,
@@ -771,6 +892,59 @@ export function openTeamProfileForm(snapshot: TeamProfileFormSnapshot): TeamProf
           ...state.skills,
           { key: snapshot.newRowKey(), skillId: "", name: "", description: "" },
         ],
+      });
+    },
+    applyPreset(presetId) {
+      if (state.mode !== "create" || !state.selectedMethodology) return;
+      const preset = state.selectedMethodology.presets.find(
+        (candidate) => candidate.presetId === presetId,
+      );
+      if (!preset) return;
+      const presetSkills = preset.skillIds.map((skillId) => {
+        const skill = state.selectedMethodology!.skills.find(
+          (candidate) => candidate.skillId === skillId,
+        );
+        return {
+          key: snapshot.newRowKey(),
+          skillId,
+          name: skill?.name ?? skillId,
+          description: skill?.description ?? "",
+        };
+      });
+      const presetMembers = preset.slots.map((slot) => ({
+        key: snapshot.newRowKey(),
+        memberId: null,
+        presetSlotId: slot.slotId,
+        archetypeId: slot.archetypeId,
+        role: slot.suggestedRole,
+        level: slot.suggestedLevel,
+        skillIds: [...slot.suggestedSkillIds],
+        executionProfile: {
+          provider: null,
+          model: null,
+          modeId: null,
+          thinkingOptionId: null,
+          featureValues: {},
+        },
+        executionProfileDisplay: {
+          provider: null,
+          model: null,
+          mode: null,
+          thinking: null,
+        },
+        executionProfileModified: true,
+        executionProfileAvailability: "unresolved" as const,
+        executionSelection: { kind: "inline" as const },
+        modeOptions: [],
+        availableThinkingOptions: [],
+      }));
+      publish({
+        ...state,
+        skills: presetSkills,
+        members: presetMembers,
+        leadRowKey:
+          presetMembers.find((member) => member.presetSlotId === preset.leadSlotId)?.key ?? null,
+        selectedPresetId: preset.presetId,
       });
     },
     removeSkill(key) {
@@ -808,6 +982,8 @@ export function openTeamProfileForm(snapshot: TeamProfileFormSnapshot): TeamProf
           {
             key: snapshot.newRowKey(),
             memberId: null,
+            presetSlotId: null,
+            archetypeId: null,
             role: "",
             level: 3,
             skillIds: [],
@@ -826,6 +1002,7 @@ export function openTeamProfileForm(snapshot: TeamProfileFormSnapshot): TeamProf
             },
             executionProfileModified: true,
             executionProfileAvailability: "unresolved",
+            executionSelection: { kind: "inline" },
             modeOptions: [],
             availableThinkingOptions: [],
           },
@@ -872,6 +1049,35 @@ export function openTeamProfileForm(snapshot: TeamProfileFormSnapshot): TeamProf
                   executionProfile,
                   providerEntries,
                 ),
+                executionProfileModified: true,
+                executionSelection: { kind: "inline" },
+              }
+            : member,
+        ),
+      });
+    },
+    setMemberAgentProfile(key, profileId) {
+      publish({
+        ...state,
+        members: state.members.map((member) =>
+          member.key === key
+            ? {
+                ...member,
+                executionSelection: { kind: "agent_profile", profileId },
+                executionProfileAvailability: "available",
+              }
+            : member,
+        ),
+      });
+    },
+    setMemberInlineExecution(key) {
+      publish({
+        ...state,
+        members: state.members.map((member) =>
+          member.key === key
+            ? {
+                ...member,
+                executionSelection: { kind: "inline" },
                 executionProfileModified: true,
               }
             : member,

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 import { useHostFeature } from "@/runtime/host-features";
+import type { MethodologyCatalogStatus } from "@/runtime/methodology-catalog-sync";
 import { useSessionStore } from "@/stores/session-store";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 
@@ -10,7 +11,9 @@ export interface WorkspaceTeamActions {
   cwd: string;
   profiles: TeamV2[];
   newTeam: {
+    requested: boolean;
     visible: boolean;
+    catalogStatus: MethodologyCatalogStatus;
     open: () => void;
     close: () => void;
   };
@@ -35,19 +38,24 @@ export function useWorkspaceTeamActions(input: {
 }): WorkspaceTeamActions {
   const supported = useHostFeature(input.serverId, "teamMissions");
   const globalTeamProfiles = useHostFeature(input.serverId, "globalTeamProfiles");
+  const teamMethodologies = useHostFeature(input.serverId, "teamMethodologies");
   const profileMap = useSessionStore(
     (state) => state.sessions[input.serverId]?.teamMissionsReplica.profiles,
   );
+  const catalogReplicaStatus = useSessionStore(
+    (state) => state.sessions[input.serverId]?.methodologyCatalogReplica.status,
+  );
+  const creationSupported = supported && globalTeamProfiles && teamMethodologies;
+  const catalogStatus: MethodologyCatalogStatus = creationSupported
+    ? (catalogReplicaStatus ?? "checking_host")
+    : "update_host";
+  const creationReady = creationSupported && catalogStatus === "ready";
   const profiles = useMemo(
     () =>
       supported
-        ? [...(profileMap?.values() ?? [])].filter(
-            (profile) =>
-              profile.lifecycle !== "archived" &&
-              (globalTeamProfiles || profile.workspaceId === input.workspaceId),
-          )
+        ? [...(profileMap?.values() ?? [])].filter((profile) => profile.lifecycle !== "archived")
         : [],
-    [globalTeamProfiles, input.workspaceId, profileMap, supported],
+    [profileMap, supported],
   );
   const [newTeamVisible, setNewTeamVisible] = useState(false);
   const [missionTarget, setMissionTarget] = useState<{
@@ -94,7 +102,9 @@ export function useWorkspaceTeamActions(input: {
     cwd: input.workspaceDirectory ?? "",
     profiles,
     newTeam: {
-      visible: supported && newTeamVisible && input.routeFocused,
+      requested: supported && newTeamVisible && input.routeFocused,
+      visible: creationReady && newTeamVisible && input.routeFocused,
+      catalogStatus,
       open: openNewTeam,
       close: closeNewTeam,
     },

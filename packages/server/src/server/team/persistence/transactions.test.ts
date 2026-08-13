@@ -14,6 +14,7 @@ import {
   TeamPersistenceTransactionConflictError,
   type TeamPersistenceFaultPoint,
 } from "./transactions.js";
+import { testTeamMethodologyBinding } from "../test-fixtures.js";
 
 const NOW = "2026-08-08T09:00:00.000Z";
 
@@ -21,7 +22,7 @@ function teamProfile(): Omit<TeamV2, "revision" | "createdAt" | "updatedAt"> {
   return {
     id: "team-transaction",
     name: "Transaction team",
-    workspaceId: "workspace-transaction",
+    creationWorkspaceId: "workspace-transaction",
     leadMemberId: "member-lead",
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
     members: [
@@ -40,6 +41,7 @@ function teamProfile(): Omit<TeamV2, "revision" | "createdAt" | "updatedAt"> {
         mentionHandle: "lead-engineer",
       },
     ],
+    methodologyBinding: testTeamMethodologyBinding(["member-lead"], ["typescript"]),
     lifecycle: "active",
     activeMissionId: null,
     lifecycleRecoveryFailure: null,
@@ -54,7 +56,7 @@ function startIntent(): TeamMissionStartIntent {
     idempotencyKey: "start-key-transaction",
     requestFingerprint: "start-fingerprint-transaction",
     expectedTeamRevision: 1,
-    workspaceId: profile.workspaceId,
+    workspaceId: profile.creationWorkspaceId,
     missionId: "mission-transaction",
     chatRoomId: "room-transaction",
     teamName: profile.name,
@@ -204,7 +206,7 @@ describe("TeamMissionPersistenceTransactions", () => {
       intent: { ...startIntent(), workspaceId: "workspace-delivery" },
     });
 
-    expect(persisted.profile.profile.workspaceId).toBe("workspace-transaction");
+    expect(persisted.profile.profile.creationWorkspaceId).toBe("workspace-transaction");
     expect(persisted.mission.mission.workspaceId).toBe("workspace-delivery");
   });
 

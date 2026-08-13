@@ -22,6 +22,7 @@ import {
   type AcceptedTestProviderTurn,
 } from "./team-missions-test-provider.js";
 import { StoredMissionSchema } from "../team/persistence/schemas.js";
+import { testCreateMember, testCreateMethodologyBinding } from "../team/test-fixtures.js";
 
 interface McpToolResult {
   structuredContent?: Record<string, unknown>;
@@ -75,22 +76,30 @@ describe("Team Missions real-daemon WebSocket contract", () => {
     expect(workspaceResult.workspace).not.toBeNull();
     const workspaceId = workspaceResult.workspace!.id;
 
+    const leadClientMemberKey = "technical-lead";
+    const members = [
+      testCreateMember(leadClientMemberKey, member("Technical lead", 5, ["integration"])),
+      testCreateMember("backend-engineer", member("Backend engineer", 4, ["backend"])),
+      testCreateMember("frontend-engineer", member("Frontend engineer", 4, ["frontend"])),
+      testCreateMember("quality-engineer", member("Quality engineer", 4, ["verification"])),
+    ];
+    const skills = [
+      { skillId: "backend", name: "Backend", description: null },
+      { skillId: "frontend", name: "Frontend", description: null },
+      { skillId: "integration", name: "Integration", description: null },
+      { skillId: "verification", name: "Verification", description: null },
+    ];
     const created = await client.createTeamProfile({
       idempotencyKey: "team-e2e-create",
       name: "Compiler delivery team",
-      workspaceId,
-      skills: [
-        { skillId: "backend", name: "Backend", description: null },
-        { skillId: "frontend", name: "Frontend", description: null },
-        { skillId: "integration", name: "Integration", description: null },
-        { skillId: "verification", name: "Verification", description: null },
-      ],
-      lead: member("Technical lead", 5, ["integration"]),
-      members: [
-        member("Backend engineer", 4, ["backend"]),
-        member("Frontend engineer", 4, ["frontend"]),
-        member("Quality engineer", 4, ["verification"]),
-      ],
+      creationWorkspaceId: workspaceId,
+      skills,
+      leadClientMemberKey,
+      members,
+      methodologyBinding: testCreateMethodologyBinding(
+        members.map((candidate) => candidate.clientMemberKey),
+        skills.map((skill) => skill.skillId),
+      ),
     });
     expect(created).toMatchObject({ error: null, errorCode: null });
     expect(created.team).not.toBeNull();

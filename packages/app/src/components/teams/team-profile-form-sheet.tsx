@@ -1,6 +1,8 @@
 import React, {
   useCallback,
+  useEffect,
   useMemo,
+  useState,
   useSyncExternalStore,
   type ReactElement,
   type ReactNode,
@@ -9,6 +11,8 @@ import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
+import type { AgentProfile } from "@getpaseo/protocol/messages";
+import type { MethodologyDescriptor } from "@getpaseo/protocol/team/v2-rpc-schemas";
 import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
@@ -25,6 +29,7 @@ import { Switch } from "@/components/ui/switch";
 import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/agent-controls/labels";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
+import type { MethodologyCatalogStatus } from "@/runtime/methodology-catalog-sync";
 import { submitTeamProfileForm } from "@/teams/submit-team-profile-form";
 import type {
   TeamProfileFormModel,
@@ -41,6 +46,11 @@ export interface TeamProfileFormSheetProps {
   workspaceId: string;
   cwd: string;
   profile?: TeamV2;
+  methodologies?: readonly MethodologyDescriptor[];
+  agentProfiles?: readonly AgentProfile[];
+  catalogStatus?: MethodologyCatalogStatus;
+  catalogError?: string | null;
+  onRetryCatalog?: () => void;
   visible: boolean;
   onClose: () => void;
   onSaved?: (teamId: string) => void;
@@ -54,10 +64,83 @@ function openKey(props: TeamProfileFormSheetProps): string {
   return props.profile ? `edit:${props.serverId}:${props.profile.id}` : `create:${props.serverId}`;
 }
 
+function catalogStateTestID(status: Exclude<MethodologyCatalogStatus, "ready">): string {
+  if (status === "failed") return "team-profile-catalog-failed";
+  if (status === "update_host") return "team-profile-catalog-update-host";
+  return "team-profile-catalog-loading";
+}
+
 /** A fresh Team profile form for each open; live provider data enters through the model adapter. */
 export function TeamProfileFormSheet(props: TeamProfileFormSheetProps): ReactElement | null {
   if (!props.visible) return null;
-  return <OpenTeamProfileFormSheet key={openKey(props)} {...props} />;
+  return <VisibleTeamProfileFormSheet key={openKey(props)} {...props} />;
+}
+
+function VisibleTeamProfileFormSheet(props: TeamProfileFormSheetProps): ReactElement {
+  const catalogReady =
+    Boolean(props.profile) || !props.catalogStatus || props.catalogStatus === "ready";
+  const [catalogAccepted, setCatalogAccepted] = useState(catalogReady);
+  useEffect(() => {
+    if (catalogReady) setCatalogAccepted(true);
+  }, [catalogReady]);
+  if (!catalogAccepted && props.catalogStatus && props.catalogStatus !== "ready") {
+    return <TeamProfileCatalogStateSheet {...props} catalogStatus={props.catalogStatus} />;
+  }
+  return <OpenTeamProfileFormSheet {...props} />;
+}
+
+function TeamProfileCatalogStateSheet({
+  catalogStatus,
+  catalogError,
+  onRetryCatalog,
+  visible,
+  onClose,
+}: TeamProfileFormSheetProps & { catalogStatus: Exclude<MethodologyCatalogStatus, "ready"> }) {
+  const { t } = useTranslation();
+  const size: FieldControlSize = useIsCompactFormFactor() ? "md" : "sm";
+  const failed = catalogStatus === "failed";
+  const updateHost = catalogStatus === "update_host";
+  const testID = catalogStateTestID(catalogStatus);
+  const message = failed
+    ? (catalogError ?? t("teams.v2.profile.catalogFailed"))
+    : t(updateHost ? "teams.v2.profile.catalogUpdateHost" : "teams.v2.profile.catalogLoading");
+  const header = useMemo<SheetHeader>(() => ({ title: t("teams.v2.profile.createTitle") }), [t]);
+  const footer = useMemo(
+    () => (
+      <View style={styles.footerActions}>
+        <Button variant="ghost" size={size} onPress={onClose}>
+          {t("common.actions.cancel")}
+        </Button>
+        {failed && onRetryCatalog ? (
+          <Button
+            variant="default"
+            size={size}
+            onPress={onRetryCatalog}
+            testID="team-profile-catalog-retry"
+          >
+            {t("common.actions.retry")}
+          </Button>
+        ) : null}
+      </View>
+    ),
+    [failed, onClose, onRetryCatalog, size, t],
+  );
+  return (
+    <AdaptiveModalSheet
+      visible={visible}
+      onClose={onClose}
+      header={header}
+      footer={footer}
+      desktopMaxWidth={640}
+      snapPoints={["52%", "72%"]}
+      contentStyle={styles.catalogState}
+      testID="team-profile-form-sheet"
+    >
+      <View style={styles.catalogState} testID={testID}>
+        <Text style={styles.catalogStateText}>{message}</Text>
+      </View>
+    </AdaptiveModalSheet>
+  );
 }
 
 function OpenTeamProfileFormSheet({
@@ -65,6 +148,11 @@ function OpenTeamProfileFormSheet({
   workspaceId,
   cwd,
   profile,
+  methodologies = [],
+  agentProfiles = [],
+  catalogStatus,
+  catalogError,
+  onRetryCatalog,
   visible,
   onClose,
   onSaved,
@@ -74,7 +162,9 @@ function OpenTeamProfileFormSheet({
   const client = useHostRuntimeClient(serverId);
   const snapshot = useMemo<TeamProfileFormSnapshot>(
     () => ({
-      ...(profile ? { mode: "edit" as const, profile } : { mode: "create" as const, workspaceId }),
+      ...(profile
+        ? { mode: "edit" as const, profile }
+        : { mode: "create" as const, workspaceId, methodologies }),
       hostSnapshot: { workspaceId, serverId, cwd },
       newRowKey: () => createLocalKey("row"),
       newIdempotencyKey: () => createLocalKey("app"),
@@ -146,6 +236,14 @@ function OpenTeamProfileFormSheet({
       contentStyle={styles.body}
       testID="team-profile-form-sheet"
     >
+      {!profile && catalogStatus && catalogStatus !== "ready" ? (
+        <TeamProfileCatalogNotice
+          catalogStatus={catalogStatus}
+          catalogError={catalogError}
+          onRetryCatalog={onRetryCatalog}
+          size={size}
+        />
+      ) : null}
       <Field label={t("teams.v2.profile.name")}>
         <FormTextInput
           value={state.name}
@@ -155,6 +253,10 @@ function OpenTeamProfileFormSheet({
           testID="team-profile-name"
         />
       </Field>
+
+      {state.mode === "create" ? (
+        <MethodologyFields model={model} state={state} size={size} />
+      ) : null}
 
       <FormSection title={t("teams.v2.profile.skills")}>
         {state.skills.map((skill, index) => (
@@ -188,6 +290,7 @@ function OpenTeamProfileFormSheet({
             index={index}
             size={size}
             providerLoading={providers.isLoading || providers.isFetching}
+            agentProfiles={agentProfiles}
           />
         ))}
         <Button
@@ -208,6 +311,129 @@ function OpenTeamProfileFormSheet({
         </Text>
       ) : null}
     </AdaptiveModalSheet>
+  );
+}
+
+function TeamProfileCatalogNotice({
+  catalogStatus,
+  catalogError,
+  onRetryCatalog,
+  size,
+}: {
+  catalogStatus: Exclude<MethodologyCatalogStatus, "ready">;
+  catalogError?: string | null;
+  onRetryCatalog?: () => void;
+  size: FieldControlSize;
+}): ReactElement {
+  const { t } = useTranslation();
+  const failed = catalogStatus === "failed";
+  const updateHost = catalogStatus === "update_host";
+  const message = failed
+    ? (catalogError ?? t("teams.v2.profile.catalogFailed"))
+    : t(updateHost ? "teams.v2.profile.catalogUpdateHost" : "teams.v2.profile.catalogLoading");
+  return (
+    <View style={styles.catalogNotice} testID={catalogStateTestID(catalogStatus)}>
+      <Text style={styles.catalogStateText}>{message}</Text>
+      {failed && onRetryCatalog ? (
+        <Button
+          variant="outline"
+          size={size}
+          onPress={onRetryCatalog}
+          testID="team-profile-catalog-retry"
+        >
+          {t("common.actions.retry")}
+        </Button>
+      ) : null}
+    </View>
+  );
+}
+
+function MethodologyFields({
+  model,
+  state,
+  size,
+}: {
+  model: TeamProfileFormModel;
+  state: TeamProfileFormState;
+  size: FieldControlSize;
+}): ReactElement {
+  const { t } = useTranslation();
+  const methodologyOptions = useMemo<SelectFieldOption<string>[]>(
+    () =>
+      state.methodologies.map((methodology) => ({
+        id: methodology.ref.digest,
+        value: methodology.ref.digest,
+        label: methodology.name,
+      })),
+    [state.methodologies],
+  );
+  const presetOptions = useMemo<SelectFieldOption<string>[]>(
+    () =>
+      (state.selectedMethodology?.presets ?? []).map((preset) => ({
+        id: preset.presetId,
+        value: preset.presetId,
+        label: preset.name,
+      })),
+    [state.selectedMethodology],
+  );
+  const preset = state.selectedMethodology?.presets.find(
+    (candidate) => candidate.presetId === state.selectedPresetId,
+  );
+  const methodologyDisplay = useMemo(
+    () => (state.selectedMethodology ? { label: state.selectedMethodology.name } : null),
+    [state.selectedMethodology],
+  );
+  const presetDisplay = useMemo(() => (preset ? { label: preset.name } : null), [preset]);
+  const changeMethodology = useCallback(
+    (digest: string) => {
+      const methodology = state.methodologies.find((candidate) => candidate.ref.digest === digest);
+      if (methodology) model.setMethodology(methodology.ref);
+    },
+    [model, state.methodologies],
+  );
+
+  return (
+    <FormSection title={t("teams.v2.profile.methodology")}>
+      <SelectField
+        label={t("teams.v2.profile.methodology")}
+        value={state.selectedMethodology?.ref.digest ?? null}
+        selectedDisplay={methodologyDisplay}
+        options={methodologyOptions}
+        onChange={changeMethodology}
+        placeholder={t("teams.v2.profile.selectMethodology")}
+        emptyText={t("teams.v2.profile.noMethodologies")}
+        size={size}
+        testID="team-profile-methodology"
+      />
+      <SelectField
+        label={t("teams.v2.profile.preset")}
+        value={state.selectedPresetId}
+        selectedDisplay={presetDisplay}
+        options={presetOptions}
+        onChange={model.applyPreset}
+        placeholder={t("teams.v2.profile.selectPreset")}
+        emptyText={t("teams.v2.profile.noPresets")}
+        size={size}
+        testID="team-profile-preset"
+      />
+      {state.selectedMethodology ? (
+        <View style={styles.methodologyFacts}>
+          <Text style={styles.methodologyFact}>
+            {t("teams.v2.profile.reviewPolicy", {
+              policy: state.selectedMethodology.policySummary.review.writableWorkstreams,
+            })}
+          </Text>
+          <Text style={styles.methodologyFact}>
+            {t("teams.v2.profile.finalVerificationRequired")}
+          </Text>
+          {state.selectedMethodology.playbooks.map((playbook) => (
+            <Text key={playbook.playbookId} style={styles.methodologyFact}>
+              {playbook.name}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+    </FormSection>
   );
 }
 
@@ -309,6 +535,7 @@ function MemberFields({
   index,
   size,
   providerLoading,
+  agentProfiles,
 }: {
   serverId: string;
   model: TeamProfileFormModel;
@@ -317,6 +544,7 @@ function MemberFields({
   index: number;
   size: FieldControlSize;
   providerLoading: boolean;
+  agentProfiles: readonly AgentProfile[];
 }): ReactElement {
   const { t } = useTranslation();
   const levelOptions = useMemo<SelectFieldOption<number>[]>(
@@ -395,6 +623,35 @@ function MemberFields({
     [member.key, model],
   );
   const remove = useCallback(() => model.removeMember(member.key), [member.key, model]);
+  const executionSourceOptions = useMemo<SelectFieldOption<string>[]>(
+    () => [
+      { id: "inline", value: "inline", label: t("teams.v2.profile.inlineExecution") },
+      ...agentProfiles.map((profile) => ({
+        id: `profile:${profile.id}`,
+        value: `profile:${profile.id}`,
+        label: profile.name,
+      })),
+    ],
+    [agentProfiles, t],
+  );
+  const executionSourceValue =
+    member.executionSelection.kind === "agent_profile"
+      ? `profile:${member.executionSelection.profileId}`
+      : "inline";
+  const executionSourceDisplay = executionSourceOptions.find(
+    (option) => option.value === executionSourceValue,
+  );
+  const selectedExecutionSourceDisplay = useMemo(
+    () => (executionSourceDisplay ? { label: executionSourceDisplay.label } : null),
+    [executionSourceDisplay],
+  );
+  const changeExecutionSource = useCallback(
+    (value: string) => {
+      if (value === "inline") model.setMemberInlineExecution(member.key);
+      else model.setMemberAgentProfile(member.key, value.slice("profile:".length));
+    },
+    [member.key, model],
+  );
   const levelDisplay = useMemo(
     () => ({ label: t("teams.v2.profile.levelValue", { level: member.level }) }),
     [member.level, t],
@@ -455,20 +712,35 @@ function MemberFields({
         </View>
       </Field>
 
-      <Field label={t("teams.v2.profile.model")}>
-        <CombinedModelSelector
-          providers={state.modelSelectorProviders}
-          selectedProvider={member.executionProfile.provider ?? ""}
-          selectedModel={member.executionProfile.model ?? ""}
-          onSelect={selectModel}
-          isLoading={providerLoading || state.providerResolution !== "complete"}
-          renderTrigger={renderModelTrigger}
-          triggerFill
-          serverId={serverId}
-        />
-      </Field>
+      <SelectField
+        label={t("teams.v2.profile.executionSource")}
+        value={executionSourceValue}
+        selectedDisplay={selectedExecutionSourceDisplay}
+        options={executionSourceOptions}
+        onChange={changeExecutionSource}
+        placeholder={t("teams.v2.profile.selectExecutionSource")}
+        emptyText={t("teams.v2.profile.noExecutionSources")}
+        disabled={state.mode === "edit"}
+        size={size}
+        testID={`team-profile-member-${index}-execution-source`}
+      />
 
-      {thinkingOptions.length > 0 ? (
+      {member.executionSelection.kind === "inline" ? (
+        <Field label={t("teams.v2.profile.model")}>
+          <CombinedModelSelector
+            providers={state.modelSelectorProviders}
+            selectedProvider={member.executionProfile.provider ?? ""}
+            selectedModel={member.executionProfile.model ?? ""}
+            onSelect={selectModel}
+            isLoading={providerLoading || state.providerResolution !== "complete"}
+            renderTrigger={renderModelTrigger}
+            triggerFill
+            serverId={serverId}
+          />
+        </Field>
+      ) : null}
+
+      {member.executionSelection.kind === "inline" && thinkingOptions.length > 0 ? (
         <SelectField
           label={t("teams.v2.profile.thinking")}
           value={member.executionProfile.thinkingOptionId}
@@ -482,7 +754,7 @@ function MemberFields({
         />
       ) : null}
 
-      {modeOptions.length > 0 ? (
+      {member.executionSelection.kind === "inline" && modeOptions.length > 0 ? (
         <SelectField
           label={t("teams.v2.profile.mode")}
           value={member.executionProfile.modeId}
@@ -638,6 +910,31 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+  },
+  methodologyFacts: {
+    gap: theme.spacing[1],
+  },
+  methodologyFact: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  catalogState: {
+    flex: 1,
+    minHeight: 160,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: theme.spacing[6],
+  },
+  catalogStateText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    textAlign: "center",
+  },
+  catalogNotice: {
+    gap: theme.spacing[3],
+    padding: theme.spacing[4],
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.borderRadius.lg,
   },
   error: {
     color: theme.colors.palette.red[300],

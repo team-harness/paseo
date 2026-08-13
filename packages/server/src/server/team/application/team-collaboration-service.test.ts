@@ -28,6 +28,11 @@ import {
   type TeamOperationPermit,
 } from "./team-operation-coordinator.js";
 import { buildLeadReplanDeliveries } from "./assignment-replan.js";
+import {
+  testCreateMember,
+  testCreateMethodologyBinding,
+  testTeamCreationDependencies,
+} from "../test-fixtures.js";
 
 const NOW = "2026-08-08T10:00:00.000Z";
 
@@ -412,24 +417,33 @@ describe("TeamCollaborationService queries", () => {
 
   test("reranks independent final verifiers by skills, level, and load", async () => {
     const fixture = createFixture(rootDirectory);
+    const clientMemberKeys = ["lead", "engineer", "quality"];
     const team = await fixture.lifecycle.createTeam({
       idempotencyKey: "create-team-with-verifiers",
       name: "Compiler verification team",
-      workspaceId: "workspace-sdk",
+      creationWorkspaceId: "workspace-sdk",
       skills: [
         { skillId: "typescript", name: "TypeScript", description: null },
         { skillId: "verification", name: "Verification", description: null },
       ],
-      lead: LEAD,
+      leadClientMemberKey: "lead",
       members: [
-        { ...MEMBER, skillIds: ["typescript", "verification"] },
-        {
+        testCreateMember("lead", LEAD),
+        testCreateMember("engineer", {
+          ...MEMBER,
+          skillIds: ["typescript", "verification"],
+        }),
+        testCreateMember("quality", {
           ...MEMBER,
           role: "Quality engineer",
           level: 4,
           skillIds: ["typescript", "verification"],
-        },
+        }),
       ],
+      methodologyBinding: testCreateMethodologyBinding(clientMemberKeys, [
+        "typescript",
+        "verification",
+      ]),
     });
     const mission = await fixture.lifecycle.startMission({
       idempotencyKey: "start-verifier-ranking",
@@ -3835,6 +3849,7 @@ function createFixture(
       },
     },
     operations,
+    ...testTeamCreationDependencies(),
     finishQuiescence: { prepareEvidence: async () => undefined },
   });
   const historyReads: Array<{ agentId: string; limit: number }> = [];
@@ -4013,13 +4028,15 @@ async function createMission(service: TeamMissionService) {
 }
 
 function createTeam(service: TeamMissionService) {
+  const clientMemberKeys = ["lead", "engineer"];
   return service.createTeam({
     idempotencyKey: "create-team",
     name: "Compiler team",
-    workspaceId: "workspace-sdk",
+    creationWorkspaceId: "workspace-sdk",
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
-    lead: LEAD,
-    members: [MEMBER],
+    leadClientMemberKey: "lead",
+    members: [testCreateMember("lead", LEAD), testCreateMember("engineer", MEMBER)],
+    methodologyBinding: testCreateMethodologyBinding(clientMemberKeys, ["typescript"]),
   });
 }
 

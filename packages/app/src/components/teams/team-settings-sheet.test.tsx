@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
+import { testTeamMethodologyBinding } from "@/teams/test-fixtures";
 
 vi.stubGlobal("React", React);
 
@@ -114,11 +115,12 @@ import { TeamSettingsSheet } from "./team-settings-sheet";
 const TEAM: TeamV2 = {
   id: "team-1",
   name: "Release Team",
-  workspaceId: "workspace-1",
+  creationWorkspaceId: "workspace-1",
   leadMemberId: "member-lead",
   skills: [],
   lifecycle: "active",
   members: [],
+  methodologyBinding: testTeamMethodologyBinding(),
   activeMissionId: "mission-1",
   revision: 3,
   lifecycleRecoveryFailure: null,

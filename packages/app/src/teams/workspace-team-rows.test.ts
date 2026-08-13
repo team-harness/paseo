@@ -5,12 +5,14 @@ import type { TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
 import { createTeamMissionsReplica } from "@/runtime/team-missions-sync/replica";
 
 import { selectWorkspaceTeamRows } from "./workspace-team-rows";
+import { testTeamMethodologyBinding } from "./test-fixtures";
 
 function team(overrides: Partial<TeamV2> = {}): TeamV2 {
   return {
     id: "team-1",
     name: "Disk usage",
-    workspaceId: "ws-1",
+    creationWorkspaceId: "ws-1",
+    methodologyBinding: testTeamMethodologyBinding(),
     lifecycle: "active",
     activeMissionId: "mission-1",
     ...overrides,
@@ -42,7 +44,6 @@ describe("the Teams a workspace shows in the sidebar", () => {
       replica([team()], [mission({ workspaceId: "ws-2" })]),
       "ws-2",
       ["ws-1", "ws-2"],
-      true,
     );
 
     expect(rows).toEqual([{ teamId: "team-1", name: "Disk usage", statusBucket: "running" }]);
@@ -50,33 +51,27 @@ describe("the Teams a workspace shows in the sidebar", () => {
 
   it("drops an archived Team", () => {
     expect(
-      selectWorkspaceTeamRows(replica([team({ lifecycle: "archived" })]), "ws-1", ["ws-1"], true),
+      selectWorkspaceTeamRows(replica([team({ lifecycle: "archived" })]), "ws-1", ["ws-1"]),
     ).toEqual([]);
   });
 
   it("keeps an active Team that has no Mission yet", () => {
     expect(
-      selectWorkspaceTeamRows(replica([team({ activeMissionId: null })]), "ws-1", ["ws-1"], true),
+      selectWorkspaceTeamRows(replica([team({ activeMissionId: null })]), "ws-1", ["ws-1"]),
     ).toEqual([{ teamId: "team-1", name: "Disk usage", statusBucket: null }]);
   });
 
   it("does not place an active Team until its Mission is hydrated", () => {
-    expect(selectWorkspaceTeamRows(replica([team()]), "ws-1", ["ws-1"], true)).toEqual([]);
+    expect(selectWorkspaceTeamRows(replica([team()]), "ws-1", ["ws-1"])).toEqual([]);
   });
 
   it("places an idle Team in the stable first live workspace when its creation workspace is gone", () => {
-    const idle = team({ activeMissionId: null, workspaceId: "ws-archived" });
+    const idle = team({ activeMissionId: null, creationWorkspaceId: "ws-archived" });
 
-    expect(selectWorkspaceTeamRows(replica([idle]), "ws-a", ["ws-z", "ws-a"], true)).toEqual([
+    expect(selectWorkspaceTeamRows(replica([idle]), "ws-a", ["ws-z", "ws-a"])).toEqual([
       { teamId: "team-1", name: "Disk usage", statusBucket: null },
     ]);
-    expect(selectWorkspaceTeamRows(replica([idle]), "ws-z", ["ws-z", "ws-a"], true)).toEqual([]);
-  });
-
-  it("does not move a legacy idle Team off its archived creation workspace", () => {
-    const idle = team({ activeMissionId: null, workspaceId: "ws-a" });
-
-    expect(selectWorkspaceTeamRows(replica([idle]), "ws-b", ["ws-b"], false)).toEqual([]);
+    expect(selectWorkspaceTeamRows(replica([idle]), "ws-z", ["ws-z", "ws-a"])).toEqual([]);
   });
 
   it("uses the active Mission state instead of member Agent activity", () => {
@@ -84,7 +79,6 @@ describe("the Teams a workspace shows in the sidebar", () => {
       replica([team()], [mission({ status: "needs_attention" })]),
       "ws-1",
       ["ws-1"],
-      true,
     );
 
     expect(rows[0]?.statusBucket).toBe("needs_input");
@@ -99,7 +93,6 @@ describe("the Teams a workspace shows in the sidebar", () => {
       ]),
       "ws-1",
       ["ws-1"],
-      true,
     );
 
     expect(rows.map((row) => row.teamId)).toEqual(["a", "c", "b"]);

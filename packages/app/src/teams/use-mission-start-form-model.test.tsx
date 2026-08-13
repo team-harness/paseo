@@ -5,13 +5,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 import type { MissionStartFormSnapshot } from "./mission-start-form-model";
+import { testTeamMethodologyBinding } from "./test-fixtures";
 import { useMissionStartFormModel } from "./use-mission-start-form-model";
 
 function team(revision: number): TeamV2 {
   return {
     id: "team-a",
     name: revision === 1 ? "Platform" : "Platform updated",
-    workspaceId: "workspace-a",
+    creationWorkspaceId: "workspace-a",
     leadMemberId: "member-lead",
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
     members: [
@@ -30,6 +31,7 @@ function team(revision: number): TeamV2 {
         mentionHandle: "lead",
       },
     ],
+    methodologyBinding: testTeamMethodologyBinding(["member-lead"], ["typescript"]),
     lifecycle: "active",
     activeMissionId: null,
     lifecycleRecoveryFailure: null,
@@ -46,7 +48,6 @@ function snapshot(selected: TeamV2): MissionStartFormSnapshot {
     serverId: "server-a",
     workspaceId: "workspace-a",
     access: "supported",
-    globalTeamProfiles: false,
     selectedTeam: selected,
     teams: [selected],
     newRowKey: () => `row-${++row}`,

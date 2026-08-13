@@ -58,17 +58,9 @@ function OpenMissionStartSheet({
   const profileMap = useSessionStore(
     (state) => state.sessions[serverId]?.teamMissionsReplica.profiles,
   );
-  const globalTeamProfiles = serverInfo?.features?.globalTeamProfiles === true;
-  // COMPAT(globalTeamProfiles): added in v0.3.1, remove the creation-workspace filter after
-  // 2027-02-11 once the daemon floor is >= v0.3.1 and always advertises globalTeamProfiles.
   const teams = useMemo(
-    () =>
-      [...(profileMap?.values() ?? [])].filter(
-        (profile) =>
-          profile.lifecycle !== "archived" &&
-          (globalTeamProfiles || profile.workspaceId === workspaceId),
-      ),
-    [globalTeamProfiles, profileMap, workspaceId],
+    () => [...(profileMap?.values() ?? [])].filter((profile) => profile.lifecycle !== "archived"),
+    [profileMap],
   );
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
@@ -80,13 +72,12 @@ function OpenMissionStartSheet({
       serverId,
       workspaceId,
       access,
-      globalTeamProfiles,
       selectedTeam,
       teams,
       newRowKey: () => createLocalKey("row"),
       newIdempotencyKey: () => createLocalKey("app"),
     }),
-    [access, globalTeamProfiles, selectedTeam, serverId, teams, workspaceId],
+    [access, selectedTeam, serverId, teams, workspaceId],
   );
   const model = useMissionStartFormModel(snapshot);
   const state = useSyncExternalStore(model.subscribe, model.getState, model.getState);

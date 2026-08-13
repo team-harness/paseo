@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AgentProfile } from "@getpaseo/protocol/messages";
+
+import { TEST_METHODOLOGY } from "@/teams/test-fixtures";
 
 const noop = () => {};
 
@@ -16,8 +19,15 @@ vi.mock("@/constants/layout", () => ({
 vi.mock("@/components/adaptive-modal-sheet", async () => {
   const ReactModule = await import("react");
   return {
-    AdaptiveModalSheet: ({ visible, children }: { visible: boolean; children: React.ReactNode }) =>
-      visible ? ReactModule.createElement("div", null, children) : null,
+    AdaptiveModalSheet: ({
+      visible,
+      children,
+      footer,
+    }: {
+      visible: boolean;
+      children: React.ReactNode;
+      footer?: React.ReactNode;
+    }) => (visible ? ReactModule.createElement("div", null, children, footer) : null),
     AdaptiveTextInput: ReactModule.forwardRef(
       (
         props: React.InputHTMLAttributes<HTMLInputElement>,
@@ -36,16 +46,47 @@ vi.mock("@/components/ui/form-field", async () => {
   return {
     Field: ({ children }: { children: React.ReactNode }) =>
       ReactModule.createElement("div", null, children),
-    FormTextInput: ({ testID, value }: { testID?: string; value?: string }) =>
-      ReactModule.createElement("input", { "data-testid": testID, value, readOnly: true }),
+    FormTextInput: ({
+      testID,
+      value,
+      onChangeText,
+    }: {
+      testID?: string;
+      value?: string;
+      onChangeText?: (value: string) => void;
+    }) =>
+      ReactModule.createElement("input", {
+        "data-testid": testID,
+        value,
+        onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
+          onChangeText?.(event.target.value),
+      }),
   };
 });
 
 vi.mock("@/components/ui/select-field", async () => {
   const ReactModule = await import("react");
   return {
-    SelectField: ({ testID }: { testID?: string }) =>
-      ReactModule.createElement("div", { "data-testid": testID }),
+    SelectField: ({
+      testID,
+      value,
+      options = [],
+      onChange,
+    }: {
+      testID?: string;
+      value?: string | number | null;
+      options?: Array<{ value: string | number }>;
+      onChange?: (value: string | number) => void;
+    }) =>
+      ReactModule.createElement("button", {
+        "data-testid": testID,
+        "data-value": value ?? "",
+        type: "button",
+        onClick: () => {
+          const selection = options.at(-1);
+          if (selection) onChange?.(selection.value);
+        },
+      }),
     SelectFieldTrigger: ({ testID }: { testID?: string }) =>
       ReactModule.createElement("div", { "data-testid": testID }),
   };
@@ -54,8 +95,20 @@ vi.mock("@/components/ui/select-field", async () => {
 vi.mock("@/components/ui/button", async () => {
   const ReactModule = await import("react");
   return {
-    Button: ({ children, testID }: { children: React.ReactNode; testID?: string }) =>
-      ReactModule.createElement("button", { "data-testid": testID, type: "button" }, children),
+    Button: ({
+      children,
+      testID,
+      onPress,
+    }: {
+      children: React.ReactNode;
+      testID?: string;
+      onPress?: () => void;
+    }) =>
+      ReactModule.createElement(
+        "button",
+        { "data-testid": testID, type: "button", onClick: onPress },
+        children,
+      ),
   };
 });
 
@@ -90,6 +143,13 @@ vi.mock("@/teams/use-team-profile-form-provider-snapshot", () => ({
 
 import { TeamProfileFormSheet } from "./team-profile-form-sheet";
 
+const TEST_AGENT_PROFILE = {
+  id: "profile-reviewer",
+  name: "Reviewer profile",
+  provider: "codex",
+  model: "gpt-5",
+} as AgentProfile;
+
 describe("TeamProfileFormSheet", () => {
   afterEach(cleanup);
 
@@ -111,5 +171,116 @@ describe("TeamProfileFormSheet", () => {
     expect(screen.getByTestId("team-profile-member-0-model-trigger")).toBeTruthy();
     expect(screen.queryByTestId("team-profile-task")).toBeNull();
     expect(screen.queryByTestId("team-profile-member-0-responsibility")).toBeNull();
+  });
+
+  it.each([
+    ["loading", "team-profile-catalog-loading"],
+    ["failed", "team-profile-catalog-failed"],
+    ["update_host", "team-profile-catalog-update-host"],
+  ] as const)(
+    "does not construct an empty create form while the catalog is %s",
+    (status, testID) => {
+      render(
+        <TeamProfileFormSheet
+          serverId="server-a"
+          workspaceId="workspace-a"
+          cwd="/work/a"
+          catalogStatus={status}
+          visible
+          onClose={noop}
+        />,
+      );
+
+      expect(screen.getByTestId(testID)).toBeTruthy();
+      expect(screen.queryByTestId("team-profile-name")).toBeNull();
+    },
+  );
+
+  it("offers retry when the Methodology catalog load fails", () => {
+    const retry = vi.fn();
+    render(
+      <TeamProfileFormSheet
+        serverId="server-a"
+        workspaceId="workspace-a"
+        cwd="/work/a"
+        catalogStatus="failed"
+        catalogError="catalog unavailable"
+        onRetryCatalog={retry}
+        visible
+        onClose={noop}
+      />,
+    );
+
+    expect(screen.getByText("catalog unavailable")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("team-profile-catalog-retry"));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the opened form and its catalog snapshot across reconnect", () => {
+    const retry = vi.fn();
+    const props = {
+      serverId: "server-a",
+      workspaceId: "workspace-a",
+      cwd: "/work/a",
+      methodologies: [TEST_METHODOLOGY],
+      agentProfiles: [TEST_AGENT_PROFILE],
+      visible: true,
+      onClose: noop,
+      onRetryCatalog: retry,
+    } as const;
+    const { rerender } = render(<TeamProfileFormSheet {...props} catalogStatus="ready" />);
+
+    fireEvent.change(screen.getByTestId("team-profile-name"), {
+      target: { value: "Durable Team" },
+    });
+    fireEvent.click(screen.getByTestId("team-profile-preset"));
+    fireEvent.change(screen.getByTestId("team-profile-member-0-role"), {
+      target: { value: "Review lead" },
+    });
+    fireEvent.click(screen.getByTestId("team-profile-member-0-execution-source"));
+
+    expect((screen.getByTestId("team-profile-skill-0-name") as HTMLInputElement).value).toBe(
+      "TypeScript",
+    );
+    expect((screen.getByTestId("team-profile-member-0-role") as HTMLInputElement).value).toBe(
+      "Review lead",
+    );
+    expect(
+      screen.getByTestId("team-profile-member-0-execution-source").getAttribute("data-value"),
+    ).toBe("profile:profile-reviewer");
+
+    rerender(<TeamProfileFormSheet {...props} catalogStatus="connecting" />);
+    expect((screen.getByTestId("team-profile-name") as HTMLInputElement).value).toBe(
+      "Durable Team",
+    );
+    expect((screen.getByTestId("team-profile-skill-0-name") as HTMLInputElement).value).toBe(
+      "TypeScript",
+    );
+    expect((screen.getByTestId("team-profile-member-0-role") as HTMLInputElement).value).toBe(
+      "Review lead",
+    );
+
+    rerender(
+      <TeamProfileFormSheet
+        {...props}
+        catalogStatus="failed"
+        catalogError="catalog disconnected"
+      />,
+    );
+    expect(screen.getByText("catalog disconnected")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("team-profile-catalog-retry"));
+    expect(retry).toHaveBeenCalledOnce();
+    expect((screen.getByTestId("team-profile-name") as HTMLInputElement).value).toBe(
+      "Durable Team",
+    );
+
+    rerender(<TeamProfileFormSheet {...props} catalogStatus="ready" />);
+    expect((screen.getByTestId("team-profile-name") as HTMLInputElement).value).toBe(
+      "Durable Team",
+    );
+    expect(screen.getByTestId("team-profile-preset").getAttribute("data-value")).toBe("standard");
+    expect(
+      screen.getByTestId("team-profile-member-0-execution-source").getAttribute("data-value"),
+    ).toBe("profile:profile-reviewer");
   });
 });

@@ -1,5 +1,8 @@
 import type { Command } from "commander";
-import type { TeamProfileMemberPatch } from "@getpaseo/protocol/team/v2-rpc-schemas";
+import type {
+  MethodologyDescriptor,
+  TeamProfileMemberPatch,
+} from "@getpaseo/protocol/team/v2-rpc-schemas";
 import type { TeamExecutionProfile } from "@getpaseo/protocol/team/v2-types";
 import type { CommandError, ListResult, SingleResult } from "../../output/index.js";
 import {
@@ -88,6 +91,38 @@ function repeated(inputs: string[] | undefined, label: string): Map<string, stri
     values.set(memberId, [...(values.get(memberId) ?? []), value]);
   }
   return values;
+}
+
+function methodologySelection(value: string | undefined): { bundleId: string; version: string } {
+  const selected = value?.trim() || "paseo/standard@1";
+  const separator = selected.lastIndexOf("@");
+  const bundleId = separator === -1 ? "" : selected.slice(0, separator);
+  const version = separator === -1 ? "" : selected.slice(separator + 1);
+  if (!bundleId || !version) {
+    throw {
+      code: "INVALID_METHODOLOGY",
+      message: "--methodology must use bundle-id@version",
+    } satisfies CommandError;
+  }
+  return { bundleId, version };
+}
+
+function exactMethodology(
+  methodologies: readonly MethodologyDescriptor[],
+  selection: { bundleId: string; version: string },
+): MethodologyDescriptor {
+  const matches = methodologies.filter(
+    (methodology) =>
+      methodology.ref.bundleId === selection.bundleId &&
+      methodology.ref.version === selection.version,
+  );
+  if (matches.length !== 1) {
+    throw {
+      code: "METHODOLOGY_NOT_FOUND",
+      message: `Methodology ${selection.bundleId}@${selection.version} was not found`,
+    } satisfies CommandError;
+  }
+  return matches[0]!;
 }
 
 function patchLevel(rawLevel: string | undefined, memberId: string): number | undefined {
@@ -219,6 +254,7 @@ interface MemberDeclarationOptions extends TeamCommandOptions {
   mode?: string[];
   thinkingOption?: string[];
   feature?: string[];
+  agentProfile?: string[];
 }
 
 function memberDeclarations(
@@ -234,6 +270,7 @@ function memberDeclarations(
     modes: options.mode,
     thinkingOptions: options.thinkingOption,
     features: options.feature,
+    agentProfiles: options.agentProfile,
   };
 }
 
@@ -243,6 +280,10 @@ export interface ProfileCreateOptions extends MemberDeclarationOptions {
   lead?: string[];
   member?: string[];
   idempotencyKey?: string;
+  methodology?: string;
+  preset?: string;
+  archetype?: string[];
+  methodologySkill?: string[];
 }
 
 export async function runProfileCreateCommand(
@@ -261,13 +302,82 @@ export async function runProfileCreateCommand(
   assertMemberSkillsExist(skills, profiles);
   const { client } = await connectTeamClient(options.host);
   try {
+    const catalog = await client.listTeamMethodologies();
+    if (catalog.error) throw toTeamResponseError("list Team Methodologies", catalog);
+    const methodology = exactMethodology(
+      catalog.methodologies,
+      methodologySelection(options.methodology),
+    );
+    const presetId = required(options.preset, "--preset");
+    if (!methodology.presets.some((preset) => preset.presetId === presetId)) {
+      throw {
+        code: "METHODOLOGY_PRESET_NOT_FOUND",
+        message: `Preset "${presetId}" does not exist in ${methodology.ref.bundleId}@${methodology.ref.version}`,
+      } satisfies CommandError;
+    }
+    const memberKeys = new Set(profiles.map((profile) => profile.clientMemberKey));
+    const archetypes = singles(options.archetype, "archetype");
+    const profileSources = singles(options.agentProfile, "agent-profile");
+    const methodologySkills = singles(options.methodologySkill, "methodology-skill");
+    for (const key of archetypes.keys()) {
+      if (!memberKeys.has(key)) {
+        throw {
+          code: "UNKNOWN_MEMBER_DECLARATION_KEY",
+          message: `archetype was provided for unknown member declaration key "${key}"`,
+        } satisfies CommandError;
+      }
+    }
+    for (const [key, archetypeId] of archetypes) {
+      if (!methodology.archetypes.some((archetype) => archetype.archetypeId === archetypeId)) {
+        throw {
+          code: "METHODOLOGY_ARCHETYPE_NOT_FOUND",
+          message: `Archetype "${archetypeId}" for member "${key}" does not exist in ${methodology.ref.bundleId}@${methodology.ref.version}`,
+        } satisfies CommandError;
+      }
+    }
+    for (const [teamSkillId, methodologySkillId] of methodologySkills) {
+      if (!skills.some((skill) => skill.skillId === teamSkillId)) {
+        throw {
+          code: "UNKNOWN_TEAM_SKILL",
+          message: `Methodology Skill binding references undeclared Team skill "${teamSkillId}"`,
+        } satisfies CommandError;
+      }
+      if (!methodology.skills.some((skill) => skill.skillId === methodologySkillId)) {
+        throw {
+          code: "METHODOLOGY_SKILL_NOT_FOUND",
+          message: `Methodology Skill "${methodologySkillId}" does not exist in ${methodology.ref.bundleId}@${methodology.ref.version}`,
+        } satisfies CommandError;
+      }
+    }
+    const members = profiles.map(({ clientMemberKey, executionProfile, ...facts }) => ({
+      clientMemberKey,
+      ...facts,
+      executionProfileSelection: profileSources.has(clientMemberKey)
+        ? {
+            kind: "agent_profile" as const,
+            profileId: profileSources.get(clientMemberKey)!,
+          }
+        : { kind: "inline" as const, executionProfile },
+    }));
     const payload = await client.createTeamProfile({
       idempotencyKey: options.idempotencyKey?.trim() || newIdempotencyKey(),
       name: required(name, "name"),
-      workspaceId: required(options.workspace, "--workspace"),
+      creationWorkspaceId: required(options.workspace, "--workspace"),
       skills,
-      lead: profiles[0]!,
-      members: profiles.slice(1),
+      leadClientMemberKey: profiles[0]!.clientMemberKey,
+      members,
+      methodologyBinding: {
+        ref: methodology.ref,
+        presetId,
+        memberArchetypeBindings: members.map((member) => ({
+          clientMemberKey: member.clientMemberKey,
+          archetypeId: archetypes.get(member.clientMemberKey) ?? null,
+        })),
+        skillBindings: skills.map((skill) => ({
+          teamSkillId: skill.skillId,
+          methodologySkillId: methodologySkills.get(skill.skillId) ?? null,
+        })),
+      },
     });
     if (!payload.team) throw toTeamResponseError("create the Team profile", payload);
     return { type: "single", data: toTeamProfileRow(payload.team), schema: teamProfileSchema };

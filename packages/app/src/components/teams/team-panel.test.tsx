@@ -4,17 +4,19 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
+import { testTeamMethodologyBinding } from "@/teams/test-fixtures";
 
 vi.stubGlobal("React", React);
 
 const TEAM: TeamV2 = {
   id: "team-1",
   name: "Platform Team",
-  workspaceId: "workspace-removed",
+  creationWorkspaceId: "workspace-removed",
   leadMemberId: "member-lead",
   skills: [],
   lifecycle: "active",
   members: [],
+  methodologyBinding: testTeamMethodologyBinding(),
   activeMissionId: null,
   revision: 1,
   lifecycleRecoveryFailure: null,

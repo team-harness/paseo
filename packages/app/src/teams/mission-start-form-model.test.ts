@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 import { openMissionStartForm } from "./mission-start-form-model";
+import { testTeamMethodologyBinding } from "./test-fixtures";
 
 function team(overrides: Partial<TeamV2> = {}): TeamV2 {
   return {
     id: "team-a",
     name: "Platform",
-    workspaceId: "workspace-a",
+    creationWorkspaceId: "workspace-a",
     leadMemberId: "member-lead",
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
     members: [
@@ -27,6 +28,7 @@ function team(overrides: Partial<TeamV2> = {}): TeamV2 {
         mentionHandle: "lead",
       },
     ],
+    methodologyBinding: testTeamMethodologyBinding(["member-lead"], ["typescript"]),
     lifecycle: "active",
     activeMissionId: null,
     lifecycleRecoveryFailure: null,
@@ -38,14 +40,13 @@ function team(overrides: Partial<TeamV2> = {}): TeamV2 {
   };
 }
 
-function open(selectedTeam: TeamV2 | null = team(), globalTeamProfiles = false) {
+function open(selectedTeam: TeamV2 | null = team()) {
   let row = 0;
   let key = 0;
   return openMissionStartForm({
     serverId: "server-a",
     workspaceId: "workspace-a",
     access: "supported",
-    globalTeamProfiles,
     selectedTeam,
     teams: selectedTeam ? [selectedTeam] : [],
     newRowKey: () => `row-${++row}`,
@@ -87,8 +88,8 @@ describe("Mission start form model", () => {
   });
 
   it("offers host-global Teams and binds the request to the current workspace", () => {
-    const selected = team({ workspaceId: "workspace-b" });
-    const form = open(selected, true);
+    const selected = team({ creationWorkspaceId: "workspace-b" });
+    const form = open(selected);
     form.setObjective("Ship it");
     form.setAcceptanceCriterion("row-1", "All checks pass");
 
@@ -99,19 +100,22 @@ describe("Mission start form model", () => {
     });
   });
 
-  it("keeps creation-workspace filtering and the old request shape without the feature", () => {
-    const form = open(null, false);
+  it("keeps every host-global Team and always binds the Mission to the current workspace", () => {
+    const form = open(null);
     form.applyTeams({
       serverId: "server-a",
       workspaceId: "workspace-a",
-      teams: [team(), team({ id: "team-b", workspaceId: "workspace-b" })],
+      teams: [team(), team({ id: "team-b", creationWorkspaceId: "workspace-b" })],
     });
     form.selectTeam("team-a");
     form.setObjective("Ship it");
     form.setAcceptanceCriterion("row-1", "All checks pass");
 
-    expect(form.getState().teamOptions.map((option) => option.teamId)).toEqual(["team-a"]);
-    expect(form.prepareSubmission()).not.toHaveProperty("workspaceId");
+    expect(form.getState().teamOptions.map((option) => option.teamId)).toEqual([
+      "team-a",
+      "team-b",
+    ]);
+    expect(form.prepareSubmission()).toMatchObject({ workspaceId: "workspace-a" });
   });
 
   it("ignores late lists from another host or workspace", () => {

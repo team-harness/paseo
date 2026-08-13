@@ -19,6 +19,7 @@ import {
   TeamProfileUnreadableError,
 } from "./profile-store.js";
 import type { TeamArchiveIntent, TeamMissionStartIntent } from "./schemas.js";
+import { testTeamMethodologyBinding } from "../test-fixtures.js";
 
 const NOW = "2026-08-08T06:00:00.000Z";
 
@@ -26,7 +27,7 @@ function teamProfile(): Omit<TeamV2, "revision" | "createdAt" | "updatedAt"> {
   return {
     id: "team-storage",
     name: "Storage team",
-    workspaceId: "workspace-storage",
+    creationWorkspaceId: "workspace-storage",
     leadMemberId: "member-lead",
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
     members: [
@@ -45,6 +46,7 @@ function teamProfile(): Omit<TeamV2, "revision" | "createdAt" | "updatedAt"> {
         mentionHandle: "lead-engineer",
       },
     ],
+    methodologyBinding: testTeamMethodologyBinding(["member-lead"], ["typescript"]),
     lifecycle: "active",
     activeMissionId: null,
     lifecycleRecoveryFailure: null,
@@ -59,7 +61,7 @@ function startIntent(): TeamMissionStartIntent {
     idempotencyKey: "start-key-storage",
     requestFingerprint: "start-fingerprint-storage",
     expectedTeamRevision: 1,
-    workspaceId: profile.workspaceId,
+    workspaceId: profile.creationWorkspaceId,
     missionId: "mission-storage",
     chatRoomId: "room-storage",
     teamName: profile.name,

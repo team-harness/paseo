@@ -42,7 +42,7 @@ describe("reusable team", () => {
     const team = {
       id: "team-platform",
       name: "Platform team",
-      workspaceId: "wks-platform",
+      creationWorkspaceId: "wks-platform",
       leadMemberId: "member-architect",
       skills: [
         {
@@ -67,6 +67,16 @@ describe("reusable team", () => {
           mentionHandle: "architect",
         },
       ],
+      methodologyBinding: {
+        ref: {
+          bundleId: "paseo/standard",
+          version: "1",
+          digest: `sha256:${"0".repeat(64)}`,
+        },
+        presetId: "lean-delivery",
+        memberArchetypeBindings: [{ memberId: "member-architect", archetypeId: "lead" }],
+        skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
+      },
       lifecycle: "active" as const,
       activeMissionId: null,
       lifecycleRecoveryFailure: null,
