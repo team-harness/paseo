@@ -3,9 +3,14 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 等待 owner 决定是否重新授权 TM-ITEM-11；当前冻结候选不得修改、提交、集成或再次审查
-blocked_by: "TM-ITEM-11 唯一 fresh review 为 2 blocking / 0 important：scheduler 恢复路径没有消费完整 approved/waived outcome 验证，伪造的结构合法 gate 可放行依赖工作"
+active_items:
+  - item: TM-ITEM-11
+    state: dispatched
+    run: subagent:/root/tm11_recovery
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-gates
+    base: 1206406b9
+next_action: TM-ITEM-11 仅修复 scheduler 对 approved/waived outcome 的权威验证消费边界，完成定点验证与一次 fresh review
+blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -32,6 +37,14 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：owner 明确授权恢复 TM-ITEM-11。主流程复用原 Paseo worktree 与实现 worker，不创建
+  重复 worktree；修复范围只包含上一轮两条 scheduler recovery blocker。领域层提供一条可由 scheduler
+  消费的权威 outcome evidence 判定，必须覆盖 Mission、accepted-turn facts、历史 Workstream contract、
+  waiver/Attention/policy/controller/reason；scheduler 的 Workstream acceptance 与 dependent dispatch
+  都使用该判定，不再仅以 `outcome.kind !== pending` 推断 settled。不得提前实现 TM-ITEM-12、添加
+  兼容/迁移/fallback/dual-write，或扩大 upstream 热文件接线。修复后执行定点测试、静态门与一次
+  fresh 独立 change review；通过前不创建 checkpoint 或集成。
 
 - 2026-08-13：TM-ITEM-11 新正确性阶段按 owner 的单次审查边界停止，Epic 整体暂停。唯一
   fresh reviewer 首选 Paseo agent-scoped `b220b27c-0980-457e-ba33-c961e9f6dda4`，但在读取目标前因
