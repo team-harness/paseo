@@ -38,6 +38,13 @@ remote_publish: final
 
 ## 临时决策与证据
 
+- 2026-08-13：TM-ITEM-7 原 change-review 阶段在 Round 3 达到上限并返回 2 blocking / 0 important：
+  两个 daemon E2E 仍发送旧 Team create payload，真实 Zod 解析失败；浏览器 Team 创建证据未显式选择
+  preset，提交按钮保持禁用。owner 选择方案 A，授权在原 worktree 进入新的独立 change-review 阶段。
+  修复仅迁移两处 daemon E2E 到最终 V1 payload，并让 Playwright 在填写 roster 前显式选择 preset；不得
+  自动应用 preset、放宽产品 schema、增加兼容路径或处理 reviewer 的 advisory A1–A6。新阶段必须创建
+  fresh 独立 reviewer，最多三轮，达到 0 blocking / 0 important 后才能生成单父 checkpoint 并交回集成。
+
 - 2026-08-13：TM-ITEM-7 派发到 Paseo 托管 worktree
   `/Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-preset-team-create`，run identity 为
   `03fd0ec5-c089-427e-909a-7153e0a7bdb6`，基线为 TM-ITEM-6 完成游标提交 `ea14cce90`。worker 使用
