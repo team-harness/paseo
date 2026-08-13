@@ -3,8 +3,13 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 从 TM-ITEM-7 完成游标提交创建 Paseo 托管 worktree，并派发 TM-ITEM-8 Mission Methodology 冻结与编译
+active_items:
+  - item: TM-ITEM-8
+    state: dispatched
+    run: paseo-agent:cc85d821-e952-43a7-aeae-8681c292c3f0
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-mission-snapshot
+    base: 221955064
+next_action: 等待 TM-ITEM-8 worker 完成 Mission Methodology 冻结、编译、定点验证与 fresh change review；交付后串行集成
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +37,19 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-8 派发到 Paseo 托管 worktree
+  `/Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-mission-snapshot`，run identity 为
+  `cc85d821-e952-43a7-aeae-8681c292c3f0`，基线为 TM-ITEM-7 完成游标提交 `221955064`。worker 使用
+  `codex/gpt-5.6-sol` / full-access/high，负责在 workspace fence 与 Team permit 内、任何 start
+  intent/Mission/room/Lead 副作用前冻结 exact binding、Team revision、结构 roster/capability facts、
+  canonical execution snapshot/source provenance，并用内嵌 typed catalog 编译 Methodology snapshot 与
+  有序 prompt sections。replay 必须早于 fresh compile/catalog read；start/recovery/replan 不读取 Agent
+  Profile catalog，workspace/path/time/runtime id/provider readiness/source provenance 不进入 Methodology
+  digest。Team V1 未上线，禁止兼容、fallback、migration 与 dual-write。范围止于 TM-ITEM-8，不提前做
+  archive takeover、Team binding refresh 或 review gate；feature capsule 拥有领域实现，upstream 热文件仅做
+  façade/wiring。worker 必须完成 TDD、定点跨端证据、code-intel review 与 fresh Paseo agent-scoped Claude
+  独立 review，且不得写 Epic/游标、push/publish 或重启 6767。
 
 - 2026-08-13：TM-ITEM-7 完成。worker checkpoint
   `478df99fed0136c0e7fbcd4ec5ec3575ccde505d`（父 `ea14cce90…`，tree
