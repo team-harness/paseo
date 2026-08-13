@@ -3,8 +3,23 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 从 TM-ITEM-8 完成游标提交创建三个 Paseo 托管 worktree，并行派发 TM-ITEM-9、TM-ITEM-10 与 TM-ITEM-11
+active_items:
+  - item: TM-ITEM-9
+    state: dispatched
+    run: paseo-agent:3ad3855a-0d2e-4e87-a626-be6214480594
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-start-recovery
+    base: 1206406b9
+  - item: TM-ITEM-10
+    state: dispatched
+    run: paseo-agent:d24b74a5-b936-486a-9698-8dd9b0c5db61
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-profile-upgrade
+    base: 1206406b9
+  - item: TM-ITEM-11
+    state: dispatched
+    run: paseo-agent:44892a51-1b68-450a-96c1-9a923263ebbd
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-gates
+    base: 1206406b9
+next_action: 等待 TM-ITEM-9/10/11 workers 完成并按完成顺序串行集成；每项集成后重算其余分支冲突与验证面
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +47,18 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：owner gate 批准的唯一并行批次 TM-ITEM-9/10/11 已从同一个 TM-ITEM-8 完成游标基线
+  `1206406b9` 派发到三个 Paseo 托管 worktree。TM-ITEM-9 run
+  `3ad3855a-0d2e-4e87-a626-be6214480594` 使用 `codex/gpt-5.6-sol` / full-access/high，负责
+  冻结 intent 恢复与 workspace archive takeover；TM-ITEM-10 run
+  `d24b74a5-b936-486a-9698-8dd9b0c5db61` 与 TM-ITEM-11 run
+  `44892a51-1b68-450a-96c1-9a923263ebbd` 使用 `claude/claude-opus-5` /
+  bypassPermissions/high，分别负责 idle Team Methodology/execution source 升级与持久化独立审查门禁。
+  首次并行创建三个 Codex worker 时，三个 app-server 均在进入实现前因共享 `~/.codex` SQLite state
+  初始化竞争退出；顺序启动 TM-ITEM-9 成功后，第二个 Codex 仍复现同一失败，因此按 `cs-epic` 能力回退
+  使用 Claude Opus 启动另外两项。失败实例没有开始实现、不计 review 轮次，也未改变 worktree 基线。
+  三个 worker 都不得写 Epic/游标或提前实现后续 item；主流程保持唯一游标 writer，并按完成顺序串行集成。
 
 - 2026-08-13：TM-ITEM-8 完成。worker checkpoint
   `a012c51a9e44345067aa5ac0c0163ba85c532be3`（父 `221955064…`，tree
