@@ -26,6 +26,105 @@ export const TeamProfileMemberPatchSchema = z.object({
 });
 export type TeamProfileMemberPatch = z.infer<typeof TeamProfileMemberPatchSchema>;
 
+export const MethodologyIdentifierSchema = z.string().regex(/^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$/);
+export const MethodologyVersionSchema = z.string().regex(/^[1-9][0-9]*$/);
+export const ExactMethodologyRefSchema = z.object({
+  bundleId: MethodologyIdentifierSchema,
+  version: MethodologyVersionSchema,
+  digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+});
+export type ExactMethodologyRef = z.infer<typeof ExactMethodologyRefSchema>;
+const MethodologySkillDescriptorSchema = z.object({
+  skillId: MethodologyIdentifierSchema,
+  name: z.string().min(1),
+  description: z.string().nullable(),
+});
+const MethodologyArchetypeDescriptorSchema = z.object({
+  archetypeId: MethodologyIdentifierSchema,
+  name: z.string().min(1),
+  description: z.string().min(1),
+  maxMembers: z.number().int().positive().nullable(),
+  playbookIds: z.array(MethodologyIdentifierSchema),
+  suggestedLevel: TeamMemberLevelSchema,
+  suggestedSkillIds: z.array(MethodologyIdentifierSchema),
+});
+const MethodologyPresetDescriptorSchema = z.object({
+  presetId: MethodologyIdentifierSchema,
+  name: z.string().min(1),
+  description: z.string().min(1),
+  leadSlotId: MethodologyIdentifierSchema,
+  skillIds: z.array(MethodologyIdentifierSchema),
+  slots: z.array(
+    z.object({
+      slotId: MethodologyIdentifierSchema,
+      archetypeId: MethodologyIdentifierSchema,
+      suggestedLevel: TeamMemberLevelSchema,
+      suggestedRole: z.string().min(1),
+      suggestedSkillIds: z.array(MethodologyIdentifierSchema),
+    }),
+  ),
+});
+const MethodologyPlaybookDescriptorSchema = z.object({
+  playbookId: MethodologyIdentifierSchema,
+  name: z.string().min(1),
+  description: z.string().min(1),
+  audience: z.array(z.enum(["lead", "delivery", "review", "verification"])),
+});
+const MethodologyPolicySummarySchema = z.object({
+  review: z.object({
+    writableWorkstreams: z.enum(["lead_discretion", "independent_required"]),
+    independentMeans: z.literal("different_from_subject_owner"),
+    unavailable: z.literal("review_gate_reviewer_unavailable_attention"),
+    unknownCapabilities: z.literal("review_gate_capability_unknown_attention"),
+    operatorWaiver: z.enum(["allowed_with_reason", "forbidden"]),
+  }),
+  verification: z.object({
+    required: z.literal(true),
+    mutableScope: z.literal("read_only"),
+    reviewerSelection: z.literal("prefer_independent_record_exception"),
+    operatorWaiver: z.literal("forbidden"),
+  }),
+});
+export const MethodologyDescriptorSchema = z.object({
+  ref: ExactMethodologyRefSchema,
+  name: z.string().min(1),
+  description: z.string().min(1),
+  license: z.string().min(1),
+  presets: z.array(MethodologyPresetDescriptorSchema),
+  archetypes: z.array(MethodologyArchetypeDescriptorSchema),
+  skills: z.array(MethodologySkillDescriptorSchema),
+  policySummary: MethodologyPolicySummarySchema,
+  playbooks: z.array(MethodologyPlaybookDescriptorSchema),
+});
+export type MethodologyDescriptor = z.infer<typeof MethodologyDescriptorSchema>;
+export const TeamMethodologyListRequestSchema = z.object({
+  type: z.literal("team.methodology.list.request"),
+  requestId: z.string().min(1),
+});
+export const TeamMethodologyGetRequestSchema = z.object({
+  type: z.literal("team.methodology.get.request"),
+  requestId: z.string().min(1),
+  ref: ExactMethodologyRefSchema,
+});
+export const TeamMethodologyListResponseSchema = z.object({
+  type: z.literal("team.methodology.list.response"),
+  payload: z.object({
+    requestId: z.string().min(1),
+    methodologies: z.array(MethodologyDescriptorSchema),
+    error: z.string().nullable(),
+    errorCode: z.string().nullable(),
+  }),
+});
+export const TeamMethodologyGetResponseSchema = z.object({
+  type: z.literal("team.methodology.get.response"),
+  payload: z.object({
+    requestId: z.string().min(1),
+    methodology: MethodologyDescriptorSchema.nullable(),
+    error: z.string().nullable(),
+    errorCode: z.string().nullable(),
+  }),
+});
+
 export const TeamProfileCreateRequestSchema = z.object({
   type: z.literal("team.profile.create.request"),
   requestId: z.string().min(1),

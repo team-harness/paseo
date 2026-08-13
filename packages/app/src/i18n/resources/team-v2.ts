@@ -1,6 +1,19 @@
 export const teamV2En = {
   host: {
     title: "Teams",
+    hub: {
+      waiting: "Waiting for host",
+      loading: "Loading Teams",
+      unsupported: "Update this host to use Teams",
+      teamFailure: "Teams could not be read.",
+      methodologyFailure: "Methodologies could not be read.",
+      create: "Create Team",
+      openWorkspace: "Open workspace",
+      addProject: "Add or open project",
+      emptyTitle: "No teams yet",
+      emptyWithWorkspace: "Create a Team here or open the workspace.",
+      emptyWithoutWorkspace: "Add or open a project before creating a Team.",
+    },
   },
   mission: {
     empty: "No Mission yet",
@@ -207,7 +220,11 @@ type DeepPartial<T> = {
 
 function teamV2Locale(overrides: DeepPartial<TeamV2Resources>): TeamV2Resources {
   return {
-    host: { ...teamV2En.host, ...overrides.host },
+    host: {
+      ...teamV2En.host,
+      ...overrides.host,
+      hub: { ...teamV2En.host.hub, ...overrides.host?.hub },
+    },
     mission: { ...teamV2En.mission, ...overrides.mission },
     v2: {
       actions: { ...teamV2En.v2.actions, ...overrides.v2?.actions },
@@ -253,6 +270,19 @@ function teamV2Locale(overrides: DeepPartial<TeamV2Resources>): TeamV2Resources 
 export const teamV2ZhCN: TeamV2Resources = {
   host: {
     title: "团队",
+    hub: {
+      waiting: "等待 Host 连接",
+      loading: "正在加载团队",
+      unsupported: "升级该 Host 后才能使用团队",
+      teamFailure: "无法读取团队。",
+      methodologyFailure: "无法读取方法论。",
+      create: "创建团队",
+      openWorkspace: "打开 Workspace",
+      addProject: "添加或打开项目",
+      emptyTitle: "还没有团队",
+      emptyWithWorkspace: "在这里创建团队，或打开现有 Workspace。",
+      emptyWithoutWorkspace: "添加或打开项目后即可创建团队。",
+    },
   },
   mission: {
     empty: "还没有 Mission",

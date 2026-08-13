@@ -1,4 +1,5 @@
 import { Buffer } from "buffer";
+import type { Href } from "expo-router";
 import { buildAgentDeepLinkRoute } from "@getpaseo/protocol/agent-deep-link";
 
 type NullableString = string | null | undefined;
@@ -413,6 +414,11 @@ export function buildHostTeamRoute(serverId: string, teamId: string) {
   return `${base}/team/${encodeSegment(normalizedTeamId)}` as const;
 }
 
+export function buildHostTeamsRoute(serverId: string): Href {
+  const base = buildHostRootRoute(serverId);
+  return base === "/" ? ("/" as Href) : (`${base}/teams` as Href);
+}
+
 export function buildHostOpenProjectRoute(serverId: string) {
   const base = buildHostRootRoute(serverId);
   if (base === "/") {
@@ -447,6 +453,7 @@ interface NewWorkspaceRouteOptions {
   displayName?: string;
   projectId?: string;
   draftId?: string;
+  successIntent?: { kind: "host_teams"; serverId: string };
 }
 
 function buildNewWorkspaceSearch(options: NewWorkspaceRouteOptions): string {
@@ -467,7 +474,28 @@ function buildNewWorkspaceSearch(options: NewWorkspaceRouteOptions): string {
   if (options.draftId) {
     params.set("draftId", options.draftId);
   }
+  if (options.successIntent?.kind === "host_teams") {
+    params.set("success", "host_teams");
+    params.set("successServerId", options.successIntent.serverId);
+  }
   return params.toString();
+}
+
+export function resolveNewWorkspaceSuccessRoute(input: {
+  success: string | undefined;
+  successServerId: string | undefined;
+  routeServerId: string;
+  targetServerId: string;
+}): ReturnType<typeof buildHostTeamsRoute> | null {
+  if (
+    input.success !== "host_teams" ||
+    !input.successServerId ||
+    input.successServerId !== input.routeServerId ||
+    input.successServerId !== input.targetServerId
+  ) {
+    return null;
+  }
+  return buildHostTeamsRoute(input.targetServerId);
 }
 
 export function buildNewWorkspaceRoute(options: NewWorkspaceRouteOptions = {}) {

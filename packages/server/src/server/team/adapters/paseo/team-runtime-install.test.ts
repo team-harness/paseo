@@ -56,7 +56,11 @@ describe("installPaseoTeamRuntime", () => {
     expect(runtime.serverFeatures()).toEqual({});
     await runtime.start();
 
-    expect(runtime.serverFeatures()).toEqual({ teamMissions: true, globalTeamProfiles: true });
+    expect(runtime.serverFeatures()).toEqual({
+      teamMissions: true,
+      globalTeamProfiles: true,
+      teamMethodologies: true,
+    });
     await expect(access(join(rootDirectory, "team-missions", "profiles"))).resolves.toBeUndefined();
     await expect(access(join(rootDirectory, "team-missions", "missions"))).resolves.toBeUndefined();
   });
@@ -481,7 +485,11 @@ describe("installPaseoTeamRuntime", () => {
         summary: "Pending message recovery failed: recipient unavailable",
       });
       expect(runtime.isReady()).toBe(true);
-      expect(runtime.serverFeatures()).toEqual({ teamMissions: true, globalTeamProfiles: true });
+      expect(runtime.serverFeatures()).toEqual({
+        teamMissions: true,
+        globalTeamProfiles: true,
+        teamMethodologies: true,
+      });
     } finally {
       runtime?.stop();
       recordRecoveryAttention.mockRestore();
@@ -610,7 +618,11 @@ describe("installPaseoTeamRuntime", () => {
         summary: "Pending message recovery failed: lead notification failed",
       });
       expect(runtime.isReady()).toBe(true);
-      expect(runtime.serverFeatures()).toEqual({ teamMissions: true, globalTeamProfiles: true });
+      expect(runtime.serverFeatures()).toEqual({
+        teamMissions: true,
+        globalTeamProfiles: true,
+        teamMethodologies: true,
+      });
     } finally {
       runtime?.stop();
       recordRecoveryAttention.mockRestore();
@@ -673,7 +685,11 @@ describe("installPaseoTeamRuntime", () => {
         summary: "Scheduler recovery failed: workspace unavailable",
       });
       expect(runtime.isReady()).toBe(true);
-      expect(runtime.serverFeatures()).toEqual({ teamMissions: true, globalTeamProfiles: true });
+      expect(runtime.serverFeatures()).toEqual({
+        teamMissions: true,
+        globalTeamProfiles: true,
+        teamMethodologies: true,
+      });
     } finally {
       runtime?.stop();
       recordRecoveryAttention.mockRestore();

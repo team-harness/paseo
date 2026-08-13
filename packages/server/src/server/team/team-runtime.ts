@@ -2,6 +2,7 @@ import type { SessionInboundMessage, SessionOutboundMessage } from "../messages.
 import type { TeamRoomMessage } from "@getpaseo/protocol/team/v2-types";
 import type { RegisterPaseoTool } from "../agent/tools/paseo-tools.js";
 import type { InstallPaseoTeamRuntimeOptions } from "./adapters/paseo/team-runtime-install.js";
+import { MethodologyCatalog } from "./methodology/catalog.js";
 export type { TeamPersistenceFaultInjector } from "./persistence/transactions.js";
 import {
   TeamApplicationError,
@@ -27,6 +28,8 @@ export type TeamRuntimeRequest = Extract<
   {
     type:
       | "team.profile.create.request"
+      | "team.methodology.list.request"
+      | "team.methodology.get.request"
       | "team.profile.list.request"
       | "team.profile.inspect.request"
       | "team.profile.update.request"
@@ -104,12 +107,15 @@ export interface TeamRuntimeSessionDeps {
   onMissionRoomMessage(listener: (event: TeamRuntimeRoomMessageEvent) => void): () => void;
 }
 
-export interface TeamRuntime {
+export interface TeamRuntimeHostBoundary {
+  serverFeatures(): { teamMissions?: true; globalTeamProfiles?: true; teamMethodologies?: true };
+  sessionDeps(): TeamRuntimeSessionDeps | null;
+}
+
+export interface TeamRuntime extends TeamRuntimeHostBoundary {
   start(): Promise<void>;
   stop(): void;
   isReady(): boolean;
-  serverFeatures(): { teamMissions?: true; globalTeamProfiles?: true };
-  sessionDeps(): TeamRuntimeSessionDeps | null;
   registerAgentTools(callerAgentId: string | undefined, registerTool: RegisterPaseoTool): void;
 }
 
@@ -206,8 +212,10 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
     return this.state === "ready";
   }
 
-  serverFeatures(): { teamMissions?: true; globalTeamProfiles?: true } {
-    return this.isReady() ? { teamMissions: true, globalTeamProfiles: true } : {};
+  serverFeatures(): { teamMissions?: true; globalTeamProfiles?: true; teamMethodologies?: true } {
+    return this.isReady()
+      ? { teamMissions: true, globalTeamProfiles: true, teamMethodologies: true }
+      : {};
   }
 
   sessionDeps(): TeamRuntimeSessionDeps | null {
@@ -251,6 +259,34 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
   ): Promise<SessionOutboundMessage> {
     if (!this.isReady()) {
       return teamMissionsUnavailableResponse(request, "Team Missions is not ready on this host.");
+    }
+    if (
+      request.type === "team.methodology.list.request" ||
+      request.type === "team.methodology.get.request"
+    ) {
+      const catalog = new MethodologyCatalog();
+      if (request.type === "team.methodology.list.request")
+        return {
+          type: "team.methodology.list.response",
+          payload: {
+            requestId: request.requestId,
+            methodologies: catalog.list(),
+            error: null,
+            errorCode: null,
+          },
+        };
+      const methodology = catalog.get(request.ref);
+      return {
+        type: "team.methodology.get.response",
+        payload: {
+          requestId: request.requestId,
+          methodology,
+          error: methodology
+            ? null
+            : `Methodology not found: ${request.ref.bundleId}@${request.ref.version}`,
+          errorCode: methodology ? null : "methodology_not_found",
+        },
+      };
     }
     const service = this.requireService();
     try {
@@ -442,6 +478,26 @@ export function teamMissionsUnavailableResponse(
   reason: string,
 ): SessionOutboundMessage {
   switch (request.type) {
+    case "team.methodology.list.request":
+      return {
+        type: "team.methodology.list.response",
+        payload: {
+          requestId: request.requestId,
+          methodologies: [],
+          error: reason,
+          errorCode: "unsupported",
+        },
+      };
+    case "team.methodology.get.request":
+      return {
+        type: "team.methodology.get.response",
+        payload: {
+          requestId: request.requestId,
+          methodology: null,
+          error: reason,
+          errorCode: "unsupported",
+        },
+      };
     case "team.profile.list.request":
       return {
         type: "team.profile.list.response",
@@ -498,6 +554,8 @@ export function teamMissionsUnavailableResponse(
 }
 
 const TEAM_MISSIONS_REQUEST_TYPES = new Set<string>([
+  "team.methodology.list.request",
+  "team.methodology.get.request",
   "team.profile.create.request",
   "team.profile.list.request",
   "team.profile.inspect.request",
@@ -628,6 +686,16 @@ function errorResponse(request: TeamRuntimeRequest, error: unknown): SessionOutb
   const errorCode = errorCodeFor(error);
   const message = error instanceof Error ? error.message : "Team Missions request failed";
   switch (request.type) {
+    case "team.methodology.list.request":
+      return {
+        type: "team.methodology.list.response",
+        payload: { requestId: request.requestId, methodologies: [], error: message, errorCode },
+      };
+    case "team.methodology.get.request":
+      return {
+        type: "team.methodology.get.response",
+        payload: { requestId: request.requestId, methodology: null, error: message, errorCode },
+      };
     case "team.profile.list.request":
       return {
         type: "team.profile.list.response",

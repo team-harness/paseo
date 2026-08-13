@@ -22,6 +22,10 @@ import {
   ChatWaitResponseSchema,
 } from "./chat/rpc-schemas.js";
 import {
+  TeamMethodologyGetRequestSchema,
+  TeamMethodologyGetResponseSchema,
+  TeamMethodologyListRequestSchema,
+  TeamMethodologyListResponseSchema,
   TeamMissionAttentionResolveRequestSchema,
   TeamMissionAttentionResolveResponseSchema,
   TeamMissionCancelRequestSchema,
@@ -2785,6 +2789,8 @@ export const HubExecutionControlRequestSchema = z.object({
 export type HubExecutionControlRequest = z.infer<typeof HubExecutionControlRequestSchema>;
 
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+  TeamMethodologyListRequestSchema,
+  TeamMethodologyGetRequestSchema,
   HubExecutionAgentCreateRequestSchema,
   HubExecutionAgentValidateRequestSchema,
   HubExecutionControlRequestSchema,
@@ -3270,6 +3276,7 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(globalTeamProfiles): added in v0.3.1, remove after 2027-02-11
         // once every supported daemon separates Team identity from Mission workspace placement.
         globalTeamProfiles: z.boolean().optional(),
+        teamMethodologies: z.boolean().optional(),
       })
       .optional(),
   })
@@ -5883,6 +5890,8 @@ export function parseHubExecutionOutboundMessage(value: unknown): HubExecutionOu
 export type DaemonUpdateProgressMessage = z.infer<typeof DaemonUpdateProgressMessageSchema>;
 
 export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+  TeamMethodologyListResponseSchema,
+  TeamMethodologyGetResponseSchema,
   HubExecutionAgentCreateResponseSchema,
   HubExecutionAgentValidateResponseSchema,
   HubExecutionControlResponseSchema,
@@ -6093,6 +6102,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;
 
 export type TeamProfileCreateResponse = z.infer<typeof TeamProfileCreateResponseSchema>;
+export type TeamMethodologyListResponse = z.infer<typeof TeamMethodologyListResponseSchema>;
+export type TeamMethodologyGetResponse = z.infer<typeof TeamMethodologyGetResponseSchema>;
 export type TeamProfileListResponse = z.infer<typeof TeamProfileListResponseSchema>;
 export type TeamProfileInspectResponse = z.infer<typeof TeamProfileInspectResponseSchema>;
 export type TeamProfileUpdateResponse = z.infer<typeof TeamProfileUpdateResponseSchema>;
@@ -6379,6 +6390,8 @@ export type ChatPostRequest = z.infer<typeof ChatPostRequestSchema>;
 export type ChatReadRequest = z.infer<typeof ChatReadRequestSchema>;
 export type ChatWaitRequest = z.infer<typeof ChatWaitRequestSchema>;
 export type TeamProfileCreateRequest = z.infer<typeof TeamProfileCreateRequestSchema>;
+export type TeamMethodologyListRequest = z.infer<typeof TeamMethodologyListRequestSchema>;
+export type TeamMethodologyGetRequest = z.infer<typeof TeamMethodologyGetRequestSchema>;
 export type TeamProfileListRequest = z.infer<typeof TeamProfileListRequestSchema>;
 export type TeamProfileInspectRequest = z.infer<typeof TeamProfileInspectRequestSchema>;
 export type TeamProfileUpdateRequest = z.infer<typeof TeamProfileUpdateRequestSchema>;

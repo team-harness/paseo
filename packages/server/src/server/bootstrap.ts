@@ -1669,7 +1669,7 @@ export async function createPaseoDaemon(
               browserToolsBroker,
               hubRelationships,
               promptLibraryStore,
-              teamRuntime.sessionDeps(),
+              teamRuntime,
               workspaceSetupRuntime,
             );
             relayRuntime = createRelayRuntime({

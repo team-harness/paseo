@@ -9,18 +9,25 @@ export default function NewWorkspaceRoute() {
     name?: string;
     projectId?: string;
     draftId?: string;
+    success?: string;
+    successServerId?: string;
   }>();
   const serverId = typeof params.serverId === "string" ? params.serverId : "";
   const sourceDirectory = typeof params.dir === "string" ? params.dir : undefined;
   const displayName = typeof params.name === "string" ? params.name : undefined;
   const projectId = typeof params.projectId === "string" ? params.projectId : undefined;
   const draftId = typeof params.draftId === "string" ? params.draftId : undefined;
+  const success = typeof params.success === "string" ? params.success : undefined;
+  const successServerId =
+    typeof params.successServerId === "string" ? params.successServerId : undefined;
   const screenKey = JSON.stringify([
     serverId,
     sourceDirectory ?? null,
     displayName ?? null,
     projectId ?? null,
     draftId ?? null,
+    success ?? null,
+    successServerId ?? null,
   ]);
 
   return (
@@ -32,6 +39,8 @@ export default function NewWorkspaceRoute() {
         displayName={displayName}
         projectId={projectId}
         draftId={draftId}
+        success={success}
+        successServerId={successServerId}
       />
     </HostRouteBootstrapBoundary>
   );

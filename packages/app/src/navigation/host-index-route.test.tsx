@@ -10,23 +10,12 @@ vi.mock("expo-router", () => ({
     React.createElement("div", { "data-testid": "redirect", "data-href": href }),
 }));
 
-vi.mock("@/components/teams/host-level-team-list", () => ({
-  HostLevelTeamList: ({
-    serverId,
-    rows,
-  }: {
-    serverId: string;
-    rows: readonly { teamId: string }[];
-  }) =>
-    React.createElement("div", {
-      "data-testid": "host-team-list",
-      "data-server-id": serverId,
-      "data-team-ids": rows.map((row) => row.teamId).join(","),
-    }),
-}));
-
 vi.mock("@/navigation/host-route-context", () => ({
   useHostRouteServerId: () => "host-1",
+}));
+
+vi.mock("@/runtime/host-runtime", () => ({
+  useHostRuntimeSnapshot: () => ({ connectionStatus: "online" }),
 }));
 
 vi.mock("@/screens/startup-splash-screen", () => ({
@@ -49,7 +38,13 @@ vi.mock("@/stores/session-store", () => ({
     selector({
       sessions: {
         "host-1": {
-          serverInfo: { features: { globalTeamProfiles: true } },
+          serverInfo: {
+            features: {
+              teamMissions: true,
+              globalTeamProfiles: true,
+              teamMethodologies: true,
+            },
+          },
           teamMissionsReplica: {
             status: "ready",
             profiles: new Map([
@@ -68,12 +63,9 @@ vi.mock("@/stores/session-store", () => ({
 import HostIndexRoute from "@/app/h/[serverId]";
 
 describe("the host index without a workspace", () => {
-  it("renders active global Teams instead of redirecting to a fake workspace", () => {
+  it("redirects to Team Hub when no workspace selection exists", () => {
     render(<HostIndexRoute />);
 
-    const list = screen.getByTestId("host-team-list");
-    expect(list.getAttribute("data-server-id")).toBe("host-1");
-    expect(list.getAttribute("data-team-ids")).toBe("team-1");
-    expect(screen.queryByTestId("redirect")).toBeNull();
+    expect(screen.getByTestId("redirect").getAttribute("data-href")).toBe("/h/host-1/teams");
   });
 });
