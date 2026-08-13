@@ -4,11 +4,6 @@ phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
 active_items:
-  - item: TM-ITEM-9
-    state: reviewing
-    run: subagent:/root/tm9_final_review
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-start-recovery
-    base: 1206406b9
   - item: TM-ITEM-10
     state: dispatched
     run: subagent:/root/tm10_recovery
@@ -36,7 +31,7 @@ remote_publish: final
 - [x] TM-ITEM-6
 - [x] TM-ITEM-7
 - [x] TM-ITEM-8
-- [ ] TM-ITEM-9
+- [x] TM-ITEM-9
 - [ ] TM-ITEM-10
 - [ ] TM-ITEM-11
 - [ ] TM-ITEM-12
@@ -47,6 +42,19 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-9 完成。worker working diff
+  `f19b0fa708d1ccacc52f5fea604d600bbac7bd44b5119db0f43103db6473707c` 经 fresh 本机只读 reviewer
+  `/root/tm9_final_review` 在冻结目标上给出 0 blocking / 0 important 后，整理为单父 checkpoint
+  `e5a3c14328cd4d35637eeda3fc394d80e9f2e063`（父 `1206406b9…`，tree
+  `7a6bc7fb70fac17192ba30cae6316eb0cb2a90c2`），并以无冲突 staged apply 集成成 Paseo 里程碑
+  `6d92583b8`。交付新增 start intent 原子持久化后的明确 crash point，并以冻结 intent-only 恢复、两种
+  workspace archive 锁序、response-lost Lead 幂等与 lease cleanup 测试闭合既有生产路径；全部改动位于
+  `packages/server/src/server/team/**`，无 upstream 生产热文件改动。worker 报告 owning 119/119、targeted
+  178/178、build/server、lint、format/diff-check 通过；主流程未重复 297 条定点测试，集成后重跑
+  build/server、全仓 typecheck、lint、目标格式与 commit hooks 全绿。reviewer suggestion 为后续可增加
+  pending workspace archive + intent-only Mission 的 daemon 冷启动组合测试；当前源码顺序、真实
+  `archiveByScope` 竞态与 adapter 测试已闭合，非合入门槛。TM-ITEM-10/11 保持原隔离基线并继续执行。
 
 - 2026-08-13：TM-ITEM-9 worker 完成 start intent durability、crash recovery、archive takeover、
   response-lost Lead 与 lease cleanup 实现，冻结 working diff SHA-256 为
