@@ -43,6 +43,13 @@ remote_publish: final
 
 ## 临时决策与证据
 
+- 2026-08-13：TM-ITEM-10 恢复 worker 已完成 32 个功能文件，changed Vitest 15 files 为 265 passed /
+  6 skipped（真实 provider 条件跳过），build/server、全仓 typecheck/lint/format-check 全绿；code-intel
+  覆盖 34/34 files、0 omitted，并对被截断 symbols 做 targeted explore。其 fresh Paseo agent-scoped Claude
+  Opus reviewer `cf4577ff-3b40-476b-91a1-fa302a80911c` 因同一 gateway 503 未返回有效报告，不计
+  R1。主流程要求 worker 保持冻结候选不变，停止重试 Claude，按 `cs-agent`→本机原生只读 reviewer 顺序
+  回退；在有效 `0 blocking / 0 important` 前不得提交。
+
 - 2026-08-13：TM-ITEM-9 完成。worker working diff
   `f19b0fa708d1ccacc52f5fea604d600bbac7bd44b5119db0f43103db6473707c` 经 fresh 本机只读 reviewer
   `/root/tm9_final_review` 在冻结目标上给出 0 blocking / 0 important 后，整理为单父 checkpoint
