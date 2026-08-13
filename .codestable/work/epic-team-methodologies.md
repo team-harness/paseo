@@ -38,6 +38,17 @@ remote_publish: final
 
 ## 临时决策与证据
 
+- 2026-08-13：TM-ITEM-11 新正确性阶段候选已冻结为 staged diff
+  `667dda9ff81a44188e6c391a42d5100f54d8edf24ed5744d88949e94b5e96b8d`（27 files，
+  +2548/-326）。实现者报告 mission-validation 89/89、protocol 16/16、App 10/10，共 115/115；
+  build/server、lint 0/0、format/diff-check 通过，typecheck 仅剩改动外
+  `draggable-list.native.tsx:122` 基线错误。实现 worker 未创建 reviewer 或 checkpoint。主流程
+  优先使用 Paseo agent-scoped 创建唯一 fresh reviewer
+  `b220b27c-0980-457e-ba33-c961e9f6dda4`，provider/model 为 `claude/opus[1m]`，
+  mode/thinking 为 `plan/high`，相对 Codex 实现者异构；目标即上述冻结 hash，严格只读。第一次
+  create 传入了错误 workspace slug，同步返回 `Workspace not found`，未产生 agent/run，不计审查轮次；
+  省略 workspaceId 后按 agent-scoped 默认成功创建上述 run。该阶段不轮询、不换 reviewer、不开复审。
+
 - 2026-08-13：owner 选择 A，授权 TM-ITEM-11 进入新的有界正确性修复阶段。范围只包含
   Round 4 的两个 blocker：approved outcome 必须绑定已完成的 durable review turn、精确 dependencies
   与报告；waived outcome 必须符合 `operatorWaiver` 策略并绑定持久化 waiver、Attention、
