@@ -5,12 +5,12 @@ approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91c
 current_item: null
 active_items:
   - item: TM-ITEM-11
-    state: dispatched
+    state: blocked
     run: subagent:/root/tm11_recovery
     workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-gates
     base: 1206406b9
-next_action: 等待 TM-ITEM-11 修复历史 Workstream contract 继承校验并完成唯一 Round 4；0/0 后串行集成并推进 TM-ITEM-12
-blocked_by: null
+next_action: 等待 owner 裁决 TM-ITEM-11 Round 4 新增的两个 blocking；未授权前不修复、不开 Round 5
+blocked_by: "owner decision: TM-ITEM-11 Round 4 returned 2 blocking"
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -37,6 +37,16 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-11 按 owner 授权完成唯一 Round 4，同一 reviewer lineage/session
+  `019ffb02-2f75-7ca3-9b3a-53d50333b04e` 结论为 2 blocking / 0 important / 0 suggestions，
+  因此立即停止，没有 Round 5 或 checkpoint。Round 3 的历史 Workstream contract 继承缺口已确认
+  resolved；新 blocker 为：(1) approved outcome 没有强制 review Assignment 具备 completed durable
+  turn 与精确 dependencies，canceled review 仍可保留 approved report；(2) waived outcome 没有校验
+  `operatorWaiver` 策略及持久化 waiver/Attention/controller/reason 事实，可伪造不可豁免门禁。候选
+  diff `8c19d93ea7e19d1aeb661d82f1cdf483592e1ce9b89faedc332f8812dbafcb2a`（26 files，
+  +2160/-324）保持冻结；定点 88/88、build/server、lint、format/diff-check 通过，typecheck 仅被改动外
+  `draggable-list.native.tsx:122` 基线错误阻断。未 push/publish，未重启 6767。
 
 - 2026-08-13：TM-ITEM-10 集成验证通过。checkpoint `46f30319c57fd0757bdaf525a6b07638f32adf9b`
   以无历史 staged apply 落到 TM-ITEM-9 后基线，Git 只自动合并了
