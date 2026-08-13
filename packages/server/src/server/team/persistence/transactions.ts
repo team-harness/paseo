@@ -5,6 +5,7 @@ import { TeamProfileStore } from "./profile-store.js";
 import type { StoredMission, StoredTeamProfile, TeamMissionStartIntent } from "./schemas.js";
 
 export type TeamPersistenceFaultPoint =
+  | "after_start_intent_write"
   | "after_mission_write"
   | "after_start_stage"
   | "after_lead_participant_write"
@@ -95,6 +96,7 @@ export class TeamMissionPersistenceTransactions {
           "start intent disappeared before Mission persistence",
         );
       }
+      await this.faultInjector.hit("after_start_intent_write");
       return this.resumeMissionStart(profile, profile.startIntent);
     });
   }

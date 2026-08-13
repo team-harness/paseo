@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
 import { AgentManager } from "../../../agent/agent-manager.js";
 import { AgentStorage } from "../../../agent/agent-storage.js";
+import { workspaceLifecycleCoordinator } from "../../../workspace-lifecycle-coordinator.js";
 import { TeamCollaborationService } from "../../application/team-collaboration-service.js";
 import { TeamMissionScheduler } from "../../application/team-mission-scheduler.js";
 import { TeamMissionService } from "../../application/team-mission-service.js";
@@ -308,6 +309,71 @@ describe("installPaseoTeamRuntime", () => {
       runtime?.stop();
       listMissions.mockRestore();
       archiveTeam.mockRestore();
+    }
+  });
+
+  test("workspace archive preparation releases every lease for the canceled Mission", async () => {
+    const fixture = await createFixture(rootDirectory);
+    const leaseStore = createLeaseStore(rootDirectory);
+    await leaseStore.acquire({
+      teamId: "team-owner",
+      missionId: "mission-workspace-archive",
+      workspaceId: "workspace-shared",
+      assignmentId: "assignment-active",
+      scope: { kind: "workspace" },
+      priority: 1,
+      createdAt: "2026-08-09T01:00:00.000Z",
+    });
+    await leaseStore.acquire({
+      teamId: "team-owner",
+      missionId: "mission-blocked",
+      workspaceId: "workspace-shared",
+      assignmentId: "assignment-pending",
+      scope: { kind: "workspace" },
+      priority: 1,
+      createdAt: "2026-08-09T01:01:00.000Z",
+    });
+    const prepareWorkspaceArchive = vi
+      .spyOn(TeamMissionService.prototype, "prepareWorkspaceArchive")
+      .mockResolvedValue([
+        { id: "mission-workspace-archive", status: "canceled" },
+        { id: "mission-blocked", status: "canceled" },
+      ] as never);
+    const reconcileMission = vi
+      .spyOn(TeamMissionScheduler.prototype, "reconcileMission")
+      .mockImplementation(async (missionId) => ({
+        missionId,
+        dispatchedAssignmentIds: [],
+        deferredAssignmentIds: [],
+      }));
+    let runtime: TeamRuntime | null = null;
+    try {
+      runtime = await installPaseoTeamRuntimeAdapter(
+        { ...fixture, runtime: { enabled: true }, providerRegistryOptions: { isDev: true } },
+        createTeamRuntime,
+      );
+
+      await workspaceLifecycleCoordinator.prepareForArchive("workspace-shared");
+      await workspaceLifecycleCoordinator.prepareForArchive("workspace-shared");
+
+      expect(prepareWorkspaceArchive).toHaveBeenCalledWith("workspace-shared");
+      expect(reconcileMission).toHaveBeenCalledWith("mission-workspace-archive");
+      expect(reconcileMission).toHaveBeenCalledWith("mission-blocked");
+      await expect(
+        leaseStore.acquire({
+          teamId: "team-contender",
+          missionId: "mission-contender",
+          workspaceId: "workspace-shared",
+          assignmentId: "assignment-contender",
+          scope: { kind: "workspace" },
+          priority: 1,
+          createdAt: "2026-08-09T01:02:00.000Z",
+        }),
+      ).resolves.toMatchObject({ assignmentId: "assignment-contender" });
+    } finally {
+      runtime?.stop();
+      reconcileMission.mockRestore();
+      prepareWorkspaceArchive.mockRestore();
     }
   });
 

@@ -646,6 +646,125 @@ describe("TeamMissionService lifecycle", () => {
     ]);
   });
 
+  test("workspace archive takes over an intent-only start without room or Lead work", async () => {
+    const workspaceLifecycle = new WorkspaceLifecycleCoordinator();
+    let active = true;
+    let archiveIntentClaimed = false;
+    const fixture = createFixture(rootDirectory, {
+      workspaceLifecycle,
+      persistenceFaultInjector: throwOnceAt("after_start_intent_write"),
+      isWorkspaceActive: () => active && !archiveIntentClaimed,
+    });
+    const team = await createTeam(fixture.service);
+    const request = {
+      idempotencyKey: "archive-takes-intent-only-start",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
+      objective: "Materialize an auditable canceled Mission",
+      constraints: ["Do not create a room or Lead"],
+      acceptanceCriteria: ["Archive takeover is replay-safe"],
+    };
+    await expect(fixture.service.startMission(request)).rejects.toThrow(
+      "simulated crash at after_start_intent_write",
+    );
+    fixture.methodologyState.throwOnRead = true;
+    fixture.methodologyState.throwOnCompile = true;
+    fixture.materializerState.throwOnRead = true;
+    const prepareTeamMissions = async (workspaceId: string) => {
+      await fixture.service.prepareWorkspaceArchive(workspaceId);
+    };
+    const unregister = workspaceLifecycle.registerArchivePreparation(prepareTeamMissions);
+    const dependencies = createMissionArchiveDependencies({
+      workspaceLifecycle,
+      isActive: () => active,
+      beginWorkspaceArchive: async () => {
+        archiveIntentClaimed = true;
+        return null;
+      },
+      archiveWorkspaceRecord: async () => {
+        active = false;
+      },
+    });
+
+    await archiveByScope(dependencies, {
+      scope: { kind: "workspace", workspaceId: "workspace-sdk" },
+      requestId: "archive-takes-intent-only-start",
+    });
+    await archiveByScope(dependencies, {
+      scope: { kind: "workspace", workspaceId: "workspace-sdk" },
+      requestId: "archive-takes-intent-only-start",
+    });
+    unregister();
+
+    expect(await fixture.missions.list()).toMatchObject([
+      {
+        mission: {
+          id: "mission-1",
+          workspaceId: "workspace-sdk",
+          chatRoomId: "room-1",
+          status: "canceled",
+          participants: [{ agentId: "agent-1", memberId: "member-1", archivedAt: NOW }],
+        },
+        finishIntent: { stage: "finalized", kind: "canceled" },
+      },
+    ]);
+    expect(await fixture.profiles.get(team.id)).toMatchObject({
+      profile: { lifecycle: "active", activeMissionId: null },
+      startIntent: null,
+    });
+    expect(fixture.effects.filter((effect) => effect.startsWith("room:"))).toEqual([]);
+    expect(fixture.effects.filter((effect) => effect.startsWith("lead:"))).toEqual([]);
+    expect(fixture.effects.filter((effect) => effect.startsWith("archive:"))).toEqual([
+      "archive:agent-1",
+    ]);
+    expect(fixture.liveAgents).toEqual(new Set());
+    expect(fixture.methodologyState).toMatchObject({ reads: 1, compiles: 1 });
+    expect(fixture.materializerState.reads).toBe(0);
+  });
+
+  test("workspace archive removes a response-lost Lead from the frozen start intent", async () => {
+    const fixture = createFixture(rootDirectory, {
+      failLeadAfterCreateAgentIds: ["agent-1"],
+    });
+    const team = await createTeam(fixture.service);
+
+    await expect(
+      fixture.service.startMission({
+        idempotencyKey: "archive-response-lost-lead",
+        teamId: team.id,
+        expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
+        objective: "Remove a Lead whose creation response was lost",
+        constraints: [],
+        acceptanceCriteria: ["No orphan provider work survives archive"],
+      }),
+    ).rejects.toThrow("simulated Lead creation response loss");
+    expect(fixture.liveAgents).toEqual(new Set(["agent-1"]));
+    expect(await fixture.profiles.get(team.id)).toMatchObject({
+      startIntent: { stage: "room_created", leadAgentId: "agent-1" },
+    });
+    expect(await fixture.missions.get("mission-1")).toMatchObject({
+      mission: {
+        participants: [{ agentId: "agent-1", memberId: "member-1", archivedAt: null }],
+      },
+    });
+    fixture.effects.length = 0;
+    fixture.methodologyState.throwOnRead = true;
+    fixture.methodologyState.throwOnCompile = true;
+    fixture.materializerState.throwOnRead = true;
+
+    await fixture.service.prepareWorkspaceArchive("workspace-sdk");
+    await fixture.service.prepareWorkspaceArchive("workspace-sdk");
+
+    expect((await fixture.missions.get("mission-1"))?.mission.status).toBe("canceled");
+    expect((await fixture.profiles.get(team.id))?.startIntent).toBeNull();
+    expect(fixture.effects).toEqual(["archive:agent-1"]);
+    expect(fixture.liveAgents).toEqual(new Set());
+  });
+
   test("persists one scoped Attention for repeated scheduler recovery failures", async () => {
     const fixture = createFixture(rootDirectory);
     const team = await createTeam(fixture.service);
@@ -1611,6 +1730,52 @@ describe("TeamMissionService lifecycle", () => {
     expect((await restarted.missions.list()).map((entry) => entry.mission.id)).toEqual([
       "mission-1",
     ]);
+  });
+
+  test("restart materializes an intent-only Mission from frozen facts", async () => {
+    const first = createFixture(rootDirectory, {
+      persistenceFaultInjector: throwOnceAt("after_start_intent_write"),
+    });
+    const team = await createTeam(first.service);
+    const request = {
+      idempotencyKey: "restart-intent-only-mission",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
+      objective: "Recover only from the frozen start intent",
+      constraints: ["Do not read mutable catalogs"],
+      acceptanceCriteria: ["The same frozen Mission starts exactly once"],
+    };
+
+    await expect(first.service.startMission(request)).rejects.toThrow(
+      "simulated crash at after_start_intent_write",
+    );
+    expect((await first.profiles.get(team.id))?.startIntent).toMatchObject({
+      stage: "reserved",
+      missionId: "mission-1",
+      workspaceId: "workspace-sdk",
+    });
+    expect(await first.missions.list()).toEqual([]);
+    expect(first.effects).toEqual([]);
+
+    const restarted = createFixture(rootDirectory);
+    restarted.methodologyState.throwOnRead = true;
+    restarted.methodologyState.throwOnCompile = true;
+    restarted.materializerState.throwOnRead = true;
+    await restarted.service.reconcile();
+
+    const recovered = await restarted.service.inspectMission("mission-1");
+    expect(recovered).toMatchObject({
+      id: "mission-1",
+      workspaceId: "workspace-sdk",
+      chatRoomId: "room-1",
+      participants: [{ agentId: "agent-1", memberId: "member-1", archivedAt: null }],
+    });
+    expect(restarted.effects).toEqual(["room:room-1:mission_written", "lead:agent-1:room_created"]);
+    await expect(restarted.service.startMission(request)).resolves.toEqual(recovered);
+    expect(restarted.methodologyState).toMatchObject({ reads: 0, compiles: 0 });
+    expect(restarted.materializerState.reads).toBe(0);
   });
 
   test.each<TeamPersistenceFaultPoint>([
