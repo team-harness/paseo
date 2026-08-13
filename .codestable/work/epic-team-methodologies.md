@@ -38,6 +38,11 @@ remote_publish: final
 
 ## 临时决策与证据
 
+- 2026-08-13：TM-ITEM-8 worker `cc85d821-e952-43a7-aeae-8681c292c3f0` 在原 session
+  `019ffa03-aff4-7941-b2a9-d0e575a83285` 中因 provider 返回临时 503 中断。主流程核对 Agent 仍具备
+  session persistence、worktree 与原基线均可恢复后，向同一 run 发送 continuation packet 并恢复为
+  `running`；未创建重复 worker、未移动基线、未把基础设施失败计入 change-review 轮次。
+
 - 2026-08-13：TM-ITEM-8 派发到 Paseo 托管 worktree
   `/Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-mission-snapshot`，run identity 为
   `cc85d821-e952-43a7-aeae-8681c292c3f0`，基线为 TM-ITEM-7 完成游标提交 `221955064`。worker 使用
