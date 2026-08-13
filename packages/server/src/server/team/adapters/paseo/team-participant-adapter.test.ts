@@ -48,6 +48,31 @@ describe("PaseoTeamParticipantAdapter", () => {
     await manager.flush();
   });
 
+  test("classifies a disabled Lead provider as provider_unavailable", async () => {
+    const logger = createTestLogger();
+    const storage = new AgentStorage(join(rootDirectory, "agents"), logger);
+    await storage.initialize();
+    const manager = new AgentManager({
+      clients: createTestAgentClients(),
+      providerDefinitions: { codex: { enabled: false } },
+      registry: storage,
+      logger,
+    });
+    const adapter = new PaseoTeamParticipantAdapter({
+      agentManager: manager,
+      agentStorage: storage,
+      resolveWorkspaceCwd: async () => rootDirectory,
+      logger,
+    });
+
+    await expect(adapter.createLead(leadInput(rootDirectory))).rejects.toMatchObject({
+      name: "TeamApplicationError",
+      code: "provider_unavailable",
+      message: "Provider 'codex' is disabled",
+    });
+    expect(await storage.list()).toEqual([]);
+  });
+
   test("refuses to archive an Agent owned by another Mission", async () => {
     const logger = createTestLogger();
     const storage = new AgentStorage(join(rootDirectory, "agents"), logger);
@@ -245,7 +270,18 @@ describe("PaseoTeamParticipantAdapter", () => {
       registry: storage,
       logger,
     });
-    const input = leadInput(rootDirectory);
+    const input = {
+      ...leadInput(rootDirectory),
+      methodologyPromptSections: [
+        {
+          sectionId: "lead-startup",
+          audience: "lead" as const,
+          phase: "startup" as const,
+          content: "Frozen methodology Lead contract.",
+          contentDigest: `sha256:${"0".repeat(64)}`,
+        },
+      ],
+    };
     const adapter = new PaseoTeamParticipantAdapter({
       agentManager: manager,
       agentStorage: storage,
@@ -269,6 +305,8 @@ describe("PaseoTeamParticipantAdapter", () => {
         "<paseo-system>",
         'You are Team Member "member-lead" (@technical-lead), the Lead for Mission "mission-1" in Team "team-1".',
         'Call mission_status with missionId "mission-1" now. Then use one mission_plan call with the complete Workstream DAG and its assignments field covering every delivery and integration Workstream, including nodes whose dependencies are not ready yet. The daemon derives Assignment dependencies from the Workstream DAG, gates dispatch, and materializes required review and final verification Assignments.',
+        "",
+        "Frozen methodology Lead contract.",
         "</paseo-system>",
       ].join("\n"),
     ]);
@@ -442,6 +480,7 @@ function leadInput(cwd: string) {
       thinkingOptionId: null,
       featureValues: {},
     },
+    methodologyPromptSections: [],
     cwd,
   };
 }

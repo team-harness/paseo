@@ -212,6 +212,7 @@ function buildQualityGateAssignment(input: {
     priority: Math.max(0, ...input.subjects.map((assignment) => assignment.priority)),
     planRevision: input.mission.planRevision,
     rosterSnapshotRevision: input.workstream.rosterSnapshotRevision,
+    methodologySnapshotRevision: input.workstream.methodologySnapshotRevision,
     supersededBy: null,
     terminationReason: null,
     scopeLease: null,

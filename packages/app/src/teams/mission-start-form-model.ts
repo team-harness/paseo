@@ -1,4 +1,4 @@
-import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
+import type { ExactMethodologyRef, TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 export type TeamMissionsAccess = "checking_host" | "supported" | "upgrade_required";
 
@@ -11,6 +11,7 @@ export interface MissionStartTeamOption {
   teamId: string;
   display: string;
   revision: number;
+  methodologyRef: ExactMethodologyRef;
   available: boolean;
 }
 
@@ -24,10 +25,11 @@ export interface MissionStartRequestInput {
   idempotencyKey: string;
   teamId: string;
   expectedTeamRevision: number;
+  expectedMethodologyRef: ExactMethodologyRef;
   objective: string;
   constraints: string[];
   acceptanceCriteria: string[];
-  workspaceId?: string;
+  workspaceId: string;
 }
 
 export interface MissionStartFormState {
@@ -36,6 +38,7 @@ export interface MissionStartFormState {
   selectedTeamId: string | null;
   selectedTeamDisplay: string | null;
   selectedTeamRevision: number | null;
+  selectedMethodologyRef: ExactMethodologyRef | null;
   teamOptions: MissionStartTeamOption[];
   staleTeam: boolean;
   objective: string;
@@ -80,6 +83,7 @@ function toTeamOption(team: TeamV2): MissionStartTeamOption {
     teamId: team.id,
     display: team.name,
     revision: team.revision,
+    methodologyRef: team.methodologyBinding.ref,
     available: team.lifecycle === "active" && team.activeMissionId === null,
   };
 }
@@ -114,11 +118,17 @@ function derive(state: MissionStartFormState): MissionStartFormState {
 }
 
 function buildRequest(state: MissionStartFormState): MissionStartRequestInput | null {
-  if (!state.selectedTeamId || state.selectedTeamRevision === null) return null;
+  if (
+    !state.selectedTeamId ||
+    state.selectedTeamRevision === null ||
+    state.selectedMethodologyRef === null
+  )
+    return null;
   return {
     idempotencyKey: state.idempotencyKey,
     teamId: state.selectedTeamId,
     expectedTeamRevision: state.selectedTeamRevision,
+    expectedMethodologyRef: state.selectedMethodologyRef,
     objective: state.objective.trim(),
     constraints: state.constraints.map((row) => row.value.trim()),
     acceptanceCriteria: state.acceptanceCriteria.map((row) => row.value.trim()),
@@ -138,6 +148,7 @@ export function openMissionStartForm(snapshot: MissionStartFormSnapshot): Missio
     selectedTeamId: selectedTeam?.id ?? null,
     selectedTeamDisplay: selectedTeam?.name ?? null,
     selectedTeamRevision: selectedTeam?.revision ?? null,
+    selectedMethodologyRef: selectedTeam?.methodologyBinding.ref ?? null,
     teamOptions,
     staleTeam:
       selectedTeam !== null &&
@@ -208,6 +219,7 @@ export function openMissionStartForm(snapshot: MissionStartFormSnapshot): Missio
         selectedTeamId: selected.teamId,
         selectedTeamDisplay: selected.display,
         selectedTeamRevision: selected.revision,
+        selectedMethodologyRef: selected.methodologyRef,
         staleTeam: false,
         idempotencyKey: abandonsUnknownRequest
           ? snapshot.newIdempotencyKey()

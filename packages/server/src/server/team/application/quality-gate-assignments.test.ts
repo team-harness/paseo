@@ -30,6 +30,7 @@ describe("planMissionQualityGates", () => {
       acceptanceCriteria: ["Parser tests pass"],
       mutableScope: { kind: "paths", pathPrefixes: ["packages/server"] },
       rosterSnapshotRevision: 1,
+      methodologySnapshotRevision: 1,
       reviewPolicy: "required",
       reviewerMemberId: "member-reviewer",
       status: "review",
@@ -43,6 +44,7 @@ describe("planMissionQualityGates", () => {
       mutableScope: { kind: "read_only" },
       ownerMemberId: "member-lead",
       rosterSnapshotRevision: 1,
+      methodologySnapshotRevision: 1,
       reviewPolicy: "none",
       status: "planned",
     } as MissionWorkstream;

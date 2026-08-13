@@ -19,7 +19,7 @@ import {
   TeamProfileUnreadableError,
 } from "./profile-store.js";
 import type { TeamArchiveIntent, TeamMissionStartIntent } from "./schemas.js";
-import { testTeamMethodologyBinding } from "../test-fixtures.js";
+import { testMissionMethodologySnapshot, testTeamMethodologyBinding } from "../test-fixtures.js";
 
 const NOW = "2026-08-08T06:00:00.000Z";
 
@@ -78,15 +78,13 @@ function startIntent(): TeamMissionStartIntent {
       skills: profile.skills,
       members: profile.members.map((member) =>
         Object.assign({}, member, {
-          runtimeSnapshot: {
-            providerAvailable: true,
-            toolIds: ["shell"],
-            capabilityIds: ["filesystem"],
-          },
+          capabilityFacts: { kind: "known", capabilityIds: ["filesystem"] },
         }),
       ),
       createdAt: NOW,
     },
+    methodologySnapshot: testMissionMethodologySnapshot(1, 1),
+    methodologyCompiledAt: NOW,
     workspaceAuditPolicy: {
       revision: 1,
       includeTrackedPaths: true,

@@ -22,6 +22,7 @@ function workstream(
     minimumLevel: 1,
     planRevision: 1,
     rosterSnapshotRevision: 1,
+    methodologySnapshotRevision: 1,
     dependencyWorkstreamIds: [...dependencyWorkstreamIds],
     mutableScope,
     ownerMemberId: `member-${workstreamId}`,

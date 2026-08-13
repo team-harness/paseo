@@ -15,7 +15,7 @@ import type {
   TeamMissionStartIntent,
 } from "./schemas.js";
 import { TeamMissionPersistenceTransactions } from "./transactions.js";
-import { testTeamMethodologyBinding } from "../test-fixtures.js";
+import { testMissionMethodologySnapshot, testTeamMethodologyBinding } from "../test-fixtures.js";
 
 const NOW = "2026-08-08T10:00:00.000Z";
 
@@ -74,15 +74,13 @@ function startIntent(): TeamMissionStartIntent {
       skills: profile.skills,
       members: profile.members.map((member) =>
         Object.assign({}, member, {
-          runtimeSnapshot: {
-            providerAvailable: true,
-            toolIds: ["shell"],
-            capabilityIds: ["filesystem"],
-          },
+          capabilityFacts: { kind: "known", capabilityIds: ["filesystem"] },
         }),
       ),
       createdAt: NOW,
     },
+    methodologySnapshot: testMissionMethodologySnapshot(1, 1),
+    methodologyCompiledAt: NOW,
     workspaceAuditPolicy: {
       revision: 1,
       includeTrackedPaths: true,
@@ -490,11 +488,7 @@ describe("TeamPersistenceReconciler", () => {
           ...startIntent().rosterSnapshot,
           members: healthyProfile.members.map((member) =>
             Object.assign({}, member, {
-              runtimeSnapshot: {
-                providerAvailable: true,
-                toolIds: ["shell"],
-                capabilityIds: ["filesystem"],
-              },
+              capabilityFacts: { kind: "known", capabilityIds: ["filesystem"] },
             }),
           ),
         },

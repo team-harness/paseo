@@ -252,14 +252,11 @@ detectable cursor gap.
 
 Team profile and Mission RPCs use the `team.profile.*` and `team.mission.*` namespaces. The daemon
 publishes `team.profile.snapshot` and `team.mission.snapshot` only to physical sockets that advertise
-the `team_missions` client capability. `server_info.features.teamMissions` is advertised only after
-startup reconciliation finishes. `server_info.features.globalTeamProfiles` additionally says that
-profiles are host-global and Mission start accepts an explicit workspace. Clients that do not see
-`teamMissions` require a host upgrade; there is no second Team protocol. New clients omit the explicit
-Mission workspace for daemons without `globalTeamProfiles`, preserving the creation-workspace behavior.
-Only daemons with `globalTeamProfiles` allow an idle profile whose creation workspace is no longer live
-to fall back to another live workspace or the host route. Clients keep profiles from older daemons bound
-to their creation workspace.
+the `team_missions` client capability. `server_info.features.teamMissions`,
+`server_info.features.globalTeamProfiles`, and `server_info.features.teamMethodologies` are advertised
+only after startup reconciliation finishes. Team profiles are host-global. Every Mission start names
+one active workspace and uses the Team's exact Methodology binding; the creation workspace is not a
+Mission default. Clients that do not see these capabilities require a host upgrade.
 
 Startup mounts the Agent MCP route, binds the HTTP listener, and installs the bound MCP URL before
 Team reconciliation can wake a recovered Participant. WebSocket capability exposure happens after
@@ -345,10 +342,10 @@ contains a Role, Level from 1 to 5, one or more Skills, an execution profile, an
 handle. Roles may repeat. Creating or editing a profile does not create Agent sessions.
 
 A Mission supplies the objective, constraints, acceptance criteria, and workspace for one run. It
-freezes a versioned roster and runtime capability snapshot, creates a Mission room, and provisions the
-Lead in that workspace. Other Members become participants there only when a ready Assignment needs
-them. Finishing a Mission archives its participant sessions but leaves the Team profile available for
-another Mission in any active workspace on the host.
+freezes a versioned roster with structural capability facts and a compiled Methodology snapshot,
+creates a Mission room, and provisions the Lead in that workspace. Other Members become participants
+there only when a ready Assignment needs them. Finishing a Mission archives its participant sessions
+but leaves the Team profile available for another Mission in any active workspace on the host.
 
 Mission start and workspace archive share a lifecycle fence. Every path acquires workspace fences in
 stable id order before the Team permit, then rechecks workspace and Team state before writing. If start

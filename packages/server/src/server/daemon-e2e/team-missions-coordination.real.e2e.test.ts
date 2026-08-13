@@ -302,6 +302,8 @@ async function runCoordinationMission(
         idempotencyKey: `${definition.shape}-${repetition}-mission`,
         teamId: created.team.id,
         expectedTeamRevision: created.team.revision,
+        expectedMethodologyRef: created.team.methodologyBinding.ref,
+        workspaceId: workspace.workspace.id,
         objective: definition.objective,
         constraints: definition.constraints,
         acceptanceCriteria: definition.acceptanceCriteria,

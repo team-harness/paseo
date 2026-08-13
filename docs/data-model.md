@@ -461,15 +461,15 @@ $PASEO_HOME/team-missions/
 
 Each store serializes mutations and writes JSON atomically. A Team profile is the reusable roster
 authority on one host and has at most one active Mission. Its `workspaceId` is creation context and the
-default for clients that do not send a Mission workspace; it is not an ownership foreign key. Creating
-a Team does not create Agent sessions or a Mission room. Starting a Mission resolves one active
-workspace, persists it in the start intent and aggregate, creates the room, then provisions only the
-Lead; other participants are created when ready Assignments need them.
+workspace for a Mission is always supplied by Mission start; it is not an ownership foreign key or a
+fallback. Creating a Team does not create Agent sessions or a Mission room. Starting a Mission fences
+the selected active workspace, persists it in the start intent and aggregate, creates the room, then
+provisions only the Lead; other participants are created when ready Assignments need them.
 
-The Mission file owns plan revisions, roster snapshots, participant bindings, Workstreams,
-Assignment contracts, accepted-turn facts, reports, Attention items, recovery intents, and durable
-outboxes. Dispatch and finish are replayable sagas: retries reuse identities and request
-fingerprints already persisted rather than deriving new work after a crash.
+The Mission file owns the compiled Methodology snapshot, plan revisions, roster snapshots, participant
+bindings, Workstreams, Assignment contracts, accepted-turn facts, reports, Attention items, recovery
+intents, and durable outboxes. Dispatch and finish are replayable sagas: retries reuse identities and
+request fingerprints already persisted rather than deriving new work after a crash.
 
 The start intent and Mission must name the same workspace. A mismatch is durable recovery Attention,
 not a reason to rewrite either record. Workspace archive is serialized against Mission start and

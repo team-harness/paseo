@@ -21,6 +21,7 @@ const { connectToDaemon, client, serverFeatures } = vi.hoisted(() => ({
   client: {
     getLastServerInfoMessage: () => ({ features: serverFeatures }),
     supportsGlobalTeamProfiles: () => serverFeatures.globalTeamProfiles === true,
+    inspectTeamProfile: vi.fn(),
     startTeamMission: vi.fn(),
     listTeamMissions: vi.fn(),
     inspectTeamMission: vi.fn(),
@@ -53,11 +54,24 @@ const mission = {
   completedAt: null,
 };
 
+const team = {
+  id: "team-1",
+  revision: 4,
+  methodologyBinding: {
+    ref: {
+      bundleId: "paseo/standard",
+      version: "1",
+      digest: "sha256:d5001287a60f868bcef21ecd3c4debb5a5237db002c5b9d0f7b0b78e98969697",
+    },
+  },
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   serverFeatures.globalTeamProfiles = true;
   serverFeatures.teamMethodologies = true;
   connectToDaemon.mockResolvedValue(client);
+  client.inspectTeamProfile.mockResolvedValue({ team, error: null, errorCode: null });
 });
 
 describe("Mission commands", () => {
@@ -81,6 +95,7 @@ describe("Mission commands", () => {
       idempotencyKey: "start-key",
       teamId: "team-1",
       expectedTeamRevision: 4,
+      expectedMethodologyRef: team.methodologyBinding.ref,
       workspaceId: "workspace-1",
       objective: "Ship the CLI",
       constraints: ["No fallback"],

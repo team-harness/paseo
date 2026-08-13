@@ -86,6 +86,7 @@ describe("submitting a Mission start form", () => {
       idempotencyKey: "key-1",
       teamId: "team-a",
       expectedTeamRevision: 4,
+      expectedMethodologyRef: team().methodologyBinding.ref,
       objective: "Ship Mission UI",
       constraints: ["Do not open participant tabs"],
       acceptanceCriteria: ["The Team tab stays selected"],

@@ -327,11 +327,12 @@ function memberMeetsHardRequirements(
 ): boolean {
   return (
     member.level >= requirements.minimumLevel &&
-    member.runtimeSnapshot !== null &&
-    member.runtimeSnapshot.providerAvailable &&
+    member.capabilityFacts.kind === "known" &&
     requirements.requiredSkillIds.every((skillId) => member.skillIds.includes(skillId)) &&
-    requirements.requiredRuntimeCapabilityIds.every((capabilityId) =>
-      member.runtimeSnapshot?.capabilityIds.includes(capabilityId),
+    requirements.requiredRuntimeCapabilityIds.every(
+      (capabilityId) =>
+        member.capabilityFacts.kind === "known" &&
+        member.capabilityFacts.capabilityIds.includes(capabilityId),
     )
   );
 }

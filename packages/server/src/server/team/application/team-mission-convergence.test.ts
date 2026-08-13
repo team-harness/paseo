@@ -421,6 +421,8 @@ async function createSeedMission(
     idempotencyKey: `start-mission-${seed}`,
     teamId: team.id,
     expectedTeamRevision: team.revision,
+    expectedMethodologyRef: team.methodologyBinding.ref,
+    workspaceId: team.creationWorkspaceId,
     objective: "Ship a deterministic parser",
     constraints: ["Keep the public grammar stable"],
     acceptanceCriteria: ["Parser and verification reports pass"],
@@ -636,8 +638,7 @@ function createConvergenceFixture(directory: string, seed: number) {
   let scheduler: TeamMissionScheduler | null = null;
   const capabilities: ProviderCapabilityResolver = {
     resolve: async () => ({
-      providerAvailable: true,
-      toolIds: ["mission_status", "mission_plan", "assign_task", "assignment_report"],
+      kind: "known",
       capabilityIds: ["structured-tools"],
     }),
   };

@@ -7,7 +7,7 @@ import type {
 } from "@getpaseo/protocol/team/v2-rpc-schemas";
 import type {
   MissionAttentionResolution,
-  MissionMemberRuntimeSnapshot,
+  MissionCapabilityFacts,
   MissionRosterSnapshot,
   TeamMission,
   TeamMethodologyBinding,
@@ -59,6 +59,7 @@ import type { TeamAgentProfileMaterializer } from "./team-agent-profile-material
 import { TeamApplicationError } from "./errors.js";
 export { TeamApplicationError } from "./errors.js";
 import { TeamOperationCoordinator } from "./team-operation-coordinator.js";
+import { MethodologyCompileError, type MethodologyCatalog } from "../methodology/catalog.js";
 import {
   type WorkspaceLifecyclePort,
   workspaceLifecycleCoordinator,
@@ -138,7 +139,8 @@ export interface StartMissionInput {
   idempotencyKey: string;
   teamId: string;
   expectedTeamRevision: number;
-  workspaceId?: string;
+  expectedMethodologyRef: MethodologyDescriptor["ref"];
+  workspaceId: string;
   objective: string;
   constraints: string[];
   acceptanceCriteria: string[];
@@ -200,10 +202,7 @@ export interface TeamMissionServiceOptions {
   clock: TeamClockPort;
   ids: TeamIdentityPort;
   agentProfiles: TeamAgentProfileMaterializer;
-  methodologies: Pick<
-    { get(ref: MethodologyDescriptor["ref"]): MethodologyDescriptor | null },
-    "get"
-  >;
+  methodologies: Pick<MethodologyCatalog, "get" | "compileMission">;
   operations?: TeamOperationCoordinator;
   workspaceLifecycle?: WorkspaceLifecyclePort;
   persistenceFaultInjector?: TeamPersistenceFaultInjector;
@@ -513,12 +512,7 @@ export class TeamMissionService {
   }
 
   async startMission(input: StartMissionInput): Promise<TeamMission> {
-    const initialTeam = await this.requireTeam(input.teamId);
-    // COMPAT(globalTeamProfiles): added in v0.3.1, remove the Team-workspace fallback after
-    // 2027-02-11 once the app floor is >= v0.3.1 and always sends workspaceId.
-    const workspaceId = normalizeMissionWorkspaceId(
-      input.workspaceId ?? initialTeam.profile.creationWorkspaceId,
-    );
+    const workspaceId = normalizeMissionWorkspaceId(input.workspaceId);
     return this.workspaceLifecycle.serialize([workspaceId], () =>
       this.serializeTeamLifecycle(input.teamId, () =>
         this.startMissionWithinLifecycle(input, workspaceId),
@@ -531,11 +525,7 @@ export class TeamMissionService {
     lockedWorkspaceId: string,
   ): Promise<TeamMission> {
     const storedTeam = await this.requireTeam(input.teamId);
-    // COMPAT(globalTeamProfiles): added in v0.3.1, remove the Team-workspace fallback after
-    // 2027-02-11 once the app floor is >= v0.3.1 and always sends workspaceId.
-    const effectiveWorkspaceId = normalizeMissionWorkspaceId(
-      input.workspaceId ?? storedTeam.profile.creationWorkspaceId,
-    );
+    const effectiveWorkspaceId = normalizeMissionWorkspaceId(input.workspaceId);
     if (effectiveWorkspaceId !== lockedWorkspaceId) {
       throw new TeamApplicationError(
         "mission_start_workspace_conflict",
@@ -566,9 +556,6 @@ export class TeamMissionService {
         pending.requestFingerprint === requestFingerprint &&
         pending.missionId === started.mission.id
       ) {
-        if (!isTerminalMission(started.mission)) {
-          await this.requireActiveWorkspace(effectiveWorkspaceId);
-        }
         return this.resumeMissionStart(storedTeam);
       }
       return started.mission;
@@ -580,10 +567,26 @@ export class TeamMissionService {
           `Mission start key ${input.idempotencyKey} has a different request`,
         );
       }
-      await this.requireActiveWorkspace(effectiveWorkspaceId);
       return this.resumeMissionStart(storedTeam);
     }
     await this.requireActiveWorkspace(effectiveWorkspaceId);
+    if (storedTeam.profile.revision !== input.expectedTeamRevision) {
+      throw new TeamApplicationError(
+        "team_revision_conflict",
+        `Team ${input.teamId} revision is ${storedTeam.profile.revision}, expected ${input.expectedTeamRevision}`,
+      );
+    }
+    if (
+      !exactMethodologyRefsEqual(
+        storedTeam.profile.methodologyBinding.ref,
+        input.expectedMethodologyRef,
+      )
+    ) {
+      throw new TeamApplicationError(
+        "methodology_ref_conflict",
+        `Team ${input.teamId} Methodology binding changed before Mission start`,
+      );
+    }
     const readiness = validateTeamReadyForMission(storedTeam.profile);
     if (!readiness.ok) {
       throw new TeamApplicationError("team_not_ready", `Team ${input.teamId} is not active`);
@@ -591,15 +594,23 @@ export class TeamMissionService {
 
     const now = this.clock.now();
     const rosterSnapshot = await this.createRosterSnapshot(storedTeam.profile, now);
-    const lead = requireValue(
-      rosterSnapshot.members.find((member) => member.memberId === rosterSnapshot.leadMemberId),
-      "Lead member is missing from the roster snapshot",
-    );
-    if (!lead.runtimeSnapshot?.providerAvailable) {
-      throw new TeamApplicationError(
-        "provider_unavailable",
-        `Provider ${lead.executionProfile.provider} is unavailable for the Lead`,
-      );
+    let methodologySnapshot: ReturnType<MethodologyCatalog["compileMission"]>;
+    try {
+      methodologySnapshot = this.methodologies.compileMission({
+        binding: structuredClone(storedTeam.profile.methodologyBinding),
+        teamRevision: storedTeam.profile.revision,
+        roster: methodologyRosterProjection(rosterSnapshot),
+        mission: {
+          objective: input.objective,
+          constraints: structuredClone(input.constraints),
+          acceptanceCriteria: structuredClone(input.acceptanceCriteria),
+        },
+      });
+    } catch (error) {
+      if (error instanceof MethodologyCompileError) {
+        throw new TeamApplicationError(error.code, error.message);
+      }
+      throw error;
     }
 
     const missionId = this.ids.next("mission");
@@ -618,6 +629,8 @@ export class TeamMissionService {
       constraints: structuredClone(input.constraints),
       acceptanceCriteria: structuredClone(input.acceptanceCriteria),
       rosterSnapshot,
+      methodologySnapshot,
+      methodologyCompiledAt: now,
       workspaceAuditPolicy: structuredClone(DEFAULT_WORKSPACE_AUDIT_POLICY),
       stage: "reserved" as const,
       requestedAt: now,
@@ -1037,11 +1050,17 @@ export class TeamMissionService {
         `Member ${replacementMemberId} has open accepted work`,
       );
     }
-    const runtimeSnapshot = await this.capabilities.resolve(replacement.executionProfile);
-    if (!runtimeSnapshot.providerAvailable) {
+    const capabilityFacts = await this.capabilities.resolve(replacement.executionProfile);
+    if (capabilityFacts.kind === "unknown") {
       throw new TeamApplicationError(
-        "replacement_lead_provider_unavailable",
-        `Provider ${replacement.executionProfile.provider} is unavailable for the replacement Lead`,
+        "methodology_capability_unknown",
+        `Replacement Lead ${replacementMemberId} capability facts are unavailable from provider ${capabilityFacts.providerId}`,
+      );
+    }
+    if (!capabilityFacts.capabilityIds.includes("structured-tools")) {
+      throw new TeamApplicationError(
+        "methodology_capability_unsatisfied",
+        `Replacement Lead ${replacementMemberId} does not declare structured-tools`,
       );
     }
 
@@ -1092,7 +1111,7 @@ export class TeamMissionService {
         expectedRevision: input.expectedRevision,
         intent,
         update: (mission) =>
-          applyLeadReplacement({ mission, input, intent, runtimeSnapshot, replacedAt: now }),
+          applyLeadReplacement({ mission, input, intent, capabilityFacts, replacedAt: now }),
       });
     } catch (error) {
       if (error instanceof MissionRevisionConflictError) {
@@ -1192,6 +1211,9 @@ export class TeamMissionService {
       role: replacement.role,
       mentionHandle: replacement.mentionHandle,
       executionProfile: replacement.executionProfile,
+      methodologyPromptSections: current.mission.methodologySnapshot.promptSections.filter(
+        (section) => section.audience === "lead",
+      ),
       bindingEpoch: intent.bindingEpoch,
     });
     const completed = await this.missions.completeLeadReplacement({
@@ -1989,6 +2011,9 @@ export class TeamMissionService {
       role: lead.role,
       mentionHandle: lead.mentionHandle,
       executionProfile: lead.executionProfile,
+      methodologyPromptSections: intent.methodologySnapshot.promptSections.filter(
+        (section) => section.audience === "lead",
+      ),
       bindingEpoch: intent.bindingEpoch,
     });
   }
@@ -2248,7 +2273,7 @@ export class TeamMissionService {
     const members = await Promise.all(
       team.members.map(async (member) =>
         Object.assign(structuredClone(member), {
-          runtimeSnapshot: await this.capabilities.resolve(member.executionProfile),
+          capabilityFacts: await this.capabilities.resolve(member.executionProfile),
         }),
       ),
     );
@@ -2354,7 +2379,7 @@ function applyLeadReplacement(input: {
   mission: TeamMission;
   input: ResolveMissionAttentionInput;
   intent: TeamLeadReplacementIntent;
-  runtimeSnapshot: MissionMemberRuntimeSnapshot;
+  capabilityFacts: MissionCapabilityFacts;
   replacedAt: string;
 }): TeamMission {
   const activeRoster = requireValue(
@@ -2390,7 +2415,7 @@ function applyLeadReplacement(input: {
     members: activeRoster.members.map((member) =>
       member.memberId === input.intent.replacementMemberId
         ? Object.assign(structuredClone(member), {
-            runtimeSnapshot: structuredClone(input.runtimeSnapshot),
+            capabilityFacts: structuredClone(input.capabilityFacts),
           })
         : structuredClone(member),
     ),
@@ -2720,6 +2745,41 @@ function stableJson(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function exactMethodologyRefsEqual(
+  left: MethodologyDescriptor["ref"],
+  right: MethodologyDescriptor["ref"],
+): boolean {
+  return (
+    left.bundleId === right.bundleId &&
+    left.version === right.version &&
+    left.digest === right.digest
+  );
+}
+
+function methodologyRosterProjection(roster: MissionRosterSnapshot): {
+  rosterSnapshotRevision: number;
+  leadMemberId: string;
+  members: Array<{
+    memberId: string;
+    role: string;
+    level: number;
+    skillIds: string[];
+    capabilityFacts: MissionCapabilityFacts;
+  }>;
+} {
+  return {
+    rosterSnapshotRevision: roster.revision,
+    leadMemberId: roster.leadMemberId,
+    members: roster.members.map((member) => ({
+      memberId: member.memberId,
+      role: member.role,
+      level: member.level,
+      skillIds: structuredClone(member.skillIds),
+      capabilityFacts: structuredClone(member.capabilityFacts),
+    })),
+  };
 }
 
 function requireValue<T>(value: T | null | undefined, message: string): T {

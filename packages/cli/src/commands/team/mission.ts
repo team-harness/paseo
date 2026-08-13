@@ -56,19 +56,18 @@ export async function runMissionStartCommand(
   }
   const { client } = await connectTeamClient(options.host);
   try {
-    // COMPAT(globalTeamProfiles): added in v0.3.1, require --workspace unconditionally and
-    // remove workspace omission after 2027-02-11 once the daemon floor is >= v0.3.1.
-    const workspaceId = client.supportsGlobalTeamProfiles()
-      ? required(options.workspace, "--workspace")
-      : null;
+    const workspaceId = required(options.workspace, "--workspace");
+    const inspected = await client.inspectTeamProfile({ teamId });
+    if (!inspected.team) throw toTeamResponseError("inspect the Team", inspected);
     const payload = await client.startTeamMission({
       idempotencyKey: options.idempotencyKey?.trim() || newIdempotencyKey(),
       teamId,
       expectedTeamRevision: revision(options.expectedTeamRevision, "--expected-team-revision"),
+      expectedMethodologyRef: inspected.team.methodologyBinding.ref,
+      workspaceId,
       objective: required(options.objective, "--objective"),
       constraints: (options.constraint ?? []).map((value) => value.trim()).filter(Boolean),
       acceptanceCriteria,
-      ...(workspaceId === null ? {} : { workspaceId }),
     });
     if (!payload.mission) throw toTeamResponseError("start the Mission", payload);
     return { type: "single", data: toMissionRow(payload.mission), schema: missionSchema };

@@ -2,7 +2,10 @@ import type {
   TeamProfileCreateMemberInput,
   TeamProfileMemberInput,
 } from "@getpaseo/protocol/team/v2-rpc-schemas";
-import type { TeamMethodologyBinding } from "@getpaseo/protocol/team/v2-types";
+import type {
+  MissionMethodologySnapshot,
+  TeamMethodologyBinding,
+} from "@getpaseo/protocol/team/v2-types";
 
 import { DaemonTeamAgentProfileMaterializer } from "./application/team-agent-profile-materializer.js";
 import { MethodologyCatalog } from "./methodology/catalog.js";
@@ -66,5 +69,38 @@ export function testTeamCreationDependencies() {
   return {
     methodologies: new MethodologyCatalog(),
     agentProfiles: new DaemonTeamAgentProfileMaterializer({ readSnapshot: () => [] }),
+  };
+}
+
+export function testMissionMethodologySnapshot(
+  teamRevision: number,
+  rosterSnapshotRevision: number,
+): MissionMethodologySnapshot {
+  const digest = `sha256:${"0".repeat(64)}`;
+  return {
+    revision: 1,
+    ref: TEST_STANDARD_METHODOLOGY_REF,
+    compilerVersion: 1,
+    teamRevision,
+    rosterSnapshotRevision,
+    hardPolicy: {
+      review: {
+        writableWorkstreams: "lead_discretion",
+        independentMeans: "different_from_subject_owner",
+        unavailable: "review_gate_reviewer_unavailable_attention",
+        unknownCapabilities: "review_gate_capability_unknown_attention",
+        operatorWaiver: "allowed_with_reason",
+      },
+      verification: {
+        required: true,
+        mutableScope: "read_only",
+        reviewerSelection: "prefer_independent_record_exception",
+        operatorWaiver: "forbidden",
+      },
+    },
+    promptSections: [],
+    hardPolicyDigest: digest,
+    promptDigest: digest,
+    compiledDigest: digest,
   };
 }

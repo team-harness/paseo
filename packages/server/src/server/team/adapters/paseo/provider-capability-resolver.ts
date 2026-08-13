@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 
-import type { MissionMemberRuntimeSnapshot } from "@getpaseo/protocol/team/v2-types";
+import type { MissionCapabilityFacts } from "@getpaseo/protocol/team/v2-types";
 
 import type { ProviderDefinition } from "../../../agent/provider-registry.js";
 import type { ProviderCapabilityResolver } from "../../application/ports.js";
@@ -17,21 +17,23 @@ interface PaseoProviderCapabilityResolverOptions {
 
 export class PaseoProviderCapabilityResolver implements ProviderCapabilityResolver {
   private readonly registry: ProviderCapabilityRegistry;
-  private readonly toolIds: string[];
   private readonly logger: Logger;
 
   constructor(options: PaseoProviderCapabilityResolverOptions) {
     this.registry = options.registry;
-    this.toolIds = [...new Set(options.toolIds)].toSorted();
     this.logger = options.logger;
   }
 
   async resolve(
     executionProfile: Parameters<ProviderCapabilityResolver["resolve"]>[0],
-  ): Promise<MissionMemberRuntimeSnapshot> {
+  ): Promise<MissionCapabilityFacts> {
     const definition = this.registry[executionProfile.provider];
-    if (!definition?.enabled) {
-      return { providerAvailable: false, toolIds: [], capabilityIds: [] };
+    if (!definition) {
+      return {
+        kind: "unknown",
+        providerId: executionProfile.provider,
+        reason: "provider_declaration_unavailable",
+      };
     }
 
     // Registry construction owns provider configuration. Reading the client's
@@ -44,11 +46,7 @@ export class PaseoProviderCapabilityResolver implements ProviderCapabilityResolv
       capabilities.supportsNativePaseoTools === true || capabilities.supportsMcpServers === true;
     if (supportsStructuredTools) capabilityIds.push("structured-tools");
 
-    return {
-      providerAvailable: true,
-      toolIds: supportsStructuredTools ? this.toolIds : [],
-      capabilityIds: [...new Set(capabilityIds)].toSorted(),
-    };
+    return { kind: "known", capabilityIds: [...new Set(capabilityIds)].toSorted() };
   }
 }
 

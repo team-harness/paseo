@@ -40,8 +40,7 @@ describe("PaseoProviderCapabilityResolver", () => {
         featureValues: {},
       }),
     ).resolves.toEqual({
-      providerAvailable: true,
-      toolIds: ["team_message", "team_status"],
+      kind: "known",
       capabilityIds: [
         "structured-tools",
         "supports-dynamic-modes",
@@ -54,37 +53,53 @@ describe("PaseoProviderCapabilityResolver", () => {
     });
   });
 
-  test.each([
-    ["missing", {}],
-    [
-      "disabled",
-      {
-        disabled: {
+  test("reports an unregistered provider declaration as structurally unknown", async () => {
+    const resolver = new PaseoProviderCapabilityResolver({
+      registry: {},
+      toolIds: ["team_status"],
+      logger: createTestLogger(),
+    });
+
+    await expect(
+      resolver.resolve({
+        provider: "missing",
+        model: null,
+        modeId: null,
+        thinkingOptionId: null,
+        featureValues: {},
+      }),
+    ).resolves.toEqual({
+      kind: "unknown",
+      providerId: "missing",
+      reason: "provider_declaration_unavailable",
+    });
+  });
+
+  test("keeps a disabled provider declaration structurally known", async () => {
+    const resolver = new PaseoProviderCapabilityResolver({
+      registry: {
+        codex: {
           enabled: false,
-          createClient: () => clientWithCapabilities("disabled", CAPABILITIES),
+          createClient: () => clientWithCapabilities("codex", CAPABILITIES),
         },
       },
-    ],
-  ] as const)(
-    "reports %s providers unavailable without creating a runtime",
-    async (provider, registry) => {
-      const resolver = new PaseoProviderCapabilityResolver({
-        registry,
-        toolIds: ["team_status"],
-        logger: createTestLogger(),
-      });
+      toolIds: ["team_status"],
+      logger: createTestLogger(),
+    });
 
-      await expect(
-        resolver.resolve({
-          provider,
-          model: null,
-          modeId: null,
-          thinkingOptionId: null,
-          featureValues: {},
-        }),
-      ).resolves.toEqual({ providerAvailable: false, toolIds: [], capabilityIds: [] });
-    },
-  );
+    await expect(
+      resolver.resolve({
+        provider: "codex",
+        model: null,
+        modeId: null,
+        thinkingOptionId: null,
+        featureValues: {},
+      }),
+    ).resolves.toMatchObject({
+      kind: "known",
+      capabilityIds: expect.arrayContaining([expect.any(String)]),
+    });
+  });
 });
 
 function clientWithCapabilities(provider: string, capabilities: AgentCapabilityFlags): AgentClient {
