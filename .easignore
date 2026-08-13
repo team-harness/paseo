@@ -1,0 +1,55 @@
+# Dependencies and generated output
+node_modules/
+build/
+dist/
+.next/
+out/
+result
+artifacts/
+packages/desktop/release/
+packages/desktop/.cache/
+
+# Local runtime and tool state
+.codegraph/
+.dev/
+.debug/
+.debug.conversations/
+.paseo/
+.tasks/
+.valknut/
+.plans/
+.claude/worktrees/
+**/.playwright-mcp/
+**/.paseo-provider-history/
+**/.wrangler/
+**/.tanstack/
+**/.licell/
+
+# Expo and native generated projects
+.expo/
+packages/app/.expo/
+packages/app/dist/
+packages/app/web-build/
+packages/app/ios/
+packages/app/android/
+
+# Local credentials and environment
+.env
+.env.*
+!.env.example
+**/.secrets/
+*.pem
+*.p8
+*.p12
+*.key
+*.jks
+*.mobileprovision
+
+# Tests, logs, and editor state
+coverage/
+test-results/
+**/test-results/
+*.log
+.DS_Store
+.vscode/
+.idea/

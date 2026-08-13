@@ -67,7 +67,7 @@ const variants = {
   production: {
     name: "Paseo",
     androidPackageId: "com.teamharness.paseo",
-    iosBundleIdentifier: "sh.paseo",
+    iosBundleIdentifier: "com.teamharness.paseo",
     googleServicesFile: resolveSecretFile({
       envKey: "GOOGLE_SERVICES_FILE_PROD",
       fallbackRelativePath: "./.secrets/google-services.prod.json",
@@ -98,7 +98,7 @@ const nativeReleaseVersion = getNativeReleaseVersion(pkg.version);
 export default {
   expo: {
     name: variant.name,
-    slug: "voice-mobile",
+    slug: "haseo",
     version: nativeReleaseVersion.appVersion,
     orientation: "portrait",
     icon: "./assets/images/icon.png",
@@ -188,9 +188,9 @@ export default {
       profileBuild: isProfileBuild,
       router: {},
       eas: {
-        projectId: "0e7f65ce-0367-46c8-a238-2b65963d235a",
+        projectId: "2ffc7aed-23d2-416a-aed5-618b5f6dbb00",
       },
     },
-    owner: "getpaseo",
+    owner: "taichuyuntu",
   },
 };

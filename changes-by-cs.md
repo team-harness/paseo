@@ -22,6 +22,12 @@
 4. `.codestable/` 是 fork 的工程流程和审计资产，不改变 Paseo 运行时行为。上游若也引入同名流程文件，保留双方必要约束，避免用上游版本整目录覆盖。
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
 
+## iOS 发布身份
+
+- 生产 iOS 使用 Bundle ID `com.teamharness.paseo`，Expo 项目为 `@taichuyuntu/haseo`，App Store Connect 应用 ID 为 `6801060905`。
+- TestFlight 与 Fastlane 必须使用上述 fork 身份；不得在同步上游时恢复为 `sh.paseo`、`getpaseo/voice-mobile` 或上游 App Store Connect 应用。
+- EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
+
 ## 最近同步判断
 
 ### 2026-08-13: `upstream/main` `4426a6b11` / `v0.4.0-beta.1`
