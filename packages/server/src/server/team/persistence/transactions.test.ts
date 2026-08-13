@@ -123,77 +123,78 @@ describe("TeamMissionPersistenceTransactions", () => {
     await rm(rootDirectory, { recursive: true, force: true });
   });
 
-  test.each<TeamPersistenceFaultPoint>(["after_mission_write", "after_start_stage"])(
-    "replays Mission start after a crash at %s",
-    async (faultPoint) => {
-      const stores = createStores(profileDirectory, missionDirectory);
-      await createProfile(stores.profiles);
-      const crashing = new TeamMissionPersistenceTransactions({
-        ...stores,
-        faultInjector: throwOnceAt(faultPoint),
-      });
+  test.each<TeamPersistenceFaultPoint>([
+    "after_start_intent_write",
+    "after_mission_write",
+    "after_start_stage",
+  ])("replays Mission start after a crash at %s", async (faultPoint) => {
+    const stores = createStores(profileDirectory, missionDirectory);
+    await createProfile(stores.profiles);
+    const crashing = new TeamMissionPersistenceTransactions({
+      ...stores,
+      faultInjector: throwOnceAt(faultPoint),
+    });
 
-      await expect(
-        crashing.beginMissionStart({
-          teamId: "team-transaction",
-          intent: startIntent(),
-        }),
-      ).rejects.toThrow(`simulated crash at ${faultPoint}`);
-
-      const restarted = createStores(profileDirectory, missionDirectory);
-      const transaction = new TeamMissionPersistenceTransactions(restarted);
-      const persisted = await transaction.beginMissionStart({
+    await expect(
+      crashing.beginMissionStart({
         teamId: "team-transaction",
         intent: startIntent(),
-      });
-      expect(persisted.profile).toMatchObject({
-        profile: { activeMissionId: null },
-        startIntent: { stage: "mission_written" },
-      });
-      expect(persisted.mission.mission.participants).toMatchObject([
-        {
-          memberId: "member-lead",
-          agentId: "agent-transaction-lead",
-          bindingEpoch: 1,
-        },
-      ]);
+      }),
+    ).rejects.toThrow(`simulated crash at ${faultPoint}`);
 
-      await advanceExternalStart(restarted.profiles);
-      const completed = await transaction.commitMissionStart({
+    const restarted = createStores(profileDirectory, missionDirectory);
+    const transaction = new TeamMissionPersistenceTransactions(restarted);
+    const persisted = await transaction.beginMissionStart({
+      teamId: "team-transaction",
+      intent: startIntent(),
+    });
+    expect(persisted.profile).toMatchObject({
+      profile: { activeMissionId: null },
+      startIntent: { stage: "mission_written" },
+    });
+    expect(persisted.mission.mission.participants).toMatchObject([
+      {
+        memberId: "member-lead",
+        agentId: "agent-transaction-lead",
+        bindingEpoch: 1,
+      },
+    ]);
+
+    await advanceExternalStart(restarted.profiles);
+    const completed = await transaction.commitMissionStart({
+      teamId: "team-transaction",
+      intentId: "start-team-transaction",
+      missionId: "mission-transaction",
+    });
+
+    expect(completed.profile).toMatchObject({
+      profile: { activeMissionId: "mission-transaction" },
+      startIntent: null,
+    });
+    expect(completed.mission).toMatchObject({
+      mission: {
+        id: "mission-transaction",
+        teamId: "team-transaction",
+        chatRoomId: "room-transaction",
+        participants: [
+          {
+            memberId: "member-lead",
+            agentId: "agent-transaction-lead",
+            bindingEpoch: 1,
+            archivedAt: null,
+          },
+        ],
+      },
+    });
+    expect(await restarted.missions.list()).toHaveLength(1);
+    expect(
+      await transaction.commitMissionStart({
         teamId: "team-transaction",
         intentId: "start-team-transaction",
         missionId: "mission-transaction",
-      });
-
-      expect(completed.profile).toMatchObject({
-        profile: { activeMissionId: "mission-transaction" },
-        startIntent: null,
-      });
-      expect(completed.mission).toMatchObject({
-        mission: {
-          id: "mission-transaction",
-          teamId: "team-transaction",
-          chatRoomId: "room-transaction",
-          participants: [
-            {
-              memberId: "member-lead",
-              agentId: "agent-transaction-lead",
-              bindingEpoch: 1,
-              archivedAt: null,
-            },
-          ],
-        },
-      });
-      expect(await restarted.missions.list()).toHaveLength(1);
-      expect(
-        await transaction.commitMissionStart({
-          teamId: "team-transaction",
-          intentId: "start-team-transaction",
-          missionId: "mission-transaction",
-        }),
-      ).toEqual(completed);
-    },
-  );
+      }),
+    ).toEqual(completed);
+  });
 
   test("materializes the Mission from the intent workspace instead of the Team creation workspace", async () => {
     const stores = createStores(profileDirectory, missionDirectory);
