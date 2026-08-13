@@ -54,7 +54,7 @@ const memberInput = {
 const team = {
   id: "team-platform",
   name: "Platform",
-  workspaceId: "wks-platform",
+  creationWorkspaceId: "wks-platform",
   leadMemberId: "member-lead",
   skills: [
     {
@@ -70,6 +70,16 @@ const team = {
       mentionHandle: "software-engineer",
     },
   ],
+  methodologyBinding: {
+    ref: {
+      bundleId: "paseo/standard",
+      version: "1",
+      digest: `sha256:${"a".repeat(64)}`,
+    },
+    presetId: "standard",
+    memberArchetypeBindings: [{ memberId: "member-lead", archetypeId: "generalist" }],
+    skillBindings: [{ teamSkillId: "typescript", methodologySkillId: "typescript" }],
+  },
   lifecycle: "active" as const,
   activeMissionId: "mission-sdk",
   lifecycleRecoveryFailure: null,
@@ -82,7 +92,7 @@ const team = {
 const mission = {
   id: "mission-sdk",
   teamId: team.id,
-  workspaceId: team.workspaceId,
+  workspaceId: team.creationWorkspaceId,
   objective: "Expose Team Missions through the SDK.",
   constraints: ["Keep the protocol capability-gated."],
   acceptanceCriteria: ["Protocol tests pass."],
@@ -186,20 +196,57 @@ describe("Team profile v2 RPC schemas", () => {
     ).toBe(false);
   });
 
-  it("creates a profile from role, Level, Skills and execution profile without responsibilities", () => {
+  it("creates a bound profile by client member key and rejects the pre-Methodology shape", () => {
     const request = {
       type: "team.profile.create.request" as const,
       requestId: "req-profile-create",
       idempotencyKey: "idem-profile-create",
       name: "Platform",
-      workspaceId: "wks-platform",
+      creationWorkspaceId: "wks-platform",
       skills: team.skills,
-      lead: memberInput,
-      members: [memberInput, memberInput],
+      leadClientMemberKey: "lead",
+      members: [
+        {
+          clientMemberKey: "lead",
+          ...memberInput,
+          executionProfileSelection: { kind: "inline", executionProfile },
+        },
+        {
+          clientMemberKey: "reviewer",
+          ...memberInput,
+          executionProfileSelection: { kind: "agent_profile", profileId: "profile-review" },
+        },
+      ].map(({ executionProfile: _executionProfile, ...member }) => member),
+      methodologyBinding: {
+        ref: {
+          bundleId: "paseo/standard",
+          version: "1",
+          digest: `sha256:${"a".repeat(64)}`,
+        },
+        presetId: "standard",
+        memberArchetypeBindings: [
+          { clientMemberKey: "lead", archetypeId: "generalist" },
+          { clientMemberKey: "reviewer", archetypeId: "generalist" },
+        ],
+        skillBindings: [{ teamSkillId: "typescript", methodologySkillId: "typescript" }],
+      },
     };
 
     expect(TeamProfileCreateRequestSchema.parse(request)).toEqual(request);
-    expect("responsibility" in request.lead).toBe(false);
+    expect(
+      TeamProfileCreateRequestSchema.safeParse({
+        ...request,
+        creationWorkspaceId: undefined,
+        workspaceId: "wks-platform",
+        lead: memberInput,
+      }).success,
+    ).toBe(false);
+    expect(
+      TeamProfileCreateRequestSchema.safeParse({
+        ...request,
+        members: [request.members[0], { ...request.members[1], clientMemberKey: "lead" }],
+      }).success,
+    ).toBe(false);
   });
 
   it("updates a profile with compare-and-swap member mutations", () => {

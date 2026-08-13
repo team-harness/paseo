@@ -6,7 +6,7 @@ import { openTeamProfileForm, type TeamProfileFormSnapshot } from "./team-profil
 export function useTeamProfileFormModel(snapshot: TeamProfileFormSnapshot) {
   const [model] = useState(() => openTeamProfileForm(snapshot));
   const workspaceId =
-    snapshot.mode === "edit" ? snapshot.profile.workspaceId : snapshot.workspaceId;
+    snapshot.mode === "edit" ? snapshot.profile.creationWorkspaceId : snapshot.workspaceId;
 
   useEffect(() => {
     return () => model.close();

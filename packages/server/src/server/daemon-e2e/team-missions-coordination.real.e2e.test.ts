@@ -14,6 +14,7 @@ import { describe, expect, test } from "vitest";
 
 import { CodexAppServerAgentClient } from "../agent/providers/codex-app-server-agent.js";
 import type { TeamPersistenceFaultPoint } from "../team/persistence/transactions.js";
+import { testCreateMember, testCreateMethodologyBinding } from "../team/test-fixtures.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { createTestPaseoDaemon, type TestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import type { UsageLedger, UsageTotalsDelta } from "../usage-ledger/index.js";
@@ -274,13 +275,24 @@ async function runCoordinationMission(
       if (!workspace.workspace) throw new Error(workspace.error ?? "Workspace creation failed");
 
       phase = "create_team";
+      const leadClientMemberKey = "technical-lead";
+      const members = [
+        testCreateMember(leadClientMemberKey, definition.lead),
+        ...definition.members.map((member, index) =>
+          testCreateMember(`member-${index + 1}`, member),
+        ),
+      ];
       const created = await client.createTeamProfile({
         idempotencyKey: `${definition.shape}-${repetition}-team`,
         name: `${definition.shape} team ${repetition}`,
-        workspaceId: workspace.workspace.id,
+        creationWorkspaceId: workspace.workspace.id,
         skills: definition.skills,
-        lead: definition.lead,
-        members: definition.members,
+        leadClientMemberKey,
+        members,
+        methodologyBinding: testCreateMethodologyBinding(
+          members.map((member) => member.clientMemberKey),
+          definition.skills.map((skill) => skill.skillId),
+        ),
       });
       if (!created.team) throw new Error(created.error ?? "Team profile creation failed");
 

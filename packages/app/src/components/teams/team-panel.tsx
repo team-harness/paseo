@@ -122,7 +122,7 @@ export function TeamPanel({
     );
   }
 
-  const creationWorkspace = workspaces?.get(view.team.workspaceId);
+  const creationWorkspace = workspaces?.get(view.team.creationWorkspaceId);
   const canStartMission = workspaceId !== null && view.canStartMission;
   return (
     <View style={styles.body} testID="team-panel">
@@ -160,7 +160,7 @@ export function TeamPanel({
       {creationWorkspace ? (
         <TeamProfileFormSheet
           serverId={serverId}
-          workspaceId={view.team.workspaceId}
+          workspaceId={view.team.creationWorkspaceId}
           cwd={creationWorkspace.workspaceDirectory}
           profile={view.team}
           visible={profileEditOpen}

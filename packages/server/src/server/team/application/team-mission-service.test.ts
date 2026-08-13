@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import type {
   TeamMissionAttentionResolutionInput,
+  TeamProfileCreateMemberInput,
   TeamProfileMemberInput,
 } from "@getpaseo/protocol/team/v2-rpc-schemas";
 import type { MissionAttentionItem, TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
@@ -33,9 +34,16 @@ import {
   TeamMissionService,
   type TeamMissionFinishQuiescencePort,
 } from "./team-mission-service.js";
+import { DaemonTeamAgentProfileMaterializer } from "./team-agent-profile-materializer.js";
+import { MethodologyCatalog } from "../methodology/catalog.js";
 import { TeamOperationCoordinator } from "./team-operation-coordinator.js";
 
 const NOW = "2026-08-08T10:00:00.000Z";
+const STANDARD_REF = {
+  bundleId: "paseo/standard",
+  version: "1",
+  digest: "sha256:d5001287a60f868bcef21ecd3c4debb5a5237db002c5b9d0f7b0b78e98969697",
+};
 
 const LEAD: TeamProfileMemberInput = {
   role: "Technical lead",
@@ -75,15 +83,37 @@ describe("TeamMissionService lifecycle", () => {
   });
 
   test("creating a Team only persists its profile", async () => {
-    const fixture = createFixture(rootDirectory);
+    const fixture = createFixture(rootDirectory, {
+      agentProfiles: [
+        {
+          id: "profile-engineer",
+          provider: "claude",
+          model: "sonnet",
+          featureValues: { tools: ["shell", "editor"], nested: { beta: true, alpha: false } },
+        },
+      ],
+    });
 
     const team = await fixture.service.createTeam({
       idempotencyKey: "create-team",
       name: "Compiler team",
-      workspaceId: "workspace-sdk",
+      creationWorkspaceId: "workspace-sdk",
       skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
-      lead: LEAD,
-      members: [MEMBER],
+      leadClientMemberKey: "lead",
+      members: [
+        createMember("lead", LEAD),
+        {
+          clientMemberKey: "engineer",
+          role: MEMBER.role,
+          level: MEMBER.level,
+          skillIds: MEMBER.skillIds,
+          executionProfileSelection: {
+            kind: "agent_profile",
+            profileId: "profile-engineer",
+          },
+        },
+      ],
+      methodologyBinding: standardBinding(["lead", "engineer"]),
     });
 
     expect(team).toMatchObject({
@@ -92,11 +122,92 @@ describe("TeamMissionService lifecycle", () => {
       activeMissionId: null,
       members: [
         { memberId: "member-1", mentionHandle: "technical-lead" },
-        { memberId: "member-2", mentionHandle: "software-engineer" },
+        {
+          memberId: "member-2",
+          mentionHandle: "software-engineer",
+          executionProfile: {
+            provider: "claude",
+            model: "sonnet",
+            modeId: null,
+            thinkingOptionId: null,
+            featureValues: {
+              tools: ["shell", "editor"],
+              nested: { beta: true, alpha: false },
+            },
+          },
+          executionProfileSource: {
+            kind: "agent_profile",
+            profileId: "profile-engineer",
+            resolverVersion: 1,
+            appliedDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+          },
+        },
       ],
+      methodologyBinding: {
+        ref: STANDARD_REF,
+        memberArchetypeBindings: [
+          { memberId: "member-1", archetypeId: "lead" },
+          { memberId: "member-2", archetypeId: "builder" },
+        ],
+      },
     });
     expect(fixture.effects).toEqual([]);
     expect(await fixture.missions.list()).toEqual([]);
+  });
+
+  test.each([
+    {
+      code: "team_agent_profile_not_found",
+      profiles: [],
+    },
+    {
+      code: "team_agent_profile_ambiguous",
+      profiles: [
+        { id: "profile-engineer", provider: "claude" },
+        { id: "profile-engineer", provider: "codex" },
+      ],
+    },
+    {
+      code: "team_agent_profile_invalid",
+      profiles: [{ id: "profile-engineer", provider: "codex", model: "" }],
+    },
+  ])("rejects $code with zero Team writes", async ({ code, profiles }) => {
+    const fixture = createFixture(rootDirectory, { agentProfiles: profiles });
+
+    await expect(
+      fixture.service.createTeam(
+        createProfileSourcedTeamInput("create-invalid-profile", "profile-engineer"),
+      ),
+    ).rejects.toMatchObject({ code });
+
+    expect(await fixture.profiles.list()).toEqual([]);
+    expect(fixture.effects).toEqual([]);
+    expect(fixture.idCounters.size).toBe(0);
+  });
+
+  test("replays before catalog reads or identity allocation", async () => {
+    const fixture = createFixture(rootDirectory, {
+      agentProfiles: [{ id: "profile-engineer", provider: "claude", model: "sonnet" }],
+    });
+    const input = createProfileSourcedTeamInput("create-replay", "profile-engineer");
+    const firstRequest = {
+      ...input,
+      type: "team.profile.create.request" as const,
+      requestId: "request-first",
+    };
+    const replayRequest = { ...firstRequest, requestId: "request-retry" };
+    const first = await fixture.service.createTeam(firstRequest);
+    const readsAfterFirst = fixture.materializerState.reads;
+    const idsAfterFirst = new Map(fixture.idCounters);
+
+    const replay = await fixture.service.createTeam(replayRequest);
+
+    expect(replay).toEqual(first);
+    expect(fixture.materializerState.reads).toBe(readsAfterFirst);
+    expect(fixture.idCounters).toEqual(idsAfterFirst);
+    expect(await fixture.profiles.list()).toHaveLength(1);
+    expect((await fixture.profiles.get(first.id))?.storageRevision).toBe(1);
+    expect(fixture.effects).toEqual([]);
   });
 
   test("starting a Mission persists each saga stage before room and Lead side effects", async () => {
@@ -148,7 +259,9 @@ describe("TeamMissionService lifecycle", () => {
 
     expect(mission.workspaceId).toBe("workspace-delivery");
     expect(fixture.leadWorkspaces).toEqual(["workspace-delivery"]);
-    expect((await fixture.profiles.get(team.id))?.profile.workspaceId).toBe("workspace-sdk");
+    expect((await fixture.profiles.get(team.id))?.profile.creationWorkspaceId).toBe(
+      "workspace-sdk",
+    );
   });
 
   test("rejects an unknown workspace before persisting Mission or runtime side effects", async () => {
@@ -713,6 +826,38 @@ describe("TeamMissionService lifecycle", () => {
     ).rejects.toMatchObject({ code: "member_not_found" });
   });
 
+  test("rejects execution snapshot edits for an Agent Profile sourced Member", async () => {
+    const fixture = createFixture(rootDirectory, {
+      agentProfiles: [{ id: "profile-engineer", provider: "claude", model: "sonnet" }],
+    });
+    const team = await fixture.service.createTeam(
+      createProfileSourcedTeamInput("create-profile-sourced-team", "profile-engineer"),
+    );
+    const sourcedMember = team.members.find(
+      (member) => member.executionProfileSource?.profileId === "profile-engineer",
+    );
+
+    await expect(
+      fixture.service.updateTeam({
+        teamId: team.id,
+        expectedRevision: team.revision,
+        memberUpdates: [
+          {
+            memberId: sourcedMember?.memberId ?? "missing",
+            executionProfile: {
+              provider: "codex",
+              model: "gpt-5.6-sol",
+              modeId: null,
+              thinkingOptionId: null,
+              featureValues: {},
+            },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "team_agent_profile_source_update_unsupported" });
+    expect(await fixture.service.inspectTeam(team.id)).toEqual(team);
+  });
+
   test("deduplicates a profile update after its response is lost", async () => {
     const fixture = createFixture(rootDirectory);
     const team = await createTeam(fixture.service);
@@ -890,7 +1035,7 @@ describe("TeamMissionService lifecycle", () => {
     expect((await fixture.profiles.get(team.id))?.profile).toMatchObject({
       lifecycle: "active",
       activeMissionId: null,
-      workspaceId: "workspace-sdk",
+      creationWorkspaceId: "workspace-sdk",
     });
     expect(fixture.effects).toEqual(["archive:agent-1"]);
   });
@@ -1414,10 +1559,11 @@ describe("TeamMissionService lifecycle", () => {
     const secondTeam = await first.service.createTeam({
       idempotencyKey: "create-team-2",
       name: "Runtime team",
-      workspaceId: "workspace-sdk",
+      creationWorkspaceId: "workspace-sdk",
       skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
-      lead: LEAD,
-      members: [MEMBER],
+      leadClientMemberKey: "lead",
+      members: [createMember("lead", LEAD), createMember("engineer", MEMBER)],
+      methodologyBinding: standardBinding(["lead", "engineer"]),
     });
     for (const [team, key] of [
       [firstTeam, "recover-bad-team"],
@@ -1458,10 +1604,11 @@ describe("TeamMissionService lifecycle", () => {
     const secondTeam = await first.service.createTeam({
       idempotencyKey: "create-team-2",
       name: "Runtime team",
-      workspaceId: "workspace-sdk",
+      creationWorkspaceId: "workspace-sdk",
       skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
-      lead: LEAD,
-      members: [MEMBER],
+      leadClientMemberKey: "lead",
+      members: [createMember("lead", LEAD), createMember("engineer", MEMBER)],
+      methodologyBinding: standardBinding(["lead", "engineer"]),
     });
     for (const [team, key] of [
       [firstTeam, "corrupt-pending-mission"],
@@ -3565,6 +3712,14 @@ function createFixture(
     activeWorkspaceIds?: string[];
     isWorkspaceActive?: (workspaceId: string) => boolean;
     workspaceLifecycle?: WorkspaceLifecyclePort;
+    agentProfiles?: Array<{
+      id: string;
+      provider: string;
+      model?: string;
+      modeId?: string;
+      thinkingOptionId?: string;
+      featureValues?: Record<string, unknown>;
+    }>;
   },
 ) {
   const logger = createTestLogger();
@@ -3668,6 +3823,7 @@ function createFixture(
     },
   };
   const idCounters = new Map<string, number>();
+  const materializerState = { reads: 0 };
   const operations = options?.operations ?? new TeamOperationCoordinator();
   let serviceCount = 0;
   const createConcurrentService = () =>
@@ -3687,6 +3843,13 @@ function createFixture(
           return `${kind}-${next}`;
         },
       },
+      agentProfiles: new DaemonTeamAgentProfileMaterializer({
+        readSnapshot: () => {
+          materializerState.reads += 1;
+          return structuredClone(options?.agentProfiles ?? []);
+        },
+      }),
+      methodologies: new MethodologyCatalog(),
       operations: options?.operations ?? (serviceCount === 0 ? operations : undefined),
       workspaces: {
         isActive: async (workspaceId) => {
@@ -3722,6 +3885,8 @@ function createFixture(
     publishedMissions,
     failMissionPublishIds,
     operations,
+    idCounters,
+    materializerState,
   };
 }
 
@@ -3760,11 +3925,61 @@ async function createTeam(service: TeamMissionService) {
   return service.createTeam({
     idempotencyKey: "create-team",
     name: "Compiler team",
-    workspaceId: "workspace-sdk",
+    creationWorkspaceId: "workspace-sdk",
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
-    lead: LEAD,
-    members: [MEMBER],
+    leadClientMemberKey: "lead",
+    members: [createMember("lead", LEAD), createMember("engineer", MEMBER)],
+    methodologyBinding: standardBinding(["lead", "engineer"]),
   });
+}
+
+function createMember(
+  clientMemberKey: string,
+  member: TeamProfileMemberInput,
+): TeamProfileCreateMemberInput {
+  return {
+    clientMemberKey,
+    role: member.role,
+    level: member.level,
+    skillIds: member.skillIds,
+    executionProfileSelection: {
+      kind: "inline",
+      executionProfile: member.executionProfile,
+    },
+  };
+}
+
+function standardBinding(clientMemberKeys: string[]) {
+  return {
+    ref: STANDARD_REF,
+    presetId: "lean-delivery",
+    memberArchetypeBindings: clientMemberKeys.map((clientMemberKey, index) => ({
+      clientMemberKey,
+      archetypeId: index === 0 ? "lead" : "builder",
+    })),
+    skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
+  };
+}
+
+function createProfileSourcedTeamInput(idempotencyKey: string, profileId: string) {
+  return {
+    idempotencyKey,
+    name: "Profile sourced team",
+    creationWorkspaceId: "workspace-sdk",
+    skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
+    leadClientMemberKey: "lead",
+    members: [
+      createMember("lead", LEAD),
+      {
+        clientMemberKey: "engineer",
+        role: MEMBER.role,
+        level: MEMBER.level,
+        skillIds: MEMBER.skillIds,
+        executionProfileSelection: { kind: "agent_profile" as const, profileId },
+      },
+    ],
+    methodologyBinding: standardBinding(["lead", "engineer"]),
+  };
 }
 
 function pendingMissionStartIntent(team: TeamV2): TeamMissionStartIntent {

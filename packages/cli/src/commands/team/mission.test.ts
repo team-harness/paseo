@@ -9,9 +9,14 @@ import {
 
 const { connectToDaemon, client, serverFeatures } = vi.hoisted(() => ({
   connectToDaemon: vi.fn(),
-  serverFeatures: { teamMissions: true, globalTeamProfiles: true } as {
+  serverFeatures: {
+    teamMissions: true,
+    globalTeamProfiles: true,
+    teamMethodologies: true,
+  } as {
     teamMissions: boolean;
     globalTeamProfiles?: boolean;
+    teamMethodologies: boolean;
   },
   client: {
     getLastServerInfoMessage: () => ({ features: serverFeatures }),
@@ -51,6 +56,7 @@ const mission = {
 beforeEach(() => {
   vi.clearAllMocks();
   serverFeatures.globalTeamProfiles = true;
+  serverFeatures.teamMethodologies = true;
   connectToDaemon.mockResolvedValue(client);
 });
 
@@ -97,23 +103,21 @@ describe("Mission commands", () => {
     expect(client.startTeamMission).not.toHaveBeenCalled();
   });
 
-  it("keeps the old Mission request shape for a daemon without global Team profiles", async () => {
+  it("rejects a daemon without the complete Team V1 capability set", async () => {
     delete serverFeatures.globalTeamProfiles;
-    client.startTeamMission.mockResolvedValue({ mission, error: null, errorCode: null });
 
-    await runMissionStartCommand(
-      "team-1",
-      {
-        expectedTeamRevision: "4",
-        objective: "Ship the CLI",
-        acceptance: ["CLI tests pass"],
-      },
-      null as never,
-    );
-
-    expect(client.startTeamMission).toHaveBeenCalledWith(
-      expect.not.objectContaining({ workspaceId: expect.anything() }),
-    );
+    await expect(
+      runMissionStartCommand(
+        "team-1",
+        {
+          expectedTeamRevision: "4",
+          objective: "Ship the CLI",
+          acceptance: ["CLI tests pass"],
+        },
+        null as never,
+      ),
+    ).rejects.toMatchObject({ code: "DAEMON_UPDATE_REQUIRED" });
+    expect(client.startTeamMission).not.toHaveBeenCalled();
   });
 
   it("lists, inspects and cancels through the v2 SDK", async () => {

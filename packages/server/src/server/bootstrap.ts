@@ -940,6 +940,7 @@ export async function createPaseoDaemon(
         session.emitTeamMissionSnapshot(mission);
       }
     },
+    readAgentProfiles: () => daemonConfigStore.get().agentProfiles ?? [],
     providerRegistryOptions: {
       runtimeSettings: config.agentProviderSettings,
       providerOverrides: config.providerOverrides,

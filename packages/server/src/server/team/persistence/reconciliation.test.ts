@@ -15,6 +15,7 @@ import type {
   TeamMissionStartIntent,
 } from "./schemas.js";
 import { TeamMissionPersistenceTransactions } from "./transactions.js";
+import { testTeamMethodologyBinding } from "../test-fixtures.js";
 
 const NOW = "2026-08-08T10:00:00.000Z";
 
@@ -22,7 +23,7 @@ function teamProfile(): Omit<TeamV2, "revision" | "createdAt" | "updatedAt"> {
   return {
     id: "team-reconcile",
     name: "Reconciliation team",
-    workspaceId: "workspace-reconcile",
+    creationWorkspaceId: "workspace-reconcile",
     leadMemberId: "member-lead",
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
     members: [
@@ -41,6 +42,7 @@ function teamProfile(): Omit<TeamV2, "revision" | "createdAt" | "updatedAt"> {
         mentionHandle: "lead-engineer",
       },
     ],
+    methodologyBinding: testTeamMethodologyBinding(["member-lead"], ["typescript"]),
     lifecycle: "active",
     activeMissionId: null,
     lifecycleRecoveryFailure: null,
@@ -55,7 +57,7 @@ function startIntent(): TeamMissionStartIntent {
     idempotencyKey: "start-key-reconcile",
     requestFingerprint: "start-fingerprint-reconcile",
     expectedTeamRevision: 1,
-    workspaceId: profile.workspaceId,
+    workspaceId: profile.creationWorkspaceId,
     missionId: "mission-reconcile",
     chatRoomId: "room-reconcile",
     teamName: profile.name,

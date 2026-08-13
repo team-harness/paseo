@@ -8,7 +8,7 @@ const timestamp = "2026-08-09T08:00:00.000Z";
 const team = {
   id: "team-1",
   name: "Platform",
-  workspaceId: "workspace-1",
+  creationWorkspaceId: "workspace-1",
   leadMemberId: "member-lead",
   skills: [{ skillId: "ts", name: "TypeScript", description: null }],
   members: [
@@ -27,6 +27,16 @@ const team = {
       mentionHandle: "lead",
     },
   ],
+  methodologyBinding: {
+    ref: {
+      bundleId: "paseo/standard",
+      version: "1",
+      digest: "sha256:d5001287a60f868bcef21ecd3c4debb5a5237db002c5b9d0f7b0b78e98969697",
+    },
+    presetId: "lean-delivery",
+    memberArchetypeBindings: [{ memberId: "member-lead", archetypeId: "lead" }],
+    skillBindings: [{ teamSkillId: "ts", methodologySkillId: null }],
+  },
   lifecycle: "active",
   activeMissionId: "mission-1",
   lifecycleRecoveryFailure: null,
@@ -39,7 +49,7 @@ const team = {
 const mission = {
   id: "mission-1",
   teamId: team.id,
-  workspaceId: team.workspaceId,
+  workspaceId: team.creationWorkspaceId,
   objective: "Ship the CLI",
   constraints: ["No legacy fallback"],
   acceptanceCriteria: ["CLI tests pass"],
@@ -81,6 +91,7 @@ describe("Team profile output", () => {
         mode: null,
         thinking: "high",
         featureValues: {},
+        executionSource: null,
         mention: "lead",
       },
     ]);

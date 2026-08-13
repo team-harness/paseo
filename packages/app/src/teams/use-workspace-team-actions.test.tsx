@@ -5,14 +5,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 const mocked = vi.hoisted(() => ({
-  supported: true,
-  globalTeamProfiles: false,
+  features: {
+    teamMissions: true,
+    globalTeamProfiles: true,
+    teamMethodologies: true,
+  },
+  catalogStatus: "ready",
   profiles: new Map<string, TeamV2>(),
 }));
 
 vi.mock("@/runtime/host-features", () => ({
-  useHostFeature: (_serverId: string, feature: string) =>
-    feature === "globalTeamProfiles" ? mocked.globalTeamProfiles : mocked.supported,
+  useHostFeature: (_serverId: string, feature: keyof typeof mocked.features) =>
+    mocked.features[feature],
 }));
 
 vi.mock("@/stores/session-store", () => ({
@@ -21,21 +25,24 @@ vi.mock("@/stores/session-store", () => ({
       sessions: {
         "server-a": {
           teamMissionsReplica: { profiles: mocked.profiles },
+          methodologyCatalogReplica: { status: mocked.catalogStatus },
         },
       },
     }),
 }));
 
 import { useWorkspaceTeamActions } from "./use-workspace-team-actions";
+import { testTeamMethodologyBinding } from "./test-fixtures";
 
 function team(id: string, workspaceId: string): TeamV2 {
   return {
     id,
     name: id,
-    workspaceId,
+    creationWorkspaceId: workspaceId,
     leadMemberId: `lead-${id}`,
     skills: [],
     members: [],
+    methodologyBinding: testTeamMethodologyBinding(),
     lifecycle: "active",
     activeMissionId: null,
     lifecycleRecoveryFailure: null,
@@ -49,13 +56,16 @@ function team(id: string, workspaceId: string): TeamV2 {
 describe("workspace Team actions", () => {
   afterEach(() => {
     cleanup();
-    mocked.supported = true;
-    mocked.globalTeamProfiles = false;
+    mocked.features = {
+      teamMissions: true,
+      globalTeamProfiles: true,
+      teamMethodologies: true,
+    };
+    mocked.catalogStatus = "ready";
     mocked.profiles = new Map();
   });
 
   it("offers all active Team profiles when the host advertises global profiles", () => {
-    mocked.globalTeamProfiles = true;
     mocked.profiles = new Map([
       ["team-a", team("team-a", "workspace-a")],
       ["team-b", team("team-b", "workspace-b")],
@@ -72,6 +82,35 @@ describe("workspace Team actions", () => {
     );
 
     expect(result.current.profiles.map((profile) => profile.id)).toEqual(["team-a", "team-b"]);
+  });
+
+  it("does not open the Team form until the complete capability and Methodology catalog are ready", () => {
+    mocked.features.globalTeamProfiles = false;
+    mocked.catalogStatus = "loading";
+    const { result, rerender } = renderHook(() =>
+      useWorkspaceTeamActions({
+        serverId: "server-a",
+        workspaceId: "workspace-a",
+        persistenceKey: "server-a:workspace-a",
+        workspaceDirectory: "/work/a",
+        routeFocused: true,
+        openWorkspaceTabFocused: vi.fn(),
+      }),
+    );
+
+    act(result.current.newTeam.open);
+    expect(result.current.newTeam.requested).toBe(true);
+    expect(result.current.newTeam.visible).toBe(false);
+    expect(result.current.newTeam.catalogStatus).toBe("update_host");
+
+    mocked.features.globalTeamProfiles = true;
+    rerender();
+    expect(result.current.newTeam.visible).toBe(false);
+    expect(result.current.newTeam.catalogStatus).toBe("loading");
+
+    mocked.catalogStatus = "ready";
+    rerender();
+    expect(result.current.newTeam.visible).toBe(true);
   });
 
   it("opens Team profile and Mission forms from one capability and only focuses the Team tab", () => {
@@ -92,7 +131,7 @@ describe("workspace Team actions", () => {
     );
 
     expect(result.current.supported).toBe(true);
-    expect(result.current.profiles.map((profile) => profile.id)).toEqual(["team-a"]);
+    expect(result.current.profiles.map((profile) => profile.id)).toEqual(["team-a", "team-b"]);
 
     act(result.current.newTeam.open);
     expect(result.current.newTeam.visible).toBe(true);
@@ -114,7 +153,7 @@ describe("workspace Team actions", () => {
   });
 
   it("hides both entries when the host does not advertise Team Missions", () => {
-    mocked.supported = false;
+    mocked.features.teamMissions = false;
     const { result } = renderHook(() =>
       useWorkspaceTeamActions({
         serverId: "server-a",

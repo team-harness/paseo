@@ -6038,7 +6038,11 @@ test("creates a Team profile through the v2 SDK and publishes its snapshot", asy
       payload: {
         status: "server_info",
         serverId: "srv-team",
-        features: { teamMissions: true },
+        features: {
+          teamMissions: true,
+          globalTeamProfiles: true,
+          teamMethodologies: true,
+        },
       },
     }),
   );
@@ -6060,10 +6064,20 @@ test("creates a Team profile through the v2 SDK and publishes its snapshot", asy
   const team = {
     id: "team-1",
     name: "Release team",
-    workspaceId: "wks-1",
+    creationWorkspaceId: "wks-1",
     leadMemberId: member.memberId,
     skills: [{ skillId: "coordination", name: "Coordination", description: null }],
     members: [member],
+    methodologyBinding: {
+      ref: {
+        bundleId: "paseo/standard",
+        version: "1",
+        digest: `sha256:${"0".repeat(64)}`,
+      },
+      presetId: "lean-delivery",
+      memberArchetypeBindings: [{ memberId: member.memberId, archetypeId: "lead" }],
+      skillBindings: [{ teamSkillId: "coordination", methodologySkillId: null }],
+    },
     lifecycle: "active" as const,
     activeMissionId: null,
     lifecycleRecoveryFailure: null,
@@ -6076,21 +6090,33 @@ test("creates a Team profile through the v2 SDK and publishes its snapshot", asy
   const createPromise = client.createTeamProfile({
     idempotencyKey: "profile-create-1",
     name: team.name,
-    workspaceId: team.workspaceId,
+    creationWorkspaceId: team.creationWorkspaceId,
     skills: team.skills,
-    lead: {
-      role: member.role,
-      level: member.level,
-      skillIds: member.skillIds,
-      executionProfile: member.executionProfile,
+    leadClientMemberKey: "lead",
+    members: [
+      {
+        clientMemberKey: "lead",
+        role: member.role,
+        level: member.level,
+        skillIds: member.skillIds,
+        executionProfileSelection: {
+          kind: "inline",
+          executionProfile: member.executionProfile,
+        },
+      },
+    ],
+    methodologyBinding: {
+      ref: team.methodologyBinding.ref,
+      presetId: "lean-delivery",
+      memberArchetypeBindings: [{ clientMemberKey: "lead", archetypeId: "lead" }],
+      skillBindings: [{ teamSkillId: "coordination", methodologySkillId: null }],
     },
-    members: [],
   });
   const request = JSON.parse(mock.sent.at(-1) as string).message as Record<string, unknown>;
   expect(request).toMatchObject({
     type: "team.profile.create.request",
     idempotencyKey: "profile-create-1",
-    workspaceId: "wks-1",
+    creationWorkspaceId: "wks-1",
   });
 
   mock.triggerMessage(

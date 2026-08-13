@@ -75,6 +75,8 @@ export function createTeamCommand(): Command {
           .description("Create a Team profile")
           .argument("<name>", "Team profile name")
           .requiredOption("--workspace <id>", "Workspace for Missions")
+          .option("--methodology <bundle-id@version>", "Methodology", "paseo/standard@1")
+          .requiredOption("--preset <id>", "Exact Methodology preset")
           .requiredOption(
             "--skill <id=name=description>",
             "Team skill catalog entry; repeat",
@@ -89,7 +91,14 @@ export function createTeamCommand(): Command {
             "--member <key=role>",
             "Member declaration; key links its member options; repeat",
             collect,
-          ),
+          )
+          .requiredOption("--archetype <key=id>", "Methodology archetype; repeat", collect)
+          .option(
+            "--methodology-skill <team-skill=id>",
+            "Methodology Skill binding; repeat",
+            collect,
+          )
+          .option("--agent-profile <key=id>", "Agent Profile execution source; repeat", collect),
       ),
     ),
   ).action(withOutput(runProfileCreateCommand));

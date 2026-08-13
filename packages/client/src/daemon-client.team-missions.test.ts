@@ -21,7 +21,7 @@ const memberInput = {
 const team = {
   id: "team-platform",
   name: "Platform",
-  workspaceId: "wks-platform",
+  creationWorkspaceId: "wks-platform",
   leadMemberId: "member-lead",
   skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
   members: [
@@ -31,6 +31,16 @@ const team = {
       mentionHandle: "lead-engineer",
     },
   ],
+  methodologyBinding: {
+    ref: {
+      bundleId: "paseo/standard",
+      version: "1",
+      digest: `sha256:${"0".repeat(64)}`,
+    },
+    presetId: "lean-delivery",
+    memberArchetypeBindings: [{ memberId: "member-lead", archetypeId: "lead" }],
+    skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
+  },
   lifecycle: "active" as const,
   activeMissionId: "mission-sdk",
   lifecycleRecoveryFailure: null,
@@ -42,7 +52,7 @@ const team = {
 const mission = {
   id: "mission-sdk",
   teamId: team.id,
-  workspaceId: team.workspaceId,
+  workspaceId: team.creationWorkspaceId,
   objective: "Expose Team Missions through the SDK.",
   constraints: [],
   acceptanceCriteria: ["Client tests pass."],
@@ -205,17 +215,35 @@ test("a daemon without the capability is rejected locally without sending a muta
     client.createTeamProfile({
       idempotencyKey: "idem-create",
       name: team.name,
-      workspaceId: team.workspaceId,
+      creationWorkspaceId: team.creationWorkspaceId,
       skills: team.skills,
-      lead: memberInput,
-      members: [],
+      leadClientMemberKey: "lead",
+      members: [
+        {
+          clientMemberKey: "lead",
+          role: memberInput.role,
+          level: memberInput.level,
+          skillIds: memberInput.skillIds,
+          executionProfileSelection: { kind: "inline", executionProfile },
+        },
+      ],
+      methodologyBinding: {
+        ref: team.methodologyBinding.ref,
+        presetId: "lean-delivery",
+        memberArchetypeBindings: [{ clientMemberKey: "lead", archetypeId: "lead" }],
+        skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
+      },
     }),
   ).rejects.toThrow("Update the host to use Team Missions");
   expect(mock.sent).toHaveLength(sentBefore);
 });
 
 test("the SDK sends all Team profile and Mission correlated RPCs", async () => {
-  const { client, mock } = await connectedClient({ teamMissions: true });
+  const { client, mock } = await connectedClient({
+    teamMissions: true,
+    globalTeamProfiles: true,
+    teamMethodologies: true,
+  });
 
   const cases = [
     {
@@ -224,10 +252,24 @@ test("the SDK sends all Team profile and Mission correlated RPCs", async () => {
         client.createTeamProfile({
           idempotencyKey: "idem-create",
           name: team.name,
-          workspaceId: team.workspaceId,
+          creationWorkspaceId: team.creationWorkspaceId,
           skills: team.skills,
-          lead: memberInput,
-          members: [],
+          leadClientMemberKey: "lead",
+          members: [
+            {
+              clientMemberKey: "lead",
+              role: memberInput.role,
+              level: memberInput.level,
+              skillIds: memberInput.skillIds,
+              executionProfileSelection: { kind: "inline", executionProfile },
+            },
+          ],
+          methodologyBinding: {
+            ref: team.methodologyBinding.ref,
+            presetId: "lean-delivery",
+            memberArchetypeBindings: [{ clientMemberKey: "lead", archetypeId: "lead" }],
+            skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
+          },
         }),
       result: { team: null },
     },
@@ -269,7 +311,7 @@ test("the SDK sends all Team profile and Mission correlated RPCs", async () => {
         client.startTeamMission({
           idempotencyKey: "idem-start",
           teamId: team.id,
-          workspaceId: team.workspaceId,
+          workspaceId: team.creationWorkspaceId,
           expectedTeamRevision: 1,
           objective: mission.objective,
           constraints: [],
@@ -317,7 +359,7 @@ test("the SDK sends all Team profile and Mission correlated RPCs", async () => {
     const request = sentSessionMessage(mock.sent.at(-1)!);
     expect(request.type).toBe(entry.type);
     if (entry.type === "team.mission.start.request") {
-      expect(request.workspaceId).toBe(team.workspaceId);
+      expect(request.workspaceId).toBe(team.creationWorkspaceId);
     }
     const responseType = entry.type.replace(/\.request$/, ".response");
     mock.message({
