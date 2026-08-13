@@ -4,12 +4,13 @@ import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 import { openMissionStartForm } from "./mission-start-form-model";
 import { submitMissionStartForm, type MissionStartGateway } from "./submit-mission-start-form";
+import { testTeamMethodologyBinding } from "./test-fixtures";
 
 function team(): TeamV2 {
   return {
     id: "team-a",
     name: "Platform",
-    workspaceId: "workspace-a",
+    creationWorkspaceId: "workspace-a",
     leadMemberId: "member-lead",
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
     members: [
@@ -28,6 +29,7 @@ function team(): TeamV2 {
         mentionHandle: "lead",
       },
     ],
+    methodologyBinding: testTeamMethodologyBinding(["member-lead"], ["typescript"]),
     lifecycle: "active",
     activeMissionId: null,
     lifecycleRecoveryFailure: null,
@@ -46,7 +48,6 @@ function openFilled(access: "checking_host" | "supported" | "upgrade_required" =
     serverId: "server-a",
     workspaceId: "workspace-a",
     access,
-    globalTeamProfiles: false,
     selectedTeam: selected,
     teams: [selected],
     newRowKey: () => `row-${++row}`,
@@ -88,6 +89,7 @@ describe("submitting a Mission start form", () => {
       objective: "Ship Mission UI",
       constraints: ["Do not open participant tabs"],
       acceptanceCriteria: ["The Team tab stays selected"],
+      workspaceId: "workspace-a",
     });
     expect(target).toEqual({ kind: "team", teamId: "team-a" });
     expect(form.getState().submission).toEqual({

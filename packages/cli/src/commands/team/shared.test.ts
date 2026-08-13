@@ -33,8 +33,15 @@ describe("connecting for a team command", () => {
     expect(client.close).toHaveBeenCalled();
   });
 
-  it("connects only from the Team Missions feature gate", async () => {
-    connectToDaemon.mockResolvedValueOnce(fakeClient({ teams: false, teamMissions: true }));
+  it("connects only when the complete Team V1 feature set is available", async () => {
+    connectToDaemon.mockResolvedValueOnce(
+      fakeClient({
+        teams: false,
+        teamMissions: true,
+        globalTeamProfiles: true,
+        teamMethodologies: true,
+      }),
+    );
 
     await expect(connectTeamClient()).resolves.toMatchObject({ daemonHost: "127.0.0.1:6767" });
   });
@@ -62,6 +69,7 @@ describe("reading a v2 profile off the command line", () => {
       }),
     ).toEqual([
       {
+        clientMemberKey: "lead",
         role: "lead",
         level: 5,
         skillIds: ["ts", "qa"],
@@ -74,6 +82,7 @@ describe("reading a v2 profile off the command line", () => {
         },
       },
       {
+        clientMemberKey: "reviewer",
         role: "reviewer",
         level: 3,
         skillIds: ["qa"],

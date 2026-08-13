@@ -19,7 +19,7 @@ export function toTeamProfileRow(team: TeamV2): TeamProfileRow {
   return {
     id: team.id,
     name: team.name,
-    workspace: team.workspaceId,
+    workspace: team.creationWorkspaceId,
     lifecycle: team.lifecycle,
     revision: team.revision,
     lead: lead?.role ?? team.leadMemberId,
@@ -41,16 +41,21 @@ export interface TeamProfileMemberRow {
   thinking: string | null;
   featureValues: Record<string, unknown>;
   mention: string;
+  executionSource: string | null;
 }
 
 export interface TeamProfileDetail extends TeamProfileRow {
   catalog: TeamSkill[];
   roster: TeamProfileMemberRow[];
+  methodology: string;
+  preset: string | null;
 }
 
 export function toTeamProfileDetail(team: TeamV2): TeamProfileDetail {
   return {
     ...toTeamProfileRow(team),
+    methodology: `${team.methodologyBinding.ref.bundleId}@${team.methodologyBinding.ref.version} ${team.methodologyBinding.ref.digest}`,
+    preset: team.methodologyBinding.presetId,
     catalog: team.skills,
     roster: team.members.map((member) => ({
       memberId: member.memberId,
@@ -63,6 +68,7 @@ export function toTeamProfileDetail(team: TeamV2): TeamProfileDetail {
       thinking: member.executionProfile.thinkingOptionId,
       featureValues: member.executionProfile.featureValues,
       mention: member.mentionHandle,
+      executionSource: member.executionProfileSource?.profileId ?? null,
     })),
   };
 }

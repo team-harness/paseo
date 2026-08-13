@@ -38,6 +38,11 @@ import {
   TeamOperationCoordinator,
   type TeamOperationPermit,
 } from "./team-operation-coordinator.js";
+import {
+  testCreateMember,
+  testCreateMethodologyBinding,
+  testTeamCreationDependencies,
+} from "../test-fixtures.js";
 
 const START_TIME = "2026-08-08T12:00:00.000Z";
 
@@ -403,10 +408,14 @@ async function createSeedMission(
   const team = await fixture.lifecycle.createTeam({
     idempotencyKey: `create-team-${seed}`,
     name: `Seeded Team ${seed}`,
-    workspaceId,
+    creationWorkspaceId: workspaceId,
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
-    lead: member("codex", 5),
-    members: [member("claude", 4)],
+    leadClientMemberKey: "lead",
+    members: [
+      testCreateMember("lead", member("codex", 5)),
+      testCreateMember("engineer", member("claude", 4)),
+    ],
+    methodologyBinding: testCreateMethodologyBinding(["lead", "engineer"], ["typescript"]),
   });
   const mission = await fixture.lifecycle.startMission({
     idempotencyKey: `start-mission-${seed}`,
@@ -644,6 +653,7 @@ function createConvergenceFixture(directory: string, seed: number) {
     clock: { now },
     ids: { next: nextId },
     operations,
+    ...testTeamCreationDependencies(),
     finishQuiescence: {
       prepareEvidence: async (input) => {
         if (!scheduler) throw new Error("Team Mission scheduler is not initialized");

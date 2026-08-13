@@ -30,7 +30,12 @@ export async function connectTeamClient(host?: string) {
 
   // COMPAT(teamMissions): added in v0.3.0-beta.3, remove after 2027-02-08 once
   // the daemon floor advertises Team Missions. Missing capability is a hard gate.
-  if (connected.getLastServerInfoMessage()?.features?.teamMissions !== true) {
+  const features = connected.getLastServerInfoMessage()?.features;
+  if (
+    features?.teamMissions !== true ||
+    features.globalTeamProfiles !== true ||
+    features.teamMethodologies !== true
+  ) {
     await connected.close().catch(() => {});
     throw {
       code: "DAEMON_UPDATE_REQUIRED",
@@ -49,6 +54,7 @@ export interface ProfileMemberDeclarations {
   modes?: string[];
   thinkingOptions?: string[];
   features?: string[];
+  agentProfiles?: string[];
 }
 
 function invalidDeclaration(code: string, message: string, details?: string): CommandError {
@@ -137,9 +143,93 @@ export function parseTeamSkills(inputs: string[]): TeamSkill[] {
   });
 }
 
+interface ParsedProfileMemberMaps {
+  levels: Map<string, string>;
+  skills: Map<string, string[]>;
+  providers: Map<string, string>;
+  models: Map<string, string>;
+  modes: Map<string, string>;
+  thinking: Map<string, string>;
+  featureInputs: Map<string, string[]>;
+  agentProfiles: Map<string, string>;
+}
+
+function parseFeatureValues(memberKey: string, inputs: readonly string[]): Record<string, unknown> {
+  const featureValues: Record<string, unknown> = {};
+  for (const input of inputs) {
+    const [featureKey, rawValue] = parsePair(input, "feature");
+    if (featureKey in featureValues) {
+      throw invalidDeclaration(
+        "DUPLICATE_PROFILE_DECLARATION",
+        `Feature "${featureKey}" for member declaration key "${memberKey}" was provided more than once`,
+      );
+    }
+    try {
+      featureValues[featureKey] = JSON.parse(rawValue);
+    } catch {
+      throw invalidDeclaration(
+        "INVALID_PROFILE_FEATURE",
+        `Feature "${featureKey}" for member declaration key "${memberKey}" must contain a JSON value`,
+      );
+    }
+  }
+  return featureValues;
+}
+
+function buildProfileMember(
+  member: { key: string; role: string },
+  maps: ParsedProfileMemberMaps,
+): TeamProfileMemberInput & { clientMemberKey: string } {
+  const rawLevel = maps.levels.get(member.key);
+  const roleSkills = maps.skills.get(member.key);
+  const provider = maps.providers.get(member.key);
+  const agentProfile = maps.agentProfiles.get(member.key);
+  const hasInlineExecution =
+    provider !== undefined ||
+    maps.models.has(member.key) ||
+    maps.modes.has(member.key) ||
+    maps.thinking.has(member.key) ||
+    maps.featureInputs.has(member.key);
+  if (agentProfile && hasInlineExecution) {
+    throw invalidDeclaration(
+      "AMBIGUOUS_EXECUTION_SELECTION",
+      `Member declaration key "${member.key}" cannot combine an Agent Profile with inline execution options`,
+    );
+  }
+  if (!rawLevel || !roleSkills?.length || (!provider && !agentProfile)) {
+    throw invalidDeclaration(
+      "MISSING_PROFILE_DECLARATION",
+      `Member declaration key "${member.key}" needs one level, at least one member-skill, and either a provider or Agent Profile`,
+    );
+  }
+  const level = Number(rawLevel);
+  if (!Number.isInteger(level) || level < 1 || level > 5) {
+    throw invalidDeclaration(
+      "INVALID_PROFILE_LEVEL",
+      `Level for member declaration key "${member.key}" must be an integer from 1 to 5`,
+    );
+  }
+
+  const featureValues = parseFeatureValues(member.key, maps.featureInputs.get(member.key) ?? []);
+
+  return {
+    clientMemberKey: member.key,
+    role: member.role,
+    level,
+    skillIds: roleSkills,
+    executionProfile: {
+      provider: (provider ?? "") as TeamProfileMemberInput["executionProfile"]["provider"],
+      model: maps.models.get(member.key) ?? null,
+      modeId: maps.modes.get(member.key) ?? null,
+      thinkingOptionId: maps.thinking.get(member.key) ?? null,
+      featureValues,
+    },
+  };
+}
+
 export function buildProfileMembers(
   declarations: ProfileMemberDeclarations,
-): TeamProfileMemberInput[] {
+): Array<TeamProfileMemberInput & { clientMemberKey: string }> {
   if (declarations.members.length === 0) {
     throw invalidDeclaration(
       "MISSING_PROFILE_DECLARATION",
@@ -172,57 +262,19 @@ export function buildProfileMembers(
   const modes = singleValues(declarations.modes ?? [], "mode", knownKeys);
   const thinking = singleValues(declarations.thinkingOptions ?? [], "thinking-option", knownKeys);
   const featureInputs = repeatedValues(declarations.features ?? [], "feature", knownKeys);
+  const agentProfiles = singleValues(declarations.agentProfiles ?? [], "agent-profile", knownKeys);
 
-  return members.map(({ key: memberKey, role }) => {
-    const rawLevel = levels.get(memberKey);
-    const roleSkills = skills.get(memberKey);
-    const provider = providers.get(memberKey);
-    if (!rawLevel || !roleSkills?.length || !provider) {
-      throw invalidDeclaration(
-        "MISSING_PROFILE_DECLARATION",
-        `Member declaration key "${memberKey}" needs one level, at least one member-skill, and one provider`,
-      );
-    }
-    const level = Number(rawLevel);
-    if (!Number.isInteger(level) || level < 1 || level > 5) {
-      throw invalidDeclaration(
-        "INVALID_PROFILE_LEVEL",
-        `Level for member declaration key "${memberKey}" must be an integer from 1 to 5`,
-      );
-    }
-
-    const featureValues: Record<string, unknown> = {};
-    for (const input of featureInputs.get(memberKey) ?? []) {
-      const [featureKey, rawValue] = parsePair(input, "feature");
-      if (featureKey in featureValues) {
-        throw invalidDeclaration(
-          "DUPLICATE_PROFILE_DECLARATION",
-          `Feature "${featureKey}" for member declaration key "${memberKey}" was provided more than once`,
-        );
-      }
-      try {
-        featureValues[featureKey] = JSON.parse(rawValue);
-      } catch {
-        throw invalidDeclaration(
-          "INVALID_PROFILE_FEATURE",
-          `Feature "${featureKey}" for member declaration key "${memberKey}" must contain a JSON value`,
-        );
-      }
-    }
-
-    return {
-      role,
-      level,
-      skillIds: roleSkills,
-      executionProfile: {
-        provider: provider as TeamProfileMemberInput["executionProfile"]["provider"],
-        model: models.get(memberKey) ?? null,
-        modeId: modes.get(memberKey) ?? null,
-        thinkingOptionId: thinking.get(memberKey) ?? null,
-        featureValues,
-      },
-    };
-  });
+  const maps = {
+    levels,
+    skills,
+    providers,
+    models,
+    modes,
+    thinking,
+    featureInputs,
+    agentProfiles,
+  };
+  return members.map((member) => buildProfileMember(member, maps));
 }
 
 /**

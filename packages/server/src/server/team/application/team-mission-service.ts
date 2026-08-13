@@ -1,5 +1,7 @@
 import type {
+  MethodologyDescriptor,
   TeamMissionAttentionResolutionInput,
+  TeamProfileCreateMemberInput,
   TeamProfileMemberInput,
   TeamProfileMemberPatch,
 } from "@getpaseo/protocol/team/v2-rpc-schemas";
@@ -8,6 +10,7 @@ import type {
   MissionMemberRuntimeSnapshot,
   MissionRosterSnapshot,
   TeamMission,
+  TeamMethodologyBinding,
   TeamSkill,
   TeamV2,
 } from "@getpaseo/protocol/team/v2-types";
@@ -52,6 +55,9 @@ import type {
   TeamRuntimeEventPort,
   TeamWorkspaceAvailabilityPort,
 } from "./ports.js";
+import type { TeamAgentProfileMaterializer } from "./team-agent-profile-materializer.js";
+import { TeamApplicationError } from "./errors.js";
+export { TeamApplicationError } from "./errors.js";
 import { TeamOperationCoordinator } from "./team-operation-coordinator.js";
 import {
   type WorkspaceLifecyclePort,
@@ -92,23 +98,22 @@ const PUBLIC_ATTENTION_RESOLUTION_PREREQUISITES = {
   },
 } as const;
 
-export class TeamApplicationError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = "TeamApplicationError";
-  }
-}
-
 export interface CreateTeamInput {
   idempotencyKey: string;
   name: string;
-  workspaceId: string;
+  creationWorkspaceId: string;
   skills: TeamSkill[];
-  lead: TeamProfileMemberInput;
-  members: TeamProfileMemberInput[];
+  leadClientMemberKey: string;
+  members: TeamProfileCreateMemberInput[];
+  methodologyBinding: {
+    ref: MethodologyDescriptor["ref"];
+    presetId: string | null;
+    memberArchetypeBindings: Array<{
+      clientMemberKey: string;
+      archetypeId: string | null;
+    }>;
+    skillBindings: TeamMethodologyBinding["skillBindings"];
+  };
 }
 
 export interface UpdateTeamInput {
@@ -194,6 +199,11 @@ export interface TeamMissionServiceOptions {
   events: TeamRuntimeEventPort;
   clock: TeamClockPort;
   ids: TeamIdentityPort;
+  agentProfiles: TeamAgentProfileMaterializer;
+  methodologies: Pick<
+    { get(ref: MethodologyDescriptor["ref"]): MethodologyDescriptor | null },
+    "get"
+  >;
   operations?: TeamOperationCoordinator;
   workspaceLifecycle?: WorkspaceLifecyclePort;
   persistenceFaultInjector?: TeamPersistenceFaultInjector;
@@ -211,6 +221,8 @@ export class TeamMissionService {
   private readonly events: TeamRuntimeEventPort;
   private readonly clock: TeamClockPort;
   private readonly ids: TeamIdentityPort;
+  private readonly agentProfiles: TeamAgentProfileMaterializer;
+  private readonly methodologies: TeamMissionServiceOptions["methodologies"];
   private readonly transactions: TeamMissionPersistenceTransactions;
   private readonly operations: TeamOperationCoordinator;
   private readonly workspaceLifecycle: WorkspaceLifecyclePort;
@@ -227,6 +239,8 @@ export class TeamMissionService {
     this.events = options.events;
     this.clock = options.clock;
     this.ids = options.ids;
+    this.agentProfiles = options.agentProfiles;
+    this.methodologies = options.methodologies;
     this.operations = options.operations ?? new TeamOperationCoordinator();
     this.workspaceLifecycle = options.workspaceLifecycle ?? workspaceLifecycleCoordinator;
     this.finishQuiescence = options.finishQuiescence;
@@ -238,37 +252,93 @@ export class TeamMissionService {
   }
 
   async createTeam(input: CreateTeamInput): Promise<TeamV2> {
-    const teamId = this.ids.next("team");
-    const members = assignMemberProfiles([input.lead, ...input.members], this.ids);
-    const candidate: Omit<TeamV2, "revision" | "createdAt" | "updatedAt"> = {
-      id: teamId,
-      name: input.name.trim(),
-      workspaceId: input.workspaceId,
-      leadMemberId: requireValue(members[0]?.memberId, "Lead member was not allocated"),
-      skills: structuredClone(input.skills),
-      members,
-      lifecycle: "active",
-      activeMissionId: null,
-      lifecycleRecoveryFailure: null,
-      archivedAt: null,
-    };
-    assertValidTeamProfile({
-      ...candidate,
-      revision: 0,
-      createdAt: this.clock.now(),
-      updatedAt: this.clock.now(),
+    const requestFingerprint = fingerprint("team.profile.create", {
+      name: input.name,
+      creationWorkspaceId: input.creationWorkspaceId,
+      skills: input.skills,
+      leadClientMemberKey: input.leadClientMemberKey,
+      members: input.members,
+      methodologyBinding: input.methodologyBinding,
     });
-
-    const stored = await this.profiles.createIfAbsent({
+    const stored = await this.profiles.createFromFactory({
       idempotencyKey: input.idempotencyKey,
-      requestFingerprint: fingerprint("team.profile.create", {
-        name: input.name,
-        workspaceId: input.workspaceId,
-        skills: input.skills,
-        lead: input.lead,
-        members: input.members,
-      }),
-      profile: candidate,
+      requestFingerprint,
+      create: async () => {
+        const methodology = this.methodologies.get(input.methodologyBinding.ref);
+        if (!methodology) {
+          throw new TeamApplicationError(
+            "methodology_not_found",
+            `Methodology ${input.methodologyBinding.ref.bundleId}@${input.methodologyBinding.ref.version} was not found`,
+          );
+        }
+        validateCreateMethodologyBinding(input, methodology);
+        const executions = await this.agentProfiles.materialize(input.members);
+        const executionByKey = new Map(
+          executions.map((execution) => [execution.clientMemberKey, execution]),
+        );
+        const teamId = this.ids.next("team");
+        const memberIdByKey = new Map(
+          input.members.map((member) => [member.clientMemberKey, this.ids.next("member")]),
+        );
+        const members = assignMentionHandles(
+          input.members.map((member) => {
+            const execution = requireValue(
+              executionByKey.get(member.clientMemberKey),
+              `Member ${member.clientMemberKey} was not materialized`,
+            );
+            return {
+              memberId: requireValue(
+                memberIdByKey.get(member.clientMemberKey),
+                `Member ${member.clientMemberKey} was not allocated`,
+              ),
+              role: member.role,
+              level: member.level,
+              skillIds: structuredClone(member.skillIds),
+              executionProfile: structuredClone(execution.executionProfile),
+              ...(execution.executionProfileSource
+                ? { executionProfileSource: structuredClone(execution.executionProfileSource) }
+                : {}),
+              mentionHandle: "",
+            };
+          }),
+        );
+        const candidate: Omit<TeamV2, "revision" | "createdAt" | "updatedAt"> = {
+          id: teamId,
+          name: input.name.trim(),
+          creationWorkspaceId: input.creationWorkspaceId,
+          leadMemberId: requireValue(
+            memberIdByKey.get(input.leadClientMemberKey),
+            "Lead member was not allocated",
+          ),
+          skills: structuredClone(input.skills),
+          members,
+          methodologyBinding: {
+            ref: structuredClone(input.methodologyBinding.ref),
+            presetId: input.methodologyBinding.presetId,
+            memberArchetypeBindings: input.methodologyBinding.memberArchetypeBindings.map(
+              (binding) => ({
+                memberId: requireValue(
+                  memberIdByKey.get(binding.clientMemberKey),
+                  `Member ${binding.clientMemberKey} was not allocated`,
+                ),
+                archetypeId: binding.archetypeId,
+              }),
+            ),
+            skillBindings: structuredClone(input.methodologyBinding.skillBindings),
+          },
+          lifecycle: "active",
+          activeMissionId: null,
+          lifecycleRecoveryFailure: null,
+          archivedAt: null,
+        };
+        assertValidTeamProfile({
+          ...candidate,
+          revision: 0,
+          createdAt: this.clock.now(),
+          updatedAt: this.clock.now(),
+        });
+        return candidate;
+      },
     });
     await this.events.publishTeam(stored.profile);
     return stored.profile;
@@ -314,6 +384,7 @@ export class TeamMissionService {
           );
         }
         assertMemberMutationTargets(current, input);
+        assertAgentProfileSourceMutationAllowed(current, input);
         assertRosterMutationAllowed(current, context.startIntent, input);
         const removed = new Set(input.memberRemovals ?? []);
         const retiredMentionHandles = current.members
@@ -446,7 +517,7 @@ export class TeamMissionService {
     // COMPAT(globalTeamProfiles): added in v0.3.1, remove the Team-workspace fallback after
     // 2027-02-11 once the app floor is >= v0.3.1 and always sends workspaceId.
     const workspaceId = normalizeMissionWorkspaceId(
-      input.workspaceId ?? initialTeam.profile.workspaceId,
+      input.workspaceId ?? initialTeam.profile.creationWorkspaceId,
     );
     return this.workspaceLifecycle.serialize([workspaceId], () =>
       this.serializeTeamLifecycle(input.teamId, () =>
@@ -463,7 +534,7 @@ export class TeamMissionService {
     // COMPAT(globalTeamProfiles): added in v0.3.1, remove the Team-workspace fallback after
     // 2027-02-11 once the app floor is >= v0.3.1 and always sends workspaceId.
     const effectiveWorkspaceId = normalizeMissionWorkspaceId(
-      input.workspaceId ?? storedTeam.profile.workspaceId,
+      input.workspaceId ?? storedTeam.profile.creationWorkspaceId,
     );
     if (effectiveWorkspaceId !== lockedWorkspaceId) {
       throw new TeamApplicationError(
@@ -2462,6 +2533,23 @@ function assertMemberMutationTargets(team: TeamV2, input: UpdateTeamInput): void
   }
 }
 
+function assertAgentProfileSourceMutationAllowed(team: TeamV2, input: UpdateTeamInput): void {
+  const sourcedMemberIds = new Set(
+    team.members
+      .filter((member) => member.executionProfileSource !== undefined)
+      .map((member) => member.memberId),
+  );
+  const changesSourcedExecutionProfile = (input.memberUpdates ?? []).some(
+    (member) => member.executionProfile !== undefined && sourcedMemberIds.has(member.memberId),
+  );
+  if (changesSourcedExecutionProfile) {
+    throw new TeamApplicationError(
+      "team_agent_profile_source_update_unsupported",
+      "Agent Profile sourced execution snapshots cannot be changed before refresh or detach is supported",
+    );
+  }
+}
+
 function assertRosterMutationAllowed(
   team: TeamV2,
   startIntent: StoredTeamProfile["startIntent"],
@@ -2527,14 +2615,70 @@ function notificationRecoveryDeliveryId(deliveryId: string): string {
   return `${deliveryId}:recovery`;
 }
 
-function assignMemberProfiles(inputs: TeamProfileMemberInput[], ids: TeamIdentityPort) {
-  return assignMentionHandles(
-    inputs.map((input) =>
-      Object.assign({ memberId: ids.next("member") }, structuredClone(input), {
-        mentionHandle: "",
-      }),
-    ),
-  );
+function validateCreateMethodologyBinding(
+  input: CreateTeamInput,
+  methodology: MethodologyDescriptor,
+): void {
+  const presetId = input.methodologyBinding.presetId;
+  if (presetId !== null && !methodology.presets.some((preset) => preset.presetId === presetId)) {
+    throw new TeamApplicationError(
+      "methodology_binding_invalid",
+      `Methodology preset ${presetId} does not exist`,
+    );
+  }
+  const memberKeys = new Set(input.members.map((member) => member.clientMemberKey));
+  const boundMemberKeys = new Set<string>();
+  for (const binding of input.methodologyBinding.memberArchetypeBindings) {
+    if (!memberKeys.has(binding.clientMemberKey) || boundMemberKeys.has(binding.clientMemberKey)) {
+      throw new TeamApplicationError(
+        "methodology_binding_invalid",
+        `Invalid Member binding for ${binding.clientMemberKey}`,
+      );
+    }
+    if (
+      binding.archetypeId !== null &&
+      !methodology.archetypes.some((archetype) => archetype.archetypeId === binding.archetypeId)
+    ) {
+      throw new TeamApplicationError(
+        "methodology_binding_invalid",
+        `Methodology archetype ${binding.archetypeId} does not exist`,
+      );
+    }
+    boundMemberKeys.add(binding.clientMemberKey);
+  }
+  if (boundMemberKeys.size !== memberKeys.size) {
+    throw new TeamApplicationError(
+      "methodology_binding_invalid",
+      "Every Team Member must have one Methodology archetype binding",
+    );
+  }
+
+  const teamSkillIds = new Set(input.skills.map((skill) => skill.skillId));
+  const boundSkillIds = new Set<string>();
+  for (const binding of input.methodologyBinding.skillBindings) {
+    if (!teamSkillIds.has(binding.teamSkillId) || boundSkillIds.has(binding.teamSkillId)) {
+      throw new TeamApplicationError(
+        "methodology_binding_invalid",
+        `Invalid Skill binding for ${binding.teamSkillId}`,
+      );
+    }
+    if (
+      binding.methodologySkillId !== null &&
+      !methodology.skills.some((skill) => skill.skillId === binding.methodologySkillId)
+    ) {
+      throw new TeamApplicationError(
+        "methodology_binding_invalid",
+        `Methodology Skill ${binding.methodologySkillId} does not exist`,
+      );
+    }
+    boundSkillIds.add(binding.teamSkillId);
+  }
+  if (boundSkillIds.size !== teamSkillIds.size) {
+    throw new TeamApplicationError(
+      "methodology_binding_invalid",
+      "Every Team Skill must have one Methodology Skill binding",
+    );
+  }
 }
 
 function assignMentionHandles<

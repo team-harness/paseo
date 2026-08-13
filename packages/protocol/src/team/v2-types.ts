@@ -23,15 +23,49 @@ export const TeamExecutionProfileSchema = z.object({
 });
 export type TeamExecutionProfile = z.infer<typeof TeamExecutionProfileSchema>;
 
+export const TeamExecutionProfileSourceSchema = z.object({
+  kind: z.literal("agent_profile"),
+  profileId: z.string().min(1),
+  resolverVersion: z.literal(1),
+  appliedDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+});
+export type TeamExecutionProfileSource = z.infer<typeof TeamExecutionProfileSourceSchema>;
+
 export const TeamMemberProfileSchema = z.object({
   memberId: z.string().min(1),
   role: z.string().min(1),
   level: TeamMemberLevelSchema,
   skillIds: z.array(z.string().min(1)).min(1),
   executionProfile: TeamExecutionProfileSchema,
+  executionProfileSource: TeamExecutionProfileSourceSchema.optional(),
   mentionHandle: z.string().min(1),
 });
 export type TeamMemberProfile = z.infer<typeof TeamMemberProfileSchema>;
+
+export const ExactMethodologyRefSchema = z.object({
+  bundleId: z.string().regex(/^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$/),
+  version: z.string().regex(/^[1-9][0-9]*$/),
+  digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+});
+export type ExactMethodologyRef = z.infer<typeof ExactMethodologyRefSchema>;
+
+export const TeamMethodologyBindingSchema = z.object({
+  ref: ExactMethodologyRefSchema,
+  presetId: z.string().min(1).nullable(),
+  memberArchetypeBindings: z.array(
+    z.object({
+      memberId: z.string().min(1),
+      archetypeId: z.string().min(1).nullable(),
+    }),
+  ),
+  skillBindings: z.array(
+    z.object({
+      teamSkillId: z.string().min(1),
+      methodologySkillId: z.string().min(1).nullable(),
+    }),
+  ),
+});
+export type TeamMethodologyBinding = z.infer<typeof TeamMethodologyBindingSchema>;
 
 export const TeamLifecycleRecoveryFailureSchema = z.object({
   operation: z.enum(["mission_finish", "team_archive"]),
@@ -48,10 +82,11 @@ export type TeamLifecycleRecoveryFailure = z.infer<typeof TeamLifecycleRecoveryF
 export const TeamV2Schema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  workspaceId: z.string().min(1),
+  creationWorkspaceId: z.string().min(1),
   leadMemberId: z.string().min(1),
   skills: z.array(TeamSkillSchema).min(1),
   members: z.array(TeamMemberProfileSchema).min(1),
+  methodologyBinding: TeamMethodologyBindingSchema,
   lifecycle: z.enum(["active", "archived"]),
   activeMissionId: z.string().min(1).nullable(),
   lifecycleRecoveryFailure: TeamLifecycleRecoveryFailureSchema.nullable(),

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  ExactMethodologyRefSchema,
   TeamExecutionProfileSchema,
   TeamMemberLevelSchema,
   TeamMissionSchema,
@@ -8,6 +9,19 @@ import {
   TeamSkillSchema,
   TeamV2Schema,
 } from "./v2-types.js";
+export { ExactMethodologyRefSchema } from "./v2-types.js";
+
+export const TeamProfileCreateMemberInputSchema = z.object({
+  clientMemberKey: z.string().min(1),
+  role: z.string().min(1),
+  level: TeamMemberLevelSchema,
+  skillIds: z.array(z.string().min(1)).min(1),
+  executionProfileSelection: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("inline"), executionProfile: TeamExecutionProfileSchema }),
+    z.object({ kind: z.literal("agent_profile"), profileId: z.string().min(1) }),
+  ]),
+});
+export type TeamProfileCreateMemberInput = z.infer<typeof TeamProfileCreateMemberInputSchema>;
 
 export const TeamProfileMemberInputSchema = z.object({
   role: z.string().min(1),
@@ -28,11 +42,6 @@ export type TeamProfileMemberPatch = z.infer<typeof TeamProfileMemberPatchSchema
 
 export const MethodologyIdentifierSchema = z.string().regex(/^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$/);
 export const MethodologyVersionSchema = z.string().regex(/^[1-9][0-9]*$/);
-export const ExactMethodologyRefSchema = z.object({
-  bundleId: MethodologyIdentifierSchema,
-  version: MethodologyVersionSchema,
-  digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
-});
 export type ExactMethodologyRef = z.infer<typeof ExactMethodologyRefSchema>;
 const MethodologySkillDescriptorSchema = z.object({
   skillId: MethodologyIdentifierSchema,
@@ -125,16 +134,62 @@ export const TeamMethodologyGetResponseSchema = z.object({
   }),
 });
 
-export const TeamProfileCreateRequestSchema = z.object({
-  type: z.literal("team.profile.create.request"),
-  requestId: z.string().min(1),
-  idempotencyKey: z.string().min(1),
-  name: z.string().min(1),
-  workspaceId: z.string().min(1),
-  skills: z.array(TeamSkillSchema).min(1),
-  lead: TeamProfileMemberInputSchema,
-  members: z.array(TeamProfileMemberInputSchema),
-});
+export const TeamProfileCreateRequestSchema = z
+  .object({
+    type: z.literal("team.profile.create.request"),
+    requestId: z.string().min(1),
+    idempotencyKey: z.string().min(1),
+    name: z.string().min(1),
+    creationWorkspaceId: z.string().min(1),
+    skills: z.array(TeamSkillSchema).min(1),
+    leadClientMemberKey: z.string().min(1),
+    members: z.array(TeamProfileCreateMemberInputSchema).min(1),
+    methodologyBinding: z.object({
+      ref: ExactMethodologyRefSchema,
+      presetId: MethodologyIdentifierSchema.nullable(),
+      memberArchetypeBindings: z.array(
+        z.object({
+          clientMemberKey: z.string().min(1),
+          archetypeId: MethodologyIdentifierSchema.nullable(),
+        }),
+      ),
+      skillBindings: z.array(
+        z.object({
+          teamSkillId: z.string().min(1),
+          methodologySkillId: MethodologyIdentifierSchema.nullable(),
+        }),
+      ),
+    }),
+  })
+  .superRefine((request, context) => {
+    const keys = new Set<string>();
+    request.members.forEach((member, index) => {
+      if (keys.has(member.clientMemberKey)) {
+        context.addIssue({
+          code: "custom",
+          path: ["members", index, "clientMemberKey"],
+          message: "clientMemberKey must be unique",
+        });
+      }
+      keys.add(member.clientMemberKey);
+    });
+    if (!keys.has(request.leadClientMemberKey)) {
+      context.addIssue({
+        code: "custom",
+        path: ["leadClientMemberKey"],
+        message: "leadClientMemberKey must identify a member",
+      });
+    }
+    request.methodologyBinding.memberArchetypeBindings.forEach((binding, index) => {
+      if (!keys.has(binding.clientMemberKey)) {
+        context.addIssue({
+          code: "custom",
+          path: ["methodologyBinding", "memberArchetypeBindings", index, "clientMemberKey"],
+          message: "clientMemberKey must identify a member",
+        });
+      }
+    });
+  });
 
 export const TeamProfileListRequestSchema = z.object({
   type: z.literal("team.profile.list.request"),

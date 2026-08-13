@@ -8,7 +8,7 @@ function team(): TeamV2 {
   return {
     id: "team-platform",
     name: "Platform team",
-    workspaceId: "workspace-platform",
+    creationWorkspaceId: "workspace-platform",
     leadMemberId: "member-lead",
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
     members: [
@@ -27,8 +27,19 @@ function team(): TeamV2 {
         mentionHandle: "architect",
       },
     ],
+    methodologyBinding: {
+      ref: {
+        bundleId: "paseo/standard",
+        version: "1",
+        digest: `sha256:${"0".repeat(64)}`,
+      },
+      presetId: "standard",
+      memberArchetypeBindings: [{ memberId: "member-lead", archetypeId: null }],
+      skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
+    },
     lifecycle: "active",
     activeMissionId: null,
+    lifecycleRecoveryFailure: null,
     revision: 1,
     createdAt: "2026-08-07T10:00:00.000Z",
     updatedAt: "2026-08-07T10:00:00.000Z",

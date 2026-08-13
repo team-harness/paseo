@@ -13,7 +13,7 @@ const timestamp = "2026-08-08T08:00:00.000Z";
 const team = {
   id: "team-platform",
   name: "Platform",
-  workspaceId: "wks-platform",
+  creationWorkspaceId: "wks-platform",
   leadMemberId: "member-lead",
   skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
   members: [
@@ -32,6 +32,16 @@ const team = {
       mentionHandle: "lead-engineer",
     },
   ],
+  methodologyBinding: {
+    ref: {
+      bundleId: "paseo/standard",
+      version: "1",
+      digest: `sha256:${"0".repeat(64)}`,
+    },
+    presetId: "lean-delivery",
+    memberArchetypeBindings: [{ memberId: "member-lead", archetypeId: "lead" }],
+    skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
+  },
   lifecycle: "active" as const,
   activeMissionId: "mission-sdk",
   lifecycleRecoveryFailure: null,
@@ -44,7 +54,7 @@ const team = {
 const mission = {
   id: "mission-sdk",
   teamId: team.id,
-  workspaceId: team.workspaceId,
+  workspaceId: team.creationWorkspaceId,
   objective: "Expose Team Missions through the SDK.",
   constraints: [],
   acceptanceCriteria: ["Protocol tests pass."],
@@ -121,15 +131,27 @@ describe("Team Missions session unions", () => {
         requestId: "req-1",
         idempotencyKey: "idem-1",
         name: team.name,
-        workspaceId: team.workspaceId,
+        creationWorkspaceId: team.creationWorkspaceId,
         skills: team.skills,
-        lead: {
-          role: "Lead engineer",
-          level: 4,
-          skillIds: ["typescript"],
-          executionProfile: team.members[0].executionProfile,
+        leadClientMemberKey: "lead",
+        members: [
+          {
+            clientMemberKey: "lead",
+            role: "Lead engineer",
+            level: 4,
+            skillIds: ["typescript"],
+            executionProfileSelection: {
+              kind: "inline",
+              executionProfile: team.members[0].executionProfile,
+            },
+          },
+        ],
+        methodologyBinding: {
+          ref: team.methodologyBinding.ref,
+          presetId: "lean-delivery",
+          memberArchetypeBindings: [{ clientMemberKey: "lead", archetypeId: "lead" }],
+          skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
         },
-        members: [],
       },
       { type: "team.profile.list.request", requestId: "req-2" },
       { type: "team.profile.inspect.request", requestId: "req-3", teamId: team.id },

@@ -209,6 +209,7 @@ import {
 import { RenderProfile } from "@/utils/render-profiler";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
 import { usePullRequestAutoAdd } from "@/panels/pull-request";
+import { useTeamCreateOptions } from "@/teams/use-team-create-options";
 
 const WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS = 30_000;
 const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
@@ -1879,6 +1880,8 @@ function WorkspaceScreenContent({
   });
 
   const client = useHostRuntimeClient(normalizedServerId);
+  const { methodologies, agentProfiles, catalogError, retryCatalog } =
+    useTeamCreateOptions(normalizedServerId);
   const isConnected = useHostRuntimeIsConnected(normalizedServerId);
   const supportsProvidersSnapshot = useSessionStore(
     (state) => state.sessions[normalizedServerId]?.serverInfo?.features?.providersSnapshot === true,
@@ -4072,7 +4075,12 @@ function WorkspaceScreenContent({
               serverId={normalizedServerId}
               workspaceId={normalizedWorkspaceId}
               cwd={teamActions.cwd}
-              visible={teamActions.newTeam.visible}
+              methodologies={methodologies}
+              agentProfiles={agentProfiles}
+              catalogStatus={teamActions.newTeam.catalogStatus}
+              catalogError={catalogError}
+              onRetryCatalog={retryCatalog}
+              visible={teamActions.newTeam.requested}
               onClose={teamActions.newTeam.close}
               onSaved={teamActions.onTeamCreated}
             />

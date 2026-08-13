@@ -58,7 +58,7 @@ function HostTeamRouteContent() {
     hydrated,
     activeMissionId: profile?.activeMissionId,
     missionWorkspaceId,
-    creationWorkspaceId: profile?.workspaceId,
+    creationWorkspaceId: profile?.creationWorkspaceId,
     liveWorkspaceIds,
   });
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 import { openTeamProfileForm, type TeamProfileFormModel } from "./team-profile-form-model";
+import { TEST_METHODOLOGY, testTeamMethodologyBinding } from "./test-fixtures";
 import {
   submitTeamProfileForm,
   type TeamProfileFormGateway,
@@ -14,7 +15,7 @@ function createdTeam(): TeamV2 {
   return {
     id: "team-1",
     name: "Platform",
-    workspaceId: "workspace-1",
+    creationWorkspaceId: "workspace-1",
     leadMemberId: "member-1",
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
     members: [
@@ -33,6 +34,7 @@ function createdTeam(): TeamV2 {
         mentionHandle: "engineer",
       },
     ],
+    methodologyBinding: testTeamMethodologyBinding(["member-1"], ["typescript"]),
     lifecycle: "active",
     activeMissionId: null,
     lifecycleRecoveryFailure: null,
@@ -49,6 +51,7 @@ function openFilledCreateForm(): TeamProfileFormModel {
   const form = openTeamProfileForm({
     mode: "create",
     workspaceId: "workspace-1",
+    methodologies: [TEST_METHODOLOGY],
     hostSnapshot: {
       workspaceId: "workspace-1",
       serverId: "server-1",
@@ -57,6 +60,7 @@ function openFilledCreateForm(): TeamProfileFormModel {
     newRowKey: () => `row-${++row}`,
     newIdempotencyKey: () => `attempt-${++attempt}`,
   });
+  form.applyPreset("standard");
   form.applyProviderSnapshot({
     workspaceId: "workspace-1",
     serverId: "server-1",
@@ -140,6 +144,7 @@ class SequencedTeamProfileGateway implements TeamProfileFormGateway {
 describe("submitting a Team profile", () => {
   it("creates a profile and returns only its Team tab descriptor", async () => {
     const form = openFilledCreateForm();
+    const clientMemberKey = form.getState().members[0]!.key;
     const gateway = new InMemoryTeamProfileGateway({ team: createdTeam(), error: null });
 
     const result = await submitTeamProfileForm(form, gateway, {
@@ -150,21 +155,33 @@ describe("submitting a Team profile", () => {
       {
         idempotencyKey: "attempt-1",
         name: "Platform",
-        workspaceId: "workspace-1",
+        creationWorkspaceId: "workspace-1",
         skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
-        lead: {
-          role: "Engineer",
-          level: 4,
-          skillIds: ["typescript"],
-          executionProfile: {
-            provider: "codex",
-            model: "gpt-5.6-sol",
-            modeId: null,
-            thinkingOptionId: null,
-            featureValues: {},
+        leadClientMemberKey: clientMemberKey,
+        members: [
+          {
+            clientMemberKey,
+            role: "Engineer",
+            level: 4,
+            skillIds: ["typescript"],
+            executionProfileSelection: {
+              kind: "inline",
+              executionProfile: {
+                provider: "codex",
+                model: "gpt-5.6-sol",
+                modeId: null,
+                thinkingOptionId: null,
+                featureValues: {},
+              },
+            },
           },
+        ],
+        methodologyBinding: {
+          ref: TEST_METHODOLOGY.ref,
+          presetId: "standard",
+          memberArchetypeBindings: [{ clientMemberKey, archetypeId: "engineer" }],
+          skillBindings: [{ teamSkillId: "typescript", methodologySkillId: "typescript" }],
         },
-        members: [],
       },
     ]);
     expect(gateway.updates).toEqual([]);

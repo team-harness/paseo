@@ -383,10 +383,14 @@ async function shoot(page: Page, name: string): Promise<void> {
 async function configureMember(page: Page, index: number, role: string): Promise<void> {
   const member = page.getByTestId(`team-profile-member-${index}`);
   await member.getByTestId(`team-profile-member-${index}-role`).fill(role);
-  await member.getByTestId(/team-profile-member-\d+-skill-/).click();
+  await member
+    .getByTestId(/team-profile-member-\d+-skill-/)
+    .first()
+    .click();
   await member.getByTestId("combined-model-selector").click();
-  await page.getByTestId("model-provider-mock").click();
-  await page.getByRole("button", { name: /^Five minute stream/ }).click();
+  const modelSearch = page.getByRole("textbox", { name: /search all models/i });
+  await modelSearch.fill("Five minute stream");
+  await page.getByRole("button", { name: /^Five minute stream/ }).click({ force: true });
 }
 
 async function openSettingsPage(
@@ -441,13 +445,15 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     await page.getByTestId("workspace-new-tab-inline-team").click();
     await expect(page.getByTestId("team-profile-form-sheet")).toBeVisible();
 
+    await page.getByTestId("team-profile-preset").getByRole("button").click();
+    await page.getByText("精简交付", { exact: true }).click();
+    await expect(page.getByTestId("team-profile-member-1")).toBeVisible();
     await page.getByTestId("team-profile-name").fill("Release engineering");
     await page.getByTestId("team-profile-skill-0-name").fill("TypeScript delivery");
     await page
       .getByTestId("team-profile-skill-0-description")
       .fill("Implement and review production TypeScript changes");
     await configureMember(page, 0, "Senior software engineer");
-    await page.getByTestId("team-profile-add-member").click();
     await configureMember(page, 1, "Senior software engineer");
     await expect(page.getByTestId("team-profile-submit")).toBeEnabled();
     await page.getByTestId("team-profile-name").scrollIntoViewIfNeeded();

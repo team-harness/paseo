@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
+import type { MethodologyDescriptor } from "@getpaseo/protocol/team/v2-rpc-schemas";
 
 import { openTeamProfileForm } from "./team-profile-form-model";
 
@@ -23,12 +24,89 @@ const READY_ENTRIES = [
   },
 ];
 
+const STANDARD: MethodologyDescriptor = {
+  ref: {
+    bundleId: "paseo/standard",
+    version: "1",
+    digest: "sha256:d5001287a60f868bcef21ecd3c4debb5a5237db002c5b9d0f7b0b78e98969697",
+  },
+  name: "Paseo Standard",
+  description: "Standard",
+  license: "MIT-0",
+  skills: [
+    { skillId: "coordination", name: "Coordination", description: null },
+    { skillId: "implementation", name: "Implementation", description: null },
+  ],
+  archetypes: [
+    {
+      archetypeId: "lead",
+      name: "Lead",
+      description: "Lead",
+      maxMembers: 1,
+      playbookIds: [],
+      suggestedLevel: 4,
+      suggestedSkillIds: ["coordination"],
+    },
+    {
+      archetypeId: "builder",
+      name: "Builder",
+      description: "Builder",
+      maxMembers: null,
+      playbookIds: [],
+      suggestedLevel: 3,
+      suggestedSkillIds: ["implementation"],
+    },
+  ],
+  presets: [
+    {
+      presetId: "lean-delivery",
+      name: "Lean delivery",
+      description: "Lead and builder",
+      leadSlotId: "lead",
+      skillIds: ["coordination", "implementation"],
+      slots: [
+        {
+          slotId: "lead",
+          archetypeId: "lead",
+          suggestedRole: "Lead",
+          suggestedLevel: 4,
+          suggestedSkillIds: ["coordination"],
+        },
+        {
+          slotId: "builder",
+          archetypeId: "builder",
+          suggestedRole: "Builder",
+          suggestedLevel: 3,
+          suggestedSkillIds: ["implementation"],
+        },
+      ],
+    },
+  ],
+  policySummary: {
+    review: {
+      writableWorkstreams: "lead_discretion",
+      independentMeans: "different_from_subject_owner",
+      unavailable: "review_gate_reviewer_unavailable_attention",
+      unknownCapabilities: "review_gate_capability_unknown_attention",
+      operatorWaiver: "allowed_with_reason",
+    },
+    verification: {
+      required: true,
+      mutableScope: "read_only",
+      reviewerSelection: "prefer_independent_record_exception",
+      operatorWaiver: "forbidden",
+    },
+  },
+  playbooks: [],
+};
+
 function createSnapshot() {
   let row = 0;
   let attempt = 0;
   return {
     mode: "create" as const,
     workspaceId: "workspace-1",
+    methodologies: [STANDARD],
     hostSnapshot: undefined,
     newRowKey: () => `row-${++row}`,
     newIdempotencyKey: () => `attempt-${++attempt}`,
@@ -39,7 +117,7 @@ function storedProfile(): TeamV2 {
   return {
     id: "team-1",
     name: "Platform",
-    workspaceId: "workspace-1",
+    creationWorkspaceId: "workspace-1",
     leadMemberId: "member-1",
     skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
     members: [
@@ -58,6 +136,12 @@ function storedProfile(): TeamV2 {
         mentionHandle: "engineer",
       },
     ],
+    methodologyBinding: {
+      ref: STANDARD.ref,
+      presetId: "lean-delivery",
+      memberArchetypeBindings: [{ memberId: "member-1", archetypeId: "builder" }],
+      skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
+    },
     lifecycle: "active",
     activeMissionId: null,
     lifecycleRecoveryFailure: null,
@@ -81,6 +165,88 @@ function editSnapshot() {
 }
 
 describe("opening a Team profile form", () => {
+  it("applies an exact preset as editable suggestions and submits confirmed facts", () => {
+    const form = openTeamProfileForm({ ...createSnapshot(), methodologies: [STANDARD] });
+
+    form.applyPreset("lean-delivery");
+    const [suggestedLead, suggestedBuilder] = form.getState().members;
+    form.setName("Delivery");
+    form.setMemberRole(suggestedBuilder!.key, "Reviewer");
+    form.setMemberLevel(suggestedBuilder!.key, 5);
+    form.setMemberSkillIds(suggestedBuilder!.key, ["coordination"]);
+    form.setLead(suggestedBuilder!.key);
+    form.setMemberExecutionProfile(suggestedLead!.key, {
+      provider: "codex",
+      model: null,
+      modeId: null,
+      thinkingOptionId: null,
+      featureValues: {},
+    });
+    form.applyHostSnapshot({
+      workspaceId: "workspace-1",
+      serverId: "server-1",
+      cwd: "/repo",
+    });
+    form.applyProviderSnapshot({
+      workspaceId: "workspace-1",
+      serverId: "server-1",
+      cwd: "/repo",
+      entries: READY_ENTRIES,
+    });
+    form.setMemberAgentProfile(suggestedBuilder!.key, "profile-reviewer");
+
+    expect(form.submitStarted()?.payload).toEqual({
+      idempotencyKey: "attempt-1",
+      name: "Delivery",
+      creationWorkspaceId: "workspace-1",
+      skills: [
+        { skillId: "coordination", name: "Coordination", description: null },
+        { skillId: "implementation", name: "Implementation", description: null },
+      ],
+      leadClientMemberKey: suggestedBuilder!.key,
+      members: [
+        {
+          clientMemberKey: suggestedLead!.key,
+          role: "Lead",
+          level: 4,
+          skillIds: ["coordination"],
+          executionProfileSelection: {
+            kind: "inline",
+            executionProfile: {
+              provider: "codex",
+              model: null,
+              modeId: null,
+              thinkingOptionId: null,
+              featureValues: {},
+            },
+          },
+        },
+        {
+          clientMemberKey: suggestedBuilder!.key,
+          role: "Reviewer",
+          level: 5,
+          skillIds: ["coordination"],
+          executionProfileSelection: {
+            kind: "agent_profile",
+            profileId: "profile-reviewer",
+          },
+        },
+      ],
+      methodologyBinding: {
+        ref: STANDARD.ref,
+        presetId: "lean-delivery",
+        memberArchetypeBindings: [
+          { clientMemberKey: suggestedLead!.key, archetypeId: "lead" },
+          { clientMemberKey: suggestedBuilder!.key, archetypeId: "builder" },
+        ],
+        skillBindings: [
+          { teamSkillId: "coordination", methodologySkillId: "coordination" },
+          { teamSkillId: "implementation", methodologySkillId: "implementation" },
+        ],
+      },
+    });
+  });
+
   it("creates a fresh skill and member draft for each mount", () => {
     const first = openTeamProfileForm(createSnapshot());
     first.setName("Platform");
@@ -132,6 +298,14 @@ describe("opening a Team profile form", () => {
 });
 
 describe("validating the Team profile catalog", () => {
+  it("requires an exact Methodology and preset before create", () => {
+    const form = openTeamProfileForm({ ...createSnapshot(), methodologies: [] });
+
+    expect(form.getState().validationIssues).toEqual(
+      expect.arrayContaining([{ kind: "methodology_required" }, { kind: "preset_required" }]),
+    );
+  });
+
   it("reports a missing create workspace before submission", () => {
     const form = openTeamProfileForm({ ...createSnapshot(), workspaceId: "  " });
 
@@ -283,6 +457,7 @@ describe("resolving member execution profiles", () => {
 
   it("allows multiple available members with the same role", () => {
     const form = openTeamProfileForm(createSnapshot());
+    form.applyPreset("lean-delivery");
     form.applyHostSnapshot({
       workspaceId: "workspace-1",
       serverId: "server-1",
@@ -296,8 +471,6 @@ describe("resolving member execution profiles", () => {
     });
     form.setName("Platform");
     const skill = form.getState().skills[0]!;
-    form.setSkillId(skill.key, "typescript");
-    form.setSkillName(skill.key, "TypeScript");
     const profile = {
       provider: "codex",
       model: "gpt-5.6-sol",
@@ -307,12 +480,11 @@ describe("resolving member execution profiles", () => {
     };
     const first = form.getState().members[0]!;
     form.setMemberRole(first.key, "Engineer");
-    form.setMemberSkillIds(first.key, ["typescript"]);
+    form.setMemberSkillIds(first.key, [skill.skillId]);
     form.setMemberExecutionProfile(first.key, profile);
-    form.addMember();
     const second = form.getState().members[1]!;
     form.setMemberRole(second.key, "Engineer");
-    form.setMemberSkillIds(second.key, ["typescript"]);
+    form.setMemberSkillIds(second.key, [skill.skillId]);
     form.setMemberExecutionProfile(second.key, profile);
 
     expect(form.getState().members.map((member) => member.role)).toEqual(["Engineer", "Engineer"]);

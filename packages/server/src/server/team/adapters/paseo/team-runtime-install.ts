@@ -4,6 +4,7 @@ import path from "node:path";
 import type { Logger } from "pino";
 
 import type { TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
+import type { AgentProfile } from "@getpaseo/protocol/messages";
 
 import type { AgentManager } from "../../../agent/agent-manager.js";
 import type { AgentStorage } from "../../../agent/agent-storage.js";
@@ -19,6 +20,8 @@ import {
   TeamMissionService,
 } from "../../application/team-mission-service.js";
 import { TeamOperationCoordinator } from "../../application/team-operation-coordinator.js";
+import { DaemonTeamAgentProfileMaterializer } from "../../application/team-agent-profile-materializer.js";
+import { MethodologyCatalog } from "../../methodology/catalog.js";
 import { MissionStore } from "../../persistence/mission-store.js";
 import { MissionRoomStore } from "../../persistence/mission-room-store.js";
 import { TeamProfileStore } from "../../persistence/profile-store.js";
@@ -49,6 +52,7 @@ export interface InstallPaseoTeamRuntimeOptions {
   resolveWorkspaceCwd(workspaceId: string): Promise<string | null>;
   publishTeamProfile(team: TeamV2): void;
   publishMission(mission: TeamMission): void;
+  readAgentProfiles(): readonly AgentProfile[];
   providerRegistryOptions?: BuildProviderRegistryOptions;
   persistenceFaultInjector?: TeamPersistenceFaultInjector;
   logger: Logger;
@@ -114,6 +118,10 @@ export async function installPaseoTeamRuntimeAdapter(
     events,
     clock,
     ids,
+    agentProfiles: new DaemonTeamAgentProfileMaterializer({
+      readSnapshot: () => options.readAgentProfiles(),
+    }),
+    methodologies: new MethodologyCatalog(),
     operations,
     persistenceFaultInjector: options.persistenceFaultInjector,
     finishQuiescence: {

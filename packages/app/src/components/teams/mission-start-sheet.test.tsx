@@ -3,12 +3,13 @@ import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
+import { testTeamMethodologyBinding } from "@/teams/test-fixtures";
 
 const noop = () => {};
 
 const mocked = vi.hoisted(() => ({
   profiles: new Map<string, TeamV2>(),
-  features: { teamMissions: true, globalTeamProfiles: false },
+  features: { teamMissions: true, globalTeamProfiles: true },
   optionIds: [] as string[],
 }));
 
@@ -73,7 +74,7 @@ describe("MissionStartSheet", () => {
   afterEach(() => {
     cleanup();
     mocked.profiles = new Map();
-    mocked.features.globalTeamProfiles = false;
+    mocked.features.globalTeamProfiles = true;
     mocked.optionIds = [];
   });
 
@@ -89,7 +90,6 @@ describe("MissionStartSheet", () => {
   });
 
   it("offers a Team created in another workspace when profiles are host-global", () => {
-    mocked.features.globalTeamProfiles = true;
     mocked.profiles = new Map([
       ["team-other", team("team-other", "workspace-b")],
       ["team-local", team("team-local", "workspace-a")],
@@ -102,7 +102,7 @@ describe("MissionStartSheet", () => {
     expect(mocked.optionIds).toEqual(["team-other", "team-local"]);
   });
 
-  it("keeps creation-workspace filtering when the feature is absent", () => {
+  it("always offers host-global Teams regardless of their creation workspace", () => {
     mocked.profiles = new Map([
       ["team-other", team("team-other", "workspace-b")],
       ["team-local", team("team-local", "workspace-a")],
@@ -112,7 +112,7 @@ describe("MissionStartSheet", () => {
       <MissionStartSheet serverId="server-a" workspaceId="workspace-a" visible onClose={noop} />,
     );
 
-    expect(mocked.optionIds).toEqual(["team-local"]);
+    expect(mocked.optionIds).toEqual(["team-other", "team-local"]);
   });
 });
 
@@ -120,10 +120,11 @@ function team(id: string, workspaceId: string): TeamV2 {
   return {
     id,
     name: id,
-    workspaceId,
+    creationWorkspaceId: workspaceId,
     leadMemberId: `lead-${id}`,
     skills: [],
     members: [],
+    methodologyBinding: testTeamMethodologyBinding(),
     lifecycle: "active",
     activeMissionId: null,
     lifecycleRecoveryFailure: null,

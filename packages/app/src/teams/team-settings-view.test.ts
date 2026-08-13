@@ -9,12 +9,13 @@ import {
   selectTeamMissionHistory,
   selectTeamPlanRows,
 } from "@/teams/team-settings-view";
+import { testTeamMethodologyBinding } from "./test-fixtures";
 
 function team(): TeamV2 {
   return {
     id: "team-1",
     name: "Release team",
-    workspaceId: "workspace-1",
+    creationWorkspaceId: "workspace-1",
     leadMemberId: "member-lead",
     skills: [
       { skillId: "typescript", name: "TypeScript", description: null },
@@ -50,6 +51,10 @@ function team(): TeamV2 {
         },
       },
     ],
+    methodologyBinding: testTeamMethodologyBinding(
+      ["member-lead", "member-reviewer"],
+      ["typescript", "testing"],
+    ),
     lifecycle: "active",
     activeMissionId: "mission-1",
     lifecycleRecoveryFailure: null,

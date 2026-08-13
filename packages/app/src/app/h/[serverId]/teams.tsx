@@ -22,6 +22,7 @@ import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store"
 import { buildHostTeamRoute } from "@/utils/host-routes";
 import { useOpenAddProject } from "@/hooks/use-open-add-project";
 import type { Theme } from "@/styles/theme";
+import { useTeamCreateOptions } from "@/teams/use-team-create-options";
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const spinnerColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -149,6 +150,7 @@ function SupportedHub({
   workspace: ReturnType<typeof selectTeamHubWorkspace>;
 }) {
   const { t } = useTranslation();
+  const { methodologies, agentProfiles, catalogStatus } = useTeamCreateOptions(serverId);
   const [creating, setCreating] = useState(false);
   const openAddProject = useOpenAddProject();
   const openWorkspace = useCallback(() => {
@@ -215,6 +217,11 @@ function SupportedHub({
           serverId={serverId}
           workspaceId={workspace.id}
           cwd={workspace.workspaceDirectory}
+          methodologies={methodologies}
+          agentProfiles={agentProfiles}
+          catalogStatus={catalogStatus}
+          catalogError={catalogError}
+          onRetryCatalog={onRetryCatalog}
           visible={creating}
           onClose={closeCreate}
           onSaved={teamSaved}
