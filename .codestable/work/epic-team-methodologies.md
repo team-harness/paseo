@@ -48,6 +48,16 @@ remote_publish: final
 
 ## 临时决策与证据
 
+- 2026-08-13：TM-ITEM-11 worker `44892a51-1b68-450a-96c1-9a923263ebbd` 在原 session
+  `e992eebc-c63f-4651-98a5-5eaa78592200` 中遇到同一 inference gateway 503/no available accounts。
+  主流程确认 session/worktree/基线可恢复后向同一 run 发送 continuation packet 并恢复为 `running`；未创建
+  重复 worker，未影响 TM-ITEM-9/10，也不计实现或审查轮次。
+
+- 2026-08-13：TM-ITEM-10 worker `d24b74a5-b936-486a-9698-8dd9b0c5db61` 在原 session
+  `816263cf-8412-4eef-acac-875169194d5f` 中因 inference gateway 返回临时 503/no available accounts
+  中断。主流程核对 session persistence、worktree 和原基线均保留后，向同一 run 发送 continuation
+  packet 并恢复为 `running`；未创建重复 worker，未影响并行中的 TM-ITEM-9/11，也不计实现或审查轮次。
+
 - 2026-08-13：owner gate 批准的唯一并行批次 TM-ITEM-9/10/11 已从同一个 TM-ITEM-8 完成游标基线
   `1206406b9` 派发到三个 Paseo 托管 worktree。TM-ITEM-9 run
   `3ad3855a-0d2e-4e87-a626-be6214480594` 使用 `codex/gpt-5.6-sol` / full-access/high，负责
