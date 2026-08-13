@@ -56,6 +56,7 @@ describe("Team v2 feature capsule boundaries", () => {
       "agentManager.setPaseoToolCatalogFactory(createAgentToolCatalog)",
     );
     const injectMcpBaseUrl = source.indexOf("agentManager.setMcpBaseUrl(agentMcpBaseUrl)");
+    const recoverWorkspaceArchives = source.indexOf("await recoverPendingWorkspaceArchives(");
     const startRuntime = source.indexOf("await teamRuntime.start()");
     const exposeTeamCapability = source.indexOf("wsServer = new VoiceAssistantWebSocketServer(");
 
@@ -64,12 +65,15 @@ describe("Team v2 feature capsule boundaries", () => {
         installRuntime,
         installToolCatalog,
         injectMcpBaseUrl,
+        recoverWorkspaceArchives,
         startRuntime,
         exposeTeamCapability,
       ].every((index) => index > 0),
     ).toBe(true);
     expect(installRuntime).toBeLessThan(installToolCatalog);
     expect(installToolCatalog).toBeLessThan(injectMcpBaseUrl);
+    expect(injectMcpBaseUrl).toBeLessThan(recoverWorkspaceArchives);
+    expect(recoverWorkspaceArchives).toBeLessThan(startRuntime);
     expect(injectMcpBaseUrl).toBeLessThan(startRuntime);
     expect(startRuntime).toBeLessThan(exposeTeamCapability);
   });
