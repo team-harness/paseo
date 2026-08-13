@@ -5,17 +5,17 @@ approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91c
 current_item: null
 active_items:
   - item: TM-ITEM-10
-    state: dispatched
+    state: awaiting_owner
     run: subagent:/root/tm10_recovery
     workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-profile-upgrade
     base: 1206406b9
   - item: TM-ITEM-11
-    state: dispatched
+    state: awaiting_owner
     run: subagent:/root/tm11_recovery
     workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-gates
     base: 1206406b9
-next_action: 等待 TM-ITEM-9/10/11 workers 完成并按完成顺序串行集成；每项集成后重算其余分支冲突与验证面
-blocked_by: null
+next_action: 等待 owner 裁决 TM-ITEM-10 轮后修复证据是否可直接集成，以及是否授权 TM-ITEM-11 修复唯一 blocker 并进行 Round 4
+blocked_by: "owner decision: TM-ITEM-10 post-review repair; TM-ITEM-11 blocker repair and Round 4"
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -42,6 +42,14 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-10 与 TM-ITEM-11 均已停止执行，没有 reviewer 或 worker 在自动重试。
+  TM-ITEM-10 三轮审查后唯一 blocker 已作机械修复，聚焦测试 13/13、原 changed tests
+  294 passed / 6 skipped、build/typecheck/lint/format/diff-check 与 code-intel 38/38 均通过；但修复
+  发生在 Round 3 终态之后，缺少新的 0/0 verdict，需 owner 明确接受证据例外才能建
+  checkpoint。TM-ITEM-11 Round 3 仍有 1 blocking：继承旧 approved review 时没有比对历史
+  Workstream 不可变 contract，可在 reviewer requirements 变化后错误复用旧 report；必须修复并经
+  Round 4 复审，不可直接豁免。两项均未创建 checkpoint，未 push/publish，未重启 6767。
 
 - 2026-08-13：TM-ITEM-10 恢复 worker 已完成 32 个功能文件，changed Vitest 15 files 为 265 passed /
   6 skipped（真实 provider 条件跳过），build/server、全仓 typecheck/lint/format-check 全绿；code-intel
