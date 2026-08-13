@@ -38,6 +38,12 @@ remote_publish: final
 
 ## 临时决策与证据
 
+- 2026-08-13：TM-ITEM-7 新 change-review 阶段 Round 3 清零 blocking 但发现 1 important I-3：catalog
+  状态从 ready 短暂断线时，已打开且已填写的 Team create 表单会被卸载并重建，导致用户输入丢失。owner
+  授权新的修复与审查阶段。修复边界限定为“ready 只作打开前准入；打开后保留 catalog snapshot 与
+  form model”，不得自动应用 preset、放宽校验或扩展到 TM-ITEM-8/10；该阶段必须使用 fresh reviewer，
+  最多三轮，达到 0 blocking / 0 important 后才允许创建 checkpoint。
+
 - 2026-08-13：TM-ITEM-7 原 change-review 阶段在 Round 3 达到上限并返回 2 blocking / 0 important：
   两个 daemon E2E 仍发送旧 Team create payload，真实 Zod 解析失败；浏览器 Team 创建证据未显式选择
   preset，提交按钮保持禁用。owner 选择方案 A，授权在原 worktree 进入新的独立 change-review 阶段。
