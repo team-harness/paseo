@@ -5,8 +5,8 @@ approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91c
 current_item: null
 active_items:
   - item: TM-ITEM-9
-    state: dispatched
-    run: paseo-agent:3ad3855a-0d2e-4e87-a626-be6214480594
+    state: reviewing
+    run: subagent:/root/tm9_final_review
     workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-start-recovery
     base: 1206406b9
   - item: TM-ITEM-10
@@ -47,6 +47,15 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-9 worker 完成 start intent durability、crash recovery、archive takeover、
+  response-lost Lead 与 lease cleanup 实现，冻结 working diff SHA-256 为
+  `f19b0fa708d1ccacc52f5fea604d600bbac7bd44b5119db0f43103db6473707c`（5 files，+302/-64）。
+  owning 119/119、targeted regression 178/178、build/server、lint、format 与 diff-check 全绿；其隔离
+  worktree 的 typecheck 仅被改动外 `draggable-list.native.tsx:122` 基线错误阻断。Paseo Claude Opus、
+  native Claude 与 OCR 都因 gateway 503 无法完成 fresh review，CodeWhale 没有返回有效报告；worker 因缺
+  `0 blocking / 0 important` 正确停止且未建 checkpoint。主流程核对冻结 hash/边界后，按审查回退规则
+  创建 fresh 本机只读 reviewer `/root/tm9_final_review`；该 review 目标不变，外部基础设施失败不计轮次。
 
 - 2026-08-13：TM-ITEM-10/11 的 Claude Opus workers 在恢复后再次同时遇到相同 gateway
   503/no available accounts，达到同一基础设施失败的有界回退条件。两者已分别产生 partial candidate：
