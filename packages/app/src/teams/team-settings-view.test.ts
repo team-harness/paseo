@@ -4,12 +4,17 @@ import type { TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 import {
   selectTeamAttentionRecovery,
+  buildTeamMethodologyUpgradePreview,
   selectTeamAttentionRows,
   selectTeamMemberSettingsRows,
   selectTeamMissionHistory,
   selectTeamPlanRows,
 } from "@/teams/team-settings-view";
-import { testMissionMethodologySnapshot, testTeamMethodologyBinding } from "./test-fixtures";
+import {
+  TEST_METHODOLOGY,
+  testMissionMethodologySnapshot,
+  testTeamMethodologyBinding,
+} from "./test-fixtures";
 
 function team(): TeamV2 {
   return {
@@ -255,6 +260,7 @@ describe("Team settings view", () => {
   it("keeps equal roles distinguishable by handle, level, skills, and participant", () => {
     expect(selectTeamMemberSettingsRows(team(), mission())).toEqual([
       {
+        executionSourceStatus: { kind: "inline" },
         memberId: "member-lead",
         role: "Software engineer",
         level: 5,
@@ -267,6 +273,7 @@ describe("Team settings view", () => {
         participantState: "active",
       },
       {
+        executionSourceStatus: { kind: "inline" },
         memberId: "member-reviewer",
         role: "Software engineer",
         level: 3,
@@ -279,6 +286,36 @@ describe("Team settings view", () => {
         participantState: "archived",
       },
     ]);
+  });
+
+  it("preserves valid bindings and reports Methodology policy changes", () => {
+    const current = TEST_METHODOLOGY;
+    const next = {
+      ...current,
+      ref: { ...current.ref, version: "2", digest: `sha256:${"a".repeat(64)}` },
+      archetypes: current.archetypes.filter((item) => item.archetypeId === "lead"),
+      policySummary: {
+        ...current.policySummary,
+        review: {
+          ...current.policySummary.review,
+          writableWorkstreams: "independent_required" as const,
+        },
+      },
+    };
+    const preview = buildTeamMethodologyUpgradePreview(team(), current, next);
+
+    expect(preview).toMatchObject({
+      archetypeChanges: expect.any(Number),
+      policyChanges: 1,
+      upgrade: {
+        expectedRef: team().methodologyBinding.ref,
+        ref: next.ref,
+        memberArchetypeBindings: expect.any(Array),
+        skillBindings: expect.any(Array),
+      },
+    });
+    expect(preview.upgrade.memberArchetypeBindings).toHaveLength(team().members.length);
+    expect(preview.upgrade.skillBindings).toHaveLength(team().skills.length);
   });
 
   it("shows dynamic workstream ownership and assignment state without profile responsibilities", () => {

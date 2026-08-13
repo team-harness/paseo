@@ -11,33 +11,55 @@ import {
 } from "./v2-types.js";
 export { ExactMethodologyRefSchema } from "./v2-types.js";
 
+export const TeamExecutionProfileSelectionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("inline"), executionProfile: TeamExecutionProfileSchema }),
+  z.object({ kind: z.literal("agent_profile"), profileId: z.string().min(1) }),
+]);
+export type TeamExecutionProfileSelection = z.infer<typeof TeamExecutionProfileSelectionSchema>;
+
 export const TeamProfileCreateMemberInputSchema = z.object({
   clientMemberKey: z.string().min(1),
   role: z.string().min(1),
   level: TeamMemberLevelSchema,
   skillIds: z.array(z.string().min(1)).min(1),
-  executionProfileSelection: z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("inline"), executionProfile: TeamExecutionProfileSchema }),
-    z.object({ kind: z.literal("agent_profile"), profileId: z.string().min(1) }),
-  ]),
+  executionProfileSelection: TeamExecutionProfileSelectionSchema,
 });
 export type TeamProfileCreateMemberInput = z.infer<typeof TeamProfileCreateMemberInputSchema>;
 
-export const TeamProfileMemberInputSchema = z.object({
+const TeamProfileMemberFactsSchema = z.object({
   role: z.string().min(1),
   level: TeamMemberLevelSchema,
   skillIds: z.array(z.string().min(1)).min(1),
-  executionProfile: TeamExecutionProfileSchema,
 });
+
+export const TeamProfileMemberInputSchema = z.union([
+  TeamProfileMemberFactsSchema.extend({
+    executionProfileSelection: TeamExecutionProfileSelectionSchema,
+  }).strict(),
+  // COMPAT(teamProfileMemberExecutionSelection): added in v0.3.1, remove after
+  // 2027-02-13 once the client floor sends explicit execution selections.
+  TeamProfileMemberFactsSchema.extend({ executionProfile: TeamExecutionProfileSchema }).strict(),
+]);
 export type TeamProfileMemberInput = z.infer<typeof TeamProfileMemberInputSchema>;
 
-export const TeamProfileMemberPatchSchema = z.object({
+const TeamProfileMemberPatchFactsSchema = z.object({
   memberId: z.string().min(1),
   role: z.string().min(1).optional(),
   level: TeamMemberLevelSchema.optional(),
   skillIds: z.array(z.string().min(1)).min(1).optional(),
-  executionProfile: TeamExecutionProfileSchema.optional(),
 });
+
+export const TeamProfileMemberPatchSchema = z.union([
+  TeamProfileMemberPatchFactsSchema.extend({
+    executionProfileSelection: TeamExecutionProfileSelectionSchema,
+  }).strict(),
+  // COMPAT(teamProfileMemberExecutionSelection): added in v0.3.1, remove after
+  // 2027-02-13 once the client floor sends explicit execution selections.
+  TeamProfileMemberPatchFactsSchema.extend({
+    executionProfile: TeamExecutionProfileSchema,
+  }).strict(),
+  TeamProfileMemberPatchFactsSchema.strict(),
+]);
 export type TeamProfileMemberPatch = z.infer<typeof TeamProfileMemberPatchSchema>;
 
 export const MethodologyIdentifierSchema = z.string().regex(/^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$/);
@@ -217,6 +239,34 @@ export const TeamProfileUpdateRequestSchema = z.object({
   memberAdds: z.array(TeamProfileMemberInputSchema).optional(),
   memberUpdates: z.array(TeamProfileMemberPatchSchema).optional(),
   memberRemovals: z.array(z.string().min(1)).optional(),
+  methodologyUpgrade: z
+    .object({
+      expectedRef: ExactMethodologyRefSchema,
+      ref: ExactMethodologyRefSchema,
+      presetId: MethodologyIdentifierSchema.nullable(),
+      memberArchetypeBindings: z.array(
+        z.object({
+          memberId: z.string().min(1),
+          archetypeId: MethodologyIdentifierSchema.nullable(),
+        }),
+      ),
+      skillBindings: z.array(
+        z.object({
+          teamSkillId: z.string().min(1),
+          methodologySkillId: MethodologyIdentifierSchema.nullable(),
+        }),
+      ),
+    })
+    .optional(),
+});
+
+export const TeamProfileMemberExecutionRefreshRequestSchema = z.object({
+  type: z.literal("team.profile.member.execution.refresh.request"),
+  requestId: z.string().min(1),
+  idempotencyKey: z.string().min(1),
+  teamId: z.string().min(1),
+  memberId: z.string().min(1),
+  expectedTeamRevision: z.number().int().nonnegative(),
 });
 
 export const TeamProfileArchiveRequestSchema = z.object({
@@ -257,6 +307,22 @@ export const TeamProfileInspectResponseSchema = z.object({
 export const TeamProfileUpdateResponseSchema = z.object({
   type: z.literal("team.profile.update.response"),
   payload: z.object(teamResponseFields),
+});
+
+export const TeamProfileMemberExecutionRefreshResponseSchema = z.object({
+  type: z.literal("team.profile.member.execution.refresh.response"),
+  payload: z.object({
+    requestId: z.string().min(1),
+    disposition: z.enum(["unchanged", "updated"]).nullable(),
+    teamRevision: z.number().int().nonnegative().nullable(),
+    appliedDigest: z
+      .string()
+      .regex(/^sha256:[0-9a-f]{64}$/)
+      .nullable(),
+    team: TeamV2Schema.nullable(),
+    error: z.string().nullable(),
+    errorCode: z.string().nullable(),
+  }),
 });
 
 export const TeamProfileArchiveResponseSchema = z.object({

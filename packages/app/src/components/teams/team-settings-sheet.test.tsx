@@ -27,6 +27,7 @@ vi.mock("react-native-unistyles", () => ({
 
 vi.mock("lucide-react-native", () => ({
   Archive: () => null,
+  BookOpen: () => null,
   ChevronRight: () => null,
   CircleAlert: () => null,
   ClipboardList: () => null,
@@ -98,12 +99,18 @@ vi.mock("@/runtime/host-runtime", () => ({
       : null,
 }));
 
+vi.mock("@/agent-profiles/internal/use-agent-profiles", () => ({
+  useAgentProfiles: () => ({ profiles: [], isSupported: true, saveProfiles: vi.fn() }),
+}));
+
 vi.mock("@/stores/session-store", () => ({
   useSessionStore: (selector: (state: unknown) => unknown) =>
     selector({
       sessions: {
         "server-1": {
           pendingPermissions: new Map(),
+          methodologyCatalogReplica: { methodologies: [] },
+          serverInfo: { features: { teamProfileUpgrades: true } },
           teamMissionsReplica: { historyReads: new Map(), missions: new Map() },
         },
       },

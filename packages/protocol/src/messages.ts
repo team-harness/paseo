@@ -52,6 +52,8 @@ import {
   TeamProfileInspectResponseSchema,
   TeamProfileListRequestSchema,
   TeamProfileListResponseSchema,
+  TeamProfileMemberExecutionRefreshRequestSchema,
+  TeamProfileMemberExecutionRefreshResponseSchema,
   TeamProfileSnapshotMessageSchema,
   TeamProfileUpdateRequestSchema,
   TeamProfileUpdateResponseSchema,
@@ -2956,6 +2958,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   TeamProfileListRequestSchema,
   TeamProfileInspectRequestSchema,
   TeamProfileUpdateRequestSchema,
+  TeamProfileMemberExecutionRefreshRequestSchema,
   TeamProfileArchiveRequestSchema,
   TeamMissionStartRequestSchema,
   TeamMissionListRequestSchema,
@@ -3277,6 +3280,9 @@ export const ServerInfoStatusPayloadSchema = z
         // once every supported daemon separates Team identity from Mission workspace placement.
         globalTeamProfiles: z.boolean().optional(),
         teamMethodologies: z.boolean().optional(),
+        // COMPAT(teamProfileUpgrades): added in v0.3.2, remove after 2027-02-13
+        // once every supported daemon implements execution-source and Methodology upgrades.
+        teamProfileUpgrades: z.boolean().optional(),
       })
       .optional(),
   })
@@ -6069,6 +6075,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   TeamProfileListResponseSchema,
   TeamProfileInspectResponseSchema,
   TeamProfileUpdateResponseSchema,
+  TeamProfileMemberExecutionRefreshResponseSchema,
   TeamProfileArchiveResponseSchema,
   TeamMissionStartResponseSchema,
   TeamMissionListResponseSchema,
@@ -6107,6 +6114,9 @@ export type TeamMethodologyGetResponse = z.infer<typeof TeamMethodologyGetRespon
 export type TeamProfileListResponse = z.infer<typeof TeamProfileListResponseSchema>;
 export type TeamProfileInspectResponse = z.infer<typeof TeamProfileInspectResponseSchema>;
 export type TeamProfileUpdateResponse = z.infer<typeof TeamProfileUpdateResponseSchema>;
+export type TeamProfileMemberExecutionRefreshResponse = z.infer<
+  typeof TeamProfileMemberExecutionRefreshResponseSchema
+>;
 export type TeamProfileArchiveResponse = z.infer<typeof TeamProfileArchiveResponseSchema>;
 export type TeamMissionStartResponse = z.infer<typeof TeamMissionStartResponseSchema>;
 export type TeamMissionListResponse = z.infer<typeof TeamMissionListResponseSchema>;
@@ -6395,6 +6405,9 @@ export type TeamMethodologyGetRequest = z.infer<typeof TeamMethodologyGetRequest
 export type TeamProfileListRequest = z.infer<typeof TeamProfileListRequestSchema>;
 export type TeamProfileInspectRequest = z.infer<typeof TeamProfileInspectRequestSchema>;
 export type TeamProfileUpdateRequest = z.infer<typeof TeamProfileUpdateRequestSchema>;
+export type TeamProfileMemberExecutionRefreshRequest = z.infer<
+  typeof TeamProfileMemberExecutionRefreshRequestSchema
+>;
 export type TeamProfileArchiveRequest = z.infer<typeof TeamProfileArchiveRequestSchema>;
 export type TeamMissionStartRequest = z.infer<typeof TeamMissionStartRequestSchema>;
 export type TeamMissionListRequest = z.infer<typeof TeamMissionListRequestSchema>;

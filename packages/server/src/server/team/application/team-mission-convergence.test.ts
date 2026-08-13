@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import type { TeamProfileMemberInput } from "@getpaseo/protocol/team/v2-rpc-schemas";
+import type { TestInlineTeamMemberInput } from "../test-fixtures.js";
 import type {
   MissionAssignmentContract,
   MissionScopeLease,
@@ -980,7 +980,7 @@ function createConvergenceFixture(directory: string, seed: number) {
   };
 }
 
-function member(provider: "codex" | "claude", level: 4 | 5): TeamProfileMemberInput {
+function member(provider: "codex" | "claude", level: 4 | 5): TestInlineTeamMemberInput {
   return {
     role: level === 5 ? "Technical lead" : "Software engineer",
     level,

@@ -408,6 +408,100 @@ describe("resolving member execution profiles", () => {
     });
   });
 
+  it("emits explicit source rebind and detach patches", () => {
+    const sourced = storedProfile();
+    sourced.members[0]!.executionProfileSource = {
+      kind: "agent_profile",
+      profileId: "profile-old",
+      resolverVersion: 1,
+      appliedDigest: `sha256:${"0".repeat(64)}`,
+    };
+    let row = 0;
+    let attempt = 0;
+    const form = openTeamProfileForm({
+      mode: "edit",
+      profile: sourced,
+      hostSnapshot: undefined,
+      newRowKey: () => `source-row-${++row}`,
+      newIdempotencyKey: () => `source-attempt-${++attempt}`,
+    });
+    form.applyHostSnapshot({ workspaceId: "workspace-1", serverId: "server-1", cwd: "/repo" });
+    form.applyProviderSnapshot({
+      workspaceId: "workspace-1",
+      serverId: "server-1",
+      cwd: "/repo",
+      entries: READY_ENTRIES,
+    });
+    const member = form.getState().members[0]!;
+
+    form.setMemberAgentProfile(member.key, "profile-next");
+    expect(form.submitStarted()?.payload).toMatchObject({
+      memberUpdates: [
+        {
+          memberId: "member-1",
+          executionProfileSelection: { kind: "agent_profile", profileId: "profile-next" },
+        },
+      ],
+    });
+
+    form.submitFailed({ message: "retry", outcome: "definite" });
+    form.setMemberExecutionProfile(member.key, {
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      modeId: null,
+      thinkingOptionId: null,
+      featureValues: {},
+    });
+    expect(form.submitStarted()?.payload).toMatchObject({
+      memberUpdates: [
+        {
+          memberId: "member-1",
+          executionProfileSelection: {
+            kind: "inline",
+            executionProfile: {
+              provider: "codex",
+              model: "gpt-5.6-sol",
+              modeId: null,
+              thinkingOptionId: null,
+              featureValues: {},
+            },
+          },
+        },
+      ],
+    });
+  });
+
+  it("detaches to the frozen inline snapshot without a live workspace", () => {
+    const sourced = storedProfile();
+    sourced.members[0]!.executionProfileSource = {
+      kind: "agent_profile",
+      profileId: "profile-old",
+      resolverVersion: 1,
+      appliedDigest: `sha256:${"0".repeat(64)}`,
+    };
+    const form = openTeamProfileForm({
+      mode: "edit",
+      profile: sourced,
+      newRowKey: () => "detach-row",
+      newIdempotencyKey: () => "detach-attempt",
+    });
+
+    form.setMemberInlineExecution(form.getState().members[0]!.key);
+
+    expect(form.getState()).toMatchObject({ canSubmit: true });
+    expect(form.submitStarted()?.payload).toMatchObject({
+      memberUpdates: [
+        {
+          memberId: "member-1",
+          executionProfileSelection: {
+            kind: "inline",
+            executionProfile: sourced.members[0]!.executionProfile,
+          },
+        },
+      ],
+    });
+  });
+
   it("does not let an unsaved edit row become the lead", () => {
     const form = openTeamProfileForm(editSnapshot());
     const savedLead = form.getState().leadRowKey;

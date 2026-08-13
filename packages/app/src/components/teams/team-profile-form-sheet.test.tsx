@@ -3,8 +3,9 @@ import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentProfile } from "@getpaseo/protocol/messages";
+import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
-import { TEST_METHODOLOGY } from "@/teams/test-fixtures";
+import { TEST_METHODOLOGY, testTeamMethodologyBinding } from "@/teams/test-fixtures";
 
 const noop = () => {};
 
@@ -72,16 +73,19 @@ vi.mock("@/components/ui/select-field", async () => {
       value,
       options = [],
       onChange,
+      disabled,
     }: {
       testID?: string;
       value?: string | number | null;
       options?: Array<{ value: string | number }>;
       onChange?: (value: string | number) => void;
+      disabled?: boolean;
     }) =>
       ReactModule.createElement("button", {
         "data-testid": testID,
         "data-value": value ?? "",
         type: "button",
+        disabled,
         onClick: () => {
           const selection = options.at(-1);
           if (selection) onChange?.(selection.value);
@@ -150,6 +154,46 @@ const TEST_AGENT_PROFILE = {
   model: "gpt-5",
 } as AgentProfile;
 
+function editTeam(): TeamV2 {
+  return {
+    id: "team-edit",
+    name: "Editable Team",
+    creationWorkspaceId: "workspace-archived",
+    leadMemberId: "member-lead",
+    skills: [{ skillId: "typescript", name: "TypeScript", description: null }],
+    members: [
+      {
+        memberId: "member-lead",
+        role: "Lead",
+        level: 5,
+        skillIds: ["typescript"],
+        executionProfile: {
+          provider: "codex",
+          model: "gpt-5",
+          modeId: null,
+          thinkingOptionId: null,
+          featureValues: {},
+        },
+        executionProfileSource: {
+          kind: "agent_profile",
+          profileId: "profile-old",
+          resolverVersion: 1,
+          appliedDigest: `sha256:${"0".repeat(64)}`,
+        },
+        mentionHandle: "lead",
+      },
+    ],
+    methodologyBinding: testTeamMethodologyBinding(["member-lead"], ["typescript"]),
+    lifecycle: "active",
+    activeMissionId: null,
+    lifecycleRecoveryFailure: null,
+    revision: 2,
+    createdAt: "2026-08-13T00:00:00.000Z",
+    updatedAt: "2026-08-13T00:00:00.000Z",
+    archivedAt: null,
+  };
+}
+
 describe("TeamProfileFormSheet", () => {
   afterEach(cleanup);
 
@@ -171,6 +215,40 @@ describe("TeamProfileFormSheet", () => {
     expect(screen.getByTestId("team-profile-member-0-model-trigger")).toBeTruthy();
     expect(screen.queryByTestId("team-profile-task")).toBeNull();
     expect(screen.queryByTestId("team-profile-member-0-responsibility")).toBeNull();
+  });
+
+  it("detaches a sourced Member without a live creation workspace", () => {
+    render(
+      <TeamProfileFormSheet
+        serverId="server-a"
+        profile={editTeam()}
+        agentProfiles={[]}
+        visible
+        onClose={noop}
+      />,
+    );
+
+    const source = screen.getByTestId("team-profile-member-0-execution-source");
+    expect(source.getAttribute("data-value")).toBe("profile:profile-old");
+    fireEvent.click(source);
+    expect(source.getAttribute("data-value")).toBe("inline");
+    expect(screen.getByTestId("team-profile-member-0-model-trigger")).toBeTruthy();
+  });
+
+  it("rebinds a sourced Member to another Agent Profile", () => {
+    render(
+      <TeamProfileFormSheet
+        serverId="server-a"
+        profile={editTeam()}
+        agentProfiles={[TEST_AGENT_PROFILE]}
+        visible
+        onClose={noop}
+      />,
+    );
+
+    const source = screen.getByTestId("team-profile-member-0-execution-source");
+    fireEvent.click(source);
+    expect(source.getAttribute("data-value")).toBe("profile:profile-reviewer");
   });
 
   it.each([

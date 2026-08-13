@@ -6,9 +6,13 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type {
   TeamMissionAttentionResolutionInput,
   TeamProfileCreateMemberInput,
-  TeamProfileMemberInput,
 } from "@getpaseo/protocol/team/v2-rpc-schemas";
-import type { MissionAttentionItem, TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
+import type {
+  MissionAttentionItem,
+  TeamExecutionProfile,
+  TeamMission,
+  TeamV2,
+} from "@getpaseo/protocol/team/v2-types";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { archiveByScope, type ArchiveDependencies } from "../../workspace-archive-service.js";
@@ -46,7 +50,14 @@ const STANDARD_REF = {
   digest: "sha256:d5001287a60f868bcef21ecd3c4debb5a5237db002c5b9d0f7b0b78e98969697",
 };
 
-const LEAD: TeamProfileMemberInput = {
+interface InlineMemberFixture {
+  role: string;
+  level: 1 | 2 | 3 | 4 | 5;
+  skillIds: string[];
+  executionProfile: TeamExecutionProfile;
+}
+
+const LEAD: InlineMemberFixture = {
   role: "Technical lead",
   level: 5,
   skillIds: ["typescript"],
@@ -59,7 +70,7 @@ const LEAD: TeamProfileMemberInput = {
   },
 };
 
-const MEMBER: TeamProfileMemberInput = {
+const MEMBER: InlineMemberFixture = {
   role: "Software engineer",
   level: 3,
   skillIds: ["typescript"],
@@ -1133,7 +1144,7 @@ describe("TeamMissionService lifecycle", () => {
     ).rejects.toMatchObject({ code: "member_not_found" });
   });
 
-  test("rejects execution snapshot edits for an Agent Profile sourced Member", async () => {
+  test("detaches an Agent Profile sourced Member when inline execution is selected", async () => {
     const fixture = createFixture(rootDirectory, {
       agentProfiles: [{ id: "profile-engineer", provider: "claude", model: "sonnet" }],
     });
@@ -1144,13 +1155,14 @@ describe("TeamMissionService lifecycle", () => {
       (member) => member.executionProfileSource?.profileId === "profile-engineer",
     );
 
-    await expect(
-      fixture.service.updateTeam({
-        teamId: team.id,
-        expectedRevision: team.revision,
-        memberUpdates: [
-          {
-            memberId: sourcedMember?.memberId ?? "missing",
+    const updated = await fixture.service.updateTeam({
+      teamId: team.id,
+      expectedRevision: team.revision,
+      memberUpdates: [
+        {
+          memberId: sourcedMember?.memberId ?? "missing",
+          executionProfileSelection: {
+            kind: "inline",
             executionProfile: {
               provider: "codex",
               model: "gpt-5.6-sol",
@@ -1159,10 +1171,310 @@ describe("TeamMissionService lifecycle", () => {
               featureValues: {},
             },
           },
-        ],
+        },
+      ],
+    });
+
+    expect(updated.members.find((member) => member.memberId === sourcedMember?.memberId)).toEqual({
+      ...sourcedMember,
+      executionProfile: {
+        provider: "codex",
+        model: "gpt-5.6-sol",
+        modeId: null,
+        thinkingOptionId: null,
+        featureValues: {},
+      },
+      executionProfileSource: undefined,
+    });
+  });
+
+  test("materializes legacy inline add and update shapes during the compatibility window", async () => {
+    const fixture = createFixture(rootDirectory);
+    const team = await createTeam(fixture.service);
+    const legacyExecution = {
+      provider: "claude" as const,
+      model: "opus",
+      modeId: null,
+      thinkingOptionId: null,
+      featureValues: {},
+    };
+
+    const updated = await fixture.service.updateTeam({
+      teamId: team.id,
+      expectedRevision: team.revision,
+      memberAdds: [
+        {
+          role: "Legacy reviewer",
+          level: 3,
+          skillIds: ["typescript"],
+          executionProfile: legacyExecution,
+        },
+      ],
+      memberUpdates: [{ memberId: team.leadMemberId, executionProfile: legacyExecution }],
+    });
+
+    const updatedLead = updated.members.find((member) => member.memberId === team.leadMemberId);
+    const addedMember = updated.members.find((member) => member.role === "Legacy reviewer");
+    expect(updatedLead?.executionProfile).toEqual(legacyExecution);
+    expect(updatedLead?.executionProfileSource).toBeUndefined();
+    expect(addedMember?.executionProfile).toEqual(legacyExecution);
+    expect(addedMember?.executionProfileSource).toBeUndefined();
+  });
+
+  test("refreshes a sourced Member from one daemon config snapshot", async () => {
+    const agentProfiles = [{ id: "profile-engineer", provider: "claude", model: "sonnet" }];
+    const fixture = createFixture(rootDirectory, { agentProfiles });
+    const team = await fixture.service.createTeam(
+      createProfileSourcedTeamInput("create-refresh-team", "profile-engineer"),
+    );
+    const sourcedMember = team.members.find(
+      (member) => member.executionProfileSource?.profileId === "profile-engineer",
+    )!;
+    agentProfiles[0] = { ...agentProfiles[0]!, model: "opus" };
+    const readsBeforeRefresh = fixture.materializerState.reads;
+
+    const refreshed = await fixture.service.refreshMemberExecution({
+      idempotencyKey: "refresh-member",
+      teamId: team.id,
+      memberId: sourcedMember.memberId,
+      expectedTeamRevision: team.revision,
+    });
+
+    expect(refreshed).toMatchObject({
+      disposition: "updated",
+      team: {
+        revision: team.revision + 1,
+        members: expect.arrayContaining([
+          expect.objectContaining({
+            memberId: sourcedMember.memberId,
+            executionProfile: expect.objectContaining({ model: "opus" }),
+            executionProfileSource: expect.objectContaining({ profileId: "profile-engineer" }),
+          }),
+        ]),
+      },
+    });
+    expect(fixture.materializerState.reads).toBe(readsBeforeRefresh + 1);
+  });
+
+  test("returns unchanged with byte-for-byte zero writes when the source digest is current", async () => {
+    const fixture = createFixture(rootDirectory, {
+      agentProfiles: [{ id: "profile-engineer", provider: "claude", model: "sonnet" }],
+    });
+    const team = await fixture.service.createTeam(
+      createProfileSourcedTeamInput("create-current-team", "profile-engineer"),
+    );
+    const sourcedMember = team.members.find((member) => member.executionProfileSource)!;
+    const path = join(rootDirectory, "profiles", `${team.id}.json`);
+    const before = await readFile(path, "utf8");
+
+    const refreshed = await fixture.service.refreshMemberExecution({
+      idempotencyKey: "refresh-current-member",
+      teamId: team.id,
+      memberId: sourcedMember.memberId,
+      expectedTeamRevision: team.revision,
+    });
+
+    expect(refreshed).toEqual({
+      disposition: "unchanged",
+      teamRevision: team.revision,
+      appliedDigest: sourcedMember.executionProfileSource?.appliedDigest,
+    });
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  test.each([
+    {
+      code: "team_agent_profile_not_found",
+      mutate: (profiles: Array<{ id: string; provider: string; model?: string }>) =>
+        profiles.splice(0),
+    },
+    {
+      code: "team_agent_profile_ambiguous",
+      mutate: (profiles: Array<{ id: string; provider: string; model?: string }>) =>
+        profiles.push({ id: "profile-engineer", provider: "codex" }),
+    },
+    {
+      code: "team_agent_profile_invalid",
+      mutate: (profiles: Array<{ id: string; provider: string; model?: string }>) => {
+        profiles[0] = { id: "profile-engineer", provider: "codex", model: "" };
+      },
+    },
+  ])("rejects refresh $code with zero side effects", async ({ code, mutate }) => {
+    const agentProfiles = [{ id: "profile-engineer", provider: "claude", model: "sonnet" }];
+    const fixture = createFixture(rootDirectory, { agentProfiles });
+    const team = await fixture.service.createTeam(
+      createProfileSourcedTeamInput(`create-${code}`, "profile-engineer"),
+    );
+    const member = team.members.find((candidate) => candidate.executionProfileSource)!;
+    const path = join(rootDirectory, "profiles", `${team.id}.json`);
+    const before = await readFile(path, "utf8");
+    const publishedBefore = fixture.publishedTeams.length;
+    mutate(agentProfiles);
+
+    await expect(
+      fixture.service.refreshMemberExecution({
+        idempotencyKey: `refresh-${code}`,
+        teamId: team.id,
+        memberId: member.memberId,
+        expectedTeamRevision: team.revision,
       }),
-    ).rejects.toMatchObject({ code: "team_agent_profile_source_update_unsupported" });
+    ).rejects.toMatchObject({ code });
+
+    expect(await readFile(path, "utf8")).toBe(before);
+    expect(fixture.publishedTeams).toHaveLength(publishedBefore);
+  });
+
+  test("upgrades an idle Team from the exact Methodology ref after validating the full binding", async () => {
+    const fixture = createFixture(rootDirectory);
+    const team = await createTeam(fixture.service);
+    const portable = new MethodologyCatalog()
+      .list()
+      .find((methodology) => methodology.ref.bundleId === "portable/software-delivery")!;
+
+    const upgraded = await fixture.service.updateTeam({
+      idempotencyKey: "upgrade-methodology",
+      teamId: team.id,
+      expectedRevision: team.revision,
+      methodologyUpgrade: {
+        expectedRef: team.methodologyBinding.ref,
+        ref: portable.ref,
+        presetId: null,
+        memberArchetypeBindings: [
+          { memberId: team.members[0]!.memberId, archetypeId: "delivery-lead" },
+          { memberId: team.members[1]!.memberId, archetypeId: "implementer" },
+        ],
+        skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
+      },
+    });
+
+    expect(upgraded).toMatchObject({
+      revision: team.revision + 1,
+      methodologyBinding: {
+        ref: portable.ref,
+        presetId: null,
+        memberArchetypeBindings: [
+          { memberId: team.members[0]!.memberId, archetypeId: "delivery-lead" },
+          { memberId: team.members[1]!.memberId, archetypeId: "implementer" },
+        ],
+      },
+    });
+  });
+
+  test("rejects stale or active Methodology upgrades without changing the Team", async () => {
+    const fixture = createFixture(rootDirectory);
+    const team = await createTeam(fixture.service);
+    const portable = new MethodologyCatalog()
+      .list()
+      .find((methodology) => methodology.ref.bundleId === "portable/software-delivery")!;
+    const methodologyUpgrade = {
+      expectedRef: team.methodologyBinding.ref,
+      ref: portable.ref,
+      presetId: null,
+      memberArchetypeBindings: [
+        { memberId: team.members[0]!.memberId, archetypeId: "delivery-lead" },
+        { memberId: team.members[1]!.memberId, archetypeId: "implementer" },
+      ],
+      skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
+    };
+
+    await expect(
+      fixture.service.updateTeam({
+        teamId: team.id,
+        expectedRevision: team.revision,
+        methodologyUpgrade: {
+          ...methodologyUpgrade,
+          expectedRef: { ...team.methodologyBinding.ref, digest: `sha256:${"f".repeat(64)}` },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "methodology_ref_conflict" });
     expect(await fixture.service.inspectTeam(team.id)).toEqual(team);
+
+    await fixture.service.startMission({
+      idempotencyKey: "start-before-methodology-upgrade",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
+      objective: "Keep the active Methodology frozen",
+      constraints: [],
+      acceptanceCriteria: ["The Team upgrade is rejected"],
+    });
+    const activeTeam = (await fixture.service.inspectTeam(team.id))!;
+    await expect(
+      fixture.service.updateTeam({
+        teamId: team.id,
+        expectedRevision: activeTeam.revision,
+        methodologyUpgrade,
+      }),
+    ).rejects.toMatchObject({ code: "methodology_upgrade_requires_idle_team" });
+    expect((await fixture.service.inspectTeam(team.id))?.methodologyBinding).toEqual(
+      team.methodologyBinding,
+    );
+  });
+
+  test("updates future execution while an active Mission keeps its frozen roster", async () => {
+    const agentProfiles = [{ id: "profile-engineer", provider: "claude", model: "sonnet" }];
+    const fixture = createFixture(rootDirectory, { agentProfiles });
+    const team = await fixture.service.createTeam(
+      createProfileSourcedTeamInput("create-active-refresh-team", "profile-engineer"),
+    );
+    const mission = await fixture.service.startMission({
+      idempotencyKey: "start-active-refresh",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
+      objective: "Freeze the old execution profile",
+      constraints: [],
+      acceptanceCriteria: ["Only a future Mission adopts the refresh"],
+    });
+    const activeTeam = (await fixture.service.inspectTeam(team.id))!;
+    const member = activeTeam.members.find((candidate) => candidate.executionProfileSource)!;
+    const frozenRoster = structuredClone(mission.rosterSnapshots);
+    agentProfiles[0] = { ...agentProfiles[0]!, model: "opus" };
+
+    await fixture.service.refreshMemberExecution({
+      idempotencyKey: "refresh-during-active-mission",
+      teamId: team.id,
+      memberId: member.memberId,
+      expectedTeamRevision: activeTeam.revision,
+    });
+
+    expect((await fixture.service.inspectTeam(team.id))?.members).toEqual(
+      expect.arrayContaining([expect.objectContaining({ memberId: member.memberId })]),
+    );
+    expect(
+      (await fixture.service.inspectTeam(team.id))?.members.find(
+        (candidate) => candidate.memberId === member.memberId,
+      )?.executionProfile.model,
+    ).toBe("opus");
+    expect((await fixture.service.inspectMission(mission.id))?.rosterSnapshots).toEqual(
+      frozenRoster,
+    );
+
+    const currentMission = (await fixture.service.inspectMission(mission.id))!;
+    await fixture.service.cancelMission({
+      idempotencyKey: "cancel-before-refreshed-mission",
+      missionId: mission.id,
+      expectedRevision: currentMission.revision,
+      reason: "Start a Mission with the refreshed Team profile",
+    });
+    const futureTeam = (await fixture.service.inspectTeam(team.id))!;
+    const futureMission = await fixture.service.startMission({
+      idempotencyKey: "start-after-active-refresh",
+      teamId: team.id,
+      expectedTeamRevision: futureTeam.revision,
+      expectedMethodologyRef: futureTeam.methodologyBinding.ref,
+      workspaceId: futureTeam.creationWorkspaceId,
+      objective: "Use the refreshed execution profile",
+      constraints: [],
+      acceptanceCriteria: ["The refreshed model is frozen"],
+    });
+    expect(
+      futureMission.rosterSnapshots[0]?.members.find(
+        (candidate) => candidate.memberId === member.memberId,
+      )?.executionProfile.model,
+    ).toBe("opus");
   });
 
   test("deduplicates a profile update after its response is lost", async () => {
@@ -1205,7 +1517,17 @@ describe("TeamMissionService lifecycle", () => {
     const afterAddition = await fixture.service.updateTeam({
       teamId: team.id,
       expectedRevision: afterRemoval.revision,
-      memberAdds: [MEMBER],
+      memberAdds: [
+        {
+          role: MEMBER.role,
+          level: MEMBER.level,
+          skillIds: MEMBER.skillIds,
+          executionProfileSelection: {
+            kind: "inline",
+            executionProfile: MEMBER.executionProfile,
+          },
+        },
+      ],
     });
 
     expect(afterAddition.members.map((member) => member.mentionHandle)).toEqual([
@@ -1269,6 +1591,66 @@ describe("TeamMissionService lifecycle", () => {
         memberRemovals: [team.members[1]?.memberId ?? "missing"],
       }),
     ).rejects.toMatchObject({ code: "mission_roster_change_requires_transition" });
+  });
+
+  test("allows execution refresh but blocks Methodology upgrade while Mission start is pending", async () => {
+    const agentProfiles = [{ id: "profile-engineer", provider: "claude", model: "sonnet" }];
+    const fixture = createFixture(rootDirectory, { failLeadOnce: true, agentProfiles });
+    const team = await fixture.service.createTeam(
+      createProfileSourcedTeamInput("create-pending-refresh-team", "profile-engineer"),
+    );
+    await expect(
+      fixture.service.startMission({
+        idempotencyKey: "start-pending-profile-refresh",
+        teamId: team.id,
+        expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
+        objective: "Keep pending Mission facts frozen",
+        constraints: [],
+        acceptanceCriteria: ["Only future execution facts change"],
+      }),
+    ).rejects.toThrow("simulated Lead creation crash");
+    const pendingTeam = (await fixture.service.inspectTeam(team.id))!;
+    const sourcedMember = pendingTeam.members.find((member) => member.executionProfileSource)!;
+    agentProfiles[0] = { ...agentProfiles[0]!, model: "opus" };
+
+    const refreshed = await fixture.service.refreshMemberExecution({
+      idempotencyKey: "refresh-during-pending-start",
+      teamId: team.id,
+      memberId: sourcedMember.memberId,
+      expectedTeamRevision: pendingTeam.revision,
+    });
+    expect(refreshed).toMatchObject({
+      disposition: "updated",
+      team: {
+        members: expect.arrayContaining([
+          expect.objectContaining({ memberId: sourcedMember.memberId }),
+        ]),
+      },
+    });
+
+    const portable = new MethodologyCatalog()
+      .list()
+      .find((methodology) => methodology.ref.bundleId === "portable/software-delivery")!;
+    const refreshedTeam = (await fixture.service.inspectTeam(team.id))!;
+    await expect(
+      fixture.service.updateTeam({
+        idempotencyKey: "upgrade-during-pending-start",
+        teamId: team.id,
+        expectedRevision: refreshedTeam.revision,
+        methodologyUpgrade: {
+          expectedRef: refreshedTeam.methodologyBinding.ref,
+          ref: portable.ref,
+          presetId: null,
+          memberArchetypeBindings: [
+            { memberId: refreshedTeam.members[0]!.memberId, archetypeId: "delivery-lead" },
+            { memberId: refreshedTeam.members[1]!.memberId, archetypeId: "implementer" },
+          ],
+          skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
+        },
+      }),
+    ).rejects.toMatchObject({ code: "methodology_upgrade_requires_idle_team" });
   });
 
   test("archives a Team by canceling its pending Mission first", async () => {
@@ -4442,7 +4824,7 @@ async function createTeam(service: TeamMissionService) {
 
 function createMember(
   clientMemberKey: string,
-  member: TeamProfileMemberInput,
+  member: InlineMemberFixture,
 ): TeamProfileCreateMemberInput {
   return {
     clientMemberKey,

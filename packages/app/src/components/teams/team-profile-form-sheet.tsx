@@ -43,8 +43,8 @@ import { useTeamProfileFormProviderSnapshot } from "@/teams/use-team-profile-for
 
 export interface TeamProfileFormSheetProps {
   serverId: string;
-  workspaceId: string;
-  cwd: string;
+  workspaceId?: string;
+  cwd?: string;
   profile?: TeamV2;
   methodologies?: readonly MethodologyDescriptor[];
   agentProfiles?: readonly AgentProfile[];
@@ -145,8 +145,8 @@ function TeamProfileCatalogStateSheet({
 
 function OpenTeamProfileFormSheet({
   serverId,
-  workspaceId,
-  cwd,
+  workspaceId = "",
+  cwd = "",
   profile,
   methodologies = [],
   agentProfiles = [],
@@ -165,7 +165,7 @@ function OpenTeamProfileFormSheet({
       ...(profile
         ? { mode: "edit" as const, profile }
         : { mode: "create" as const, workspaceId, methodologies }),
-      hostSnapshot: { workspaceId, serverId, cwd },
+      ...(workspaceId && cwd ? { hostSnapshot: { workspaceId, serverId, cwd } } : {}),
       newRowKey: () => createLocalKey("row"),
       newIdempotencyKey: () => createLocalKey("app"),
     }),
@@ -720,7 +720,6 @@ function MemberFields({
         onChange={changeExecutionSource}
         placeholder={t("teams.v2.profile.selectExecutionSource")}
         emptyText={t("teams.v2.profile.noExecutionSources")}
-        disabled={state.mode === "edit"}
         size={size}
         testID={`team-profile-member-${index}-execution-source`}
       />

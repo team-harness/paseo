@@ -1,9 +1,13 @@
 import type { Command } from "commander";
+import { confirm, isCancel } from "@clack/prompts";
 import type {
+  ExactMethodologyRef,
   MethodologyDescriptor,
+  TeamExecutionProfileSelection,
   TeamProfileMemberPatch,
 } from "@getpaseo/protocol/team/v2-rpc-schemas";
-import type { TeamExecutionProfile } from "@getpaseo/protocol/team/v2-types";
+import type { TeamProfileUpdateRequest } from "@getpaseo/protocol/messages";
+import type { TeamExecutionProfile, TeamV2 } from "@getpaseo/protocol/team/v2-types";
 import type { CommandError, ListResult, SingleResult } from "../../output/index.js";
 import {
   buildProfileMembers,
@@ -159,19 +163,28 @@ interface ExecutionPatchMaps {
   modes: Map<string, string>;
   thinking: Map<string, string>;
   features: Map<string, string[]>;
+  agentProfiles: Map<string, string>;
 }
 
-function patchExecutionProfile(
+function patchExecutionSelection(
   memberId: string,
   maps: ExecutionPatchMaps,
-): TeamExecutionProfile | undefined {
-  const changesExecutionProfile =
+): TeamExecutionProfileSelection | undefined {
+  const changesInlineExecution =
     maps.providers.has(memberId) ||
     maps.models.has(memberId) ||
     maps.modes.has(memberId) ||
     maps.thinking.has(memberId) ||
     maps.features.has(memberId);
-  if (!changesExecutionProfile) return undefined;
+  const agentProfile = maps.agentProfiles.get(memberId);
+  if (agentProfile && changesInlineExecution) {
+    throw {
+      code: "AMBIGUOUS_EXECUTION_SELECTION",
+      message: `Member "${memberId}" cannot combine --update-agent-profile with inline execution options`,
+    } satisfies CommandError;
+  }
+  if (agentProfile) return { kind: "agent_profile", profileId: agentProfile };
+  if (!changesInlineExecution) return undefined;
   const provider = maps.providers.get(memberId);
   if (!provider) {
     throw {
@@ -180,11 +193,14 @@ function patchExecutionProfile(
     } satisfies CommandError;
   }
   return {
-    provider: provider as TeamExecutionProfile["provider"],
-    model: maps.models.get(memberId) ?? null,
-    modeId: maps.modes.get(memberId) ?? null,
-    thinkingOptionId: maps.thinking.get(memberId) ?? null,
-    featureValues: patchFeatureValues(memberId, maps.features.get(memberId) ?? []),
+    kind: "inline",
+    executionProfile: {
+      provider: provider as TeamExecutionProfile["provider"],
+      model: maps.models.get(memberId) ?? null,
+      modeId: maps.modes.get(memberId) ?? null,
+      thinkingOptionId: maps.thinking.get(memberId) ?? null,
+      featureValues: patchFeatureValues(memberId, maps.features.get(memberId) ?? []),
+    },
   };
 }
 
@@ -197,6 +213,7 @@ function buildMemberPatches(options: ProfileUpdateOptions): TeamProfileMemberPat
   const modes = singles(options.updateMode, "update-mode");
   const thinking = singles(options.updateThinkingOption, "update-thinking-option");
   const features = repeated(options.updateFeature, "update-feature");
+  const agentProfiles = singles(options.updateAgentProfile, "update-agent-profile");
   const memberIds = new Set([
     ...roles.keys(),
     ...levels.keys(),
@@ -206,6 +223,7 @@ function buildMemberPatches(options: ProfileUpdateOptions): TeamProfileMemberPat
     ...modes.keys(),
     ...thinking.keys(),
     ...features.keys(),
+    ...agentProfiles.keys(),
   ]);
 
   const patches: TeamProfileMemberPatch[] = [];
@@ -214,18 +232,20 @@ function buildMemberPatches(options: ProfileUpdateOptions): TeamProfileMemberPat
     const role = roles.get(memberId);
     const level = patchLevel(levels.get(memberId), memberId);
     const skillIds = skills.get(memberId);
-    const executionProfile = patchExecutionProfile(memberId, {
+    const executionProfileSelection = patchExecutionSelection(memberId, {
       providers,
       models,
       modes,
       thinking,
       features,
+      agentProfiles,
     });
     if (role !== undefined) patch.role = role;
     if (level !== undefined) patch.level = level;
     if (skillIds !== undefined) patch.skillIds = skillIds;
-    if (executionProfile !== undefined) patch.executionProfile = executionProfile;
-    patches.push(patch);
+    patches.push(
+      executionProfileSelection === undefined ? patch : { ...patch, executionProfileSelection },
+    );
   }
   return patches;
 }
@@ -317,7 +337,6 @@ export async function runProfileCreateCommand(
     }
     const memberKeys = new Set(profiles.map((profile) => profile.clientMemberKey));
     const archetypes = singles(options.archetype, "archetype");
-    const profileSources = singles(options.agentProfile, "agent-profile");
     const methodologySkills = singles(options.methodologySkill, "methodology-skill");
     for (const key of archetypes.keys()) {
       if (!memberKeys.has(key)) {
@@ -349,16 +368,7 @@ export async function runProfileCreateCommand(
         } satisfies CommandError;
       }
     }
-    const members = profiles.map(({ clientMemberKey, executionProfile, ...facts }) => ({
-      clientMemberKey,
-      ...facts,
-      executionProfileSelection: profileSources.has(clientMemberKey)
-        ? {
-            kind: "agent_profile" as const,
-            profileId: profileSources.get(clientMemberKey)!,
-          }
-        : { kind: "inline" as const, executionProfile },
-    }));
+    const members = profiles;
     const payload = await client.createTeamProfile({
       idempotencyKey: options.idempotencyKey?.trim() || newIdempotencyKey(),
       name: required(name, "name"),
@@ -419,11 +429,23 @@ export async function runProfileInspectCommand(
 ): Promise<SingleResult<TeamProfileDetail>> {
   const { client } = await connectTeamClient(options.host);
   try {
-    const payload = await client.inspectTeamProfile({ teamId });
+    const [payload, config, catalog] = await Promise.all([
+      client.inspectTeamProfile({ teamId }),
+      client.getDaemonConfig(),
+      client.listTeamMethodologies(),
+    ]);
     if (!payload.team) throw toTeamResponseError("inspect the Team profile", payload);
+    if (catalog.error) throw toTeamResponseError("list Team Methodologies", catalog);
+    const methodology = catalog.methodologies.find((item) =>
+      sameRef(item.ref, payload.team!.methodologyBinding.ref),
+    );
     return {
       type: "single",
-      data: toTeamProfileDetail(payload.team),
+      data: toTeamProfileDetail(
+        payload.team,
+        config.config.agentProfiles ?? [],
+        methodology ?? null,
+      ),
       schema: teamProfileDetailSchema,
     };
   } catch (err) {
@@ -446,6 +468,7 @@ export interface ProfileUpdateOptions extends TeamCommandOptions {
   addMode?: string[];
   addThinkingOption?: string[];
   addFeature?: string[];
+  addAgentProfile?: string[];
   updateRole?: string[];
   updateLevel?: string[];
   updateSkill?: string[];
@@ -454,15 +477,108 @@ export interface ProfileUpdateOptions extends TeamCommandOptions {
   updateMode?: string[];
   updateThinkingOption?: string[];
   updateFeature?: string[];
+  updateAgentProfile?: string[];
   removeMember?: string[];
+  methodology?: string;
+  preset?: string;
+  archetype?: string[];
+  methodologySkill?: string[];
   idempotencyKey?: string;
+  yes?: boolean;
 }
 
-export async function runProfileUpdateCommand(
-  teamId: string,
+function sameRef(left: ExactMethodologyRef, right: ExactMethodologyRef): boolean {
+  return (
+    left.bundleId === right.bundleId &&
+    left.version === right.version &&
+    left.digest === right.digest
+  );
+}
+
+function buildMethodologyUpgrade(
+  team: TeamV2,
+  methodology: MethodologyDescriptor,
   options: ProfileUpdateOptions,
-  _command: Command,
-): Promise<SingleResult<TeamProfileRow>> {
+) {
+  const archetypes = singles(options.archetype, "archetype");
+  const methodologySkills = singles(options.methodologySkill, "methodology-skill");
+  const memberIds = new Set(team.members.map((member) => member.memberId));
+  const teamSkillIds = new Set(team.skills.map((skill) => skill.skillId));
+  for (const memberId of archetypes.keys()) {
+    if (!memberIds.has(memberId)) {
+      throw {
+        code: "UNKNOWN_TEAM_MEMBER",
+        message: `Archetype binding references unknown Team Member "${memberId}"`,
+      } satisfies CommandError;
+    }
+  }
+  for (const skillId of methodologySkills.keys()) {
+    if (!teamSkillIds.has(skillId)) {
+      throw {
+        code: "UNKNOWN_TEAM_SKILL",
+        message: `Methodology Skill binding references unknown Team skill "${skillId}"`,
+      } satisfies CommandError;
+    }
+  }
+  const priorArchetypes = new Map(
+    team.methodologyBinding.memberArchetypeBindings.map((binding) => [
+      binding.memberId,
+      binding.archetypeId,
+    ]),
+  );
+  const priorSkills = new Map(
+    team.methodologyBinding.skillBindings.map((binding) => [
+      binding.teamSkillId,
+      binding.methodologySkillId,
+    ]),
+  );
+  const validArchetypes = new Set(methodology.archetypes.map((item) => item.archetypeId));
+  const validSkills = new Set(methodology.skills.map((item) => item.skillId));
+  const presetId = options.preset?.trim() || team.methodologyBinding.presetId;
+  if (presetId && !methodology.presets.some((preset) => preset.presetId === presetId)) {
+    throw {
+      code: "METHODOLOGY_PRESET_NOT_FOUND",
+      message: `Preset "${presetId}" does not exist in ${methodology.ref.bundleId}@${methodology.ref.version}`,
+    } satisfies CommandError;
+  }
+  return {
+    expectedRef: team.methodologyBinding.ref,
+    ref: methodology.ref,
+    presetId,
+    memberArchetypeBindings: team.members.map((member) => {
+      const requested = archetypes.get(member.memberId);
+      const prior = priorArchetypes.get(member.memberId) ?? null;
+      const archetypeId = requested ?? (prior && validArchetypes.has(prior) ? prior : null);
+      if (archetypeId && !validArchetypes.has(archetypeId)) {
+        throw {
+          code: "METHODOLOGY_ARCHETYPE_NOT_FOUND",
+          message: `Archetype "${archetypeId}" does not exist in ${methodology.ref.bundleId}@${methodology.ref.version}`,
+        } satisfies CommandError;
+      }
+      return { memberId: member.memberId, archetypeId };
+    }),
+    skillBindings: team.skills.map((skill) => {
+      const requested = methodologySkills.get(skill.skillId);
+      const prior = priorSkills.get(skill.skillId) ?? null;
+      const methodologySkillId = requested ?? (prior && validSkills.has(prior) ? prior : null);
+      if (methodologySkillId && !validSkills.has(methodologySkillId)) {
+        throw {
+          code: "METHODOLOGY_SKILL_NOT_FOUND",
+          message: `Methodology Skill "${methodologySkillId}" does not exist in ${methodology.ref.bundleId}@${methodology.ref.version}`,
+        } satisfies CommandError;
+      }
+      return { teamSkillId: skill.skillId, methodologySkillId };
+    }),
+  };
+}
+
+type TeamClient = Awaited<ReturnType<typeof connectTeamClient>>["client"];
+type MethodologyUpgrade = NonNullable<TeamProfileUpdateRequest["methodologyUpgrade"]>;
+
+function prepareMemberProfileUpdate(options: ProfileUpdateOptions): {
+  memberAdds: NonNullable<TeamProfileUpdateRequest["memberAdds"]>;
+  memberUpdates: TeamProfileMemberPatch[];
+} {
   const addMembers = options.addMember ?? [];
   const addDeclarations = [
     options.addLevel,
@@ -472,6 +588,7 @@ export async function runProfileUpdateCommand(
     options.addMode,
     options.addThinkingOption,
     options.addFeature,
+    options.addAgentProfile,
   ];
   if (!addMembers.length && addDeclarations.some((values) => values?.length)) {
     throw {
@@ -489,11 +606,117 @@ export async function runProfileUpdateCommand(
         modes: options.addMode,
         thinkingOptions: options.addThinkingOption,
         features: options.addFeature,
-      })
+        agentProfiles: options.addAgentProfile,
+      }).map(({ clientMemberKey: _clientMemberKey, ...member }) => member)
     : [];
-  const memberUpdates = buildMemberPatches(options);
+  return { memberAdds, memberUpdates: buildMemberPatches(options) };
+}
+
+async function prepareMethodologyUpgrade(
+  client: TeamClient,
+  teamId: string,
+  options: ProfileUpdateOptions,
+): Promise<
+  | {
+      upgrade: MethodologyUpgrade;
+      preview: string;
+    }
+  | undefined
+> {
+  if (!options.methodology) {
+    if (options.preset || options.archetype?.length || options.methodologySkill?.length) {
+      throw {
+        code: "INVALID_PROFILE_UPDATE",
+        message: "--methodology is required with Methodology binding options",
+      } satisfies CommandError;
+    }
+    return undefined;
+  }
+  const [profile, catalog] = await Promise.all([
+    client.inspectTeamProfile({ teamId }),
+    client.listTeamMethodologies(),
+  ]);
+  if (!profile.team) throw toTeamResponseError("inspect the Team profile", profile);
+  if (catalog.error) throw toTeamResponseError("list Team Methodologies", catalog);
+  const methodology = exactMethodology(
+    catalog.methodologies,
+    methodologySelection(options.methodology),
+  );
+  const methodologyUpgrade = buildMethodologyUpgrade(profile.team, methodology, options);
+  if (sameRef(methodologyUpgrade.expectedRef, methodologyUpgrade.ref)) {
+    throw {
+      code: "METHODOLOGY_ALREADY_CURRENT",
+      message: "The Team already uses that exact Methodology ref",
+    } satisfies CommandError;
+  }
+  const currentMethodology = catalog.methodologies.find((candidate) =>
+    sameRef(candidate.ref, methodologyUpgrade.expectedRef),
+  );
+  return {
+    upgrade: methodologyUpgrade,
+    preview: formatMethodologyUpgradePreview(
+      profile.team,
+      currentMethodology ?? null,
+      methodology,
+      methodologyUpgrade,
+    ),
+  };
+}
+
+export function formatMethodologyUpgradePreview(
+  team: TeamV2,
+  current: MethodologyDescriptor | null,
+  next: MethodologyDescriptor,
+  upgrade: MethodologyUpgrade,
+): string {
+  const exactRef = (ref: ExactMethodologyRef) => `${ref.bundleId}@${ref.version}#${ref.digest}`;
+  const memberRoles = new Map(team.members.map((member) => [member.memberId, member.role]));
+  return [
+    `Methodology: ${exactRef(upgrade.expectedRef)} -> ${exactRef(upgrade.ref)}`,
+    `Preset: ${upgrade.presetId ?? "-"}`,
+    `Member bindings: ${upgrade.memberArchetypeBindings
+      .map(
+        (binding) =>
+          `${binding.memberId}${memberRoles.has(binding.memberId) ? ` (${memberRoles.get(binding.memberId)})` : ""}=${binding.archetypeId ?? "-"}`,
+      )
+      .join(", ")}`,
+    `Skill bindings: ${upgrade.skillBindings
+      .map((binding) => `${binding.teamSkillId}=${binding.methodologySkillId ?? "-"}`)
+      .join(", ")}`,
+    `Policy before: ${current ? JSON.stringify(current.policySummary) : "catalog entry unavailable"}`,
+    `Policy after: ${JSON.stringify(next.policySummary)}`,
+  ].join("\n");
+}
+
+async function confirmMethodologyUpgrade(preview: string, options: ProfileUpdateOptions) {
+  process.stderr.write(`${preview}\n`);
+  if (options.yes === true) return;
+  if (options.json === true || !process.stdin.isTTY || !process.stdout.isTTY) {
+    throw {
+      code: "METHODOLOGY_CONFIRMATION_REQUIRED",
+      message: "Review the Methodology preview and rerun with --yes to apply it.",
+      details: preview,
+    } satisfies CommandError;
+  }
+  const answer = await confirm({ message: "Apply this Methodology upgrade?", initialValue: false });
+  if (isCancel(answer) || !answer) {
+    throw {
+      code: "METHODOLOGY_UPGRADE_CANCELED",
+      message: "Methodology upgrade canceled.",
+    } satisfies CommandError;
+  }
+}
+
+export async function runProfileUpdateCommand(
+  teamId: string,
+  options: ProfileUpdateOptions,
+  _command: Command,
+): Promise<SingleResult<TeamProfileRow>> {
+  const { memberAdds, memberUpdates } = prepareMemberProfileUpdate(options);
   const { client } = await connectTeamClient(options.host);
   try {
+    const methodologyPlan = await prepareMethodologyUpgrade(client, teamId, options);
+    if (methodologyPlan) await confirmMethodologyUpgrade(methodologyPlan.preview, options);
     const payload = await client.updateTeamProfile({
       idempotencyKey: options.idempotencyKey?.trim() || newIdempotencyKey(),
       teamId,
@@ -504,11 +727,52 @@ export async function runProfileUpdateCommand(
       ...(memberAdds.length ? { memberAdds } : {}),
       ...(memberUpdates.length ? { memberUpdates } : {}),
       ...(options.removeMember?.length ? { memberRemovals: options.removeMember } : {}),
+      ...(methodologyPlan ? { methodologyUpgrade: methodologyPlan.upgrade } : {}),
     });
     if (!payload.team) throw toTeamResponseError("update the Team profile", payload);
     return { type: "single", data: toTeamProfileRow(payload.team), schema: teamProfileSchema };
   } catch (err) {
     throw toTeamCommandError("TEAM_PROFILE_UPDATE_FAILED", "update Team profile", err);
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
+export interface ProfileRefreshExecutionOptions extends TeamCommandOptions {
+  expectedRevision?: string;
+  idempotencyKey?: string;
+}
+
+export async function runProfileRefreshExecutionCommand(
+  teamId: string,
+  memberId: string,
+  options: ProfileRefreshExecutionOptions,
+  _command: Command,
+): Promise<SingleResult<TeamProfileDetail>> {
+  const { client } = await connectTeamClient(options.host);
+  try {
+    const config = await client.getDaemonConfig();
+    const payload = await client.refreshTeamMemberExecution({
+      idempotencyKey: options.idempotencyKey?.trim() || newIdempotencyKey(),
+      teamId,
+      memberId,
+      expectedTeamRevision: revision(options.expectedRevision, "--expected-revision"),
+    });
+    if (payload.error) throw toTeamResponseError("refresh Member execution", payload);
+    const inspected = payload.team ?? (await client.inspectTeamProfile({ teamId })).team;
+    if (!inspected) {
+      throw {
+        code: "TEAM_PROFILE_NOT_FOUND",
+        message: `Team profile "${teamId}" was not found after refresh`,
+      } satisfies CommandError;
+    }
+    return {
+      type: "single",
+      data: toTeamProfileDetail(inspected, config.config.agentProfiles ?? []),
+      schema: teamProfileDetailSchema,
+    };
+  } catch (err) {
+    throw toTeamCommandError("TEAM_PROFILE_REFRESH_FAILED", "refresh Member execution", err);
   } finally {
     await client.close().catch(() => {});
   }

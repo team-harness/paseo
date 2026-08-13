@@ -179,7 +179,7 @@ function parseFeatureValues(memberKey: string, inputs: readonly string[]): Recor
 function buildProfileMember(
   member: { key: string; role: string },
   maps: ParsedProfileMemberMaps,
-): TeamProfileMemberInput & { clientMemberKey: string } {
+): ExplicitTeamProfileMemberInput & { clientMemberKey: string } {
   const rawLevel = maps.levels.get(member.key);
   const roleSkills = maps.skills.get(member.key);
   const provider = maps.providers.get(member.key);
@@ -217,19 +217,24 @@ function buildProfileMember(
     role: member.role,
     level,
     skillIds: roleSkills,
-    executionProfile: {
-      provider: (provider ?? "") as TeamProfileMemberInput["executionProfile"]["provider"],
-      model: maps.models.get(member.key) ?? null,
-      modeId: maps.modes.get(member.key) ?? null,
-      thinkingOptionId: maps.thinking.get(member.key) ?? null,
-      featureValues,
-    },
+    executionProfileSelection: agentProfile
+      ? { kind: "agent_profile", profileId: agentProfile }
+      : {
+          kind: "inline",
+          executionProfile: {
+            provider: provider!,
+            model: maps.models.get(member.key) ?? null,
+            modeId: maps.modes.get(member.key) ?? null,
+            thinkingOptionId: maps.thinking.get(member.key) ?? null,
+            featureValues,
+          },
+        },
   };
 }
 
 export function buildProfileMembers(
   declarations: ProfileMemberDeclarations,
-): Array<TeamProfileMemberInput & { clientMemberKey: string }> {
+): Array<ExplicitTeamProfileMemberInput & { clientMemberKey: string }> {
   if (declarations.members.length === 0) {
     throw invalidDeclaration(
       "MISSING_PROFILE_DECLARATION",
@@ -276,6 +281,11 @@ export function buildProfileMembers(
   };
   return members.map((member) => buildProfileMember(member, maps));
 }
+
+type ExplicitTeamProfileMemberInput = Extract<
+  TeamProfileMemberInput,
+  { executionProfileSelection: unknown }
+>;
 
 /**
  * A key for one create attempt.
