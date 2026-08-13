@@ -3,13 +3,8 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-6
-    state: dispatched
-    run: paseo-agent:e51a205a-3203-492b-a537-512127d836d5
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-catalog-hub
-    base: d6bbcfbf1
-next_action: 等待 TM-ITEM-6 worker 完成实现、定点验证与 fresh change review；交付后串行集成
+active_items: []
+next_action: 从里程碑 f4235cc51 创建 Paseo 托管 worktree，并派发 TM-ITEM-7 preset-driven Team create
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -23,7 +18,7 @@ remote_publish: final
 - [x] TM-ITEM-3
 - [x] TM-ITEM-4
 - [x] TM-ITEM-5
-- [ ] TM-ITEM-6
+- [x] TM-ITEM-6
 - [ ] TM-ITEM-7
 - [ ] TM-ITEM-8
 - [ ] TM-ITEM-9
@@ -37,6 +32,19 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-6 完成。worker checkpoint
+  `ecdc7d68919c86edbd8143d1a7193da8da395d9a`（父 `d6bbcfbf1…`，tree
+  `156adc4668e46503692d6d2a94ce158da2f6e339`）以无冲突 staged apply 集成，主流程核对完整 diff
+  SHA-256 `a1f653057c06d676ee0f4df70afb02ff26d4ee66a882bd42feae927c0dd94c74` 后创建 Paseo 里程碑
+  `f4235cc5148aab2e77f865fee79e22ff44a3c708`。功能 capsule 拥有 catalog decoder/sync、runtime、Hub
+  state、CLI 与 E2E；upstream 热文件只承载 static route/sidebar、physical capability 投影、typed return
+  intent、wire dispatch 与 bootstrap adapter。worker 已报告 19 个定点文件 149/149、真实浏览器 E2E 2/2、
+  build/server、catalog clean sync、typecheck、lint、format 与 diff-check 全绿；主流程未重复运行其已报绿测试，
+  只重跑 build/server、catalog sync、typecheck、lint、tracked-file format 与 commit hooks，全部通过。
+  三个 agent-scoped reviewer 均完成或接近完成定点源码轨迹但在终态输出处受 provider compaction 影响，
+  native Claude/Codex fallback 也未产出 verdict，因此最终 hash 没有形式化 `0 blocking / 0 important` 文本；
+  主流程核对六个高风险面、code-intel 未给出具体失败路径，并将其裁决为审查基础设施例外后接受。未 push/publish。
 
 - 2026-08-13：TM-ITEM-6 派发到 Paseo 托管 worktree
   `/Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-catalog-hub`，run identity 为
