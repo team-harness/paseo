@@ -3,14 +3,9 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-11
-    state: dispatched
-    run: subagent:/root/tm11_recovery
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-gates
-    base: 1206406b9
-next_action: TM-ITEM-11 在新的有界正确性修复阶段一次性闭合 approved/waived 两条事实链，然后执行唯一 fresh review
-blocked_by: null
+active_items: []
+next_action: 等待 owner 决定是否重新授权 TM-ITEM-11；当前冻结候选不得修改、提交、集成或再次审查
+blocked_by: "TM-ITEM-11 唯一 fresh review 为 2 blocking / 0 important：scheduler 恢复路径没有消费完整 approved/waived outcome 验证，伪造的结构合法 gate 可放行依赖工作"
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -37,6 +32,21 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：TM-ITEM-11 新正确性阶段按 owner 的单次审查边界停止，Epic 整体暂停。唯一
+  fresh reviewer 首选 Paseo agent-scoped `b220b27c-0980-457e-ba33-c961e9f6dda4`，但在读取目标前因
+  provider `503 No available accounts` 退出，不计审查轮次；`cs-agent` MCP 未暴露后，按固定回退顺序
+  使用一次本机原生 Codex reviewer，session `019ffbb0-4ade-72c1-94ba-4d0fbb5b598c`，结论为
+  2 blocking / 0 important / 0 suggestions。两条可达路径均发生在 scheduler 恢复消费边界：
+  (1) `team-mission-scheduler.ts:933` 把任意非 pending approved gate 当作 settled，却不调用
+  `validateTeamMission`，因此缺失、取消、失败、未接受、subjects/dependencies 或 fingerprint 不匹配的
+  review evidence 仍可令 Workstream accepted 并在 `selectReadyAssignments` 放行依赖；
+  (2) 同一路径接受仅结构合法的 waived outcome，不要求唯一 `MissionReviewWaiver`、已解决的 Workstream
+  Attention、允许 waiver 的 policy、controller identity、reason 与 fingerprints，现有 scheduler 测试还把
+  这条伪造状态固定为下游 dispatch 期望。冻结候选保持 HEAD `1206406b9…`、staged diff
+  `667dda9ff81a44188e6c391a42d5100f54d8edf24ed5744d88949e94b5e96b8d`（27 files，
+  +2548/-326），未创建 checkpoint。按 owner 明确指令，本轮不修复、不更换 reviewer、不启动下一轮；
+  TM-ITEM-12 及后续依赖项不派发。
 
 - 2026-08-13：TM-ITEM-11 新正确性阶段候选已冻结为 staged diff
   `667dda9ff81a44188e6c391a42d5100f54d8edf24ed5744d88949e94b5e96b8d`（27 files，
