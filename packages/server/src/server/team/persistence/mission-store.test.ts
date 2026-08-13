@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type { TeamMission } from "@getpaseo/protocol/team/v2-types";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
+import { testMissionMethodologySnapshot } from "../test-fixtures.js";
 import {
   MissionFinishConflictError,
   MissionFinishEvidenceConflictError,
@@ -37,6 +38,8 @@ function mission(): Omit<TeamMission, "revision" | "createdAt" | "updatedAt" | "
     status: "planning",
     suspendedStatus: null,
     activeRosterSnapshotRevision: 1,
+    methodologySnapshot: testMissionMethodologySnapshot(1, 1),
+    methodologyCompiledAt: NOW,
     rosterSnapshots: [
       {
         revision: 1,
@@ -58,9 +61,8 @@ function mission(): Omit<TeamMission, "revision" | "createdAt" | "updatedAt" | "
               featureValues: {},
             },
             mentionHandle: "lead-engineer",
-            runtimeSnapshot: {
-              providerAvailable: true,
-              toolIds: ["shell"],
+            capabilityFacts: {
+              kind: "known",
               capabilityIds: ["filesystem"],
             },
           },
@@ -192,6 +194,7 @@ function openAssignment(
     priority: 10,
     planRevision: 1,
     rosterSnapshotRevision: 1,
+    methodologySnapshotRevision: 1,
     supersededBy: null,
     terminationReason: null,
     scopeLease: null,

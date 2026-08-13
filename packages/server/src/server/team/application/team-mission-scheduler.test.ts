@@ -15,6 +15,7 @@ import type {
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { MissionStore } from "../persistence/mission-store.js";
 import { WorkspaceScopeLeaseStore } from "../persistence/workspace-scope-lease-store.js";
+import { testMissionMethodologySnapshot } from "../test-fixtures.js";
 import { TeamOperationCoordinator } from "./team-operation-coordinator.js";
 import {
   TeamMissionScheduler,
@@ -1387,6 +1388,7 @@ describe("TeamMissionScheduler", () => {
         assignmentId: "assignment-app",
         agentId: memberParticipant?.agentId,
         bindingEpoch: 1,
+        methodologyPromptSections: [],
       }),
     );
   });
@@ -3977,6 +3979,7 @@ describe("TeamMissionScheduler", () => {
         bindingEpoch: 1,
         attempt: 1,
         messageId: "team-mission:mission-1:assignment:assignment-api:report-recovery:1",
+        methodologyPromptSections: [],
       },
     ]);
     expect(updated?.assignmentReportRecoveryOutbox).toEqual([
@@ -4798,6 +4801,8 @@ function activeMission(): TeamMission {
     status: "active",
     suspendedStatus: null,
     activeRosterSnapshotRevision: 1,
+    methodologySnapshot: testMissionMethodologySnapshot(1, 1),
+    methodologyCompiledAt: NOW,
     rosterSnapshots: [
       {
         revision: 1,
@@ -4871,9 +4876,8 @@ function rosterMember(memberId: string, role: string, mentionHandle: string) {
       featureValues: {},
     },
     mentionHandle,
-    runtimeSnapshot: {
-      providerAvailable: true,
-      toolIds: ["mission_status", "assignment_report"],
+    capabilityFacts: {
+      kind: "known" as const,
       capabilityIds: ["structured-tools"],
     },
   };
@@ -4898,6 +4902,7 @@ function workstream(input: {
     minimumLevel: 3,
     planRevision: 1,
     rosterSnapshotRevision: 1,
+    methodologySnapshotRevision: 1,
     dependencyWorkstreamIds: input.dependencyWorkstreamIds ?? [],
     mutableScope: input.mutableScope,
     ownerMemberId: input.ownerMemberId,
@@ -4937,6 +4942,7 @@ function assignment(
     priority: 10,
     planRevision: 1,
     rosterSnapshotRevision: 1,
+    methodologySnapshotRevision: 1,
     supersededBy: null,
     terminationReason: null,
     scopeLease: null,

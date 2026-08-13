@@ -5,6 +5,7 @@ import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import { DaemonClient, type DaemonEvent, type DaemonTransport } from "./daemon-client.js";
 
 const timestamp = "2026-08-08T08:00:00.000Z";
+const digest = `sha256:${"0".repeat(64)}`;
 const executionProfile = {
   provider: "codex" as const,
   model: "gpt-5.6-sol",
@@ -49,6 +50,32 @@ const team = {
   updatedAt: timestamp,
   archivedAt: null,
 };
+const methodologySnapshot = {
+  revision: 1 as const,
+  ref: team.methodologyBinding.ref,
+  compilerVersion: 1 as const,
+  teamRevision: team.revision,
+  rosterSnapshotRevision: 1,
+  hardPolicy: {
+    review: {
+      writableWorkstreams: "lead_discretion" as const,
+      independentMeans: "different_from_subject_owner" as const,
+      unavailable: "review_gate_reviewer_unavailable_attention" as const,
+      unknownCapabilities: "review_gate_capability_unknown_attention" as const,
+      operatorWaiver: "allowed_with_reason" as const,
+    },
+    verification: {
+      required: true as const,
+      mutableScope: "read_only" as const,
+      reviewerSelection: "prefer_independent_record_exception" as const,
+      operatorWaiver: "forbidden" as const,
+    },
+  },
+  promptSections: [],
+  hardPolicyDigest: digest,
+  promptDigest: digest,
+  compiledDigest: digest,
+};
 const mission = {
   id: "mission-sdk",
   teamId: team.id,
@@ -59,6 +86,8 @@ const mission = {
   status: "planning" as const,
   suspendedStatus: null,
   activeRosterSnapshotRevision: 1,
+  methodologySnapshot,
+  methodologyCompiledAt: timestamp,
   rosterSnapshots: [
     {
       revision: 1,
@@ -69,9 +98,8 @@ const mission = {
       members: [
         {
           ...team.members[0],
-          runtimeSnapshot: {
-            providerAvailable: true,
-            toolIds: ["mission_status"],
+          capabilityFacts: {
+            kind: "known" as const,
             capabilityIds: ["structured-tools"],
           },
         },
@@ -313,6 +341,7 @@ test("the SDK sends all Team profile and Mission correlated RPCs", async () => {
           teamId: team.id,
           workspaceId: team.creationWorkspaceId,
           expectedTeamRevision: 1,
+          expectedMethodologyRef: team.methodologyBinding.ref,
           objective: mission.objective,
           constraints: [],
           acceptanceCriteria: mission.acceptanceCriteria,

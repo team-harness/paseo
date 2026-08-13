@@ -1,6 +1,7 @@
 import type {
+  FrozenPromptSection,
+  MissionCapabilityFacts,
   MissionAssignmentContract,
-  MissionMemberRuntimeSnapshot,
   TeamExecutionProfile,
   TeamMission,
   TeamRoomMessage,
@@ -44,7 +45,7 @@ export interface TeamWorkspaceAvailabilityPort {
 }
 
 export interface ProviderCapabilityResolver {
-  resolve(executionProfile: TeamExecutionProfile): Promise<MissionMemberRuntimeSnapshot>;
+  resolve(executionProfile: TeamExecutionProfile): Promise<MissionCapabilityFacts>;
 }
 
 export interface TeamRoomPort {
@@ -67,6 +68,7 @@ export interface TeamParticipantPort {
     role: string;
     mentionHandle: string;
     executionProfile: TeamExecutionProfile;
+    methodologyPromptSections: FrozenPromptSection[];
     bindingEpoch: number;
   }): Promise<void>;
   archiveParticipant(input: { agentId: string; teamId: string; missionId: string }): Promise<void>;

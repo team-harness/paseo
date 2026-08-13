@@ -52,6 +52,7 @@ function assignment(overrides: Partial<MissionAssignmentContract> = {}): Mission
     priority: 1,
     planRevision: 1,
     rosterSnapshotRevision: 1,
+    methodologySnapshotRevision: 1,
     supersededBy: null,
     terminationReason: null,
     scopeLease:

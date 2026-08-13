@@ -1,4 +1,7 @@
-import type { TeamMethodologyBinding } from "@getpaseo/protocol/team/v2-types";
+import type {
+  MissionMethodologySnapshot,
+  TeamMethodologyBinding,
+} from "@getpaseo/protocol/team/v2-types";
 import type { MethodologyDescriptor } from "@getpaseo/protocol/team/v2-rpc-schemas";
 
 export const TEST_METHODOLOGY: MethodologyDescriptor = {
@@ -72,5 +75,24 @@ export function testTeamMethodologyBinding(
       teamSkillId,
       methodologySkillId: null,
     })),
+  };
+}
+
+export function testMissionMethodologySnapshot(
+  teamRevision: number,
+  rosterSnapshotRevision: number,
+): MissionMethodologySnapshot {
+  const digest = `sha256:${"0".repeat(64)}`;
+  return {
+    revision: 1,
+    ref: { ...TEST_METHODOLOGY.ref },
+    compilerVersion: 1,
+    teamRevision,
+    rosterSnapshotRevision,
+    hardPolicy: TEST_METHODOLOGY.policySummary,
+    promptSections: [],
+    hardPolicyDigest: digest,
+    promptDigest: digest,
+    compiledDigest: digest,
   };
 }

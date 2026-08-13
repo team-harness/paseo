@@ -13,6 +13,34 @@ import {
   TeamV2Schema,
 } from "./v2-types.js";
 
+const testDigest = `sha256:${"0".repeat(64)}`;
+const testMethodologySnapshot = {
+  revision: 1 as const,
+  ref: { bundleId: "paseo/standard", version: "1", digest: testDigest },
+  compilerVersion: 1 as const,
+  teamRevision: 1,
+  rosterSnapshotRevision: 1,
+  hardPolicy: {
+    review: {
+      writableWorkstreams: "lead_discretion" as const,
+      independentMeans: "different_from_subject_owner" as const,
+      unavailable: "review_gate_reviewer_unavailable_attention" as const,
+      unknownCapabilities: "review_gate_capability_unknown_attention" as const,
+      operatorWaiver: "allowed_with_reason" as const,
+    },
+    verification: {
+      required: true as const,
+      mutableScope: "read_only" as const,
+      reviewerSelection: "prefer_independent_record_exception" as const,
+      operatorWaiver: "forbidden" as const,
+    },
+  },
+  promptSections: [],
+  hardPolicyDigest: testDigest,
+  promptDigest: testDigest,
+  compiledDigest: testDigest,
+};
+
 describe("reusable team", () => {
   it("rejects incomplete member profiles", () => {
     const member = {
@@ -185,9 +213,8 @@ describe("team mission", () => {
             featureValues: {},
           },
           mentionHandle: "engineer",
-          runtimeSnapshot: {
-            providerAvailable: true,
-            toolIds: ["mission_status", "assignment_report"],
+          capabilityFacts: {
+            kind: "known" as const,
             capabilityIds: ["structured-tools"],
           },
         },
@@ -310,6 +337,7 @@ describe("team mission", () => {
       minimumLevel: 4,
       planRevision: 2,
       rosterSnapshotRevision: 1,
+      methodologySnapshotRevision: 1,
       dependencyWorkstreamIds: [],
       mutableScope: { kind: "paths" as const, pathPrefixes: ["packages/protocol/src/team"] },
       ownerMemberId: "member-engineer",
@@ -366,6 +394,8 @@ describe("team mission", () => {
       status: "active" as const,
       suspendedStatus: null,
       activeRosterSnapshotRevision: 1,
+      methodologySnapshot: testMethodologySnapshot,
+      methodologyCompiledAt: "2026-08-07T11:00:00.000Z",
       rosterSnapshots: [
         {
           revision: 1,
@@ -393,9 +423,8 @@ describe("team mission", () => {
                 featureValues: {},
               },
               mentionHandle: "engineer",
-              runtimeSnapshot: {
-                providerAvailable: true,
-                toolIds: ["mission_status", "assignment_report"],
+              capabilityFacts: {
+                kind: "known" as const,
                 capabilityIds: ["structured-tools"],
               },
             },
@@ -437,6 +466,7 @@ describe("team mission", () => {
           minimumLevel: 3,
           planRevision: 2,
           rosterSnapshotRevision: 1,
+          methodologySnapshotRevision: 1,
           dependencyWorkstreamIds: [],
           mutableScope: {
             kind: "paths" as const,
@@ -492,6 +522,7 @@ describe("team mission", () => {
           priority: 1,
           planRevision: 2,
           rosterSnapshotRevision: 1,
+          methodologySnapshotRevision: 1,
           supersededBy: null,
           terminationReason: null,
           scopeLease: null,
@@ -552,6 +583,7 @@ describe("team mission", () => {
       priority: 1,
       planRevision: 2,
       rosterSnapshotRevision: 1,
+      methodologySnapshotRevision: 1,
       supersededBy: null,
       terminationReason: null,
       scopeLease: null,
@@ -610,6 +642,7 @@ describe("team mission", () => {
       priority: 1,
       planRevision: 2,
       rosterSnapshotRevision: 1,
+      methodologySnapshotRevision: 1,
       supersededBy: null,
       terminationReason: "mission_canceled" as const,
       scopeLease: null,
@@ -659,6 +692,7 @@ describe("team mission", () => {
       priority: 1,
       planRevision: 2,
       rosterSnapshotRevision: 1,
+      methodologySnapshotRevision: 1,
       supersededBy: null,
       terminationReason: null,
       scopeLease: null,

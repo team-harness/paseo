@@ -8,6 +8,8 @@ import {
   type TeamRuntime,
   type TeamRuntimeService,
 } from "./team-runtime.js";
+import { TeamApplicationError } from "./application/team-mission-service.js";
+import { testMissionMethodologySnapshot } from "./test-fixtures.js";
 
 describe("TeamRuntime v2 façade", () => {
   afterEach(() => {
@@ -238,6 +240,48 @@ describe("TeamRuntime v2 façade", () => {
     expect(service.startInputs).toEqual([start, start]);
   });
 
+  test("preserves a Methodology compile error code on the Mission start wire response", async () => {
+    const team = teamProfile();
+    const service = new FakeTeamRuntimeService(
+      Promise.resolve(),
+      team,
+      [],
+      new TeamApplicationError("methodology_digest_mismatch", "Methodology digest changed"),
+    );
+    const runtime = createTeamRuntime({ runtime: { enabled: true }, service });
+    await runtime.start();
+
+    await expect(
+      runtime.sessionDeps()?.handleRequest(
+        {
+          type: "team.mission.start.request",
+          requestId: "compile-error",
+          idempotencyKey: "compile-error",
+          teamId: team.id,
+          expectedTeamRevision: team.revision,
+          expectedMethodologyRef: {
+            bundleId: "paseo/standard",
+            version: "1",
+            digest: "sha256:d5001287a60f868bcef21ecd3c4debb5a5237db002c5b9d0f7b0b78e98969697",
+          },
+          workspaceId: "workspace-delivery",
+          objective: "Fail closed",
+          constraints: [],
+          acceptanceCriteria: ["Expose the typed failure"],
+        },
+        { actorId: "client-1" },
+      ),
+    ).resolves.toMatchObject({
+      type: "team.mission.start.response",
+      payload: {
+        requestId: "compile-error",
+        mission: null,
+        error: "Methodology digest changed",
+        errorCode: "methodology_digest_mismatch",
+      },
+    });
+  });
+
   test("posts and subscribes through the Mission-owned room surface", async () => {
     const service = new FakeTeamRuntimeService(Promise.resolve());
     const runtime = createTeamRuntime({ runtime: { enabled: true }, service });
@@ -385,6 +429,7 @@ class FakeTeamRuntimeService implements TeamRuntimeService {
     private readonly reconciliation: Promise<void> | (() => Promise<void>),
     private readonly team: TeamV2 | null = null,
     private readonly missions: TeamMission[] = [],
+    private readonly startError: Error | null = null,
   ) {}
 
   reconcile(): Promise<void> {
@@ -418,6 +463,7 @@ class FakeTeamRuntimeService implements TeamRuntimeService {
     input: Parameters<TeamRuntimeService["startMission"]>[0],
   ): Promise<TeamMission> {
     this.startInputs.push(input);
+    if (this.startError) throw this.startError;
     const mission = this.missions[0];
     if (!mission) throw new Error("Mission fixture is required");
     return mission;
@@ -527,6 +573,8 @@ function teamMission(
     status: input.status,
     suspendedStatus: null,
     activeRosterSnapshotRevision: 1,
+    methodologySnapshot: testMissionMethodologySnapshot(team.revision, 1),
+    methodologyCompiledAt: timestamp,
     rosterSnapshots: [
       {
         revision: 1,
@@ -537,9 +585,8 @@ function teamMission(
         members: [
           {
             ...team.members[0]!,
-            runtimeSnapshot: {
-              providerAvailable: true,
-              toolIds: [],
+            capabilityFacts: {
+              kind: "known",
               capabilityIds: [],
             },
           },

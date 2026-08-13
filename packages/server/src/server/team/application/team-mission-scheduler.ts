@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type {
+  FrozenPromptSection,
   MissionAssignmentContract,
   MissionScopeLease,
   MissionWorkspaceAuditPolicy,
@@ -105,6 +106,7 @@ export interface TeamAssignmentDispatchPort {
     agentId: string;
     bindingEpoch: number;
     messageId: string;
+    methodologyPromptSections: FrozenPromptSection[];
   }): Promise<TeamAssignmentDispatchResult>;
   requestReport(input: {
     teamId: string;
@@ -114,6 +116,7 @@ export interface TeamAssignmentDispatchPort {
     bindingEpoch: number;
     attempt: number;
     messageId: string;
+    methodologyPromptSections: FrozenPromptSection[];
   }): Promise<TeamAssignmentDispatchResult>;
 }
 
@@ -477,6 +480,10 @@ export class TeamMissionScheduler {
           agentId: candidate.agentId,
           bindingEpoch: candidate.bindingEpoch,
           messageId: candidate.messageId,
+          methodologyPromptSections: methodologySectionsForAssignment(
+            stored.mission,
+            candidate.assignment,
+          ),
         }),
       })),
     );
@@ -1464,6 +1471,10 @@ export class TeamMissionScheduler {
           bindingEpoch: delivery.bindingEpoch,
           attempt: delivery.attempt,
           messageId: delivery.messageId,
+          methodologyPromptSections: methodologySectionsForAssignment(
+            stored.mission,
+            assignmentsById.get(delivery.assignmentId)!,
+          ),
         }),
       })),
     );
@@ -1783,6 +1794,15 @@ export class TeamMissionScheduler {
       },
     });
   }
+}
+
+function methodologySectionsForAssignment(
+  mission: TeamMission,
+  assignment: MissionAssignmentContract,
+): FrozenPromptSection[] {
+  return mission.methodologySnapshot.promptSections.filter(
+    (section) => section.audience === assignment.kind,
+  );
 }
 
 function settleAssignment(

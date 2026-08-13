@@ -31,11 +31,12 @@ import type {
   TeamRuntimeEventPort,
 } from "./ports.js";
 import {
+  TeamApplicationError,
   TeamMissionService,
   type TeamMissionFinishQuiescencePort,
 } from "./team-mission-service.js";
 import { DaemonTeamAgentProfileMaterializer } from "./team-agent-profile-materializer.js";
-import { MethodologyCatalog } from "../methodology/catalog.js";
+import { MethodologyCatalog, MethodologyCompileError } from "../methodology/catalog.js";
 import { TeamOperationCoordinator } from "./team-operation-coordinator.js";
 
 const NOW = "2026-08-08T10:00:00.000Z";
@@ -218,6 +219,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-mission",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Implement a deterministic parser",
       constraints: ["Keep the public grammar stable"],
       acceptanceCriteria: ["Parser tests pass"],
@@ -241,6 +244,166 @@ describe("TeamMissionService lifecycle", () => {
     expect((await fixture.profiles.get(team.id))?.profile.activeMissionId).toBe(mission.id);
   });
 
+  test("freezes Methodology and Agent Profile provenance before Mission side effects", async () => {
+    const fixture = createFixture(rootDirectory, {
+      agentProfiles: [{ id: "profile-engineer", provider: "claude", model: "sonnet" }],
+    });
+    const team = await fixture.service.createTeam(
+      createProfileSourcedTeamInput("create-frozen-team", "profile-engineer"),
+    );
+    const profileReadsAfterTeamCreate = fixture.materializerState.reads;
+
+    const mission = await fixture.service.startMission({
+      idempotencyKey: "start-frozen-methodology",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: "workspace-sdk",
+      objective: "Freeze the exact methodology",
+      constraints: ["Do not read Agent Profiles"],
+      acceptanceCriteria: ["The persisted snapshot is self-contained"],
+    });
+
+    expect(fixture.materializerState.reads).toBe(profileReadsAfterTeamCreate);
+    expect(fixture.methodologyState.compiles).toBe(1);
+    expect(mission.methodologySnapshot).toMatchObject({
+      revision: 1,
+      ref: team.methodologyBinding.ref,
+      teamRevision: team.revision,
+      rosterSnapshotRevision: 1,
+      compiledDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+    });
+    expect(mission.rosterSnapshots[0]?.members[1]).toMatchObject({
+      executionProfile: { provider: "claude", model: "sonnet" },
+      executionProfileSource: {
+        kind: "agent_profile",
+        profileId: "profile-engineer",
+      },
+      capabilityFacts: { kind: "known", capabilityIds: ["structured-tools"] },
+    });
+  });
+
+  test("replays and recovers from frozen start facts without catalog reads or compilation", async () => {
+    const first = createFixture(rootDirectory, { failRoomOnce: true });
+    const team = await createTeam(first.service);
+    const request = {
+      idempotencyKey: "start-frozen-recovery",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
+      objective: "Recover the frozen start",
+      constraints: [],
+      acceptanceCriteria: ["Recovery never recompiles"],
+    };
+
+    await expect(first.service.startMission(request)).rejects.toThrow("simulated room stage crash");
+    const compiledDigest = (await first.profiles.get(team.id))?.startIntent?.methodologySnapshot
+      .compiledDigest;
+    first.methodologyState.throwOnRead = true;
+    first.methodologyState.throwOnCompile = true;
+    first.materializerState.throwOnRead = true;
+
+    await first.service.reconcile();
+    const replay = await first.service.startMission(request);
+
+    expect(replay.methodologySnapshot.compiledDigest).toBe(compiledDigest);
+    expect(first.methodologyState.compiles).toBe(1);
+    expect(first.materializerState.reads).toBe(0);
+  });
+
+  test("compile failure leaves no start intent, Mission, room, Lead, or saga identity", async () => {
+    const fixture = createFixture(rootDirectory);
+    const team = await createTeam(fixture.service);
+    fixture.methodologyState.throwOnCompile = true;
+    const idsBeforeStart = new Map(fixture.idCounters);
+
+    await expect(
+      fixture.service.startMission({
+        idempotencyKey: "start-compile-failure",
+        teamId: team.id,
+        expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
+        objective: "Fail before reservation",
+        constraints: [],
+        acceptanceCriteria: ["No side effect is visible"],
+      }),
+    ).rejects.toMatchObject({
+      name: "TeamApplicationError",
+      code: "methodology_digest_mismatch",
+      message: "simulated methodology compile failure",
+    });
+
+    expect((await fixture.profiles.get(team.id))?.startIntent).toBeNull();
+    expect(await fixture.missions.list()).toEqual([]);
+    expect(fixture.effects).toEqual([]);
+    expect(fixture.idCounters).toEqual(idsBeforeStart);
+  });
+
+  test.each([
+    [0, STANDARD_REF, "team_revision_conflict"],
+    [1, { ...STANDARD_REF, digest: `sha256:${"f".repeat(64)}` }, "methodology_ref_conflict"],
+  ])(
+    "rejects a stale fresh start gate with %s before compilation or side effects",
+    async (expectedTeamRevision, expectedMethodologyRef, errorCode) => {
+      const fixture = createFixture(rootDirectory);
+      const team = await createTeam(fixture.service);
+      const idsBeforeStart = new Map(fixture.idCounters);
+
+      await expect(
+        fixture.service.startMission({
+          idempotencyKey: `start-stale-${errorCode}`,
+          teamId: team.id,
+          expectedTeamRevision,
+          expectedMethodologyRef,
+          workspaceId: team.creationWorkspaceId,
+          objective: "Reject stale start facts",
+          constraints: [],
+          acceptanceCriteria: ["No start side effect is visible"],
+        }),
+      ).rejects.toMatchObject({ code: errorCode });
+
+      expect((await fixture.profiles.get(team.id))?.startIntent).toBeNull();
+      expect(await fixture.missions.list()).toEqual([]);
+      expect(fixture.effects).toEqual([]);
+      expect(fixture.idCounters).toEqual(idsBeforeStart);
+      expect(fixture.methodologyState.compiles).toBe(0);
+    },
+  );
+
+  test("replays a frozen start after typed Lead provider unavailability without recompiling", async () => {
+    const fixture = createFixture(rootDirectory, { failLeadProviderUnavailableOnce: true });
+    const team = await createTeam(fixture.service);
+    const request = {
+      idempotencyKey: "start-disabled-lead-provider",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
+      objective: "Resume after the Lead provider is enabled",
+      constraints: [],
+      acceptanceCriteria: ["The frozen start resumes with the same identities"],
+    };
+
+    await expect(fixture.service.startMission(request)).rejects.toMatchObject({
+      code: "provider_unavailable",
+    });
+    expect(await fixture.profiles.get(team.id)).toMatchObject({
+      startIntent: { stage: "room_created", missionId: "mission-1", leadAgentId: "agent-1" },
+    });
+    fixture.methodologyState.throwOnRead = true;
+    fixture.methodologyState.throwOnCompile = true;
+    fixture.materializerState.throwOnRead = true;
+
+    const resumed = await fixture.service.startMission(request);
+
+    expect(resumed.id).toBe("mission-1");
+    expect(fixture.methodologyState.compiles).toBe(1);
+    expect(fixture.materializerState.reads).toBe(0);
+    expect(fixture.effects.filter((effect) => effect.startsWith("lead:agent-1:"))).toHaveLength(2);
+  });
+
   test("starts a global Team Mission in the requested active workspace", async () => {
     const fixture = createFixture(rootDirectory, {
       activeWorkspaceIds: ["workspace-sdk", "workspace-delivery"],
@@ -251,6 +414,7 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-cross-workspace",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
       workspaceId: "workspace-delivery",
       objective: "Deliver from another workspace",
       constraints: [],
@@ -273,6 +437,7 @@ describe("TeamMissionService lifecycle", () => {
         idempotencyKey: "start-missing-workspace",
         teamId: team.id,
         expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
         workspaceId: "workspace-missing",
         objective: "Do not start",
         constraints: [],
@@ -292,6 +457,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-normalized-workspace",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Normalize the effective workspace",
       constraints: [],
       acceptanceCriteria: ["One Mission exists"],
@@ -317,6 +484,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-workspace-conflict",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Keep one workspace per start key",
       constraints: [],
       acceptanceCriteria: ["A changed workspace conflicts"],
@@ -375,16 +544,21 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "archive-wins-start",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
       workspaceId: "workspace-sdk",
       objective: "Do not outlive the workspace",
       constraints: [],
       acceptanceCriteria: ["No Mission is created"],
     });
+    const startOutcome = start.then(
+      (mission) => ({ mission, error: null }),
+      (error: unknown) => ({ mission: null, error }),
+    );
     releaseArchiveClaim();
     await archive;
     unregister();
 
-    await expect(start).rejects.toMatchObject({ code: "workspace_not_found" });
+    expect((await startOutcome).error).toMatchObject({ code: "workspace_not_found" });
     expect(await fixture.missions.list()).toEqual([]);
     expect(fixture.effects).toEqual([]);
   });
@@ -421,6 +595,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-wins-archive",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Finish start before archive cleanup",
       constraints: [],
       acceptanceCriteria: ["The Mission is canceled before teardown"],
@@ -477,6 +653,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-runtime-recovery-attention",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Persist runtime recovery failure",
       constraints: [],
       acceptanceCriteria: ["A restart retains one scoped Attention"],
@@ -519,6 +697,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-cancel-open-attention",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Cancel a Mission with multiple recovery failures",
       constraints: [],
       acceptanceCriteria: ["Terminal Missions retain no open Attention"],
@@ -599,6 +779,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-finish-fenced-recovery-attention",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Do not reopen a finishing Mission",
       constraints: [],
       acceptanceCriteria: ["Terminal Missions have no unresolved Attention"],
@@ -655,6 +837,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-missing-profile-recovery",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Surface a missing Team profile",
       constraints: [],
       acceptanceCriteria: ["The Mission retains a durable recovery expression"],
@@ -724,6 +908,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-recurrent-recovery-attention",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Recover recurrent Lead failures",
       constraints: [],
       acceptanceCriteria: ["Each recurrence remains independently resolvable"],
@@ -798,6 +984,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-replay",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Keep Mission start permanently idempotent",
       constraints: [],
       acceptanceCriteria: ["The original Mission is returned"],
@@ -914,6 +1102,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-roster-fence",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Keep the active roster stable",
       constraints: [],
       acceptanceCriteria: ["Profile mutations cannot bypass Mission transition"],
@@ -945,6 +1135,8 @@ describe("TeamMissionService lifecycle", () => {
         idempotencyKey: "start-pending-roster-fence",
         teamId: team.id,
         expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
         objective: "Keep a pending roster stable",
         constraints: [],
         acceptanceCriteria: ["The start saga can resume with its original roster"],
@@ -968,6 +1160,8 @@ describe("TeamMissionService lifecycle", () => {
         idempotencyKey: "start-pending-archive-fence",
         teamId: team.id,
         expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
         objective: "Keep start and archive serialized",
         constraints: [],
         acceptanceCriteria: ["Pending Mission resources remain owned"],
@@ -996,6 +1190,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-before-team-archive",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Finish before Team archive",
       constraints: [],
       acceptanceCriteria: ["Mission is terminal before Team is archived"],
@@ -1022,6 +1218,7 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-before-workspace-archive",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
       workspaceId: "workspace-delivery",
       objective: "Cancel work before workspace teardown",
       constraints: [],
@@ -1069,6 +1266,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-before-missing-mission-archive",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Recover a missing active Mission",
       constraints: [],
       acceptanceCriteria: ["The Team can still be archived"],
@@ -1101,6 +1300,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-before-replayed-team-archive",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Replay Team archive",
       constraints: [],
       acceptanceCriteria: ["Restart finishes the same archive intent"],
@@ -1132,6 +1333,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-before-cancel-retry",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Expose a durable cancellation retry",
       constraints: [],
       acceptanceCriteria: ["A failed cleanup remains visible after restart"],
@@ -1193,6 +1396,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-before-archive-retry",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Expose a durable Team archive retry",
       constraints: [],
       acceptanceCriteria: ["The same archive operation converges after cleanup recovers"],
@@ -1258,6 +1463,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-archive-race",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Serialize lifecycle transitions",
       constraints: [],
       acceptanceCriteria: ["Exactly one transition wins"],
@@ -1304,6 +1511,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-cancel-lead-window",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Fence Lead creation",
       constraints: [],
       acceptanceCriteria: ["Cancellation leaves no live participant"],
@@ -1348,6 +1557,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-archive-lead-window",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Fence Team archive",
       constraints: [],
       acceptanceCriteria: ["Archive leaves no live participant"],
@@ -1382,6 +1593,8 @@ describe("TeamMissionService lifecycle", () => {
         idempotencyKey: "restart-mission",
         teamId: team.id,
         expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
         objective: "Recover startup",
         constraints: [],
         acceptanceCriteria: ["One room and one Lead exist"],
@@ -1413,6 +1626,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-after-mission-write",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Keep Mission identity across a persistence crash",
       constraints: [],
       acceptanceCriteria: ["Only the reserved Mission and Lead are activated"],
@@ -1463,6 +1678,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-with-persisted-plan",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Keep the persisted plan authoritative",
       constraints: [],
       acceptanceCriteria: ["Restart does not duplicate Lead planning"],
@@ -1496,6 +1713,8 @@ describe("TeamMissionService lifecycle", () => {
         idempotencyKey: "start-then-cancel",
         teamId: team.id,
         expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
         objective: "Do not revive canceled work",
         constraints: [],
         acceptanceCriteria: ["Restart creates no participant for canceled work"],
@@ -1533,6 +1752,8 @@ describe("TeamMissionService lifecycle", () => {
         idempotencyKey: "start-room-replay",
         teamId: team.id,
         expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
         objective: "Replay the same room contract",
         constraints: [],
         acceptanceCriteria: ["Room identity is idempotent across restart"],
@@ -1574,6 +1795,8 @@ describe("TeamMissionService lifecycle", () => {
           idempotencyKey: key,
           teamId: team.id,
           expectedTeamRevision: team.revision,
+          expectedMethodologyRef: team.methodologyBinding.ref,
+          workspaceId: team.creationWorkspaceId,
           objective: `Recover ${team.name}`,
           constraints: [],
           acceptanceCriteria: ["Other Teams remain available"],
@@ -1619,6 +1842,8 @@ describe("TeamMissionService lifecycle", () => {
           idempotencyKey: key,
           teamId: team.id,
           expectedTeamRevision: team.revision,
+          expectedMethodologyRef: team.methodologyBinding.ref,
+          workspaceId: team.creationWorkspaceId,
           objective: `Recover ${team.name}`,
           constraints: [],
           acceptanceCriteria: ["Unreadable Missions do not block healthy Teams"],
@@ -1657,6 +1882,8 @@ describe("TeamMissionService lifecycle", () => {
         idempotencyKey: "start-pending-lead-replacement",
         teamId: team.id,
         expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
         objective: "Replace the Lead while Mission start is pending",
         constraints: [],
         acceptanceCriteria: ["Restart provisions only the replacement Lead"],
@@ -1756,6 +1983,8 @@ describe("TeamMissionService lifecycle", () => {
         idempotencyKey: "start-before-lead-created-replacement",
         teamId: team.id,
         expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
         objective: "Wake a replacement from the final start stage",
         constraints: [],
         acceptanceCriteria: ["The replacement provider is actually awakened"],
@@ -1805,6 +2034,8 @@ describe("TeamMissionService lifecycle", () => {
         idempotencyKey: "start-before-alignment-fence",
         teamId: team.id,
         expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
         objective: "Fence stale Lead recovery",
         constraints: [],
         acceptanceCriteria: ["The old Lead is not provisioned after replacement begins"],
@@ -1865,6 +2096,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-before-canceling-replacement",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Cancel a response-lost replacement",
       constraints: [],
       acceptanceCriteria: ["No replacement Agent survives terminal recovery"],
@@ -1938,6 +2171,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-cancel",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Cancel safely",
       constraints: [],
       acceptanceCriteria: ["Participant sessions are archived"],
@@ -1970,6 +2205,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-before-terminal-checkpoint",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Finish without losing the Mission identity",
       constraints: [],
       acceptanceCriteria: ["The active Mission link is cleared after restart"],
@@ -2028,6 +2265,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-late-report",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Preserve a report racing Mission finish",
       constraints: [],
       acceptanceCriteria: ["The report is durable before unresolved work is canceled"],
@@ -2156,6 +2395,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-attention",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Resolve an ownership question",
       constraints: [],
       acceptanceCriteria: ["The attention item is resolved once"],
@@ -2222,6 +2463,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-invalid-attention-resolution",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Keep Attention decisions typed",
       constraints: [],
       acceptanceCriteria: ["Only a valid ownership resolution closes the item"],
@@ -2275,6 +2518,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-provider-attention",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Retry provider dispatch",
       constraints: [],
       acceptanceCriteria: ["The Assignment becomes dispatchable again"],
@@ -2344,6 +2589,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-owner-attribution",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Attribute a workspace change",
       constraints: [],
       acceptanceCriteria: ["Every changed path has one owner"],
@@ -2423,6 +2670,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-invalid-owner-attribution",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Reject an invalid owner",
       constraints: [],
       acceptanceCriteria: ["Ownership remains within scope"],
@@ -2502,6 +2751,8 @@ describe("TeamMissionService lifecycle", () => {
         idempotencyKey: `start-unimplemented-${resolution.kind}`,
         teamId: team.id,
         expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
         objective: "Reject fake Attention recovery",
         constraints: [],
         acceptanceCriteria: ["Resolution only closes after its side effect commits"],
@@ -2552,6 +2803,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-lead-replacement",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Replace an unavailable Lead",
       constraints: [],
       acceptanceCriteria: ["The replacement Lead must submit a new Mission plan"],
@@ -2632,6 +2885,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-replacement-with-idle-binding",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Replace a Lead without leaking an idle participant",
       constraints: [],
       acceptanceCriteria: ["Only the replacement Lead binding remains active"],
@@ -2711,6 +2966,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-replacement-with-scoped-replan",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Keep replacement replanning Mission-wide",
       constraints: [],
       acceptanceCriteria: ["Old planned work remains gated"],
@@ -2774,6 +3031,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: `start-invalid-replacement-${target}`,
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Reject an invalid Lead replacement",
       constraints: [],
       acceptanceCriteria: ["Only another active roster Member can become Lead"],
@@ -2796,35 +3055,55 @@ describe("TeamMissionService lifecycle", () => {
     ).rejects.toMatchObject({ code: errorCode });
   });
 
-  test("rejects a replacement Lead whose provider is unavailable", async () => {
-    const fixture = createFixture(rootDirectory);
-    const team = await createTeam(fixture.service);
-    const mission = await fixture.service.startMission({
-      idempotencyKey: "start-unavailable-replacement",
-      teamId: team.id,
-      expectedTeamRevision: team.revision,
-      objective: "Validate replacement runtime capability",
-      constraints: [],
-      acceptanceCriteria: ["An unavailable provider cannot host the replacement Lead"],
-    });
-    const pending = await addLeadUnavailableAttention(fixture.missions, mission);
-    fixture.providerState.available = false;
+  test.each([
+    [false, ["structured-tools"], "methodology_capability_unknown"],
+    [true, [], "methodology_capability_unsatisfied"],
+  ])(
+    "rejects a structurally ineligible replacement Lead without recompiling Methodology",
+    async (available, capabilityIds, errorCode) => {
+      const fixture = createFixture(rootDirectory);
+      const team = await createTeam(fixture.service);
+      const mission = await fixture.service.startMission({
+        idempotencyKey: "start-unavailable-replacement",
+        teamId: team.id,
+        expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
+        objective: "Validate replacement runtime capability",
+        constraints: [],
+        acceptanceCriteria: ["An unavailable provider cannot host the replacement Lead"],
+      });
+      const pending = await addLeadUnavailableAttention(fixture.missions, mission);
+      fixture.providerState.available = available;
+      fixture.providerState.capabilityIds = capabilityIds;
+      fixture.methodologyState.throwOnRead = true;
+      fixture.methodologyState.throwOnCompile = true;
+      fixture.materializerState.throwOnRead = true;
+      const effectsBeforeReplacement = [...fixture.effects];
+      const idsBeforeReplacement = new Map(fixture.idCounters);
 
-    await expect(
-      fixture.service.resolveAttention({
-        idempotencyKey: "replace-with-unavailable-provider",
-        missionId: mission.id,
-        attentionId: "attention-lead-unavailable",
-        expectedRevision: pending.mission.revision,
-        actorId: "user-1",
-        resolution: {
-          kind: "replace_lead",
-          replacementMemberId: team.members[1]?.memberId,
-          reason: "Try the unavailable provider.",
-        },
-      }),
-    ).rejects.toMatchObject({ code: "replacement_lead_provider_unavailable" });
-  });
+      await expect(
+        fixture.service.resolveAttention({
+          idempotencyKey: `replace-with-ineligible-provider-${errorCode}`,
+          missionId: mission.id,
+          attentionId: "attention-lead-unavailable",
+          expectedRevision: pending.mission.revision,
+          actorId: "user-1",
+          resolution: {
+            kind: "replace_lead",
+            replacementMemberId: team.members[1]?.memberId,
+            reason: "Use the frozen execution profile.",
+          },
+        }),
+      ).rejects.toMatchObject({ code: errorCode });
+
+      expect(fixture.methodologyState.compiles).toBe(1);
+      expect(fixture.materializerState.reads).toBe(0);
+      expect(fixture.effects).toEqual(effectsBeforeReplacement);
+      expect(fixture.idCounters).toEqual(idsBeforeReplacement);
+      expect((await fixture.missions.get(mission.id))?.leadReplacementIntent).toBeNull();
+    },
+  );
 
   test("rejects a replacement Lead with open accepted work", async () => {
     const fixture = createFixture(rootDirectory);
@@ -2833,6 +3112,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-busy-lead-replacement",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Keep accepted work ownership stable",
       constraints: [],
       acceptanceCriteria: ["A busy Member cannot become Lead"],
@@ -2885,6 +3166,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-replayed-lead-replacement",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Replay Lead replacement",
       constraints: [],
       acceptanceCriteria: ["One binding and one provider agent survive response loss"],
@@ -2929,6 +3212,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-concurrent-replacement-clear",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Converge concurrent Lead replacement replay",
       constraints: [],
       acceptanceCriteria: ["A cleared intent is treated as completed"],
@@ -2984,6 +3269,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-restore-notification",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Restore a Team notification",
       constraints: [],
       acceptanceCriteria: ["The delivery becomes eligible again"],
@@ -3106,6 +3393,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-attention-cancel",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Cancel from Attention",
       constraints: [],
       acceptanceCriteria: ["The finish saga owns terminal transition"],
@@ -3169,6 +3458,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-attention-cancel-recovery",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Recover Attention cancellation",
       constraints: [],
       acceptanceCriteria: ["Restart completes the finish intent"],
@@ -3235,6 +3526,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-evidence-recovery",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Replay finish evidence preparation",
       constraints: [],
       acceptanceCriteria: ["Restart resumes from the durable archive stage"],
@@ -3269,6 +3562,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-completion-delivery",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Replay Mission completion delivery",
       constraints: [],
       acceptanceCriteria: ["The terminal snapshot is delivered after restart"],
@@ -3326,6 +3621,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-completion-read-failure",
       teamId: firstTeam.id,
       expectedTeamRevision: firstTeam.revision,
+      expectedMethodologyRef: firstTeam.methodologyBinding.ref,
+      workspaceId: firstTeam.creationWorkspaceId,
       objective: "Isolate a completion read failure",
       constraints: [],
       acceptanceCriteria: ["Other completion deliveries continue"],
@@ -3341,6 +3638,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-completion-read-healthy",
       teamId: secondTeam.id,
       expectedTeamRevision: secondTeam.revision,
+      expectedMethodologyRef: secondTeam.methodologyBinding.ref,
+      workspaceId: secondTeam.creationWorkspaceId,
       objective: "Deliver a healthy completion",
       constraints: [],
       acceptanceCriteria: ["Delivery is acknowledged"],
@@ -3389,6 +3688,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-completion-publish-failure",
       teamId: firstTeam.id,
       expectedTeamRevision: firstTeam.revision,
+      expectedMethodologyRef: firstTeam.methodologyBinding.ref,
+      workspaceId: firstTeam.creationWorkspaceId,
       objective: "Isolate a completion publish failure",
       constraints: [],
       acceptanceCriteria: ["Other completion deliveries continue"],
@@ -3404,6 +3705,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-completion-publish-healthy",
       teamId: secondTeam.id,
       expectedTeamRevision: secondTeam.revision,
+      expectedMethodologyRef: secondTeam.methodologyBinding.ref,
+      workspaceId: secondTeam.creationWorkspaceId,
       objective: "Deliver a healthy completion",
       constraints: [],
       acceptanceCriteria: ["Delivery is acknowledged"],
@@ -3436,6 +3739,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-completion-ack-race",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Converge a completion acknowledgement race",
       constraints: [],
       acceptanceCriteria: ["The outbox reaches acknowledged"],
@@ -3483,6 +3788,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-notified-completion-replay",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Replay a notified completion",
       constraints: [],
       acceptanceCriteria: ["The same event is acknowledged after restart"],
@@ -3524,6 +3831,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-premature-completion",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Require final verification",
       constraints: [],
       acceptanceCriteria: ["A completed verification turn approves every delivery"],
@@ -3547,6 +3856,8 @@ describe("TeamMissionService lifecycle", () => {
       idempotencyKey: "start-fatal-failure",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
       objective: "Persist fatal failure",
       constraints: [],
       acceptanceCriteria: ["Participants are archived before terminal state"],
@@ -3595,6 +3906,7 @@ function providerBlockedAssignment(missionId: string) {
     priority: 10,
     planRevision: 1,
     rosterSnapshotRevision: 1,
+    methodologySnapshotRevision: 1,
     supersededBy: null,
     terminationReason: "provider_unavailable" as const,
     scopeLease: null,
@@ -3697,6 +4009,7 @@ function createFixture(
     failLeadOnce?: boolean;
     failLeadAgentIds?: string[];
     failLeadAfterCreateAgentIds?: string[];
+    failLeadProviderUnavailableOnce?: boolean;
     liveAgents?: Set<string>;
     failRoomOnce?: boolean;
     failArchiveOnce?: boolean;
@@ -3738,8 +4051,9 @@ function createFixture(
   const roomNames: string[] = [];
   const liveAgents = options?.liveAgents ?? new Set<string>();
   const roomsDeleted: string[] = [];
-  const providerState = { available: true };
+  const providerState = { available: true, capabilityIds: ["structured-tools"] };
   let failLead = options?.failLeadOnce === true;
+  let failLeadProviderUnavailable = options?.failLeadProviderUnavailableOnce === true;
   const failLeadAgentIds = new Set(options?.failLeadAgentIds ?? []);
   const failLeadAfterCreateAgentIds = new Set(options?.failLeadAfterCreateAgentIds ?? []);
   let failRoom = options?.failRoomOnce === true;
@@ -3771,6 +4085,10 @@ function createFixture(
         failLead = false;
         throw new Error("simulated Lead creation crash");
       }
+      if (failLeadProviderUnavailable) {
+        failLeadProviderUnavailable = false;
+        throw new TeamApplicationError("provider_unavailable", "Provider 'codex' is disabled");
+      }
       if (failLeadAgentIds.has(input.agentId)) {
         throw new Error("simulated Lead creation failure");
       }
@@ -3795,11 +4113,13 @@ function createFixture(
   const capabilities: ProviderCapabilityResolver = {
     resolve: async (executionProfile) => {
       await options?.beforeCapabilityResolve?.();
-      return {
-        providerAvailable: providerState.available && executionProfile.provider !== "missing",
-        toolIds: ["team_status", "team_message"],
-        capabilityIds: ["structured-tools"],
-      };
+      return providerState.available && executionProfile.provider !== "missing"
+        ? { kind: "known", capabilityIds: [...providerState.capabilityIds] }
+        : {
+            kind: "unknown",
+            providerId: executionProfile.provider,
+            reason: "provider_declaration_unavailable",
+          };
     },
   };
   const events: TeamRuntimeEventPort = {
@@ -3823,7 +4143,26 @@ function createFixture(
     },
   };
   const idCounters = new Map<string, number>();
-  const materializerState = { reads: 0 };
+  const materializerState = { reads: 0, throwOnRead: false };
+  const methodologyState = { reads: 0, compiles: 0, throwOnRead: false, throwOnCompile: false };
+  const methodologyCatalog = new MethodologyCatalog();
+  const methodologies = {
+    get: (ref: Parameters<MethodologyCatalog["get"]>[0]) => {
+      methodologyState.reads += 1;
+      if (methodologyState.throwOnRead) throw new Error("unexpected methodology catalog read");
+      return methodologyCatalog.get(ref);
+    },
+    compileMission: (input: Parameters<MethodologyCatalog["compileMission"]>[0]) => {
+      methodologyState.compiles += 1;
+      if (methodologyState.throwOnCompile) {
+        throw new MethodologyCompileError(
+          "methodology_digest_mismatch",
+          "simulated methodology compile failure",
+        );
+      }
+      return methodologyCatalog.compileMission(input);
+    },
+  };
   const operations = options?.operations ?? new TeamOperationCoordinator();
   let serviceCount = 0;
   const createConcurrentService = () =>
@@ -3846,10 +4185,12 @@ function createFixture(
       agentProfiles: new DaemonTeamAgentProfileMaterializer({
         readSnapshot: () => {
           materializerState.reads += 1;
+          if (materializerState.throwOnRead)
+            throw new Error("unexpected Agent Profile catalog read");
           return structuredClone(options?.agentProfiles ?? []);
         },
       }),
-      methodologies: new MethodologyCatalog(),
+      methodologies,
       operations: options?.operations ?? (serviceCount === 0 ? operations : undefined),
       workspaces: {
         isActive: async (workspaceId) => {
@@ -3887,6 +4228,7 @@ function createFixture(
     operations,
     idCounters,
     materializerState,
+    methodologyState,
   };
 }
 
@@ -3983,6 +4325,38 @@ function createProfileSourcedTeamInput(idempotencyKey: string, profileId: string
 }
 
 function pendingMissionStartIntent(team: TeamV2): TeamMissionStartIntent {
+  const rosterSnapshot = {
+    revision: 1,
+    teamRevision: team.revision,
+    leadMemberId: team.leadMemberId,
+    reason: "initial" as const,
+    skills: structuredClone(team.skills),
+    members: team.members.map((member) => ({
+      ...structuredClone(member),
+      capabilityFacts: { kind: "known" as const, capabilityIds: ["structured-tools"] },
+    })),
+    createdAt: NOW,
+  };
+  const methodologySnapshot = new MethodologyCatalog().compileMission({
+    binding: team.methodologyBinding,
+    teamRevision: team.revision,
+    roster: {
+      rosterSnapshotRevision: rosterSnapshot.revision,
+      leadMemberId: rosterSnapshot.leadMemberId,
+      members: rosterSnapshot.members.map((member) => ({
+        memberId: member.memberId,
+        role: member.role,
+        level: member.level,
+        skillIds: member.skillIds,
+        capabilityFacts: member.capabilityFacts,
+      })),
+    },
+    mission: {
+      objective: "Do not resume after workspace archive",
+      constraints: [],
+      acceptanceCriteria: ["The pending start terminates without creating a Lead"],
+    },
+  });
   return {
     intentId: "start-pending-archive",
     idempotencyKey: "start-pending-archive",
@@ -3997,22 +4371,9 @@ function pendingMissionStartIntent(team: TeamV2): TeamMissionStartIntent {
     objective: "Do not resume after workspace archive",
     constraints: [],
     acceptanceCriteria: ["The pending start terminates without creating a Lead"],
-    rosterSnapshot: {
-      revision: 1,
-      teamRevision: team.revision,
-      leadMemberId: team.leadMemberId,
-      reason: "initial",
-      skills: structuredClone(team.skills),
-      members: team.members.map((member) => ({
-        ...structuredClone(member),
-        runtimeSnapshot: {
-          providerAvailable: true,
-          toolIds: ["team_status"],
-          capabilityIds: ["structured-tools"],
-        },
-      })),
-      createdAt: NOW,
-    },
+    rosterSnapshot,
+    methodologySnapshot,
+    methodologyCompiledAt: NOW,
     workspaceAuditPolicy: {
       revision: 1,
       includeTrackedPaths: true,

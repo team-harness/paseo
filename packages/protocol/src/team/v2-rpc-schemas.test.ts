@@ -35,6 +35,7 @@ import {
 } from "./v2-rpc-schemas.js";
 
 const timestamp = "2026-08-08T08:00:00.000Z";
+const digest = `sha256:${"0".repeat(64)}`;
 
 const executionProfile = {
   provider: "codex" as const,
@@ -99,6 +100,33 @@ const mission = {
   status: "planning" as const,
   suspendedStatus: null,
   activeRosterSnapshotRevision: 1,
+  methodologySnapshot: {
+    revision: 1 as const,
+    ref: team.methodologyBinding.ref,
+    compilerVersion: 1 as const,
+    teamRevision: team.revision,
+    rosterSnapshotRevision: 1,
+    hardPolicy: {
+      review: {
+        writableWorkstreams: "lead_discretion" as const,
+        independentMeans: "different_from_subject_owner" as const,
+        unavailable: "review_gate_reviewer_unavailable_attention" as const,
+        unknownCapabilities: "review_gate_capability_unknown_attention" as const,
+        operatorWaiver: "allowed_with_reason" as const,
+      },
+      verification: {
+        required: true as const,
+        mutableScope: "read_only" as const,
+        reviewerSelection: "prefer_independent_record_exception" as const,
+        operatorWaiver: "forbidden" as const,
+      },
+    },
+    promptSections: [],
+    hardPolicyDigest: digest,
+    promptDigest: digest,
+    compiledDigest: digest,
+  },
+  methodologyCompiledAt: timestamp,
   rosterSnapshots: [
     {
       revision: 1,
@@ -109,9 +137,8 @@ const mission = {
       members: [
         {
           ...team.members[0],
-          runtimeSnapshot: {
-            providerAvailable: true,
-            toolIds: ["mission_status"],
+          capabilityFacts: {
+            kind: "known" as const,
             capabilityIds: ["structured-tools"],
           },
         },
@@ -359,13 +386,15 @@ describe("Team profile v2 RPC schemas", () => {
 });
 
 describe("Team Mission v2 RPC schemas", () => {
-  it("keeps the old Mission start shape and additively accepts a target workspace", () => {
+  it("requires the exact Team Methodology binding and target workspace for Mission start", () => {
     const request = {
       type: "team.mission.start.request" as const,
       requestId: "req-mission-start",
       idempotencyKey: "idem-mission-start",
       teamId: team.id,
       expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: "wks-delivery",
       objective: mission.objective,
       constraints: mission.constraints,
       acceptanceCriteria: mission.acceptanceCriteria,
@@ -373,8 +402,12 @@ describe("Team Mission v2 RPC schemas", () => {
 
     expect(TeamMissionStartRequestSchema.parse(request)).toEqual(request);
     expect(
-      TeamMissionStartRequestSchema.parse({ ...request, workspaceId: "wks-delivery" }),
-    ).toEqual({ ...request, workspaceId: "wks-delivery" });
+      TeamMissionStartRequestSchema.safeParse({ ...request, workspaceId: undefined }).success,
+    ).toBe(false);
+    expect(
+      TeamMissionStartRequestSchema.safeParse({ ...request, expectedMethodologyRef: undefined })
+        .success,
+    ).toBe(false);
   });
 
   it("round-trips list, inspect, cancel and durable attention resolution", () => {
