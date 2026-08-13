@@ -57,6 +57,9 @@ import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
+import { useSessionStore } from "@/stores/session-store";
+import { selectSidebarTeamHubServerId } from "@/teams/sidebar-team-hub-selection";
+import { SidebarTeamHubEntry } from "@/teams/sidebar-team-hub-entry";
 import { usePanelStore } from "@/stores/panel-store";
 import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
@@ -98,6 +101,7 @@ interface SidebarSharedProps {
   handleOpenProject: () => void;
   handleHome: () => void;
   handleSettings: () => void;
+  teamHubServerId: string | null;
   labels: SidebarLabels;
   newWorkspaceKeys: ShortcutKey[][] | null;
   handleAddHost: () => void;
@@ -137,6 +141,17 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
   const insets = useSafeAreaInsets();
   const isCompactLayout = useIsCompactFormFactor();
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
+  const activeWorkspaceSelection = useActiveWorkspaceSelection();
+  const activeWorkspaceServerId = activeWorkspaceSelection?.serverId ?? null;
+  const activeServerFeatures = useSessionStore((state) =>
+    activeWorkspaceServerId
+      ? (state.sessions[activeWorkspaceServerId]?.serverInfo?.features ?? null)
+      : null,
+  );
+  const teamHubServerId = selectSidebarTeamHubServerId(
+    activeWorkspaceSelection,
+    activeServerFeatures,
+  );
 
   const {
     projects,
@@ -268,6 +283,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
           closeSidebar={showMobileAgent}
           handleOpenProject={handleOpenProjectMobile}
           handleHome={handleHomeMobile}
+          teamHubServerId={teamHubServerId}
           handleSettings={handleSettingsMobile}
           handleAddHost={handleAddHostMobile}
           handleOpenHostSettings={handleOpenHostSettingsMobile}
@@ -286,6 +302,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
         active={active}
         handleOpenProject={handleOpenProjectDesktop}
         handleHome={handleHomeDesktop}
+        teamHubServerId={teamHubServerId}
         handleSettings={handleSettingsDesktop}
         handleAddHost={handleAddHostDesktop}
         handleOpenHostSettings={handleOpenHostSettingsDesktop}
@@ -619,6 +636,7 @@ function MobileSidebar({
   closeSidebar,
   handleViewMoreNavigate,
   handleViewSchedulesNavigate,
+  teamHubServerId,
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
@@ -683,6 +701,9 @@ function MobileSidebar({
             variant="compact"
           />
           <PluginSidebarItems onBeforeNavigate={closeSidebar} />
+          {teamHubServerId ? (
+            <SidebarTeamHubEntry serverId={teamHubServerId} onBeforeNavigate={closeSidebar} />
+          ) : null}
         </View>
         <WindowChromeSafeArea placement="inline" style={styles.mobileCloseButtonRow}>
           <Pressable
@@ -765,6 +786,7 @@ function DesktopSidebar({
   active,
   handleViewMore,
   handleViewSchedules,
+  teamHubServerId,
 }: DesktopSidebarProps) {
   const ownsTopLeft = useOwnsWindowChromeCorner("top-left");
   const pathname = usePathname();
@@ -902,6 +924,7 @@ function DesktopSidebar({
               variant="compact"
             />
             <PluginSidebarItems />
+            {teamHubServerId ? <SidebarTeamHubEntry serverId={teamHubServerId} /> : null}
           </View>
         </View>
 

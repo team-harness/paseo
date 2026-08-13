@@ -184,11 +184,17 @@ test("hello advertises the per-socket Team Missions capability", async () => {
 });
 
 test("detects whether the daemon supports host-global Team profiles", async () => {
-  const modern = await connectedClient({ teamMissions: true, globalTeamProfiles: true });
+  const modern = await connectedClient({
+    teamMissions: true,
+    globalTeamProfiles: true,
+    teamMethodologies: true,
+  });
   const legacy = await connectedClient({ teamMissions: true });
 
   expect(modern.client.supportsGlobalTeamProfiles()).toBe(true);
+  expect(modern.client.supportsTeamMethodologies()).toBe(true);
   expect(legacy.client.supportsGlobalTeamProfiles()).toBe(false);
+  expect(legacy.client.supportsTeamMethodologies()).toBe(false);
 });
 
 test("a daemon without the capability is rejected locally without sending a mutation", async () => {

@@ -113,6 +113,7 @@ import type {
   WorkspaceRecoveryState,
   PluginListItem,
   TeamProfileCreateRequest,
+  TeamMethodologyGetRequest,
   TeamProfileListRequest,
   TeamProfileInspectRequest,
   TeamProfileUpdateRequest,
@@ -547,6 +548,14 @@ type TeamProfileCreatePayload = Extract<
   SessionOutboundMessage,
   { type: "team.profile.create.response" }
 >["payload"];
+type TeamMethodologyListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.methodology.list.response" }
+>["payload"];
+type TeamMethodologyGetPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.methodology.get.response" }
+>["payload"];
 type TeamProfileListPayload = Extract<
   SessionOutboundMessage,
   { type: "team.profile.list.response" }
@@ -785,6 +794,7 @@ type TeamMissionsRequestOptions<TRequest extends { type: string; requestId: stri
   "type" | "requestId"
 > & { requestId?: string };
 export type CreateTeamProfileOptions = TeamMissionsRequestOptions<TeamProfileCreateRequest>;
+export type GetTeamMethodologyOptions = TeamMissionsRequestOptions<TeamMethodologyGetRequest>;
 export type ListTeamProfilesOptions = TeamMissionsRequestOptions<TeamProfileListRequest>;
 export type InspectTeamProfileOptions = TeamMissionsRequestOptions<TeamProfileInspectRequest>;
 export type UpdateTeamProfileOptions = TeamMissionsRequestOptions<TeamProfileUpdateRequest>;
@@ -5378,6 +5388,27 @@ export class DaemonClient {
     return this.lastServerInfoMessage?.features?.globalTeamProfiles === true;
   }
 
+  supportsTeamMethodologies(): boolean {
+    return this.lastServerInfoMessage?.features?.teamMethodologies === true;
+  }
+
+  async listTeamMethodologies(requestId?: string): Promise<TeamMethodologyListPayload> {
+    this.requireTeamMethodologiesSupport();
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.methodology.list.request" },
+    });
+  }
+
+  async getTeamMethodology(options: GetTeamMethodologyOptions): Promise<TeamMethodologyGetPayload> {
+    this.requireTeamMethodologiesSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.methodology.get.request", ...params },
+    });
+  }
+
   async createTeamProfile(options: CreateTeamProfileOptions): Promise<TeamProfileCreatePayload> {
     this.requireTeamMissionsSupport();
     const { requestId, ...params } = options;
@@ -5670,6 +5701,11 @@ export class DaemonClient {
     if (!this.supportsTeamMissions()) {
       throw new Error("Update the host to use Team Missions.");
     }
+  }
+
+  private requireTeamMethodologiesSupport(): void {
+    if (!this.supportsTeamMethodologies())
+      throw new Error("Update the host to use Team Methodologies.");
   }
 
   private resolveTransportUrlForAttempt(): string {

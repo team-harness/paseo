@@ -7,6 +7,7 @@ import type {
 import type { Href } from "expo-router";
 import {
   buildHostRootRoute,
+  buildHostTeamsRoute,
   buildHostWorkspaceRoute,
   buildOpenProjectRoute,
 } from "@/utils/host-routes";
@@ -166,7 +167,7 @@ export function resolveHostIndexRoute(input: {
 }
 
 export type HostIndexRouteDecision =
-  | { kind: "renderTeams" }
+  | { kind: "waitingForHost" }
   | { kind: "loading" }
   | { kind: "redirect"; href: Href };
 
@@ -174,11 +175,12 @@ export function resolveHostIndexRouteDecision(input: {
   serverId: string;
   workspaceSelection: ActiveWorkspaceSelection | null;
   workspaceSelectionStatus: WorkspaceSelectionStatus;
-  hasHydratedWorkspaces: boolean;
-  hasLiveWorkspaces: boolean;
-  globalTeamProfilesSupported: boolean;
-  teamProfilesStatus: "pending" | "ready" | "failed";
-  activeTeamCount: number;
+  connectionStatus: "idle" | "connecting" | "online" | "offline" | "error";
+  features: {
+    teamMissions?: boolean;
+    globalTeamProfiles?: boolean;
+    teamMethodologies?: boolean;
+  } | null;
 }): HostIndexRouteDecision {
   if (
     input.workspaceSelection?.serverId === input.serverId &&
@@ -190,17 +192,14 @@ export function resolveHostIndexRouteDecision(input: {
     };
   }
 
+  if (input.connectionStatus !== "online") return { kind: "waitingForHost" };
+  if (!input.features) return { kind: "loading" };
   if (
-    !input.hasLiveWorkspaces &&
-    input.globalTeamProfilesSupported &&
-    input.teamProfilesStatus !== "failed"
+    input.features.teamMissions &&
+    input.features.globalTeamProfiles &&
+    input.features.teamMethodologies
   ) {
-    if (!input.hasHydratedWorkspaces || input.teamProfilesStatus === "pending") {
-      return { kind: "loading" };
-    }
-    if (input.activeTeamCount > 0) {
-      return { kind: "renderTeams" };
-    }
+    return { kind: "redirect", href: buildHostTeamsRoute(input.serverId) };
   }
 
   return {

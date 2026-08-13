@@ -396,49 +396,66 @@ describe("resolveHostIndexRoute", () => {
 });
 
 describe("resolveHostIndexRouteDecision", () => {
-  it("renders host-level Teams when the host has no live workspace", () => {
+  const supported = { teamMissions: true, globalTeamProfiles: true, teamMethodologies: true };
+
+  it("redirects a supported zero-workspace host to Team Hub", () => {
     expect(
       resolveHostIndexRouteDecision({
         serverId: "server-saved",
         workspaceSelection: null,
         workspaceSelectionStatus: "missing",
-        hasHydratedWorkspaces: true,
-        hasLiveWorkspaces: false,
-        globalTeamProfilesSupported: true,
-        teamProfilesStatus: "ready",
-        activeTeamCount: 1,
+        connectionStatus: "online",
+        features: supported,
       }),
-    ).toEqual({ kind: "renderTeams" });
+    ).toEqual({ kind: "redirect", href: "/h/server-saved/teams" });
   });
 
-  it("waits for global Teams before leaving a zero-workspace host", () => {
+  it("redirects a supported host with live workspaces but no selection to Team Hub", () => {
     expect(
       resolveHostIndexRouteDecision({
         serverId: "server-saved",
         workspaceSelection: null,
         workspaceSelectionStatus: "missing",
-        hasHydratedWorkspaces: true,
-        hasLiveWorkspaces: false,
-        globalTeamProfilesSupported: true,
-        teamProfilesStatus: "pending",
-        activeTeamCount: 0,
+        connectionStatus: "online",
+        features: supported,
       }),
-    ).toEqual({ kind: "loading" });
+    ).toEqual({ kind: "redirect", href: "/h/server-saved/teams" });
   });
 
-  it("waits for workspace hydration before deciding a global Team host is empty", () => {
+  it("does not depend on a failed Team replica", () => {
     expect(
       resolveHostIndexRouteDecision({
         serverId: "server-saved",
         workspaceSelection: null,
-        workspaceSelectionStatus: "unknown",
-        hasHydratedWorkspaces: false,
-        hasLiveWorkspaces: false,
-        globalTeamProfilesSupported: true,
-        teamProfilesStatus: "pending",
-        activeTeamCount: 0,
+        workspaceSelectionStatus: "missing",
+        connectionStatus: "online",
+        features: supported,
+      }),
+    ).toEqual({ kind: "redirect", href: "/h/server-saved/teams" });
+  });
+
+  it("loads while an online host handshake is unknown", () => {
+    expect(
+      resolveHostIndexRouteDecision({
+        serverId: "server-saved",
+        workspaceSelection: null,
+        workspaceSelectionStatus: "missing",
+        connectionStatus: "online",
+        features: null,
       }),
     ).toEqual({ kind: "loading" });
+  });
+
+  it("uses Open Project when Team V1 capability is absent", () => {
+    expect(
+      resolveHostIndexRouteDecision({
+        serverId: "server-saved",
+        workspaceSelection: null,
+        workspaceSelectionStatus: "missing",
+        connectionStatus: "online",
+        features: { teamMissions: true, globalTeamProfiles: true },
+      }),
+    ).toEqual({ kind: "redirect", href: "/open-project" });
   });
 
   it("still restores a remembered workspace before hydration", () => {
@@ -447,11 +464,8 @@ describe("resolveHostIndexRouteDecision", () => {
         serverId: "server-saved",
         workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
         workspaceSelectionStatus: "unknown",
-        hasHydratedWorkspaces: false,
-        hasLiveWorkspaces: false,
-        globalTeamProfilesSupported: true,
-        teamProfilesStatus: "pending",
-        activeTeamCount: 0,
+        connectionStatus: "online",
+        features: supported,
       }),
     ).toEqual({
       kind: "redirect",

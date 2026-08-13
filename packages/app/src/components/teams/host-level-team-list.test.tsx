@@ -10,7 +10,7 @@ const mocked = vi.hoisted(() => ({ navigate: vi.fn() }));
 vi.mock("expo-router", () => ({ router: { navigate: mocked.navigate } }));
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => (key === "teams.host.title" ? "Teams" : key) }),
+  useTranslation: () => ({ t: (key: string) => key }),
 }));
 
 vi.mock("react-native", () => ({
@@ -62,11 +62,25 @@ describe("host-level Team list", () => {
       />,
     );
 
-    expect(screen.getByText("Teams")).toBeTruthy();
+    expect(screen.getByText("teams.host.title")).toBeTruthy();
     expect(screen.getByText("Alpha")).toBeTruthy();
     fireEvent.click(screen.getByTestId("host-team-row-team/alpha"));
 
     expect(mocked.navigate).toHaveBeenCalledTimes(1);
     expect(mocked.navigate).toHaveBeenCalledWith("/h/host%20one/team/team%2Falpha");
+  });
+
+  it("renders a localized empty state with the Hub-selected workspace guidance", () => {
+    render(
+      <HostLevelTeamList
+        serverId="host-one"
+        rows={[]}
+        emptyDescription="teams.host.hub.emptyWithWorkspace"
+      />,
+    );
+
+    expect(screen.getByTestId("host-level-team-list-empty")).toBeTruthy();
+    expect(screen.getByText("teams.host.hub.emptyTitle")).toBeTruthy();
+    expect(screen.getByText("teams.host.hub.emptyWithWorkspace")).toBeTruthy();
   });
 });

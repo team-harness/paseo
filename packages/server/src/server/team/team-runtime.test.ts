@@ -23,6 +23,20 @@ describe("TeamRuntime v2 façade", () => {
     expect(runtime.sessionDeps()).toBeNull();
     expect(
       teamMissionsUnavailableResponse(
+        { type: "team.methodology.list.request", requestId: "methodology-disabled" },
+        "disabled",
+      ),
+    ).toEqual({
+      type: "team.methodology.list.response",
+      payload: {
+        requestId: "methodology-disabled",
+        methodologies: [],
+        error: "disabled",
+        errorCode: "unsupported",
+      },
+    });
+    expect(
+      teamMissionsUnavailableResponse(
         { type: "team.profile.list.request", requestId: "list-disabled" },
         "disabled",
       ),
@@ -55,7 +69,11 @@ describe("TeamRuntime v2 façade", () => {
     await starting;
 
     expect(runtime.isReady()).toBe(true);
-    expect(runtime.serverFeatures()).toEqual({ teamMissions: true, globalTeamProfiles: true });
+    expect(runtime.serverFeatures()).toEqual({
+      teamMissions: true,
+      globalTeamProfiles: true,
+      teamMethodologies: true,
+    });
     const session = runtime.sessionDeps();
     expect(session).not.toBeNull();
     await expect(
@@ -67,6 +85,53 @@ describe("TeamRuntime v2 façade", () => {
       type: "team.profile.list.response",
       payload: { requestId: "list-ready", teams: [], error: null, errorCode: null },
     });
+    await expect(
+      session?.handleRequest(
+        {
+          type: "team.methodology.get.request",
+          requestId: "methodology-ready",
+          ref: {
+            bundleId: "paseo/standard",
+            version: "1",
+            digest: "sha256:d5001287a60f868bcef21ecd3c4debb5a5237db002c5b9d0f7b0b78e98969697",
+          },
+        },
+        { actorId: "client-1" },
+      ),
+    ).resolves.toMatchObject({
+      type: "team.methodology.get.response",
+      payload: {
+        requestId: "methodology-ready",
+        methodology: {
+          ref: {
+            bundleId: "paseo/standard",
+            version: "1",
+            digest: "sha256:d5001287a60f868bcef21ecd3c4debb5a5237db002c5b9d0f7b0b78e98969697",
+          },
+          presets: expect.arrayContaining([
+            expect.objectContaining({
+              slots: expect.arrayContaining([expect.objectContaining({ slotId: "lead" })]),
+            }),
+          ]),
+          archetypes: expect.arrayContaining([expect.objectContaining({ archetypeId: "lead" })]),
+          skills: expect.arrayContaining([expect.objectContaining({ skillId: "coordination" })]),
+          policySummary: expect.objectContaining({
+            verification: expect.objectContaining({ required: true }),
+          }),
+          playbooks: expect.arrayContaining([
+            expect.objectContaining({ playbookId: "review-loop" }),
+          ]),
+        },
+        error: null,
+      },
+    });
+    const descriptor = (await session?.handleRequest(
+      { type: "team.methodology.list.request", requestId: "safe" },
+      { actorId: "client-1" },
+    )) as { payload: { methodologies: unknown[] } };
+    expect(JSON.stringify(descriptor.payload.methodologies)).not.toMatch(
+      /promptAssets|promptAssetIds|providerMap|installPath/,
+    );
   });
 
   test("does not become ready when stopped during reconciliation", async () => {

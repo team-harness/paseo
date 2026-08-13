@@ -60,6 +60,7 @@ import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/su
 import { encodeImages } from "@/utils/encode-images";
 import { DirectorySync, type RefreshAgentDirectoryResult } from "@/runtime/directory-sync";
 import { TeamMissionsSync } from "@/runtime/team-missions-sync";
+import { MethodologyCatalogSync } from "@/runtime/methodology-catalog-sync";
 import { hostSupportsFeature } from "@/runtime/host-features";
 import { ReplicaCache } from "@/runtime/replica-cache";
 import { replicaCacheStorage } from "@/runtime/replica-cache/storage";
@@ -1367,6 +1368,8 @@ export class HostRuntimeStore {
   private directorySyncByServer = new Map<string, DirectorySync>();
   private teamMissionsSyncByServer = new Map<string, TeamMissionsSync>();
   private teamMissionsSupportSubscriptions = new Map<string, () => void>();
+  private methodologyCatalogSupportSubscriptions = new Map<string, () => void>();
+  private methodologyCatalogSyncByServer = new Map<string, MethodologyCatalogSync>();
   private configuredOverrideBootstrapInFlight: Promise<void> | null = null;
   private bootPromise: Promise<void> | null = null;
   private storage: HostRuntimeStorage;
@@ -1621,7 +1624,9 @@ export class HostRuntimeStore {
     this.directorySyncByServer.get(oldServerId)?.dispose();
     this.directorySyncByServer.delete(oldServerId);
     this.disposeTeamMissionsSync(oldServerId);
+    this.disposeMethodologyCatalogSync(oldServerId);
     this.registerTeamMissionsSync(newServerId);
+    this.registerMethodologyCatalogSync(newServerId);
     const directory = new DirectorySync(
       newServerId,
       {
@@ -1646,6 +1651,7 @@ export class HostRuntimeStore {
       },
     });
     this.syncTeamMissionsConnection(newServerId, snapshot);
+    this.syncMethodologyCatalogConnection(newServerId, snapshot);
 
     const listeners = this.serverListeners.get(oldServerId);
     if (listeners) {
@@ -1998,6 +2004,7 @@ export class HostRuntimeStore {
       this.directorySyncByServer.get(serverId)?.dispose();
       this.directorySyncByServer.delete(serverId);
       this.disposeTeamMissionsSync(serverId);
+      this.disposeMethodologyCatalogSync(serverId);
       this.clearHostReplica(serverId);
       void controller.stop();
       this.emit(serverId);
@@ -2036,6 +2043,7 @@ export class HostRuntimeStore {
         ),
       );
       this.registerTeamMissionsSync(host.serverId);
+      this.registerMethodologyCatalogSync(host.serverId);
       const initialSnapshot = controller.getSnapshot();
       this.lastConnectionStatusByServer.set(host.serverId, initialSnapshot.connectionStatus);
       this.connectionStatusStartedAtByServer.set(host.serverId, Date.now());
@@ -2083,6 +2091,45 @@ export class HostRuntimeStore {
     this.teamMissionsSyncByServer.delete(serverId);
     this.teamMissionsSupportSubscriptions.get(serverId)?.();
     this.teamMissionsSupportSubscriptions.delete(serverId);
+  }
+
+  private registerMethodologyCatalogSync(serverId: string): void {
+    this.methodologyCatalogSyncByServer.set(
+      serverId,
+      new MethodologyCatalogSync((replica) =>
+        useSessionStore.getState().setMethodologyCatalogReplica(serverId, replica),
+      ),
+    );
+    this.methodologyCatalogSupportSubscriptions.set(
+      serverId,
+      useSessionStore.subscribe(
+        (state) => state.sessions[serverId]?.serverInfo,
+        () => {
+          const controller = this.controllers.get(serverId);
+          if (controller) this.syncMethodologyCatalogConnection(serverId, controller.getSnapshot());
+        },
+      ),
+    );
+  }
+
+  private disposeMethodologyCatalogSync(serverId: string): void {
+    this.methodologyCatalogSyncByServer.get(serverId)?.dispose();
+    this.methodologyCatalogSyncByServer.delete(serverId);
+    this.methodologyCatalogSupportSubscriptions.get(serverId)?.();
+    this.methodologyCatalogSupportSubscriptions.delete(serverId);
+  }
+
+  private syncMethodologyCatalogConnection(serverId: string, snapshot: HostRuntimeSnapshot): void {
+    const serverInfo = useSessionStore.getState().sessions[serverId]?.serverInfo;
+    this.methodologyCatalogSyncByServer.get(serverId)?.connectionChanged({
+      client: snapshot.client,
+      status: snapshot.connectionStatus === "online" ? "online" : "offline",
+      source: {
+        clientGeneration: snapshot.clientGeneration,
+        connectionEpoch: snapshot.connectionEpoch,
+      },
+      supported: serverInfo == null ? null : hostSupportsFeature(serverInfo, "teamMethodologies"),
+    });
   }
 
   private syncTeamMissionsConnection(serverId: string, snapshot: HostRuntimeSnapshot): void {
@@ -2149,6 +2196,7 @@ export class HostRuntimeStore {
         },
       }) ?? false;
     this.syncTeamMissionsConnection(serverId, snapshot);
+    this.syncMethodologyCatalogConnection(serverId, snapshot);
     const previousStatus = this.lastConnectionStatusByServer.get(serverId);
     const statusChanged = previousStatus !== snapshot.connectionStatus;
     const isUnavailable =
@@ -2357,6 +2405,12 @@ export class HostRuntimeStore {
     const sync = this.teamMissionsSyncByServer.get(serverId);
     if (!sync) throw new Error(`Unknown host runtime for serverId ${serverId}`);
     await sync.refresh();
+  }
+
+  refreshMethodologyCatalog(serverId: string): void {
+    const sync = this.methodologyCatalogSyncByServer.get(serverId);
+    if (!sync) throw new Error(`Unknown host runtime for serverId ${serverId}`);
+    sync.refresh();
   }
 
   async readTeamMissionHistory(serverId: string, teamId: string): Promise<void> {

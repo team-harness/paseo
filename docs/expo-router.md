@@ -33,12 +33,12 @@ leaf.
 - Good: `/` -> `/h/[serverId]`
 - Bad: `/` -> `/h/[serverId]/workspace/[workspaceId]`
 
-`/h/[serverId]` is the host home route. The host index restores the last
-remembered workspace for that host after the remembered selection has hydrated
-and the workspace has not been proven missing. If there is no restorable
-workspace, it shows the host-level Team list when global Team profiles have
-hydrated and at least one active Team exists; otherwise it goes to global
-`/open-project`. This host surface must not manufacture a workspace.
+`/h/[serverId]` is the host home route. The host index restores a remembered,
+live workspace first. Without one, it waits for the physical host connection and
+its capability handshake. A host missing any of `teamMissions`,
+`globalTeamProfiles`, or `teamMethodologies` uses Open Project; a host advertising
+all three enters `/h/[serverId]/teams`, independent of Team count or replica
+state. The host index chooses a route and never owns the Team list.
 
 This restore is based on the last navigated workspace, not current connection
 status. Do not redirect to another online host just because the remembered host
@@ -94,7 +94,8 @@ targets.
   through its hydrated Mission workspace. An idle Team uses a live creation
   workspace. Only a daemon advertising `globalTeamProfiles` may fall back to the
   first stable live workspace or, when none remain, render the Team on its host
-  route. Keep profiles from older daemons bound to their creation workspace.
+  route. Workspace placement never changes host-global Team ownership. Keep
+  profiles from older daemons bound to their creation workspace.
 
 Agent paths converge on `navigateToAgent()`. Team paths either converge on
 `navigateToWorkspace()` or remain host-level. Do not make notification routing
@@ -158,7 +159,13 @@ The pure policy tests should still enforce the boundary split:
 - root startup with a saved workspace returns `/h/[serverId]`;
 - host index with the same saved workspace returns
   `/h/[serverId]/workspace/[workspaceId]`;
-- host index with no restorable workspace returns `/open-project`.
+- host index with no restorable workspace waits while the host or handshake is
+  unknown, returns `/open-project` when any Team V1 capability is absent, and
+  returns `/h/[serverId]/teams` when all three are present, regardless of Team
+  count or Team replica failure;
+- `/h/[serverId]/teams` stays statically registered, and the workspace sidebar
+  links it only from the active workspace's physical session when all three
+  capabilities are present.
 
 ## Checklist
 

@@ -11,7 +11,7 @@ import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
-import type { TeamRuntimeSessionDeps } from "./team/team-runtime.js";
+import type { TeamRuntimeHostBoundary } from "./team/team-runtime.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
@@ -587,7 +587,7 @@ export class VoiceAssistantWebSocketServer {
   private unsubscribeTerminalActivity: (() => void) | null = null;
   private readonly browserToolsBroker: BrowserToolsBroker | null;
   private readonly hubRelationships: HubRelationshipManagement | null;
-  private readonly teamRuntime: TeamRuntimeSessionDeps | null;
+  private readonly teamRuntime: TeamRuntimeHostBoundary | null;
   private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
   private acceptingConnections = true;
   private readonly advertiseDaemonStatusRpc: boolean;
@@ -639,7 +639,7 @@ export class VoiceAssistantWebSocketServer {
     browserToolsBroker?: BrowserToolsBroker | null,
     hubRelationships?: HubRelationshipManagement | null,
     promptLibraryStore?: PromptLibraryStore,
-    teamRuntime?: TeamRuntimeSessionDeps | null,
+    teamRuntime?: TeamRuntimeHostBoundary | null,
     workspaceSetupRuntime: WorkspaceSetupRuntime = new WorkspaceSetupRuntime(),
     pluginRuntime?: SessionOptions["pluginRuntime"],
   ) {
@@ -1386,7 +1386,7 @@ export class VoiceAssistantWebSocketServer {
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
       directorySync: this.directorySync,
-      teamRuntime: this.teamRuntime,
+      teamRuntime: this.teamRuntime?.sessionDeps() ?? null,
       scheduleService: this.scheduleService,
       checkoutDiffManager: this.checkoutDiffManager,
       github: this.github,
@@ -1643,7 +1643,7 @@ export class VoiceAssistantWebSocketServer {
         promptLibrary: true,
         // COMPAT(teamMissions): added in v0.3.0-beta.3, remove after 2027-02-08 once
         // the app and daemon floors both understand Team Mission snapshots.
-        ...(this.teamRuntime ? { teamMissions: true, globalTeamProfiles: true } : {}),
+        ...this.teamRuntime?.serverFeatures(),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
         // COMPAT(agentThinkingUpdate): added in v0.2.4, remove gate after 2027-01-28.

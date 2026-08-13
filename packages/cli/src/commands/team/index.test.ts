@@ -17,7 +17,7 @@ describe("the Team Missions command tree", () => {
   it("exposes profile and mission namespaces instead of legacy team commands", () => {
     const team = createTeamCommand();
 
-    expect(childNames(team)).toEqual(["profile", "mission"]);
+    expect(childNames(team)).toEqual(["profile", "mission", "methodology"]);
     expect(childNames(team.commands[0]!)).toEqual([
       "create",
       "list",
@@ -26,6 +26,7 @@ describe("the Team Missions command tree", () => {
       "archive",
     ]);
     expect(childNames(team.commands[1]!)).toEqual(["start", "list", "inspect", "cancel"]);
+    expect(childNames(team.commands[2]!)).toEqual(["list", "inspect"]);
   });
 
   it("keeps machine-readable output options on every leaf command", () => {
@@ -35,6 +36,15 @@ describe("the Team Missions command tree", () => {
       expect(leaf.options.map((option) => option.long)).toContain("--json");
       expect(leaf.options.map((option) => option.long)).toContain("--host");
     }
+  });
+
+  it("requires the three exact Methodology identity fields", () => {
+    const inspect = createTeamCommand().commands[2]!.commands[1]!;
+    expect(inspect.registeredArguments.map((argument) => argument.name())).toEqual([
+      "bundle-id",
+      "version",
+      "digest",
+    ]);
   });
 
   it("requires a Team skill catalog and keeps member skill declarations separate", () => {

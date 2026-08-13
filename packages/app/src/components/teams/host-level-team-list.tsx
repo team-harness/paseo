@@ -16,9 +16,11 @@ const mutedIcon = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 export function HostLevelTeamList({
   serverId,
   rows,
+  emptyDescription,
 }: {
   serverId: string;
   rows: readonly HostLevelTeamRow[];
+  emptyDescription?: string;
 }): ReactElement {
   const { t } = useTranslation();
 
@@ -29,11 +31,20 @@ export function HostLevelTeamList({
         <Text style={styles.title}>{t("teams.host.title")}</Text>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.rows}>
-          {rows.map((row, index) => (
-            <HostTeamRow key={row.teamId} serverId={serverId} row={row} showBorder={index > 0} />
-          ))}
-        </View>
+        {rows.length === 0 ? (
+          <View style={styles.empty} testID="host-level-team-list-empty">
+            <Text style={styles.emptyTitle}>{t("teams.host.hub.emptyTitle")}</Text>
+            {emptyDescription ? (
+              <Text style={styles.emptyDescription}>{emptyDescription}</Text>
+            ) : null}
+          </View>
+        ) : (
+          <View style={styles.rows}>
+            {rows.map((row, index) => (
+              <HostTeamRow key={row.teamId} serverId={serverId} row={row} showBorder={index > 0} />
+            ))}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -99,6 +110,23 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     overflow: "hidden",
     backgroundColor: theme.colors.surface1,
+  },
+  empty: {
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingVertical: theme.spacing[8],
+    paddingHorizontal: theme.spacing[4],
+  },
+  emptyTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.medium,
+  },
+  emptyDescription: {
+    maxWidth: 440,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    textAlign: "center",
   },
   row: {
     minHeight: 48,
