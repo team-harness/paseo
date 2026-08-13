@@ -5,12 +5,12 @@ approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91c
 current_item: null
 active_items:
   - item: TM-ITEM-11
-    state: blocked
+    state: dispatched
     run: subagent:/root/tm11_recovery
     workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-gates
     base: 1206406b9
-next_action: 等待 owner 裁决 TM-ITEM-11 Round 4 新增的两个 blocking；未授权前不修复、不开 Round 5
-blocked_by: "owner decision: TM-ITEM-11 Round 4 returned 2 blocking"
+next_action: TM-ITEM-11 在新的有界正确性修复阶段一次性闭合 approved/waived 两条事实链，然后执行唯一 fresh review
+blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -37,6 +37,12 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-13：owner 选择 A，授权 TM-ITEM-11 进入新的有界正确性修复阶段。范围只包含
+  Round 4 的两个 blocker：approved outcome 必须绑定已完成的 durable review turn、精确 dependencies
+  与报告；waived outcome 必须符合 `operatorWaiver` 策略并绑定持久化 waiver、Attention、
+  controller 与 reason 事实。一次性修复后只允许一次 fresh review；若仍非 0 blocking /
+  0 important，立即停止 Epic，不得复审、更换 reviewer 或自动重试。
 
 - 2026-08-13：TM-ITEM-11 按 owner 授权完成唯一 Round 4，同一 reviewer lineage/session
   `019ffb02-2f75-7ca3-9b3a-53d50333b04e` 结论为 2 blocking / 0 important / 0 suggestions，
