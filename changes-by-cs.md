@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `4426a6b11fd9f1135d2e48076b83430a1531f973`，同步于 2026-08-13。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `4426a6b11fd9f1135d2e48076b83430a1531f973`）。
+- 最近同步基线：`upstream/main` = `b5610928a5ce1e4365ac62a0ffcbfbd826e3190c`，同步于 2026-08-14。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `b5610928a5ce1e4365ac62a0ffcbfbd826e3190c`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-08-14: `upstream/main` `b5610928a` / `v0.4.0`
+
+- 合入上游持久化 JSON 校验与 replica cache 失效修复、跨 Provider 的 Agent Profile 偏好约束、Hub 引导式初始化、Provider catalog 可配置刷新期限、Hub 不可达时本地断开、空闲 workspace Git 刷新限流、worktree setup 脏状态隔离、项目图标可移植路径，以及任务列表、模型选择和桌面/Provider 稳定性修复。
+- Review Draft Store 采用上游 `createValidatedPersistStorage` 和严格 schema，同时保留 fork 的跨 File/Changes 评论、关联 Agent、已发送/新增状态、workspace 隔离与投递语义。服务配置同时保留 fork 的 Threadshare 默认地址和上游 Provider catalog refresh timeout。
+- 保留 fork 的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、Threadshare 分享、完整 Composer 消息历史、Assistant 时间/分享入口、对话选区引用、固定签名 DMG、Web Server tar、独立 Android APK、Haseo TestFlight 发布身份，以及 `DirectorySync.fetchTimeline` 的 bounded canonical `limit: 100` 兼容策略；本轮没有上游等价能力可下线。
 
 ### 2026-08-13: `upstream/main` `4426a6b11` / `v0.4.0-beta.1`
 
