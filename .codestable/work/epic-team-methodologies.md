@@ -3,9 +3,14 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 等待 owner 裁决 TM-ITEM-11 Round 3 后唯一 blocker；冻结候选不得修改、提交、集成或继续审查
-blocked_by: "TM-ITEM-11 change review 三轮上限后仍有 1 blocking：替换 needs_report 的损坏 review 未在同一 aggregate CAS 清理旧 assignmentReportRecoveryOutbox，孤立 recovery 会永久阻塞 Mission 完成"
+active_items:
+  - item: TM-ITEM-11
+    state: dispatched
+    run: subagent:/root/tm11_recovery
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-gates
+    base: 1206406b9
+next_action: TM-ITEM-11 只修复 needs_report review replacement 的 aggregate recovery 清理，并追加同一 reviewer 窄复审
+blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -32,6 +37,12 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：owner 明确授权超过原三轮上限，修复 TM-ITEM-11 唯一剩余 recovery blocker 并追加
+  同一 reviewer 的一次窄复审。范围仅限 invalid `needs_report` review replacement：取消旧 Assignment、
+  追加唯一 replacement、清理旧 Assignment 的 pending/dispatched report recovery chain 必须在同一
+  `updateAggregate` CAS 内完成；覆盖 pending、dispatched、二次 reconcile 零 churn 与 Mission 完成不再
+  被孤立 recovery 阻塞。不得修改其余已冻结 gate/policy/schema/UI/CLI 契约，不得派发 TM-ITEM-12。
 
 - 2026-08-14：TM-ITEM-11 恢复后的 change review 达到三轮上限并暂停。最终冻结候选 HEAD
   `1206406b9…`、staged diff
