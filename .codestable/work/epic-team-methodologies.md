@@ -4,7 +4,7 @@ phase: acceptance
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
 active_items: []
-next_action: 等待 Epic final acceptance reviewer 的终态报告
+next_action: 等待 TM-ITEM-6 frozen final review；随后由 owner 裁决 Native/Electron 证据缺口
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +32,23 @@ remote_publish: final
 - [x] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-6 frozen final review 已启动。fresh Paseo reviewer
+  `c0ba0668-6667-4a0a-a6aa-a788d80f3351` 使用 `codex/gpt-5.6-sol` 的 planning-only
+  设置，冻结 exact commit `f4235cc5148aab2e77f865fee79e22ff44a3c708`（parent
+  `791460fa86c4b164a6f7f9c8a783bc91de7cea93`，tree
+  `b1047371a8c56039d09c16957f9b87fb169a5b73`）。任务是补齐 final acceptance IMP-2：
+  对 Hub 路由三态、单一 owner、水合隔离、npm exact pin/catalog sync、physical-source
+  能力门及 capsule/upstream wiring 给出正式 blocking/important 终态，不重复运行已报绿测试。
+
+- 2026-08-14：Epic final acceptance reviewer
+  `adb76106-a12f-4f3a-b9a4-b5dc09d237ef` 已返回完整终态报告：`0 blocking / 2 important /
+1 minor`，实现层 TM-ITEM-1..17 全部 pass。IMP-1 是 Native iOS/Android 与真实 Electron
+  Team Hub/Mission 表单执行证据缺失；reviewer 无法从源码给出具体 native 失败路径，故判为
+  important 而非 blocking。IMP-2 是 TM-ITEM-6 最终 hash 缺正式 0/0 reviewer 文本，现由
+  fresh GPT-5.6-Sol 补审。minor 是 `validateMissionStatusTransition` 无生产调用者，与真实
+  completion validation 存在未来漂移风险；当前语义一致。reviewer 在报告后请求退出 Plan
+  模式，主流程按只读边界拒绝，因此 agent 终态显示 error；已收到的完整报告与证据矩阵有效。
 
 - 2026-08-14：Epic final acceptance review 已启动。fresh Paseo reviewer
   `adb76106-a12f-4f3a-b9a4-b5dc09d237ef` 使用 `claude/claude-opus-5`、Plan 只读模式，
