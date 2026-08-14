@@ -359,6 +359,59 @@ describe("TeamRuntime v2 façade", () => {
     expect(unsubscribed).toEqual(["mission-room"]);
   });
 
+  test("authorizes review waiver per physical controller source and forwards its attribution", async () => {
+    const team = teamProfile();
+    const mission = teamMission(team, {
+      id: "mission-waiver",
+      roomId: "room-waiver",
+      status: "planning",
+      agentId: "agent-lead",
+      archivedAt: null,
+    });
+    const service = new FakeTeamRuntimeService(Promise.resolve(), team, [mission]);
+    const runtime = createTeamRuntime({ runtime: { enabled: true }, service });
+    await runtime.start();
+    const request = {
+      type: "team.mission.attention.resolve.request" as const,
+      requestId: "waive-1",
+      idempotencyKey: "waive-1",
+      missionId: mission.id,
+      attentionId: "attention-review",
+      expectedRevision: mission.revision,
+      resolution: {
+        kind: "waive_review" as const,
+        gateKeyFingerprint: `sha256:${"a".repeat(64)}`,
+        subjectFingerprint: `sha256:${"b".repeat(64)}`,
+        reason: "No eligible reviewer remains.",
+      },
+    };
+
+    await expect(
+      runtime.sessionDeps()?.handleRequest(request, { actorId: "shared-client" }),
+    ).resolves.toMatchObject({
+      payload: { errorCode: "team_controller_capability_required", mission: null },
+    });
+    await expect(
+      runtime.sessionDeps()?.handleRequest(request, {
+        actorId: "shared-client",
+        controller: true,
+        physicalSource: {
+          connectionId: "conn-daemon-issued",
+          selfReportedClientLabel: "paseo-app",
+        },
+      }),
+    ).resolves.toMatchObject({ payload: { error: null, mission: { id: mission.id } } });
+    expect(service.resolveAttentionInputs).toMatchObject([
+      {
+        idempotencyKey: "waive-1",
+        waiverSource: {
+          connectionId: "conn-daemon-issued",
+          selfReportedClientLabel: "paseo-app",
+        },
+      },
+    ]);
+  });
+
   test("registers tools for internally recovered Agents while keeping the external facade gated", async () => {
     const service = new FakeTeamRuntimeService(Promise.resolve());
     const calls: string[] = [];
@@ -420,6 +473,7 @@ class FakeTeamRuntimeService implements TeamRuntimeService {
   readonly archiveInputs: Parameters<TeamRuntimeService["archiveTeam"]>[0][] = [];
   readonly startInputs: Parameters<TeamRuntimeService["startMission"]>[0][] = [];
   readonly postMessageInputs: Parameters<TeamRuntimeService["postMissionMessage"]>[0][] = [];
+  readonly resolveAttentionInputs: Parameters<TeamRuntimeService["resolveAttention"]>[0][] = [];
   private readonly roomMessageListeners = new Set<
     Parameters<TeamRuntimeService["onMissionRoomMessage"]>[0]
   >();
@@ -518,8 +572,13 @@ class FakeTeamRuntimeService implements TeamRuntimeService {
     throw new Error("not used");
   }
 
-  async resolveAttention(): Promise<TeamMission> {
-    throw new Error("not used");
+  async resolveAttention(
+    input: Parameters<TeamRuntimeService["resolveAttention"]>[0],
+  ): Promise<TeamMission> {
+    this.resolveAttentionInputs.push(input);
+    const mission = this.missions.find((candidate) => candidate.id === input.missionId);
+    if (!mission) throw new Error("Mission fixture is required");
+    return mission;
   }
 }
 

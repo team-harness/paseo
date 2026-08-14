@@ -49,6 +49,11 @@ export type TeamRuntimeRequest = Extract<
 
 export interface TeamRuntimeRequestContext {
   actorId: string;
+  controller?: boolean;
+  physicalSource?: {
+    connectionId: string;
+    selfReportedClientLabel: string;
+  };
   subscribeMissionRoom?(missionId: string): void;
   unsubscribeMissionRoom?(missionId: string): void;
 }
@@ -407,15 +412,38 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
             await service.cancelMission(request),
           );
         case "team.mission.attention.resolve.request":
-          return missionResponse(
-            "team.mission.attention.resolve.response",
-            request.requestId,
-            await service.resolveAttention({ ...request, actorId: context.actorId }),
-          );
+          return await this.handleAttentionResolve(request, context, service);
       }
     } catch (error) {
       return errorResponse(request, error);
     }
+  }
+
+  private async handleAttentionResolve(
+    request: Extract<TeamRuntimeRequest, { type: "team.mission.attention.resolve.request" }>,
+    context: TeamRuntimeRequestContext,
+    service: TeamRuntimeService,
+  ): Promise<SessionOutboundMessage> {
+    if (
+      request.resolution.kind === "waive_review" &&
+      (!context.controller || !context.physicalSource)
+    ) {
+      throw new TeamApplicationError(
+        "team_controller_capability_required",
+        "Review waiver requires a Team V1 controller physical source",
+      );
+    }
+    return missionResponse(
+      "team.mission.attention.resolve.response",
+      request.requestId,
+      await service.resolveAttention({
+        ...request,
+        actorId: context.actorId,
+        ...(request.resolution.kind === "waive_review"
+          ? { waiverSource: context.physicalSource }
+          : {}),
+      }),
+    );
   }
 
   private async handleMissionRoomRequest(

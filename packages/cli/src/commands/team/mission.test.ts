@@ -5,6 +5,7 @@ import {
   runMissionInspectCommand,
   runMissionListCommand,
   runMissionStartCommand,
+  runMissionWaiveReviewCommand,
 } from "./mission.js";
 
 const { connectToDaemon, client, serverFeatures } = vi.hoisted(() => ({
@@ -26,6 +27,7 @@ const { connectToDaemon, client, serverFeatures } = vi.hoisted(() => ({
     listTeamMissions: vi.fn(),
     inspectTeamMission: vi.fn(),
     cancelTeamMission: vi.fn(),
+    resolveTeamMissionAttention: vi.fn(),
     close: vi.fn(async () => {}),
   },
 }));
@@ -162,6 +164,35 @@ describe("Mission commands", () => {
       missionId: "mission-1",
       expectedRevision: 2,
       reason: "Stopped by user",
+    });
+  });
+
+  it("waives a review through the capability-gated controller RPC", async () => {
+    client.resolveTeamMissionAttention.mockResolvedValue({ mission, error: null, errorCode: null });
+    await runMissionWaiveReviewCommand(
+      "mission-1",
+      {
+        attention: "attention-review",
+        expectedRevision: "2",
+        gateFingerprint: `sha256:${"a".repeat(64)}`,
+        subjectFingerprint: `sha256:${"b".repeat(64)}`,
+        reason: "No eligible reviewer remains.",
+        idempotencyKey: "waive-key",
+      },
+      null as never,
+    );
+
+    expect(client.resolveTeamMissionAttention).toHaveBeenCalledWith({
+      idempotencyKey: "waive-key",
+      missionId: "mission-1",
+      attentionId: "attention-review",
+      expectedRevision: 2,
+      resolution: {
+        kind: "waive_review",
+        gateKeyFingerprint: `sha256:${"a".repeat(64)}`,
+        subjectFingerprint: `sha256:${"b".repeat(64)}`,
+        reason: "No eligible reviewer remains.",
+      },
     });
   });
 });

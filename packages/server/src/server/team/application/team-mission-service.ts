@@ -7,8 +7,10 @@ import type {
   TeamProfileMemberPatch,
 } from "@getpaseo/protocol/team/v2-rpc-schemas";
 import type {
+  MissionAttentionItem,
   MissionAttentionResolution,
   MissionCapabilityFacts,
+  MissionReviewWaiver,
   MissionRosterSnapshot,
   TeamMemberProfile,
   TeamMission,
@@ -20,6 +22,7 @@ import { assignTeamMentionHandles } from "@getpaseo/protocol/team/mention-handle
 
 import type { AcceptedTurnFact } from "../domain/assignment-contract-validation.js";
 import { applyMissionAttentionTransition } from "../domain/mission-attention-transition.js";
+import { matchWorkstreamReviewer } from "../domain/member-matching.js";
 import {
   validateMissionAttentionResolution,
   validateTeamMission,
@@ -86,6 +89,7 @@ const IMPLEMENTED_ATTENTION_RESOLUTION_KINDS = new Set<TeamMissionAttentionResol
     "external_change",
     "resume_provider",
     "restore_notification",
+    "waive_review",
     "cancel_mission",
   ],
 );
@@ -200,6 +204,10 @@ export interface ResolveMissionAttentionInput {
   attentionId: string;
   expectedRevision: number;
   actorId: string;
+  waiverSource?: {
+    connectionId: string;
+    selfReportedClientLabel: string;
+  };
   resolution: TeamMissionAttentionResolutionInput;
 }
 
@@ -1093,6 +1101,9 @@ export class TeamMissionService {
     if (input.resolution.kind === "replace_lead") {
       return this.replaceLeadFromAttention(current, input);
     }
+    if (input.resolution.kind === "waive_review") {
+      return this.waiveReviewFromAttention(input);
+    }
     const prerequisite =
       PUBLIC_ATTENTION_RESOLUTION_PREREQUISITES[
         input.resolution.kind as keyof typeof PUBLIC_ATTENTION_RESOLUTION_PREREQUISITES
@@ -1128,6 +1139,36 @@ export class TeamMissionService {
           input.resolution.kind === "resume_provider"
             ? resumeProviderAssignment(mission, input, this.clock.now())
             : resolveMissionAttention(mission, input, this.clock.now()),
+      });
+    } catch (error) {
+      if (error instanceof MissionRevisionConflictError) {
+        const concurrentReplay = await this.findAttentionResolutionReplay(input);
+        if (concurrentReplay) return concurrentReplay.mission;
+      }
+      throw error;
+    }
+    await this.events.publishMission(stored.mission);
+    return stored.mission;
+  }
+
+  private async waiveReviewFromAttention(
+    input: ResolveMissionAttentionInput,
+  ): Promise<TeamMission> {
+    if (input.resolution.kind !== "waive_review" || !input.waiverSource) {
+      throw new TeamApplicationError(
+        "team_controller_capability_required",
+        "Review waiver requires physical controller source attribution",
+      );
+    }
+    const replay = await this.findAttentionResolutionReplay(input);
+    if (replay) return replay.mission;
+    const decidedAt = this.clock.now();
+    let stored: StoredMission;
+    try {
+      stored = await this.missions.update({
+        missionId: input.missionId,
+        expectedRevision: input.expectedRevision,
+        update: (mission) => applyReviewWaiver(mission, input, decidedAt, this.ids.next("waiver")),
       });
     } catch (error) {
       if (error instanceof MissionRevisionConflictError) {
@@ -2466,6 +2507,16 @@ export class TeamMissionService {
     );
     const requested = toAttentionResolution(input, persisted.resolvedAt);
     if (stableJson(persisted) === stableJson(requested)) return stored;
+    if (
+      input.resolution.kind === "waive_review" &&
+      persisted.kind === "waive_review" &&
+      persisted.idempotencyKey === input.idempotencyKey
+    ) {
+      throw new TeamApplicationError(
+        "team_mission_review_waiver_idempotency_conflict",
+        `Review waiver key ${input.idempotencyKey} has different input`,
+      );
+    }
     throw new TeamApplicationError(
       "attention_resolution_conflict",
       `Attention ${input.attentionId} was resolved by another request (${input.idempotencyKey})`,
@@ -2494,6 +2545,180 @@ function resolveMissionAttention(
     attentionId: attention.attentionId,
     resolution,
   });
+}
+
+function applyReviewWaiver(
+  mission: TeamMission,
+  input: ResolveMissionAttentionInput,
+  decidedAt: string,
+  waiverId: string,
+): TeamMission {
+  if (input.resolution.kind !== "waive_review" || !input.waiverSource) {
+    throw new TeamApplicationError(
+      "invalid_attention_resolution",
+      "waive_review context is missing",
+    );
+  }
+  const reason = input.resolution.reason.trim();
+  if (!reason) {
+    throw new TeamApplicationError(
+      "review_waiver_reason_required",
+      "Review waiver reason is required",
+    );
+  }
+  const waiverInput = { ...input, resolution: input.resolution };
+  const { attention, workstream, gate, roster } = requireWaivableReviewContext(
+    mission,
+    waiverInput,
+  );
+  assertNoEligibleReviewers(workstream, gate, roster);
+  const waiver: MissionReviewWaiver = {
+    waiverId,
+    attentionId: attention.attentionId,
+    gateKey: structuredClone(gate.gateKey),
+    gateKeyFingerprint: gate.gateKeyFingerprint,
+    subjectFingerprint: gate.subjectFingerprint,
+    connectionId: input.waiverSource.connectionId,
+    selfReportedClientLabel: input.waiverSource.selfReportedClientLabel,
+    reason,
+    createdAt: decidedAt,
+  };
+  const resolution = toAttentionResolution(input, decidedAt);
+  const settledGate = {
+    ...gate,
+    outcome: {
+      kind: "waived" as const,
+      gateKeyFingerprint: gate.gateKeyFingerprint,
+      subjectFingerprint: gate.subjectFingerprint,
+      waiverId,
+      decidedAt,
+    },
+  };
+  const withOutcome = {
+    ...mission,
+    reviewWaivers: [...mission.reviewWaivers, waiver],
+    workstreams: mission.workstreams.map((candidate) =>
+      candidate.workstreamId === workstream.workstreamId
+        ? { ...candidate, reviewGate: settledGate }
+        : candidate,
+    ),
+  };
+  const resolved = applyMissionAttentionTransition(withOutcome, {
+    kind: "resolve",
+    attentionId: attention.attentionId,
+    resolution,
+  });
+  const accepted = resolved.workstreams.find(
+    (candidate) => candidate.workstreamId === workstream.workstreamId,
+  );
+  if (accepted) accepted.status = "accepted";
+  return resolved;
+}
+
+function requireWaivableReviewContext(
+  mission: TeamMission,
+  input: ResolveMissionAttentionInput & {
+    resolution: Extract<TeamMissionAttentionResolutionInput, { kind: "waive_review" }>;
+  },
+) {
+  const attention = requireAttention(mission, input.attentionId);
+  if (
+    attention.status !== "open" ||
+    attention.kind !== "review_gate_reviewer_unavailable" ||
+    attention.scope.kind !== "workstream"
+  ) {
+    throw new TeamApplicationError(
+      "review_waiver_attention_conflict",
+      `Attention ${input.attentionId} is not an open known-empty review gate`,
+    );
+  }
+  const workstream = mission.workstreams.find(
+    (candidate) => candidate.workstreamId === attention.scope.workstreamId,
+  );
+  const gate = workstream?.reviewGate;
+  if (
+    !workstream ||
+    workstream.kind === "verification" ||
+    workstream.status !== "blocked" ||
+    gate?.kind !== "required" ||
+    gate.outcome.kind !== "pending" ||
+    gate.selection.kind !== "awaiting_reviewer"
+  ) {
+    throw new TeamApplicationError(
+      "review_waiver_gate_conflict",
+      `Review gate for Attention ${input.attentionId} is no longer pending for a reviewer`,
+    );
+  }
+  if (
+    mission.attentionItems.some(
+      (candidate) =>
+        candidate.attentionId !== attention.attentionId &&
+        candidate.status === "open" &&
+        candidate.scope.kind === "workstream" &&
+        candidate.scope.workstreamId === workstream.workstreamId,
+    )
+  ) {
+    throw new TeamApplicationError(
+      "review_waiver_attention_conflict",
+      `Workstream ${workstream.workstreamId} has another open Attention`,
+    );
+  }
+  assertCurrentWaivableGate(mission, input, attention, workstream, gate);
+  const roster = mission.rosterSnapshots.find(
+    (snapshot) => snapshot.revision === workstream.rosterSnapshotRevision,
+  );
+  if (!roster || roster.members.some((member) => member.capabilityFacts.kind !== "known")) {
+    throw new TeamApplicationError(
+      "review_waiver_capability_unknown",
+      "Every frozen reviewer capability fact must be known",
+    );
+  }
+  return { attention, workstream, gate, roster };
+}
+
+function assertCurrentWaivableGate(
+  mission: TeamMission,
+  input: ResolveMissionAttentionInput & {
+    resolution: Extract<TeamMissionAttentionResolutionInput, { kind: "waive_review" }>;
+  },
+  attention: Extract<MissionAttentionItem, { kind: "review_gate_reviewer_unavailable" }>,
+  workstream: TeamMission["workstreams"][number],
+  gate: Extract<TeamMission["workstreams"][number]["reviewGate"], { kind: "required" }>,
+): void {
+  if (
+    mission.methodologySnapshot.hardPolicy.review.operatorWaiver !== "allowed_with_reason" ||
+    gate.gateKey.planRevision !== mission.planRevision ||
+    gate.gateKey.planRevision !== workstream.planRevision ||
+    gate.gateKeyFingerprint !== input.resolution.gateKeyFingerprint ||
+    gate.subjectFingerprint !== input.resolution.subjectFingerprint ||
+    attention.reviewGateDetails.gateKeyFingerprint !== gate.gateKeyFingerprint ||
+    attention.reviewGateDetails.subjectFingerprint !== gate.subjectFingerprint
+  ) {
+    throw new TeamApplicationError(
+      "review_waiver_gate_conflict",
+      `Review gate for Attention ${input.attentionId} is no longer current or waivable`,
+    );
+  }
+}
+
+function assertNoEligibleReviewers(
+  workstream: TeamMission["workstreams"][number],
+  gate: Extract<TeamMission["workstreams"][number]["reviewGate"], { kind: "required" }>,
+  roster: TeamMission["rosterSnapshots"][number],
+): void {
+  const match = matchWorkstreamReviewer({
+    candidates: roster.members.map((profile) => ({ profile, openAssignments: 0 })),
+    ...gate.requirements,
+    previousReviewerMemberId: null,
+    ownerMemberId: workstream.ownerMemberId,
+    ownerMutableScope: workstream.mutableScope,
+  });
+  if (match.kind === "matched") {
+    throw new TeamApplicationError(
+      "review_waiver_reviewer_available",
+      "A structurally eligible reviewer is available",
+    );
+  }
 }
 
 function applyLeadReplacement(input: {
@@ -3165,6 +3390,26 @@ function toAttentionResolution(
     reason: input.resolution.reason,
     resolvedAt,
   };
+  if (input.resolution.kind === "waive_review") {
+    if (!input.waiverSource) {
+      throw new TeamApplicationError(
+        "team_controller_capability_required",
+        "Review waiver source attribution is missing",
+      );
+    }
+    return {
+      kind: "waive_review",
+      idempotencyKey: input.idempotencyKey,
+      gateKeyFingerprint: input.resolution.gateKeyFingerprint,
+      subjectFingerprint: input.resolution.subjectFingerprint,
+      connectionId: input.waiverSource.connectionId,
+      selfReportedClientLabel: input.waiverSource.selfReportedClientLabel,
+      reason: input.resolution.reason.trim(),
+      resolvedAt,
+      ownerAssignmentId: null,
+      recoveryAssignmentId: null,
+    };
+  }
   if (input.resolution.kind === "attribute_owner") {
     return {
       kind: input.resolution.kind,

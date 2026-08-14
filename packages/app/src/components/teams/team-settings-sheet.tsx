@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   ChevronRight,
@@ -90,6 +90,8 @@ function OpenTeamSettingsSheet({
   const [page, setPage] = useState<TeamSettingsPage>("root");
   const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [waiverAttentionId, setWaiverAttentionId] = useState<string | null>(null);
+  const [waiverReason, setWaiverReason] = useState("");
   const actionGeneration = useRef(0);
   const replica = useSessionStore((state) => state.sessions[serverId]?.teamMissionsReplica);
   const methodologies = useSessionStore(
@@ -213,6 +215,29 @@ function OpenTeamSettingsSheet({
     },
     [client, mission, run],
   );
+  const submitReviewWaiver = useCallback(() => {
+    if (!mission || !waiverAttentionId || !waiverReason.trim()) return;
+    const attention = mission.attentionItems.find(
+      (item) =>
+        item.attentionId === waiverAttentionId &&
+        item.kind === "review_gate_reviewer_unavailable" &&
+        item.status === "open",
+    );
+    if (!attention || attention.kind !== "review_gate_reviewer_unavailable") return;
+    resolveAttention(waiverAttentionId, {
+      kind: "waive_review",
+      gateKeyFingerprint: attention.reviewGateDetails.gateKeyFingerprint,
+      subjectFingerprint: attention.reviewGateDetails.subjectFingerprint,
+      reason: waiverReason.trim(),
+    });
+    setWaiverAttentionId(null);
+    setWaiverReason("");
+  }, [mission, resolveAttention, waiverAttentionId, waiverReason]);
+  const closeReviewWaiver = useCallback(() => setWaiverAttentionId(null), []);
+  const reviewWaiverHeader = useMemo<SheetHeader>(
+    () => ({ title: t("teams.v2Settings.attention.waiveReview") }),
+    [t],
+  );
 
   const refreshMemberExecution = useCallback(
     (memberId: string) => {
@@ -283,6 +308,13 @@ function OpenTeamSettingsSheet({
       onCancelMission: client && mission ? cancelMission : undefined,
       onArchiveTeam: client ? archiveTeam : undefined,
       onResolveAttention: client && mission ? resolveAttention : undefined,
+      onWaiveReview:
+        client && mission
+          ? (attentionId) => {
+              setWaiverReason("");
+              setWaiverAttentionId(attentionId);
+            }
+          : undefined,
       pendingActionKey,
       actionError,
     }),
@@ -329,63 +361,94 @@ function OpenTeamSettingsSheet({
   );
 
   return (
-    <AdaptiveModalSheet
-      visible={visible}
-      onClose={onClose}
-      header={header}
-      presentation={page === "root" ? undefined : "push"}
-      snapPoints={["72%", "92%"]}
-      testID="team-settings-sheet"
-    >
-      {page === "root" ? (
-        <SettingsNavigation
-          team={team}
-          mission={mission}
-          permissionCount={permissions.length}
-          onSelect={setPage}
-        />
-      ) : null}
-      {page === "team" ? (
-        <TeamOverviewSettingsPage team={team} mission={mission} actions={actions} />
-      ) : null}
-      {page === "members" ? (
-        <TeamMembersSettingsPage
-          team={team}
-          mission={mission}
-          agentProfiles={agentProfiles ?? []}
-          actions={actions}
-        />
-      ) : null}
-      {page === "methodology" ? (
-        <TeamMethodologySettingsPage
-          team={team}
-          mission={mission}
-          methodologies={methodologies}
-          actions={actions}
-        />
-      ) : null}
-      {page === "mission" ? (
-        <TeamMissionSettingsPage
-          team={team}
-          mission={mission}
-          history={history}
-          historyStatus={historyRead?.status ?? "idle"}
-          actions={actions}
-        />
-      ) : null}
-      {page === "plan" ? (
-        <TeamPlanSettingsPage team={team} mission={mission} actions={actions} />
-      ) : null}
-      {page === "attention" ? (
-        <TeamAttentionSettingsPage
-          team={team}
-          mission={mission}
-          actions={actions}
-          pendingPermissionCount={permissions.length}
-          permissionRows={permissionRowsNode}
-        />
-      ) : null}
-    </AdaptiveModalSheet>
+    <>
+      <AdaptiveModalSheet
+        visible={visible}
+        onClose={onClose}
+        header={header}
+        presentation={page === "root" ? undefined : "push"}
+        snapPoints={["72%", "92%"]}
+        testID="team-settings-sheet"
+      >
+        {page === "root" ? (
+          <SettingsNavigation
+            team={team}
+            mission={mission}
+            permissionCount={permissions.length}
+            onSelect={setPage}
+          />
+        ) : null}
+        {page === "team" ? (
+          <TeamOverviewSettingsPage team={team} mission={mission} actions={actions} />
+        ) : null}
+        {page === "members" ? (
+          <TeamMembersSettingsPage
+            team={team}
+            mission={mission}
+            agentProfiles={agentProfiles ?? []}
+            actions={actions}
+          />
+        ) : null}
+        {page === "methodology" ? (
+          <TeamMethodologySettingsPage
+            team={team}
+            mission={mission}
+            methodologies={methodologies}
+            actions={actions}
+          />
+        ) : null}
+        {page === "mission" ? (
+          <TeamMissionSettingsPage
+            team={team}
+            mission={mission}
+            history={history}
+            historyStatus={historyRead?.status ?? "idle"}
+            actions={actions}
+          />
+        ) : null}
+        {page === "plan" ? (
+          <TeamPlanSettingsPage team={team} mission={mission} actions={actions} />
+        ) : null}
+        {page === "attention" ? (
+          <TeamAttentionSettingsPage
+            team={team}
+            mission={mission}
+            actions={actions}
+            pendingPermissionCount={permissions.length}
+            permissionRows={permissionRowsNode}
+          />
+        ) : null}
+      </AdaptiveModalSheet>
+      <AdaptiveModalSheet
+        visible={waiverAttentionId !== null}
+        onClose={closeReviewWaiver}
+        header={reviewWaiverHeader}
+        snapPoints={REVIEW_WAIVER_SNAP_POINTS}
+        testID="team-review-waiver-dialog"
+      >
+        <View style={styles.waiverDialog}>
+          <Text style={settingsStyles.rowHint}>
+            {t("teams.v2Settings.attention.waiveReviewFinalVerification")}
+          </Text>
+          <TextInput
+            value={waiverReason}
+            onChangeText={setWaiverReason}
+            placeholder={t("teams.v2Settings.attention.waiveReviewReason")}
+            multiline
+            style={styles.waiverReasonInput}
+            testID="team-review-waiver-reason"
+          />
+          <Button
+            variant="default"
+            disabled={!waiverReason.trim()}
+            onPress={submitReviewWaiver}
+            testID="team-review-waiver-submit"
+          >
+            {t("teams.v2Settings.attention.waiveReview")}
+          </Button>
+        </View>
+      </AdaptiveModalSheet>
+    </>
   );
 }
 
@@ -609,6 +672,7 @@ function actionId(action: string, entityId: string, revision: number): string {
 }
 
 const EMPTY_PERMISSIONS = new Map<string, PendingPermission>();
+const REVIEW_WAIVER_SNAP_POINTS = ["48%"];
 const mutedIcon = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
@@ -633,5 +697,17 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "flex-start",
     flexWrap: "wrap",
     gap: theme.spacing[2],
+  },
+  waiverDialog: {
+    gap: theme.spacing[3],
+    padding: theme.spacing[4],
+  },
+  waiverReasonInput: {
+    minHeight: 96,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    color: theme.colors.foreground,
+    padding: theme.spacing[3],
+    textAlignVertical: "top",
   },
 }));

@@ -58,6 +58,7 @@ export interface TeamSettingsPageActions {
     attentionId: string,
     resolution: TeamSettingsAttentionResolution,
   ) => void;
+  readonly onWaiveReview?: (attentionId: string) => void;
   readonly pendingActionKey?: string | null;
   readonly actionError?: string | null;
 }
@@ -525,6 +526,9 @@ export function TeamAttentionSettingsPage({
                 </View>
                 <View style={[settingsStyles.row, settingsStyles.rowBorder, styles.actionWrap]}>
                   {replacementActions}
+                  {row.kind === "review_gate_reviewer_unavailable" && actions.onWaiveReview ? (
+                    <ReviewWaiverButton attentionId={row.attentionId} actions={actions} />
+                  ) : null}
                   {requiresLeadRecovery(row.kind) ? (
                     <LeadRecoveryAction
                       attentionId={row.attentionId}
@@ -675,7 +679,7 @@ function WorkstreamCard({ row }: { row: TeamPlanRow }): ReactElement {
         <DataRow
           bordered
           label={t("teams.v2Settings.plan.reviewEvidence")}
-          value={`${row.reviewWaiver.actorId}: ${row.reviewWaiver.reason}`}
+          value={`${row.reviewWaiver.reason} · ${row.reviewWaiver.connectionId} · ${t("teams.v2Settings.plan.selfReportedClient")}: ${row.reviewWaiver.selfReportedClientLabel}`}
         />
       ) : null}
       <DataRow
@@ -835,6 +839,28 @@ function AttentionResolutionButton({
       testID={`team-attention-${attentionId}-${kind}`}
     >
       {t(`teams.v2Settings.attention.resolution.${kind}`)}
+    </Button>
+  );
+}
+
+function ReviewWaiverButton({
+  attentionId,
+  actions,
+}: {
+  attentionId: string;
+  actions: TeamSettingsPageActions;
+}): ReactElement {
+  const { t } = useTranslation();
+  const open = useCallback(() => actions.onWaiveReview?.(attentionId), [actions, attentionId]);
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={isAttentionActionPending(actions.pendingActionKey)}
+      onPress={open}
+      testID={`team-attention-${attentionId}-waive-review`}
+    >
+      {t("teams.v2Settings.attention.waiveReview")}
     </Button>
   );
 }

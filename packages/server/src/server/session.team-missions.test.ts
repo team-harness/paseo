@@ -172,6 +172,12 @@ interface TeamDispatchSessionInternals {
   onMessage: (message: SessionOutboundMessage) => void;
   onMessageToSource: (source: object, message: SessionOutboundMessage) => void;
   dispatchTeamMessage(message: SessionInboundMessage, source?: object): Promise<void> | undefined;
+  clientCapabilities: ReadonlySet<string>;
+  clientCapabilitiesBySource: Map<object, ReadonlySet<string>>;
+  teamControllerIdentityBySource: Map<
+    object,
+    { connectionId: string; selfReportedClientLabel: string }
+  >;
 }
 
 describe("Team Missions RPC forwarding", () => {
@@ -181,6 +187,9 @@ describe("Team Missions RPC forwarding", () => {
     const session = Object.create(Session.prototype) as Session;
     const internals = session as unknown as TeamDispatchSessionInternals;
     internals.clientId = "human-client";
+    internals.clientCapabilities = new Set();
+    internals.clientCapabilitiesBySource = new Map();
+    internals.teamControllerIdentityBySource = new Map();
     internals.onMessage = () => {
       throw new Error("response must be socket-scoped");
     };
@@ -201,6 +210,11 @@ describe("Team Missions RPC forwarding", () => {
       onMissionRoomMessage: () => () => undefined,
     };
     const source = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.teamMissions]: true }, source);
+    session.updatePhysicalSourceIdentity(source, {
+      connectionId: "conn-controller",
+      selfReportedClientLabel: "human-client",
+    });
 
     await internals.dispatchTeamMessage(
       { type: "team.profile.list.request", requestId: "list-rpc" },
@@ -215,6 +229,43 @@ describe("Team Missions RPC forwarding", () => {
           type: "team.profile.list.response",
           payload: { requestId: "list-rpc", teams: [], error: null, errorCode: null },
         },
+      },
+    ]);
+  });
+
+  test("rejects Team control and projection reads from a less-capable socket in a mixed session", async () => {
+    const targeted: Array<{ source: object; message: SessionOutboundMessage }> = [];
+    const session = Object.create(Session.prototype) as Session;
+    const internals = session as unknown as TeamDispatchSessionInternals;
+    internals.clientId = "shared-client";
+    internals.clientCapabilities = new Set();
+    internals.clientCapabilitiesBySource = new Map();
+    internals.teamControllerIdentityBySource = new Map();
+    internals.onMessage = () => {};
+    internals.onMessageToSource = (source, message) => targeted.push({ source, message });
+    let handled = false;
+    internals.teamRuntime = {
+      handleRequest: async () => {
+        handled = true;
+        throw new Error("must not reach Team runtime");
+      },
+      onMissionRoomMessage: () => () => undefined,
+    };
+    const capable = {};
+    const lessCapable = {};
+    session.updateClientCapabilities({ [CLIENT_CAPS.teamMissions]: true }, capable);
+    session.updateClientCapabilities(null, lessCapable);
+
+    await internals.dispatchTeamMessage(
+      { type: "team.profile.list.request", requestId: "mixed-list" },
+      lessCapable,
+    );
+
+    expect(handled).toBe(false);
+    expect(targeted).toMatchObject([
+      {
+        source: lessCapable,
+        message: { payload: { errorCode: "unsupported" } },
       },
     ]);
   });

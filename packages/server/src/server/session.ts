@@ -687,6 +687,10 @@ export class Session {
   private viewedTimelineAgentIds = new Set<string>();
   private readonly viewedTimelineAgentIdsBySource = new Map<object, Set<string>>();
   private readonly clientCapabilitiesBySource = new Map<object, ReadonlySet<ClientCapability>>();
+  private readonly teamControllerIdentityBySource = new Map<
+    object,
+    { connectionId: string; selfReportedClientLabel: string }
+  >();
   private readonly defaultTimelineSubscriptionSource = {};
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
   private readonly agentUpdates: AgentUpdatesService;
@@ -1138,8 +1142,16 @@ export class Session {
     }
   }
 
+  updatePhysicalSourceIdentity(
+    source: object,
+    identity: { connectionId: string; selfReportedClientLabel: string },
+  ): void {
+    this.teamControllerIdentityBySource.set(source, identity);
+  }
+
   clearAgentTimelineSubscription(source: object): void {
     this.clientCapabilitiesBySource.delete(source);
+    this.teamControllerIdentityBySource.delete(source);
     if (this.viewedTimelineAgentIdsBySource.delete(source)) {
       this.rebuildViewedTimelineAgentIds();
     }
@@ -2077,9 +2089,14 @@ export class Session {
     source?: object,
   ): Promise<void> | undefined {
     if (!isTeamMissionsRequest(msg)) return undefined;
-    if (!this.teamRuntime) {
+    if (!this.teamRuntime || !source || !this.supportsForSource(CLIENT_CAPS.teamMissions, source)) {
       this.emitForSource(
-        teamMissionsUnavailableResponse(msg, "Team Missions is not enabled on this host."),
+        teamMissionsUnavailableResponse(
+          msg,
+          this.teamRuntime
+            ? "This physical source does not advertise complete Team V1 support."
+            : "Team Missions is not enabled on this host.",
+        ),
         source,
       );
       return Promise.resolve();
@@ -2087,6 +2104,8 @@ export class Session {
     return this.teamRuntime
       .handleRequest(msg, {
         actorId: this.clientId,
+        controller: source ? this.supportsForSource(CLIENT_CAPS.teamMissions, source) : false,
+        ...(source ? { physicalSource: this.teamControllerIdentityBySource.get(source) } : {}),
         subscribeMissionRoom: (missionId) => this.teamMissionRoomSubscriptions.add(missionId),
         unsubscribeMissionRoom: (missionId) => this.teamMissionRoomSubscriptions.delete(missionId),
       })

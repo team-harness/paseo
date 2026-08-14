@@ -156,7 +156,6 @@ describe("Mission output", () => {
         {
           waiverId: "waiver-api",
           attentionId: "attention-review-api",
-          actorId: "controller-user",
           gateKey: {
             subject: {
               workstreamId: "workstream-api",
@@ -177,14 +176,15 @@ describe("Mission output", () => {
     expect(toMissionDetail(waivedMission).reviewGates[0]).toMatchObject({
       outcome: "waived",
       waiverId: "waiver-api",
-      waiverActorId: "controller-user",
+      waiverConnectionId: "connection-1",
+      waiverSelfReportedClientLabel: "paseo-cli",
     });
     const output = missionDetailSchema.renderHuman?.(
       { type: "single", data: toMissionDetail(waivedMission), schema: missionDetailSchema },
       { format: "table", quiet: false, noHeaders: false, noColor: true },
     );
     expect(output).toContain(
-      "waiver=waiver-api actor=controller-user reason=No eligible reviewer is available.",
+      "waiver=waiver-api connection=connection-1 self-reported-client=paseo-cli reason=No eligible reviewer is available.",
     );
   });
 
