@@ -3,8 +3,13 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 派发 TM-ITEM-14：允许控制器豁免 known-empty review gate
+active_items:
+  - item: TM-ITEM-14
+    state: dispatched
+    run: paseo:15cf4010-d602-48c5-bf5d-9a82487d189f
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-waiver
+    base: c475a26c9
+next_action: 等待 TM-ITEM-14 完成 controller waiver、真实浏览器 E2E 与独立审查
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +37,16 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-14 已从里程碑 `c475a26c9` 派发到 Paseo 托管 worktree
+  `wks_18401c12f21b1596`（`team-methodology-review-waiver`），实现 agent
+  `15cf4010-d602-48c5-bf5d-9a82487d189f` 使用 Agent Profile `GPT-5.6-Sol` 的
+  `codex/gpt-5.6-sol`、full-access。任务包冻结 controller-only `waive_review`、physical request
+  source identity、known-empty 复核、单 aggregate CAS、不可变审计证据、App 原因对话框、CLI 命令与
+  scoped Attention → waiver → final verification 真实浏览器 E2E；明确 capability unknown、运行时
+  reviewer failure 与 final gate 不可豁免。禁止提前实现 TM-ITEM-15、兼容层、迁移、fallback 或
+  dual-write；Team capsule 保持独立，upstream 热文件只做窄 façade/wiring。异步执行期间主流程不轮询或
+  重启 agent，等待 Paseo finish/permission 通知。
 
 - 2026-08-14：TM-ITEM-13 完成。单父 checkpoint
   `368322ca5f68b52b0fa0b9a5dec4126bcedd3cee`（parent `58051f382…`，tree
