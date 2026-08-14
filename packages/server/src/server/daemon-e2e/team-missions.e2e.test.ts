@@ -54,6 +54,166 @@ describe("Team Missions real-daemon WebSocket contract", () => {
     temporaryPaths.clear();
   }, 30_000);
 
+  test("isolates a review-gate blocker to one fork of a real-daemon Workstream DAG", async () => {
+    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-attention-home-"));
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-attention-workspace-"));
+    execFileSync("git", ["init", "-b", "main"], { cwd: workspaceRoot, stdio: "ignore" });
+    temporaryPaths.add(paseoHomeRoot);
+    temporaryPaths.add(workspaceRoot);
+    const provider = new TeamMissionsTestProvider();
+    const daemonErrors: string[] = [];
+    const daemon = await createTeamDaemon({ paseoHomeRoot, provider, errorLog: daemonErrors });
+    daemons.add(daemon);
+    temporaryPaths.add(daemon.staticDir);
+
+    const client = await connectTeamClient(daemon);
+    clients.add(client);
+    const workspaceResult = await client.createWorkspace({
+      source: { kind: "directory", path: workspaceRoot },
+      title: "Scoped Attention E2E",
+    });
+    const workspaceId = workspaceResult.workspace?.id;
+    if (!workspaceId) throw new Error(workspaceResult.error ?? "Workspace creation failed");
+
+    const members = [
+      testCreateMember("technical-lead", member("Technical lead", 5, ["integration"])),
+      testCreateMember("backend-engineer", member("Backend engineer", 4, ["backend"])),
+      testCreateMember("frontend-engineer", member("Frontend engineer", 4, ["frontend"])),
+      testCreateMember("quality-engineer", member("Quality engineer", 4, ["verification"])),
+    ];
+    const skills = [
+      { skillId: "backend", name: "Backend", description: null },
+      { skillId: "frontend", name: "Frontend", description: null },
+      { skillId: "integration", name: "Integration", description: null },
+      { skillId: "verification", name: "Verification", description: null },
+      { skillId: "audit", name: "Audit", description: null },
+    ];
+    const created = await client.createTeamProfile({
+      idempotencyKey: "team-scoped-attention-create",
+      name: "Scoped Attention team",
+      creationWorkspaceId: workspaceId,
+      skills,
+      leadClientMemberKey: "technical-lead",
+      members,
+      methodologyBinding: testCreateMethodologyBinding(
+        members.map((candidate) => candidate.clientMemberKey),
+        skills.map((skill) => skill.skillId),
+      ),
+    });
+    if (!created.team) throw new Error(created.error ?? "Team creation failed");
+    const team = created.team;
+    const started = await client.startTeamMission({
+      idempotencyKey: "team-scoped-attention-start",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId,
+      objective: "Keep the frontend fork running while backend review is blocked",
+      constraints: ["Use disjoint delivery scopes"],
+      acceptanceCriteria: ["Scoped review blockers do not pause unrelated work"],
+    });
+    if (!started.mission) throw new Error(started.error ?? "Mission start failed");
+    const initialMission = started.mission;
+    await provider.waitForTurns(
+      (turns) => turns.length === 1 && turns[0]?.state === "running",
+      "Lead briefing acceptance",
+    );
+    await provider.completeTurn(provider.turns[0]!.turnId);
+
+    const mcpFor = async (agentId: string): Promise<McpClient> => {
+      const mcp = await createMcpClient(
+        `http://127.0.0.1:${daemon.port}/mcp/agents?callerAgentId=${encodeURIComponent(agentId)}`,
+      );
+      mcpClients.add(mcp);
+      return mcp;
+    };
+    const leadMcp = await mcpFor(initialMission.participants[0]!.agentId);
+    const planDrafts = missionPlanDrafts();
+    const backendDraft = planDrafts.find((draft) => draft.workstreamId === "backend");
+    if (!backendDraft) throw new Error("Backend Workstream draft is missing");
+    backendDraft.reviewerRequirements = {
+      requiredSkillIds: ["audit"],
+      preferredSkillIds: [],
+      requiredRuntimeCapabilityIds: ["structured-tools"],
+      minimumLevel: 4,
+    };
+    const planResult = await leadMcp.callTool({
+      name: "mission_plan",
+      args: {
+        missionId: initialMission.id,
+        expectedRevision: initialMission.revision,
+        expectedPlanRevision: 0,
+        workstreams: planDrafts,
+      },
+    });
+    if (planResult.isError) throw new Error(toolErrorText(planResult));
+    const planned = TeamMissionSchema.parse(requireToolSuccess(planResult));
+    expect(
+      planned.workstreams.find((item) => item.workstreamId === "backend")?.reviewGate,
+    ).toMatchObject({ kind: "required", selection: { kind: "awaiting_reviewer" } });
+
+    const assignResult = await leadMcp.callTool({
+      name: "assign_task",
+      args: {
+        missionId: planned.id,
+        expectedRevision: planned.revision,
+        expectedPlanRevision: planned.planRevision,
+        assignments: [
+          deliveryDraft("backend"),
+          deliveryDraft("frontend"),
+          deliveryDraft("integration"),
+        ],
+      },
+    });
+    if (assignResult.isError) throw new Error(toolErrorText(assignResult));
+    const parallel = await waitForMission(
+      client,
+      planned.id,
+      hasTwoRunningDeliveries,
+      "parallel delivery dispatch before scoped blocker",
+    );
+    const backend = requireAssignment(parallel, "backend");
+    const frontend = requireAssignment(parallel, "frontend");
+    await reportAssignment({
+      client,
+      mcp: await mcpFor(requireRuntimeAgentId(backend)),
+      errorLog: daemonErrors,
+      missionId: parallel.id,
+      assignmentId: backend.assignmentId,
+      report: completedReport({
+        summary: "Backend delivery completed",
+        artifactPaths: [],
+        verdict: null,
+      }),
+    });
+    await provider.completeTurn(requireAcceptedTurnId(backend));
+
+    const isolated = await waitForMission(
+      client,
+      parallel.id,
+      hasOpenBackendReviewAttention,
+      "Workstream-scoped review gate Attention",
+    );
+    expect(isolated).toMatchObject({ status: "active", suspendedStatus: null, completedAt: null });
+    expect(
+      isolated.workstreams.map((workstream) => [workstream.workstreamId, workstream.status]),
+    ).toEqual([
+      ["backend", "blocked"],
+      ["frontend", "active"],
+      ["integration", "blocked"],
+      ["final-verification", "blocked"],
+    ]);
+    expect(
+      isolated.assignments.find((item) => item.assignmentId === frontend.assignmentId),
+    ).toMatchObject({
+      semanticState: "running",
+      acceptedTurnId: frontend.acceptedTurnId,
+    });
+    expect(provider.turns.find((turn) => turn.turnId === frontend.acceptedTurnId)?.state).toBe(
+      "running",
+    );
+  }, 30_000);
+
   test("coordinates a lazy, parallel DAG through WebSocket and agent-scoped MCP", async () => {
     const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-flow-home-"));
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-flow-workspace-"));
@@ -592,6 +752,15 @@ function hasRunningIntegration(mission: TeamMission): boolean {
     }
   }
   return false;
+}
+
+function hasOpenBackendReviewAttention(mission: TeamMission): boolean {
+  return mission.attentionItems.some(
+    (item) =>
+      item.status === "open" &&
+      item.kind === "review_gate_reviewer_unavailable" &&
+      item.scope.workstreamId === "backend",
+  );
 }
 
 function isCompletedAndArchived(mission: TeamMission): boolean {

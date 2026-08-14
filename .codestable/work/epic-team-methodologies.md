@@ -3,13 +3,8 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-12
-    state: dispatched
-    run: paseo:ffa30f56-35a3-4486-a7a4-4329e0276cd6
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-scoped-attention
-    base: fa8ae741d
-next_action: 等待 TM-ITEM-12 完成 scope-aware Attention、forked-DAG E2E 与独立审查
+active_items: []
+next_action: 派发 TM-ITEM-13：实体化不可豁免的最终验证
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -29,7 +24,7 @@ remote_publish: final
 - [x] TM-ITEM-9
 - [x] TM-ITEM-10
 - [x] TM-ITEM-11
-- [ ] TM-ITEM-12
+- [x] TM-ITEM-12
 - [ ] TM-ITEM-13
 - [ ] TM-ITEM-14
 - [ ] TM-ITEM-15
@@ -37,6 +32,23 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-12 完成。单父 checkpoint
+  `abc21a206148add2ab7d7b25baecec2a052e5709`（parent `fa8ae741d…`，tree
+  `dbfc1b3834bdd989b888a935cca4dc10847bcd20`）实现 Mission/Workstream scope 共用的 Attention
+  transition helper、依赖闭包阻塞、known-empty 与 capability-unknown kind 分离，以及 App/CLI blocker
+  归属；forked-DAG 隔离 daemon E2E 证明无关分支继续派发。worker 报告的预提交 diff hash 为
+  `f79f636c…`，主流程从 checkpoint 重新计算的提交/集成 diff hash 为
+  `33d51e70f73b1bc92ef418d135e407c725383079178a771cdce2cd98a8bd7344`；权威 tree 与 checkpoint
+  一致，21 files，+1935/-452。Paseo Claude Opus 5 reviewer
+  `3cf45ab7-c672-4a99-b3c8-acc2557a3afc` 从 Round 1 的 1 blocking / 1 important 收敛到 Round 2 的
+  0/0。worker 验证 protocol 19/19、helper 3/3、validator 97/97、scheduler 49/49、MissionService
+  99/99、Collaboration 70/70、App 7/7 + 15/15、CLI 7/7、隔离 daemon E2E 1/1，以及 build/server、
+  typecheck、lint、format/diff 全绿。主分支无冲突集成；code-intel 精确覆盖 21/21 文件，唯一 warning 是
+  大文件符号映射将 Attention 改动误归到未改的 mention parser，定点追踪未发现具体失败路径；组合态
+  build/server、lint 0/0、format 与双 diff-check 通过。恢复缺失的 lockfile 依赖后，全仓 typecheck 仅
+  命中改动外 `packages/app/src/components/draggable-list.native.tsx:122` 的既有
+  `dragGestureHostPresented` 类型错误，未扩大 TM-ITEM-12 范围修复。
 
 - 2026-08-14：TM-ITEM-12 已从里程碑 `fa8ae741d` 派发到 Paseo 托管 worktree
   `wks_45f2cecf8a2415aa`（`team-methodology-scoped-attention`），实现 agent

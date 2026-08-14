@@ -191,6 +191,48 @@ function attentionItem(overrides: Partial<MissionAttentionItem> = {}): MissionAt
   };
 }
 
+function reviewGateAttentionItem(
+  aggregate: TeamMission,
+  kind: "review_gate_reviewer_unavailable" | "review_gate_capability_unknown",
+): MissionAttentionItem {
+  const delivery = aggregate.workstreams[0]!;
+  const gate = buildMissionReviewGate({
+    workstreamId: delivery.workstreamId,
+    planRevision: delivery.planRevision,
+    subjectAssignmentIds: ["assignment-api"],
+    requirements: {
+      requiredSkillIds: ["verification"],
+      preferredSkillIds: [],
+      requiredRuntimeCapabilityIds: ["structured-tools"],
+      minimumLevel: 3,
+    },
+    selection:
+      kind === "review_gate_reviewer_unavailable"
+        ? { kind: "awaiting_reviewer" }
+        : { kind: "awaiting_capabilities", candidateMemberIds: ["member-verifier"] },
+    outcome: { kind: "pending" },
+  });
+  if (gate.kind !== "required") throw new Error("required review gate expected");
+  delivery.reviewGate = gate;
+  return {
+    attentionId: `attention-${kind}`,
+    kind,
+    scope: { kind: "workstream", workstreamId: delivery.workstreamId, blockDependents: true },
+    status: "open",
+    priorMissionStatus: null,
+    assignmentId: null,
+    summary: "Review gate is structurally blocked.",
+    pathEvidence: [],
+    createdAt: "2026-08-07T11:06:00.000Z",
+    resolution: null,
+    reviewGateDetails: {
+      gateKey: gate.gateKey,
+      gateKeyFingerprint: gate.gateKeyFingerprint,
+      subjectFingerprint: gate.subjectFingerprint,
+    },
+  };
+}
+
 function mission(): TeamMission {
   return {
     id: "mission-sdk",
@@ -560,6 +602,86 @@ describe("team mission validation", () => {
           missionStatus: "active",
         },
       ],
+    });
+  });
+
+  it("requires open Workstream Attention to match a blocked current pending gate", () => {
+    const aggregate = mission();
+    aggregate.status = "active";
+    const item = reviewGateAttentionItem(aggregate, "review_gate_capability_unknown");
+    aggregate.attentionItems.push(item);
+
+    let result = validateTeamMission(aggregate);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "open_workstream_attention_not_blocked",
+      attentionId: item.attentionId,
+      workstreamId: "workstream-api",
+    });
+    expect(result.issues).not.toContainEqual(
+      expect.objectContaining({ kind: "open_attention_status_mismatch" }),
+    );
+
+    aggregate.workstreams[0]!.status = "blocked";
+    if (aggregate.workstreams[0]!.reviewGate.kind !== "required") return;
+    aggregate.workstreams[0]!.reviewGate.gateKeyFingerprint = `sha256:${"f".repeat(64)}`;
+    result = validateTeamMission(aggregate);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "open_workstream_attention_gate_mismatch",
+      attentionId: item.attentionId,
+      workstreamId: "workstream-api",
+    });
+  });
+
+  it("keeps resolved Workstream Attention as historical evidence after the current plan changes", () => {
+    const aggregate = mission();
+    const item = reviewGateAttentionItem(aggregate, "review_gate_reviewer_unavailable");
+    aggregate.attentionItems.push({
+      ...item,
+      status: "resolved",
+      resolution: {
+        kind: "replan",
+        actorId: "member-engineer",
+        reason: "The current plan replaced the blocked gate.",
+        resolvedAt: "2026-08-07T11:07:00.000Z",
+        ownerAssignmentId: null,
+        recoveryAssignmentId: null,
+      },
+    });
+    aggregate.workstreams[0]!.reviewGate = { kind: "none", outcome: { kind: "not_required" } };
+    aggregate.workstreams[0]!.status = "accepted";
+
+    const result = validateTeamMission(aggregate);
+    if (result.ok) return;
+    expect(result.issues).not.toContainEqual(
+      expect.objectContaining({ kind: "open_workstream_attention_not_blocked" }),
+    );
+    expect(result.issues).not.toContainEqual(
+      expect.objectContaining({ kind: "open_workstream_attention_gate_mismatch" }),
+    );
+    expect(result.issues).not.toContainEqual(
+      expect.objectContaining({ kind: "invalid_workstream_attention_history" }),
+    );
+  });
+
+  it("rejects open Workstream Attention on a terminal Mission", () => {
+    const aggregate = mission();
+    const item = reviewGateAttentionItem(aggregate, "review_gate_reviewer_unavailable");
+    aggregate.attentionItems.push(item);
+    aggregate.workstreams[0]!.status = "blocked";
+    aggregate.status = "completed";
+    aggregate.completedAt = "2026-08-07T11:08:00.000Z";
+
+    const result = validateTeamMission(aggregate);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "open_workstream_attention_gate_mismatch",
+      attentionId: item.attentionId,
+      workstreamId: "workstream-api",
     });
   });
 

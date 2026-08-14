@@ -504,4 +504,91 @@ describe("Team settings view", () => {
       }),
     ]);
   });
+
+  it("attributes scoped blockers while preserving independent Workstream readiness", () => {
+    const aggregate = mission();
+    aggregate.workstreams = [
+      {
+        workstreamId: "workstream-api",
+        title: "API",
+        status: "blocked",
+        ownerMemberId: "member-lead",
+        reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+        dependencyWorkstreamIds: [],
+        mutableScope: { kind: "read_only" },
+      },
+      {
+        workstreamId: "workstream-integration",
+        title: "Integration",
+        status: "blocked",
+        ownerMemberId: "member-lead",
+        reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+        dependencyWorkstreamIds: ["workstream-api"],
+        mutableScope: { kind: "read_only" },
+      },
+      {
+        workstreamId: "workstream-ui",
+        title: "UI",
+        status: "ready",
+        ownerMemberId: "member-lead",
+        reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+        dependencyWorkstreamIds: [],
+        mutableScope: { kind: "read_only" },
+      },
+    ] as unknown as TeamMission["workstreams"];
+    aggregate.attentionItems = [
+      {
+        attentionId: "attention-api",
+        kind: "review_gate_capability_unknown",
+        scope: {
+          kind: "workstream",
+          workstreamId: "workstream-api",
+          blockDependents: true,
+        },
+        status: "open",
+        priorMissionStatus: null,
+        assignmentId: null,
+        summary: "API capability facts are unknown",
+        pathEvidence: [],
+        createdAt: "2026-08-09T00:00:00.000Z",
+        resolution: null,
+        reviewGateDetails: {} as never,
+      },
+    ];
+
+    expect(selectTeamPlanRows(team(), aggregate)).toEqual([
+      expect.objectContaining({
+        workstreamId: "workstream-api",
+        status: "blocked",
+        blockers: [
+          expect.objectContaining({
+            attentionId: "attention-api",
+            kind: "review_gate_capability_unknown",
+            sourceWorkstreamId: "workstream-api",
+            direct: true,
+          }),
+        ],
+      }),
+      expect.objectContaining({
+        workstreamId: "workstream-integration",
+        status: "blocked",
+        blockers: [
+          expect.objectContaining({
+            attentionId: "attention-api",
+            sourceWorkstreamId: "workstream-api",
+            direct: false,
+          }),
+        ],
+      }),
+      expect.objectContaining({ workstreamId: "workstream-ui", status: "ready", blockers: [] }),
+    ]);
+    expect(selectTeamAttentionRows(aggregate)).toEqual([
+      expect.objectContaining({
+        attentionId: "attention-api",
+        scope: "workstream",
+        workstreamId: "workstream-api",
+        workstreamTitle: "API",
+      }),
+    ]);
+  });
 });
