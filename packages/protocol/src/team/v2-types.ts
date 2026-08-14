@@ -365,6 +365,9 @@ export const MissionReviewGateEvidenceSchema = z.discriminatedUnion("kind", [
     gateKeyFingerprint: MissionReviewFingerprintSchema,
     subjectFingerprint: MissionReviewFingerprintSchema,
     waiverId: z.string().min(1),
+    connectionId: z.string().min(1),
+    selfReportedClientLabel: z.string().min(1),
+    reason: z.string().min(1),
   }),
 ]);
 export type MissionReviewGateEvidence = z.infer<typeof MissionReviewGateEvidenceSchema>;
@@ -382,7 +385,6 @@ export type MissionFinalVerificationEvidence = z.infer<
 export const MissionReviewWaiverSchema = z.object({
   waiverId: z.string().min(1),
   attentionId: z.string().min(1),
-  actorId: z.string().min(1),
   gateKey: MissionReviewGateKeySchema,
   gateKeyFingerprint: MissionReviewFingerprintSchema,
   subjectFingerprint: MissionReviewFingerprintSchema,
@@ -561,6 +563,11 @@ const attentionResolutionCommon = {
   resolvedAt: TimestampSchema,
 };
 
+const reviewWaiverResolutionCommon = {
+  reason: z.string().min(1),
+  resolvedAt: TimestampSchema,
+};
+
 export const MissionAttentionResolutionSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("attribute_owner"),
@@ -591,7 +598,10 @@ export const MissionAttentionResolutionSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("waive_review"),
-    ...attentionResolutionCommon,
+    ...reviewWaiverResolutionCommon,
+    idempotencyKey: z.string().min(1),
+    gateKeyFingerprint: MissionReviewFingerprintSchema,
+    subjectFingerprint: MissionReviewFingerprintSchema,
     connectionId: z.string().min(1),
     selfReportedClientLabel: z.string().min(1),
     ownerAssignmentId: z.null(),

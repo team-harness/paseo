@@ -448,7 +448,6 @@ describe("Team settings view", () => {
     aggregate.reviewWaivers.push({
       waiverId: "waiver-ui",
       attentionId: "attention-review-ui",
-      actorId: "controller-user",
       gateKey: reviewGate.gateKey,
       gateKeyFingerprint: reviewGate.gateKeyFingerprint,
       subjectFingerprint: reviewGate.subjectFingerprint,
@@ -460,7 +459,8 @@ describe("Team settings view", () => {
 
     expect(selectTeamPlanRows(team(), aggregate)[0]?.reviewWaiver).toEqual({
       waiverId: "waiver-ui",
-      actorId: "controller-user",
+      connectionId: "connection-1",
+      selfReportedClientLabel: "paseo-app",
       reason: "No eligible reviewer is available.",
     });
   });

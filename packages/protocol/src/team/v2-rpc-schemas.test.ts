@@ -172,6 +172,7 @@ const mission = {
   workstreamPlanSnapshots: [],
   assignments: [],
   attentionItems: [],
+  reviewWaivers: [],
   lifecycleRecoveryFailure: null,
   createdAt: timestamp,
   updatedAt: timestamp,
@@ -630,6 +631,36 @@ describe("Team Mission v2 RPC schemas", () => {
     expect(TeamMissionAttentionResolveRequestSchema.parse(requestWithoutReplacement)).toEqual(
       requestWithoutReplacement,
     );
+  });
+
+  it("requires exact gate identity and a non-empty reason for controller review waiver", () => {
+    const request = {
+      type: "team.mission.attention.resolve.request" as const,
+      requestId: "req-waive-review",
+      idempotencyKey: "idem-waive-review",
+      missionId: mission.id,
+      attentionId: "attention-review",
+      expectedRevision: mission.revision,
+      resolution: {
+        kind: "waive_review" as const,
+        gateKeyFingerprint: digest,
+        subjectFingerprint: digest,
+        reason: "No structurally eligible reviewer exists.",
+      },
+    };
+    expect(TeamMissionAttentionResolveRequestSchema.parse(request)).toEqual(request);
+    expect(
+      TeamMissionAttentionResolveRequestSchema.safeParse({
+        ...request,
+        resolution: { ...request.resolution, reason: "" },
+      }).success,
+    ).toBe(false);
+    expect(
+      TeamMissionAttentionResolveRequestSchema.safeParse({
+        ...request,
+        resolution: { kind: "waive_review", reason: "No reviewer." },
+      }).success,
+    ).toBe(false);
   });
 
   it("uses Mission-owned room messages without a generic Chat contract", () => {

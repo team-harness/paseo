@@ -413,6 +413,12 @@ export const TeamMissionAttentionResolutionInputSchema = z.discriminatedUnion("k
   }),
   z.object({ kind: z.literal("restore_notification"), ...attentionReasonField }),
   z.object({ kind: z.literal("cancel_mission"), ...attentionReasonField }),
+  z.object({
+    kind: z.literal("waive_review"),
+    ...attentionReasonField,
+    gateKeyFingerprint: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+    subjectFingerprint: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+  }),
 ]);
 export type TeamMissionAttentionResolutionInput = z.infer<
   typeof TeamMissionAttentionResolutionInputSchema

@@ -443,13 +443,19 @@ function finalVerificationReviewGateEvidence(mission: TeamMission): MissionRevie
       ];
     }
     if (gate.outcome.kind === "waived") {
+      const waiverId = gate.outcome.waiverId;
+      const waiver = mission.reviewWaivers.find((candidate) => candidate.waiverId === waiverId);
+      if (!waiver) return [];
       return [
         {
           kind: "waived" as const,
           gateKey: structuredClone(gate.gateKey),
           gateKeyFingerprint: gate.gateKeyFingerprint,
           subjectFingerprint: gate.subjectFingerprint,
-          waiverId: gate.outcome.waiverId,
+          waiverId,
+          connectionId: waiver.connectionId,
+          selfReportedClientLabel: waiver.selfReportedClientLabel,
+          reason: waiver.reason,
         },
       ];
     }

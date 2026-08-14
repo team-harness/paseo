@@ -15,6 +15,7 @@ import { gotoAppShell } from "../support/helpers/app";
 import { buildCreateAgentPreferences, buildSeededHost } from "../support/helpers/daemon-registry";
 import { startIsolatedHostDaemon } from "../support/helpers/isolated-host-daemon";
 import { seedWorkspace, type SeedDaemonClient } from "../support/helpers/seed-client";
+import { buildMissionReviewGate } from "../../../server/src/server/team/domain/mission-review-gate.js";
 
 const EVIDENCE_DIR = path.resolve(
   process.cwd(),
@@ -102,6 +103,29 @@ async function clearActiveMissionSnapshot(paseoHome: string, teamId: string): Pr
     profile: nextProfile,
   });
   return nextProfile;
+}
+
+async function seedStructuredToolsProfiles(paseoHome: string, teamId: string): Promise<void> {
+  const filePath = path.join(paseoHome, "team-missions", "profiles", `${teamId}.json`);
+  const record = JSON.parse(await readFile(filePath, "utf8")) as StoredTeamProfileRecord;
+  const profile = record.profile as TeamV2;
+  await writeJsonAtomic(filePath, {
+    ...record,
+    profile: {
+      ...profile,
+      members: profile.members.map((member) =>
+        Object.assign({}, member, {
+          executionProfile: {
+            provider: "claude" as const,
+            model: null,
+            modeId: "bypassPermissions",
+            thinkingOptionId: null,
+            featureValues: {},
+          },
+        }),
+      ),
+    },
+  });
 }
 
 function timestampAfter(timestamp: string, offsetMs: number): string {
@@ -261,8 +285,90 @@ function buildParallelSnapshot(mission: TeamMission, team: TeamV2): TeamMission 
     ],
     assignments,
     attentionItems: [],
+    reviewWaivers: [],
     updatedAt: now,
     completedAt: null,
+  };
+}
+
+function buildWaivableReviewSnapshot(mission: TeamMission): TeamMission {
+  const now = timestampAfter(mission.updatedAt, 60_000);
+  const assignment = mission.assignments.find(
+    (candidate) => candidate.workstreamId === VALIDATION_WORKSTREAM_ID,
+  );
+  const workstream = mission.workstreams.find(
+    (candidate) => candidate.workstreamId === VALIDATION_WORKSTREAM_ID,
+  );
+  if (!assignment || !workstream) throw new Error("Review waiver fixture is incomplete");
+  const gate = buildMissionReviewGate({
+    workstreamId: workstream.workstreamId,
+    planRevision: mission.planRevision,
+    subjectAssignmentIds: [assignment.assignmentId],
+    requirements: {
+      requiredSkillIds: [],
+      preferredSkillIds: [],
+      requiredRuntimeCapabilityIds: ["review-waiver-e2e"],
+      minimumLevel: 1,
+    },
+    selection: { kind: "awaiting_reviewer" },
+    outcome: { kind: "pending" },
+  });
+  if (gate.kind !== "required") throw new Error("Required review gate expected");
+  return {
+    ...mission,
+    status: "active",
+    revision: mission.revision + 1,
+    rosterSnapshots: mission.rosterSnapshots.map((snapshot) =>
+      snapshot.revision === workstream.rosterSnapshotRevision
+        ? {
+            ...snapshot,
+            members: snapshot.members.map((member) => ({
+              ...member,
+              capabilityFacts: { kind: "known" as const, capabilityIds: [] },
+            })),
+          }
+        : snapshot,
+    ),
+    workstreams: mission.workstreams.map((candidate) =>
+      candidate.workstreamId === workstream.workstreamId
+        ? { ...candidate, status: "blocked" as const, reviewGate: gate }
+        : candidate,
+    ),
+    assignments: mission.assignments.map((candidate) =>
+      candidate.assignmentId === assignment.assignmentId
+        ? {
+            ...candidate,
+            report: completedReport(candidate),
+            dispatchState: "settled" as const,
+            semanticState: "completed" as const,
+            settledAt: now,
+          }
+        : candidate,
+    ),
+    attentionItems: [
+      {
+        attentionId: "attention-review-waiver-e2e",
+        kind: "review_gate_reviewer_unavailable" as const,
+        scope: {
+          kind: "workstream" as const,
+          workstreamId: workstream.workstreamId,
+          blockDependents: true,
+        },
+        status: "open" as const,
+        priorMissionStatus: null,
+        assignmentId: null,
+        reviewGateDetails: {
+          gateKey: gate.gateKey,
+          gateKeyFingerprint: gate.gateKeyFingerprint,
+          subjectFingerprint: gate.subjectFingerprint,
+        },
+        summary: "No reviewer has the frozen review-waiver-e2e capability.",
+        pathEvidence: [],
+        createdAt: now,
+        resolution: null,
+      },
+    ],
+    updatedAt: now,
   };
 }
 
@@ -490,6 +596,8 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     await shoot(page, "03-desktop-members-settings");
     await page.keyboard.press("Escape");
 
+    await seedStructuredToolsProfiles(daemon.paseoHome, team!.id);
+
     await page.getByTestId("team-room-start-mission").click();
     await expect(page.getByTestId("mission-start-sheet")).toBeVisible();
     await page
@@ -576,6 +684,51 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     await expect(testsCard).toContainText("Running");
     await shoot(page, "09-desktop-parallel-running");
     await page.keyboard.press("Escape");
+
+    const waivable = await seedMissionSnapshot(
+      daemon.paseoHome,
+      mission!.id,
+      buildWaivableReviewSnapshot,
+    );
+    await reloadTeamPanel(page, serverId, team!.id);
+    await openSettingsPage(page, "attention");
+    const waiveButton = page.getByTestId("team-attention-attention-review-waiver-e2e-waive-review");
+    await expect(waiveButton).toBeVisible();
+    await waiveButton.click();
+    const waiverDialog = page.getByTestId("team-review-waiver-dialog");
+    await expect(waiverDialog).toBeVisible();
+    await expect(waiverDialog).toContainText("Final verification remains required");
+    const waiverSubmit = page.getByTestId("team-review-waiver-submit");
+    await expect(waiverSubmit).toBeDisabled();
+    const waiverReason = "No reviewer has the frozen review-waiver-e2e capability.";
+    await page.getByTestId("team-review-waiver-reason").fill(waiverReason);
+    await expect(waiverSubmit).toBeEnabled();
+    await waiverSubmit.click();
+    await expect(waiverDialog).toBeHidden();
+    await expect
+      .poll(async () => {
+        const inspected = (await client.inspectTeamMission({ missionId: waivable.id })).mission;
+        const accepted = inspected?.workstreams.find(
+          (candidate) => candidate.workstreamId === VALIDATION_WORKSTREAM_ID,
+        );
+        const waiver = inspected?.reviewWaivers.find(
+          (candidate) => candidate.attentionId === "attention-review-waiver-e2e",
+        );
+        return Boolean(
+          accepted?.status === "accepted" &&
+          accepted.reviewGate.kind === "required" &&
+          accepted.reviewGate.outcome.kind === "waived" &&
+          waiver?.reason === waiverReason &&
+          waiver.connectionId &&
+          waiver.selfReportedClientLabel,
+        );
+      })
+      .toBe(true);
+    await page.keyboard.press("Escape");
+
+    await seedMissionSnapshot(daemon.paseoHome, mission!.id, (current) =>
+      buildParallelSnapshot(current, team!),
+    );
 
     const blocked = await seedMissionSnapshot(daemon.paseoHome, mission!.id, buildBlockedSnapshot);
     const inspectedBlocked = await client.inspectTeamMission({ missionId: blocked.id });

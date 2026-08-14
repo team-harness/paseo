@@ -214,7 +214,8 @@ export interface MissionDetail extends MissionRow {
     reviewAssignmentId: string | null;
     reportFingerprint: string | null;
     waiverId: string | null;
-    waiverActorId: string | null;
+    waiverConnectionId: string | null;
+    waiverSelfReportedClientLabel: string | null;
     waiverReason: string | null;
     report: MissionAssignmentContract["report"];
   }>;
@@ -311,7 +312,8 @@ export function toMissionDetail(mission: TeamMission): MissionDetail {
           reviewAssignmentId,
           reportFingerprint,
           waiverId: waiver?.waiverId ?? null,
-          waiverActorId: waiver?.actorId ?? null,
+          waiverConnectionId: waiver?.connectionId ?? null,
+          waiverSelfReportedClientLabel: waiver?.selfReportedClientLabel ?? null,
           waiverReason: waiver?.reason ?? null,
           report:
             mission.assignments.find((assignment) => assignment.assignmentId === reviewAssignmentId)
@@ -402,7 +404,7 @@ function renderReviewGateEvidence(gate: MissionDetail["reviewGates"][number]): s
   }
   if (gate.outcome === "waived") {
     return [
-      `    waiver=${gate.waiverId ?? "-"} actor=${gate.waiverActorId ?? "-"} reason=${gate.waiverReason ?? "-"}`,
+      `    waiver=${gate.waiverId ?? "-"} connection=${gate.waiverConnectionId ?? "-"} self-reported-client=${gate.waiverSelfReportedClientLabel ?? "-"} reason=${gate.waiverReason ?? "-"}`,
     ];
   }
   return [];

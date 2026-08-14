@@ -225,7 +225,6 @@ describe("team mission", () => {
     const waiver = {
       waiverId: "waiver-api",
       attentionId: "attention-review-api",
-      actorId: "controller",
       gateKey: {
         subject: { workstreamId: "workstream-api", subjectAssignmentIds: ["assignment-api"] },
         planRevision: 1,
@@ -266,7 +265,9 @@ describe("team mission", () => {
       createdAt: "2026-08-07T11:08:00.000Z",
       resolution: {
         kind: "waive_review" as const,
-        actorId: "controller",
+        idempotencyKey: "waive-review-1",
+        gateKeyFingerprint: testDigest,
+        subjectFingerprint: testDigest,
         connectionId: "connection-1",
         selfReportedClientLabel: "paseo-app",
         reason: "No structurally eligible reviewer is available.",
@@ -387,7 +388,9 @@ describe("team mission", () => {
         status: "resolved",
         resolution: {
           kind: "waive_review",
-          actorId: "controller",
+          idempotencyKey: "waive-final",
+          gateKeyFingerprint: `sha256:${"a".repeat(64)}`,
+          subjectFingerprint: `sha256:${"b".repeat(64)}`,
           connectionId: "connection-1",
           selfReportedClientLabel: "paseo-app",
           reason: "Skip final verification.",

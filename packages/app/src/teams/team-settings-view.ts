@@ -57,7 +57,12 @@ export interface TeamPlanRow {
     | "awaiting_capabilities";
   readonly reviewOutcome: "not_required" | "pending" | "approved" | "waived";
   readonly reviewReport: MissionAssignmentReport | null;
-  readonly reviewWaiver: { waiverId: string; actorId: string; reason: string } | null;
+  readonly reviewWaiver: {
+    waiverId: string;
+    connectionId: string;
+    selfReportedClientLabel: string;
+    reason: string;
+  } | null;
   readonly finalVerificationStatus:
     | "awaiting_capabilities"
     | "awaiting_verifier"
@@ -377,7 +382,8 @@ function selectReviewPlanFields(
         ? null
         : {
             waiverId: reviewWaiver.waiverId,
-            actorId: reviewWaiver.actorId,
+            connectionId: reviewWaiver.connectionId,
+            selfReportedClientLabel: reviewWaiver.selfReportedClientLabel,
             reason: reviewWaiver.reason,
           },
   };

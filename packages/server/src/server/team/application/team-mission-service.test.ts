@@ -42,6 +42,7 @@ import {
 import { DaemonTeamAgentProfileMaterializer } from "./team-agent-profile-materializer.js";
 import { MethodologyCatalog, MethodologyCompileError } from "../methodology/catalog.js";
 import { TeamOperationCoordinator } from "./team-operation-coordinator.js";
+import { buildMissionReviewGate } from "../domain/mission-review-gate.js";
 
 const NOW = "2026-08-08T10:00:00.000Z";
 const STANDARD_REF = {
@@ -3060,6 +3061,184 @@ describe("TeamMissionService lifecycle", () => {
       status: "needs_attention",
       attentionItems: [{ attentionId: "attention-ownership", status: "open" }],
     });
+  });
+
+  test("atomically waives a current known-empty review gate and replays its idempotency key", async () => {
+    const fixture = createFixture(rootDirectory);
+    const team = await createTeam(fixture.service);
+    const mission = await fixture.service.startMission({
+      idempotencyKey: "start-review-waiver",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
+      objective: "Waive one known-empty review gate",
+      constraints: [],
+      acceptanceCriteria: ["Final verification remains required"],
+    });
+    const assignment = {
+      ...providerBlockedAssignment(mission.id),
+      assignmentId: "assignment-api",
+      workstreamId: "workstream-api",
+      assigneeMemberId: team.members[1]!.memberId,
+      finalVerificationGateFingerprint: null,
+      reviewGateEvidence: [],
+    };
+    const gate = buildMissionReviewGate({
+      workstreamId: "workstream-api",
+      planRevision: 1,
+      subjectAssignmentIds: [assignment.assignmentId],
+      requirements: {
+        requiredSkillIds: [],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 5,
+      },
+      selection: { kind: "awaiting_reviewer" },
+      outcome: { kind: "pending" },
+    });
+    if (gate.kind !== "required") throw new Error("required review gate expected");
+    const pending = await fixture.missions.update({
+      missionId: mission.id,
+      expectedRevision: mission.revision,
+      update: (current) => ({
+        ...current,
+        status: "active",
+        suspendedStatus: null,
+        planRevision: 1,
+        assignments: [assignment],
+        workstreams: [
+          {
+            workstreamId: "workstream-api",
+            kind: "delivery",
+            title: "API",
+            objective: "Ship API",
+            deliverables: ["API"],
+            acceptanceCriteria: ["API complete"],
+            requiredSkillIds: [],
+            preferredSkillIds: [],
+            requiredRuntimeCapabilityIds: [],
+            minimumLevel: 1,
+            planRevision: 1,
+            rosterSnapshotRevision: current.activeRosterSnapshotRevision,
+            methodologySnapshotRevision: 1,
+            dependencyWorkstreamIds: [],
+            mutableScope: { kind: "read_only" },
+            ownerMemberId: team.leadMemberId,
+            ownerMatchExplanation: {
+              recommendedMemberId: team.leadMemberId,
+              requiredSkillIds: [],
+              preferredSkillIds: [],
+              matchedPreferredSkillIds: [],
+              requiredRuntimeCapabilityIds: [],
+              minimumLevel: 1,
+              selectedLevel: 5,
+              eligibleMemberIds: [team.leadMemberId],
+              excludedMemberIds: [],
+              previousMemberId: null,
+              candidateOpenAssignments: [{ memberId: team.leadMemberId, openAssignments: 0 }],
+              continuedPreviousMember: false,
+              openAssignments: 0,
+              rosterIndex: 0,
+            },
+            ownerOverrideReason: null,
+            reviewGate: gate,
+            finalVerificationGate: null,
+            status: "blocked",
+          },
+        ],
+        attentionItems: [
+          {
+            attentionId: "attention-review",
+            kind: "review_gate_reviewer_unavailable",
+            scope: { kind: "workstream", workstreamId: "workstream-api", blockDependents: true },
+            reviewGateDetails: {
+              gateKey: gate.gateKey,
+              gateKeyFingerprint: gate.gateKeyFingerprint,
+              subjectFingerprint: gate.subjectFingerprint,
+            },
+            status: "open",
+            priorMissionStatus: null,
+            assignmentId: null,
+            summary: "No structurally eligible reviewer is available.",
+            pathEvidence: [],
+            createdAt: NOW,
+            resolution: null,
+          },
+        ],
+      }),
+    });
+    const conflicted = await fixture.missions.update({
+      missionId: mission.id,
+      expectedRevision: pending.mission.revision,
+      update: (current) => ({
+        ...current,
+        attentionItems: [
+          ...current.attentionItems,
+          {
+            ...structuredClone(current.attentionItems[0]!),
+            attentionId: "attention-review-concurrent",
+          },
+        ],
+      }),
+    });
+    const request = {
+      idempotencyKey: "waive-review-once",
+      missionId: mission.id,
+      attentionId: "attention-review",
+      expectedRevision: conflicted.mission.revision,
+      actorId: "session-label-must-not-be-persisted",
+      waiverSource: {
+        connectionId: "conn-daemon-issued",
+        selfReportedClientLabel: "paseo-app",
+      },
+      resolution: {
+        kind: "waive_review" as const,
+        gateKeyFingerprint: gate.gateKeyFingerprint,
+        subjectFingerprint: gate.subjectFingerprint,
+        reason: "No structurally eligible reviewer remains.",
+      },
+    };
+
+    await expect(fixture.service.resolveAttention(request)).rejects.toMatchObject({
+      code: "review_waiver_attention_conflict",
+    });
+    const unchanged = await fixture.missions.get(mission.id);
+    expect(unchanged?.mission.reviewWaivers).toEqual([]);
+    expect(unchanged?.mission.workstreams[0]?.reviewGate.outcome.kind).toBe("pending");
+    const cleared = await fixture.missions.update({
+      missionId: mission.id,
+      expectedRevision: conflicted.mission.revision,
+      update: (current) => ({
+        ...current,
+        attentionItems: current.attentionItems.filter(
+          (attention) => attention.attentionId !== "attention-review-concurrent",
+        ),
+      }),
+    });
+    request.expectedRevision = cleared.mission.revision;
+    const waived = await fixture.service.resolveAttention(request);
+    expect(waived).toMatchObject({
+      workstreams: [{ status: "accepted", reviewGate: { outcome: { kind: "waived" } } }],
+      attentionItems: [{ status: "resolved", resolution: { kind: "waive_review" } }],
+      reviewWaivers: [
+        {
+          connectionId: "conn-daemon-issued",
+          selfReportedClientLabel: "paseo-app",
+          reason: "No structurally eligible reviewer remains.",
+        },
+      ],
+    });
+    expect("actorId" in waived.reviewWaivers[0]!).toBe(false);
+    const replayed = await fixture.service.resolveAttention(request);
+    expect(replayed.revision).toBe(waived.revision);
+    expect(replayed.reviewWaivers).toHaveLength(1);
+    await expect(
+      fixture.service.resolveAttention({
+        ...request,
+        resolution: { ...request.resolution, reason: "Different reason." },
+      }),
+    ).rejects.toMatchObject({ code: "team_mission_review_waiver_idempotency_conflict" });
   });
 
   test("resumes a provider-blocked Assignment when its Attention is resolved", async () => {

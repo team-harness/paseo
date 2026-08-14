@@ -223,6 +223,26 @@ const MISSION: TeamMission = {
       createdAt: "2026-08-10T00:00:00.000Z",
       resolution: null,
     },
+    {
+      attentionId: "attention-review",
+      kind: "review_gate_reviewer_unavailable",
+      scope: { kind: "workstream", workstreamId: "workstream-api", blockDependents: true },
+      reviewGateDetails: {
+        gateKey: {
+          subject: { workstreamId: "workstream-api", subjectAssignmentIds: ["assignment-api"] },
+          planRevision: 1,
+        },
+        gateKeyFingerprint: `sha256:${"a".repeat(64)}`,
+        subjectFingerprint: `sha256:${"b".repeat(64)}`,
+      },
+      status: "open",
+      priorMissionStatus: null,
+      assignmentId: null,
+      summary: "No eligible reviewer",
+      pathEvidence: [],
+      createdAt: "2026-08-10T00:00:00.000Z",
+      resolution: null,
+    },
   ],
   reviewWaivers: [],
   lifecycleRecoveryFailure: null,
@@ -286,6 +306,33 @@ describe("TeamSettingsSheet Attention actions", () => {
       },
     });
     await waitFor(() => expect(replace.getAttribute("data-loading")).toBe("true"));
+  });
+
+  it("requires a reason before submitting a scoped known-empty review waiver", () => {
+    mocked.resolveAttention.mockResolvedValueOnce({ error: null });
+    renderSheet();
+    openAttention();
+    fireEvent.click(screen.getByTestId("team-attention-attention-review-waive-review"));
+
+    const submit = screen.getByTestId("team-review-waiver-submit");
+    expect(submit.getAttribute("data-disabled")).toBe("true");
+    fireEvent.change(screen.getByTestId("team-review-waiver-reason"), {
+      target: { value: "No structurally eligible reviewer remains." },
+    });
+    fireEvent.click(submit);
+
+    expect(mocked.resolveAttention).toHaveBeenCalledWith({
+      missionId: "mission-1",
+      attentionId: "attention-review",
+      expectedRevision: 4,
+      idempotencyKey: "team-ui:waive_review:attention-review:4",
+      resolution: {
+        kind: "waive_review",
+        gateKeyFingerprint: `sha256:${"a".repeat(64)}`,
+        subjectFingerprint: `sha256:${"b".repeat(64)}`,
+        reason: "No structurally eligible reviewer remains.",
+      },
+    });
   });
 
   it("does not render Attention mutations when the host client is unavailable", () => {

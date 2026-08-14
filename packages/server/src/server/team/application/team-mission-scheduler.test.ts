@@ -5906,7 +5906,6 @@ function waivedReviewRecoveryMission(): {
     {
       waiverId: "waiver-api",
       attentionId: "attention-review-api",
-      actorId: "controller",
       gateKey: pendingGate.gateKey,
       gateKeyFingerprint: pendingGate.gateKeyFingerprint,
       subjectFingerprint: pendingGate.subjectFingerprint,
@@ -5938,7 +5937,9 @@ function waivedReviewRecoveryMission(): {
       createdAt: NOW,
       resolution: {
         kind: "waive_review",
-        actorId: "controller",
+        idempotencyKey: "waive-review",
+        gateKeyFingerprint: pendingGate.gateKeyFingerprint,
+        subjectFingerprint: pendingGate.subjectFingerprint,
         connectionId: "connection-controller",
         selfReportedClientLabel: "paseo-app",
         reason: "No structurally eligible reviewer is available.",

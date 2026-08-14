@@ -3,13 +3,8 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-14
-    state: dispatched
-    run: paseo:15cf4010-d602-48c5-bf5d-9a82487d189f
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-waiver
-    base: c475a26c9
-next_action: 等待 TM-ITEM-14 完成 controller waiver、真实浏览器 E2E 与独立审查
+active_items: []
+next_action: 派发 TM-ITEM-15：刷新结构 capability 并请求 Lead 重新规划
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -31,12 +26,26 @@ remote_publish: final
 - [x] TM-ITEM-11
 - [x] TM-ITEM-12
 - [x] TM-ITEM-13
-- [ ] TM-ITEM-14
+- [x] TM-ITEM-14
 - [ ] TM-ITEM-15
 - [ ] TM-ITEM-16
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-14 完成。单父 checkpoint
+  `b36f2264ed43f65f9aa72477a046ace5fc70f42c`（parent `c475a26c9…`，tree
+  `515a5fe45a93120308de41db4c21bf7e4a4bb899`，diff
+  `3858df7c59ab1139c8e5d7317088b1372612505f97ae8344a99103c5cb69cb90`，30 files，
+  +1317/-99）实现 controller-only waiver、physical-source capability/identity、known-empty 复核、单
+  aggregate CAS、幂等冲突与并发 fail-closed、不可变审计证据、final verification evidence、App 原因
+  对话框、CLI 命令和真实浏览器流程；Agent tool catalog 未暴露 waiver。Paseo Claude Opus 5 reviewer
+  `c781bd8b-0cc3-44ca-9849-37e29d9410a7` 从 Round 1 的 0 blocking / 4 important 收敛到 Round 2
+  的 0/0。worker 验证 14 个定点文件 256 tests、waiver 与 aggregate 定点回归、隔离 daemon E2E、
+  Playwright 1/1、build/server、lint、format 与 diff-check 全绿；typecheck 仅命中改动外
+  `draggable-list.native.tsx:122` 基线错误。主分支无冲突合入且 staged diff 与受审 checkpoint 逐字
+  一致；code-deep 覆盖 30/30 文件，定点确认 connection identity 按 physical socket 存储、hello 更新、
+  断开清理，并从当前 request source 进入 waiver CAS，未发现具体身份泄漏或陈旧写入路径。
 
 - 2026-08-14：TM-ITEM-14 已从里程碑 `c475a26c9` 派发到 Paseo 托管 worktree
   `wks_18401c12f21b1596`（`team-methodology-review-waiver`），实现 agent

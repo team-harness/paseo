@@ -30,7 +30,8 @@ export type TeamIdentityKind =
   | "assignment"
   | "lease"
   | "delivery"
-  | "message";
+  | "message"
+  | "waiver";
 
 export interface TeamIdentityPort {
   next(kind: TeamIdentityKind): string;

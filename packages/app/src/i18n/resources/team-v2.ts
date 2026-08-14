@@ -211,6 +211,7 @@ export const teamV2En = {
       readOnly: "Read only",
       workspaceScope: "Entire Workspace",
       workstreamBlocker: "Workstream blocker",
+      selfReportedClient: "self-reported client",
     },
     attention: {
       title: "Open Attention",
@@ -223,6 +224,9 @@ export const teamV2En = {
       resolutionReason: "Resolved from Team settings: {{resolution}}",
       scopeMission: "Mission scope",
       scopeWorkstream: "Workstream: {{workstream}}",
+      waiveReview: "Waive review",
+      waiveReviewReason: "Required immutable reason",
+      waiveReviewFinalVerification: "Final verification remains required and cannot be waived.",
       kind: {
         ownership_violation: "Workspace ownership conflict",
         missing_report: "Missing Assignment report",
@@ -586,6 +590,7 @@ export const teamV2ZhCN: TeamV2Resources = {
       readOnly: "只读",
       workspaceScope: "整个 Workspace",
       workstreamBlocker: "Workstream 阻塞项",
+      selfReportedClient: "自报 client label",
     },
     attention: {
       title: "待处理 Attention",
@@ -598,6 +603,9 @@ export const teamV2ZhCN: TeamV2Resources = {
       resolutionReason: "从 Team 设置处理：{{resolution}}",
       scopeMission: "Mission 范围",
       scopeWorkstream: "Workstream：{{workstream}}",
+      waiveReview: "豁免审查",
+      waiveReviewReason: "必填且不可变的原因",
+      waiveReviewFinalVerification: "最终验证仍然必需，且不可豁免。",
       kind: {
         ownership_violation: "Workspace 所有权冲突",
         missing_report: "缺少 Assignment 报告",

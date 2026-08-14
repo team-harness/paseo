@@ -828,13 +828,19 @@ function expectedFinalReviewGateEvidence(mission: TeamMission): MissionReviewGat
       ];
     }
     if (gate.outcome.kind === "waived") {
+      const waiverId = gate.outcome.waiverId;
+      const waiver = mission.reviewWaivers.find((candidate) => candidate.waiverId === waiverId);
+      if (!waiver) return [];
       return [
         {
           kind: "waived" as const,
           gateKey: gate.gateKey,
           gateKeyFingerprint: gate.gateKeyFingerprint,
           subjectFingerprint: gate.subjectFingerprint,
-          waiverId: gate.outcome.waiverId,
+          waiverId,
+          connectionId: waiver.connectionId,
+          selfReportedClientLabel: waiver.selfReportedClientLabel,
+          reason: waiver.reason,
         },
       ];
     }
@@ -1814,9 +1820,10 @@ function isValidReviewWaiverAttention(
     sameCanonicalValue(details.gateKey, gateKey) &&
     details.gateKeyFingerprint === gateKeyFingerprint &&
     details.subjectFingerprint === subjectFingerprint &&
-    resolution.actorId === waiver.actorId &&
     resolution.connectionId === waiver.connectionId &&
     resolution.selfReportedClientLabel === waiver.selfReportedClientLabel &&
+    resolution.gateKeyFingerprint === waiver.gateKeyFingerprint &&
+    resolution.subjectFingerprint === waiver.subjectFingerprint &&
     resolution.reason === waiver.reason &&
     resolution.resolvedAt === waiver.createdAt
   );
