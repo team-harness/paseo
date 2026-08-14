@@ -274,6 +274,25 @@ test.each([{}, { teamMissions: true }, { teamMissions: true, globalTeamProfiles:
   },
 );
 
+test.each([
+  { globalTeamProfiles: true, teamMethodologies: true, teamProfileUpgrades: true },
+  { teamMissions: true, teamMethodologies: true, teamProfileUpgrades: true },
+  { teamMissions: true, globalTeamProfiles: true, teamProfileUpgrades: true },
+])("member execution refresh requires the complete Team V1 capability", async (features) => {
+  const { client, mock } = await connectedClient(features);
+  const sentBefore = mock.sent.length;
+
+  await expect(
+    client.refreshTeamMemberExecution({
+      idempotencyKey: "idem-refresh",
+      teamId: team.id,
+      memberId: "member-lead",
+      expectedTeamRevision: 1,
+    }),
+  ).rejects.toThrow("Update the host to use Team V1");
+  expect(mock.sent).toHaveLength(sentBefore);
+});
+
 test("a pre-upgrade daemon rejects TM-ITEM-10 mutations locally", async () => {
   const { client, mock } = await connectedClient({
     teamMissions: true,
