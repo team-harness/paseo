@@ -143,17 +143,9 @@ export function matchWorkstreamOwner(input: MatchWorkstreamOwnerInput): Workstre
 }
 
 export function matchWorkstreamReviewer(input: MatchWorkstreamReviewerInput): WorkstreamOwnerMatch {
-  if (input.ownerMutableScope.kind !== "read_only") {
-    const distinctMatch = matchWorkstreamMember({
-      ...input,
-      previousMemberId: input.previousReviewerMemberId,
-      excludedMemberIds: [input.ownerMemberId],
-    });
-    if (distinctMatch.kind === "matched") return distinctMatch;
-  }
   return matchWorkstreamMember({
     ...input,
     previousMemberId: input.previousReviewerMemberId,
-    excludedMemberIds: [],
+    excludedMemberIds: [input.ownerMemberId],
   });
 }

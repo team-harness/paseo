@@ -93,6 +93,7 @@ function mission(): Omit<TeamMission, "revision" | "createdAt" | "updatedAt" | "
     workstreamPlanSnapshots: [],
     assignments: [],
     attentionItems: [],
+    reviewWaivers: [],
     lifecycleRecoveryFailure: null,
   };
 }
@@ -180,6 +181,8 @@ function openAssignment(
     revision: 1,
     kind: "delivery",
     subjectAssignmentIds: [],
+    reviewGateFingerprint: null,
+    reviewSubjectFingerprint: null,
     missionId: "mission-storage",
     workstreamId: "workstream-storage",
     assigneeMemberId: "member-lead",
@@ -1183,6 +1186,7 @@ describe("MissionStore", () => {
       {
         attentionId: "runtime-scheduler:mission-storage",
         kind: "lead_unavailable",
+        scope: { kind: "mission" as const },
         status: "open",
         priorMissionStatus: "planning",
         assignmentId: null,
@@ -1194,6 +1198,7 @@ describe("MissionStore", () => {
       {
         attentionId: "notification:delivery-before-finish",
         kind: "notification_unacknowledged",
+        scope: { kind: "mission" as const },
         status: "open",
         priorMissionStatus: "planning",
         assignmentId: null,

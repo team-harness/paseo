@@ -1,4 +1,9 @@
-import type { TeamMission, TeamSkill, TeamV2 } from "@getpaseo/protocol/team/v2-types";
+import type {
+  MissionAssignmentContract,
+  TeamMission,
+  TeamSkill,
+  TeamV2,
+} from "@getpaseo/protocol/team/v2-types";
 import type { MethodologyDescriptor } from "@getpaseo/protocol/team/v2-rpc-schemas";
 import type { AgentProfileExecutionFacts } from "@getpaseo/protocol/team/execution-source-status";
 import { selectTeamMemberExecutionSourceStatus } from "@getpaseo/protocol/team/execution-source-status";
@@ -180,6 +185,19 @@ export interface MissionDetail extends MissionRow {
   assignments: number;
   attentionItems: number;
   completedAt: string | null;
+  reviewGates: Array<{
+    workstreamId: string;
+    subjectAssignmentIds: string[];
+    selection: string;
+    outcome: string;
+    reviewerMemberId: string | null;
+    reviewAssignmentId: string | null;
+    reportFingerprint: string | null;
+    waiverId: string | null;
+    waiverActorId: string | null;
+    waiverReason: string | null;
+    report: MissionAssignmentContract["report"];
+  }>;
 }
 
 export function toMissionDetail(mission: TeamMission): MissionDetail {
@@ -192,6 +210,37 @@ export function toMissionDetail(mission: TeamMission): MissionDetail {
     assignments: mission.assignments.length,
     attentionItems: mission.attentionItems.length,
     completedAt: mission.completedAt,
+    reviewGates: mission.workstreams.flatMap((workstream) => {
+      const gate = workstream.reviewGate;
+      if (gate.kind !== "required") return [];
+      const reviewAssignmentId =
+        gate.outcome.kind === "approved" ? gate.outcome.reviewAssignmentId : null;
+      const reportFingerprint =
+        gate.outcome.kind === "approved" ? gate.outcome.reportFingerprint : null;
+      const waiverId = gate.outcome.kind === "waived" ? gate.outcome.waiverId : null;
+      const waiver =
+        waiverId === null
+          ? null
+          : mission.reviewWaivers.find((candidate) => candidate.waiverId === waiverId);
+      return [
+        {
+          workstreamId: workstream.workstreamId,
+          subjectAssignmentIds: gate.gateKey.subject.subjectAssignmentIds,
+          selection: gate.selection.kind,
+          outcome: gate.outcome.kind,
+          reviewerMemberId:
+            gate.selection.kind === "assigned" ? gate.selection.reviewerMemberId : null,
+          reviewAssignmentId,
+          reportFingerprint,
+          waiverId: waiver?.waiverId ?? null,
+          waiverActorId: waiver?.actorId ?? null,
+          waiverReason: waiver?.reason ?? null,
+          report:
+            mission.assignments.find((assignment) => assignment.assignmentId === reviewAssignmentId)
+              ?.report ?? null,
+        },
+      ];
+    }),
   };
 }
 
@@ -229,5 +278,23 @@ function renderMissionBlock(mission: MissionDetail): string {
     `  workstreams: ${mission.workstreams}`,
     `  assignments: ${mission.assignments}`,
     `  attention items: ${mission.attentionItems}`,
+    ...mission.reviewGates.flatMap((gate) => [
+      `  review gate ${gate.workstreamId}: ${gate.outcome} (${gate.selection}) subjects=${gate.subjectAssignmentIds.join(",") || "-"}`,
+      ...renderReviewGateEvidence(gate),
+    ]),
   ].join("\n");
+}
+
+function renderReviewGateEvidence(gate: MissionDetail["reviewGates"][number]): string[] {
+  if (gate.outcome === "approved") {
+    return [
+      `    report=${gate.reportFingerprint ?? "-"} assignment=${gate.reviewAssignmentId ?? "-"} status=${gate.report?.status ?? "-"} verdict=${gate.report?.status === "completed" ? (gate.report.verdict ?? "-") : "-"} summary=${gate.report?.summary ?? "-"}`,
+    ];
+  }
+  if (gate.outcome === "waived") {
+    return [
+      `    waiver=${gate.waiverId ?? "-"} actor=${gate.waiverActorId ?? "-"} reason=${gate.waiverReason ?? "-"}`,
+    ];
+  }
+  return [];
 }

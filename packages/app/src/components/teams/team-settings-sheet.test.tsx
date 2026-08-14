@@ -214,6 +214,7 @@ const MISSION: TeamMission = {
     {
       attentionId: "attention-lead",
       kind: "lead_unavailable",
+      scope: { kind: "mission" as const },
       status: "open",
       priorMissionStatus: "active",
       assignmentId: null,
@@ -223,6 +224,7 @@ const MISSION: TeamMission = {
       resolution: null,
     },
   ],
+  reviewWaivers: [],
   lifecycleRecoveryFailure: null,
   createdAt: "2026-08-10T00:00:00.000Z",
   updatedAt: "2026-08-10T00:00:00.000Z",

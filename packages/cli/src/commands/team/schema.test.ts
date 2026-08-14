@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
-import { toMissionDetail, toMissionRow, toTeamProfileDetail, toTeamProfileRow } from "./schema.js";
+import {
+  missionDetailSchema,
+  toMissionDetail,
+  toMissionRow,
+  toTeamProfileDetail,
+  toTeamProfileRow,
+} from "./schema.js";
 
 const timestamp = "2026-08-09T08:00:00.000Z";
 const team = {
@@ -121,6 +127,113 @@ describe("Mission output", () => {
       room: "room-1",
       assignments: 0,
       attentionItems: 0,
+      reviewGates: [],
     });
+  });
+
+  it("exposes the persisted waiver controller in Mission inspect output", () => {
+    const digest = `sha256:${"1".repeat(64)}`;
+    const waivedMission = {
+      ...mission,
+      workstreams: [
+        {
+          workstreamId: "workstream-api",
+          reviewGate: {
+            kind: "required",
+            gateKey: {
+              subject: {
+                workstreamId: "workstream-api",
+                subjectAssignmentIds: ["assignment-api"],
+              },
+              planRevision: 1,
+            },
+            selection: { kind: "awaiting_reviewer" },
+            outcome: { kind: "waived", waiverId: "waiver-api" },
+          },
+        },
+      ],
+      reviewWaivers: [
+        {
+          waiverId: "waiver-api",
+          attentionId: "attention-review-api",
+          actorId: "controller-user",
+          gateKey: {
+            subject: {
+              workstreamId: "workstream-api",
+              subjectAssignmentIds: ["assignment-api"],
+            },
+            planRevision: 1,
+          },
+          gateKeyFingerprint: digest,
+          subjectFingerprint: digest,
+          connectionId: "connection-1",
+          selfReportedClientLabel: "paseo-cli",
+          reason: "No eligible reviewer is available.",
+          createdAt: timestamp,
+        },
+      ],
+    } as unknown as TeamMission;
+
+    expect(toMissionDetail(waivedMission).reviewGates[0]).toMatchObject({
+      outcome: "waived",
+      waiverId: "waiver-api",
+      waiverActorId: "controller-user",
+    });
+    const output = missionDetailSchema.renderHuman?.(
+      { type: "single", data: toMissionDetail(waivedMission), schema: missionDetailSchema },
+      { format: "table", quiet: false, noHeaders: false, noColor: true },
+    );
+    expect(output).toContain(
+      "waiver=waiver-api actor=controller-user reason=No eligible reviewer is available.",
+    );
+  });
+
+  it("renders approved review report evidence in human Mission output", () => {
+    const reportFingerprint = `sha256:${"2".repeat(64)}`;
+    const approvedMission = {
+      ...mission,
+      workstreams: [
+        {
+          workstreamId: "workstream-api",
+          reviewGate: {
+            kind: "required",
+            gateKey: {
+              subject: {
+                workstreamId: "workstream-api",
+                subjectAssignmentIds: ["assignment-api"],
+              },
+              planRevision: 1,
+            },
+            selection: { kind: "assigned", reviewerMemberId: "member-reviewer" },
+            outcome: {
+              kind: "approved",
+              reviewAssignmentId: "assignment-review-api",
+              reportFingerprint,
+            },
+          },
+        },
+      ],
+      assignments: [
+        {
+          assignmentId: "assignment-review-api",
+          report: {
+            status: "completed",
+            verdict: "approved",
+            summary: "Review evidence is complete.",
+          },
+        },
+      ],
+      reviewWaivers: [],
+    } as unknown as TeamMission;
+    const detail = toMissionDetail(approvedMission);
+
+    const output = missionDetailSchema.renderHuman?.(
+      { type: "single", data: detail, schema: missionDetailSchema },
+      { format: "table", quiet: false, noHeaders: false, noColor: true },
+    );
+
+    expect(output).toContain(
+      `report=${reportFingerprint} assignment=assignment-review-api status=completed verdict=approved summary=Review evidence is complete.`,
+    );
   });
 });

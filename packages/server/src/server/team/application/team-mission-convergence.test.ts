@@ -137,6 +137,7 @@ describe("Team Mission seeded convergence", () => {
       attentionItems: [
         expect.objectContaining({
           kind: "assignment_requires_replan",
+          scope: { kind: "mission" as const },
           status: "open",
           assignmentId: running.assignmentId,
         }),
@@ -174,6 +175,7 @@ describe("Team Mission seeded convergence", () => {
       attentionItems: [
         expect.objectContaining({
           kind: "assignment_requires_replan",
+          scope: { kind: "mission" as const },
           status: "resolved",
           resolution: expect.objectContaining({ kind: "replan" }),
         }),
@@ -230,6 +232,7 @@ describe("Team Mission seeded convergence", () => {
       attentionItems: [
         expect.objectContaining({
           kind: "assignment_requires_replan",
+          scope: { kind: "mission" as const },
           status: "open",
           assignmentId: originalVerification.assignmentId,
         }),
@@ -276,6 +279,7 @@ describe("Team Mission seeded convergence", () => {
       attentionItems: [
         expect.objectContaining({
           kind: "assignment_requires_replan",
+          scope: { kind: "mission" as const },
           status: "resolved",
           resolution: expect.objectContaining({ kind: "replan" }),
         }),

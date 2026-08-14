@@ -183,7 +183,14 @@ describe("Team Missions real-daemon WebSocket contract", () => {
     expect(
       planned.workstreams.find((workstream) => workstream.workstreamId === "backend"),
     ).toMatchObject({
-      reviewerMemberId: memberByRole["Quality engineer"]?.memberId,
+      reviewGate: {
+        kind: "required",
+        selection: {
+          kind: "assigned",
+          reviewerMemberId: memberByRole["Quality engineer"]?.memberId,
+        },
+        outcome: { kind: "pending" },
+      },
     });
 
     const assignResult = await leadMcp.callTool({

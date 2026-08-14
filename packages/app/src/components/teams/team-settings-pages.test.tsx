@@ -100,10 +100,11 @@ const LEAD_RECOVERY_KINDS = [
   "reviewer_unavailable",
 ] as const satisfies readonly MissionAttentionItem["kind"][];
 
-function attention(kind: MissionAttentionItem["kind"], index: number): MissionAttentionItem {
+function attention(kind: (typeof ATTENTION_KINDS)[number], index: number): MissionAttentionItem {
   return {
     attentionId: `attention-${index}`,
     kind,
+    scope: { kind: "mission" },
     status: "open",
     priorMissionStatus: "active",
     assignmentId: "assignment-1",
@@ -222,6 +223,7 @@ function createMission(overrides: Partial<TeamMission> = {}): TeamMission {
     workstreamPlanSnapshots: [],
     assignments: [],
     attentionItems: [],
+    reviewWaivers: [],
     lifecycleRecoveryFailure: null,
     createdAt: "2026-08-10T00:00:00.000Z",
     updatedAt: "2026-08-10T00:00:00.000Z",

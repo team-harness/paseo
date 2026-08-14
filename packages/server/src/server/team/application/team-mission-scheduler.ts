@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type {
   FrozenPromptSection,
   MissionAssignmentContract,
+  MissionWorkstream,
   MissionScopeLease,
   MissionWorkspaceAuditPolicy,
   MissionWorkspaceBaseline,
@@ -24,7 +25,12 @@ import type {
   AcceptedTurnFact,
   AcceptedTurnOutcome,
 } from "../domain/assignment-contract-validation.js";
-import { resolveMissionAssignmentCoverage } from "../domain/mission-validation.js";
+import {
+  isMissionReviewGateSettledByEvidence,
+  resolveMissionAssignmentCoverage,
+  resolveMissionSettledReviewGateWorkstreamIds,
+} from "../domain/mission-validation.js";
+import { missionReviewReportFingerprint } from "../domain/mission-review-gate.js";
 import {
   assignmentReplanAttentionId,
   assignmentReplanSummary,
@@ -357,6 +363,7 @@ export class TeamMissionScheduler {
     stored = await this.reconcileParticipantAvailability(stored);
     stored = await this.reconcileFinishedDispatchIntents(stored);
     stored = await this.reconcileReleasedAssignments(stored);
+    stored = await this.reconcileReviewGateOutcomes(stored);
     stored = await this.reconcileSettledWorkstreamStatuses(stored);
     await this.synchronizeReportHolds(stored.mission);
     stored = await this.reconcileReportRecoveries(stored, observedTurnFacts);
@@ -366,8 +373,10 @@ export class TeamMissionScheduler {
     }
     stored = await this.reconcileParticipantAvailability(stored);
     stored = await this.reconcileFinishedDispatchIntents(stored);
+    const acceptedTurnsById = new Map(stored.acceptedTurnFacts.map((fact) => [fact.turnId, fact]));
     const initialReady = selectReadyAssignments(
       stored.mission,
+      { acceptedTurnsById },
       stored.assignmentReportRecoveryOutbox,
     );
     const newParticipants = await this.provisionMissingParticipants(stored.mission, initialReady);
@@ -382,7 +391,11 @@ export class TeamMissionScheduler {
       });
       await this.options.events.publishMission(stored.mission);
     }
-    const ready = selectReadyAssignments(stored.mission, stored.assignmentReportRecoveryOutbox);
+    const ready = selectReadyAssignments(
+      stored.mission,
+      { acceptedTurnsById },
+      stored.assignmentReportRecoveryOutbox,
+    );
     const prepared: PreparedDispatch[] = [];
     const newIntents: MissionAssignmentDispatchIntent[] = [];
     for (const assignment of ready) {
@@ -522,6 +535,7 @@ export class TeamMissionScheduler {
                 {
                   attentionId,
                   kind: "provider_unavailable" as const,
+                  scope: { kind: "mission" as const },
                   status: "open" as const,
                   priorMissionStatus: canSuspend ? priorMissionStatus : ("active" as const),
                   assignmentId,
@@ -543,6 +557,7 @@ export class TeamMissionScheduler {
                 {
                   attentionId,
                   kind: "dispatch_acceptance_unknown" as const,
+                  scope: { kind: "mission" as const },
                   status: "open" as const,
                   priorMissionStatus: canSuspend ? priorMissionStatus : ("active" as const),
                   assignmentId,
@@ -608,7 +623,13 @@ export class TeamMissionScheduler {
                     (candidate) => candidate.assignment.workstreamId === workstream.workstreamId,
                   )
                 ) {
-                  return { ...workstream, status: "active" as const };
+                  const acceptedAssignment = accepted.find(
+                    (candidate) => candidate.assignment.workstreamId === workstream.workstreamId,
+                  )!.assignment;
+                  return {
+                    ...workstream,
+                    status: acceptedAssignment.kind === "review" ? "review" : "active",
+                  };
                 }
                 return [
                   ...exhaustedProviderFailures.values(),
@@ -873,6 +894,7 @@ export class TeamMissionScheduler {
     const coverage = resolveMissionAssignmentCoverage(stored.mission, {
       acceptedTurnsById: factsByTurnId,
     });
+    const validationContext = { acceptedTurnsById: factsByTurnId };
     for (const workstream of stored.mission.workstreams) {
       if (workstream.kind === "verification") continue;
       const deliveryAssignmentId = coverage.assignmentIdsByWorkstreamId.get(
@@ -884,12 +906,15 @@ export class TeamMissionScheduler {
       ) {
         continue;
       }
-      const hasApprovedReview = coverage.approvedReviewAssignmentIdsByWorkstreamId.has(
-        workstream.workstreamId,
-      );
       desiredStatuses.set(
         workstream.workstreamId,
-        workstream.reviewPolicy === "required" && !hasApprovedReview ? "review" : "accepted",
+        !isMissionReviewGateSettledByEvidence(
+          stored.mission,
+          workstream.workstreamId,
+          validationContext,
+        )
+          ? "review"
+          : "accepted",
       );
     }
     for (const workstream of stored.mission.workstreams) {
@@ -914,7 +939,15 @@ export class TeamMissionScheduler {
       }
       desiredStatuses.set(
         workstream.workstreamId,
-        settledWorkstreamStatus(workstream, assignment, fact.outcome),
+        settledWorkstreamStatus(
+          assignment,
+          fact.outcome,
+          isMissionReviewGateSettledByEvidence(
+            stored.mission,
+            workstream.workstreamId,
+            validationContext,
+          ),
+        ),
       );
     }
     if (
@@ -935,6 +968,83 @@ export class TeamMissionScheduler {
           ...workstream,
           status: desiredStatuses.get(workstream.workstreamId) ?? workstream.status,
         })),
+      }),
+    });
+    await this.options.events.publishMission(updated.mission);
+    return updated;
+  }
+
+  private async reconcileReviewGateOutcomes(
+    stored: NonNullable<Awaited<ReturnType<MissionStore["get"]>>>,
+  ): Promise<NonNullable<Awaited<ReturnType<MissionStore["get"]>>>> {
+    const factsByTurnId = new Map(stored.acceptedTurnFacts.map((fact) => [fact.turnId, fact]));
+    const approvedCandidatesByWorkstreamId = new Map<
+      string,
+      Array<{ assignment: MissionAssignmentContract; outcome: MissionWorkstream["reviewGate"] }>
+    >();
+    const decidedAt = this.options.clock.now();
+    for (const assignment of stored.mission.assignments) {
+      const workstream = stored.mission.workstreams.find(
+        (candidate) => candidate.workstreamId === assignment.workstreamId,
+      );
+      if (
+        !workstream ||
+        workstream.reviewGate.kind !== "required" ||
+        workstream.reviewGate.outcome.kind !== "pending" ||
+        assignment.report?.status !== "completed"
+      ) {
+        continue;
+      }
+      const reviewGate = {
+        ...workstream.reviewGate,
+        outcome: {
+          kind: "approved" as const,
+          gateKeyFingerprint: workstream.reviewGate.gateKeyFingerprint,
+          subjectFingerprint: workstream.reviewGate.subjectFingerprint,
+          reviewAssignmentId: assignment.assignmentId,
+          reportFingerprint: missionReviewReportFingerprint(assignment.report),
+          inheritedFromGateFingerprint: null,
+          decidedAt,
+        },
+      };
+      const tentativeMission: TeamMission = {
+        ...stored.mission,
+        workstreams: stored.mission.workstreams.map((candidate) =>
+          candidate.workstreamId === workstream.workstreamId
+            ? { ...candidate, reviewGate }
+            : candidate,
+        ),
+      };
+      if (
+        !isMissionReviewGateSettledByEvidence(tentativeMission, workstream.workstreamId, {
+          acceptedTurnsById: factsByTurnId,
+        })
+      ) {
+        continue;
+      }
+      const candidates = approvedCandidatesByWorkstreamId.get(workstream.workstreamId) ?? [];
+      candidates.push({ assignment, outcome: reviewGate });
+      approvedCandidatesByWorkstreamId.set(workstream.workstreamId, candidates);
+    }
+    const approvedByWorkstreamId = new Map(
+      [...approvedCandidatesByWorkstreamId].flatMap(([workstreamId, candidates]) =>
+        candidates.length === 1 ? [[workstreamId, candidates[0]!] as const] : [],
+      ),
+    );
+    if (approvedByWorkstreamId.size === 0) return stored;
+    const updated = await this.options.missions.update({
+      missionId: stored.mission.id,
+      expectedRevision: stored.mission.revision,
+      update: (mission) => ({
+        ...mission,
+        workstreams: mission.workstreams.map((workstream) => {
+          const approved = approvedByWorkstreamId.get(workstream.workstreamId);
+          if (!approved || approved.outcome.kind !== "required") return workstream;
+          return {
+            ...workstream,
+            reviewGate: approved.outcome,
+          };
+        }),
       }),
     });
     await this.options.events.publishMission(updated.mission);
@@ -1054,13 +1164,60 @@ export class TeamMissionScheduler {
 
     const acceptedTurnsById = new Map(stored.acceptedTurnFacts.map((fact) => [fact.turnId, fact]));
     const coverage = resolveMissionAssignmentCoverage(mission, { acceptedTurnsById });
+    const settledReviewGateWorkstreamIds = resolveMissionSettledReviewGateWorkstreamIds(mission, {
+      acceptedTurnsById,
+    });
     const qualityGates = planMissionQualityGates({
       mission,
       coverage,
+      settledReviewGateWorkstreamIds,
+      acceptedTurnsById,
       createdAt: this.options.clock.now(),
     });
     const hasOpenAttention = mission.attentionItems.some((item) => item.status === "open");
     const additions = hasOpenAttention ? [] : qualityGates.additions;
+    const replacementReviewIdByWorkstreamId = new Map(
+      qualityGates.selectedAssignments.flatMap((assignment) =>
+        assignment.kind === "review" &&
+        (mission.assignments.some(
+          (candidate) => candidate.assignmentId === assignment.assignmentId,
+        ) ||
+          additions.some((candidate) => candidate.assignmentId === assignment.assignmentId))
+          ? [[assignment.workstreamId, assignment.assignmentId] as const]
+          : [],
+      ),
+    );
+    const obsoleteReviewIds = new Set(
+      qualityGates.obsoleteReviewAssignments.flatMap((assignment) =>
+        replacementReviewIdByWorkstreamId.has(assignment.workstreamId)
+          ? [assignment.assignmentId]
+          : [],
+      ),
+    );
+    const acceptedReviewTurnIds = new Set(
+      qualityGates.obsoleteReviewAssignments.flatMap((assignment) => {
+        if (assignment.acceptedTurnId === null || assignment.runtimeAgentId === null) return [];
+        const fact = acceptedTurnsById.get(assignment.acceptedTurnId);
+        return fact?.assignmentId === assignment.assignmentId &&
+          fact.runtimeAgentId === assignment.runtimeAgentId
+          ? [assignment.acceptedTurnId]
+          : [];
+      }),
+    );
+    const selectedVerification = qualityGates.currentVerificationAssignments[0];
+    const selectedVerificationIsMaterialized =
+      selectedVerification !== undefined &&
+      (mission.assignments.some(
+        (assignment) => assignment.assignmentId === selectedVerification.assignmentId,
+      ) ||
+        additions.some(
+          (assignment) => assignment.assignmentId === selectedVerification.assignmentId,
+        ));
+    const obsoleteVerificationIds = new Set(
+      selectedVerificationIsMaterialized
+        ? qualityGates.obsoleteVerificationAssignments.map((assignment) => assignment.assignmentId)
+        : [],
+    );
     const allDeliveryPathsAccepted = mission.workstreams
       .filter((workstream) => workstream.kind !== "verification")
       .every((workstream) => workstream.status === "accepted");
@@ -1085,16 +1242,63 @@ export class TeamMissionScheduler {
 
     const advancesExistingVerification =
       canEnterVerification && canAdvanceExistingVerification && mission.status !== "verifying";
-    if (additions.length === 0 && !advancesExistingVerification) return stored;
-    const updated = await this.options.missions.update({
+    if (
+      additions.length === 0 &&
+      obsoleteReviewIds.size === 0 &&
+      obsoleteVerificationIds.size === 0 &&
+      !advancesExistingVerification
+    ) {
+      return stored;
+    }
+    const updated = await this.options.missions.updateAggregate({
       missionId: mission.id,
       expectedRevision: mission.revision,
-      update: (current) => ({
-        ...current,
-        status: advancesExistingVerification ? "verifying" : current.status,
-        assignments: [...current.assignments, ...additions],
+      update: ({ mission: current, recovery }) => ({
+        mission: {
+          ...current,
+          status: advancesExistingVerification ? "verifying" : current.status,
+          workstreams: current.workstreams.map((workstream) =>
+            replacementReviewIdByWorkstreamId.has(workstream.workstreamId)
+              ? { ...workstream, status: "review" as const }
+              : workstream,
+          ),
+          assignments: [
+            ...current.assignments.map((assignment) =>
+              obsoleteVerificationIds.has(assignment.assignmentId) ||
+              obsoleteReviewIds.has(assignment.assignmentId)
+                ? supersedeQualityGateAssignment({
+                    assignment,
+                    replacementAssignmentId:
+                      assignment.kind === "review"
+                        ? (replacementReviewIdByWorkstreamId.get(assignment.workstreamId) ?? null)
+                        : (selectedVerification?.assignmentId ?? null),
+                    hasAcceptedTurn:
+                      assignment.kind !== "review" ||
+                      (assignment.acceptedTurnId !== null &&
+                        acceptedReviewTurnIds.has(assignment.acceptedTurnId)),
+                    settledAt: this.options.clock.now(),
+                  })
+                : assignment,
+            ),
+            ...additions,
+          ],
+        },
+        recovery: {
+          ...recovery,
+          assignmentReportRecoveryOutbox: recovery.assignmentReportRecoveryOutbox.filter(
+            (delivery) => !obsoleteReviewIds.has(delivery.assignmentId),
+          ),
+        },
       }),
     });
+    await Promise.all(
+      [...obsoleteReviewIds, ...obsoleteVerificationIds].map((assignmentId) =>
+        this.options.leases.releaseAssignment({
+          workspaceId: mission.workspaceId,
+          assignmentId,
+        }),
+      ),
+    );
     await this.options.events.publishMission(updated.mission);
     return updated;
   }
@@ -1181,6 +1385,7 @@ export class TeamMissionScheduler {
               {
                 attentionId,
                 kind: "ownership_violation" as const,
+                scope: { kind: "mission" as const },
                 status: "open" as const,
                 priorMissionStatus: canSuspend ? priorMissionStatus : ("active" as const),
                 assignmentId: transition.assignment.assignmentId,
@@ -1201,6 +1406,7 @@ export class TeamMissionScheduler {
               {
                 attentionId,
                 kind: "assignment_requires_replan" as const,
+                scope: { kind: "mission" as const },
                 status: "open" as const,
                 priorMissionStatus: canSuspend ? priorMissionStatus : ("active" as const),
                 assignmentId: transition.assignment.assignmentId,
@@ -1242,9 +1448,11 @@ export class TeamMissionScheduler {
                 ? {
                     ...workstream,
                     status: settledWorkstreamStatus(
-                      workstream,
                       transition.assignment,
                       transition.fact.outcome,
+                      isMissionReviewGateSettledByEvidence(mission, workstream.workstreamId, {
+                        acceptedTurnsById: factsByTurnId,
+                      }),
                     ),
                   }
                 : workstream;
@@ -1611,6 +1819,7 @@ export class TeamMissionScheduler {
             {
               attentionId,
               kind: "missing_report" as const,
+              scope: { kind: "mission" as const },
               status: "open" as const,
               priorMissionStatus,
               assignmentId: delivery.assignmentId,
@@ -1733,6 +1942,7 @@ export class TeamMissionScheduler {
                   {
                     attentionId,
                     kind: "missing_report" as const,
+                    scope: { kind: "mission" as const },
                     status: "open" as const,
                     priorMissionStatus,
                     assignmentId: delivery.assignmentId,
@@ -1874,10 +2084,38 @@ function reportSemanticState(
   return "failed";
 }
 
+function supersedeQualityGateAssignment(input: {
+  assignment: MissionAssignmentContract;
+  replacementAssignmentId: string | null;
+  hasAcceptedTurn: boolean;
+  settledAt: string;
+}): MissionAssignmentContract {
+  const canceled = {
+    ...input.assignment,
+    revision: input.assignment.revision + 1,
+    semanticState: "canceled" as const,
+    supersededBy: input.replacementAssignmentId,
+    terminationReason: "superseded" as const,
+    scopeLease: null,
+    settledAt: input.assignment.settledAt ?? input.settledAt,
+  };
+  if (input.hasAcceptedTurn) return canceled;
+  return {
+    ...canceled,
+    runtimeAgentId: null,
+    bindingEpoch: null,
+    workspaceBaseline: null,
+    report: null,
+    dispatchState: "queued",
+    acceptedTurnId: null,
+    dispatchedAt: null,
+  };
+}
+
 function settledWorkstreamStatus(
-  workstream: TeamMission["workstreams"][number],
   assignment: MissionAssignmentContract,
   outcome: SettledTurnOutcome,
+  reviewGateSettled: boolean,
 ): TeamMission["workstreams"][number]["status"] {
   if (outcome !== "completed") return "blocked";
   if (assignment.report === null) return "active";
@@ -1890,7 +2128,7 @@ function settledWorkstreamStatus(
   ) {
     return "blocked";
   }
-  if (assignment.kind === "delivery" && workstream.reviewPolicy === "required") return "review";
+  if (!reviewGateSettled) return "review";
   return "accepted";
 }
 
@@ -2141,6 +2379,7 @@ function buildUnavailableAttentionItems(input: {
     attentionItems.push({
       attentionId,
       kind,
+      scope: { kind: "mission" },
       status: "open",
       priorMissionStatus: input.priorMissionStatus,
       assignmentId: assignment.assignmentId,
@@ -2167,6 +2406,7 @@ function appendLeadUnavailableAttention(
   attentionItems.push({
     attentionId,
     kind: "lead_unavailable",
+    scope: { kind: "mission" },
     status: "open",
     priorMissionStatus: input.priorMissionStatus,
     assignmentId: null,
@@ -2200,6 +2440,7 @@ function suspendableMissionStatus(
 
 function selectReadyAssignments(
   mission: TeamMission,
+  context: { acceptedTurnsById: ReadonlyMap<string, AcceptedTurnFact> },
   reportRecoveries: ReadonlyArray<{ assignmentId: string; state: string }> = [],
 ): MissionAssignmentContract[] {
   if (
@@ -2245,6 +2486,21 @@ function selectReadyAssignments(
       (dependencyId) => assignmentsById.get(dependencyId)?.semanticState === "completed",
     );
     if (!dependenciesComplete) continue;
+    const workstream = mission.workstreams.find(
+      (candidate) => candidate.workstreamId === assignment.workstreamId,
+    );
+    const workstreamDependenciesSettled = workstream?.dependencyWorkstreamIds.every(
+      (dependencyWorkstreamId) => {
+        const dependency = mission.workstreams.find(
+          (candidate) => candidate.workstreamId === dependencyWorkstreamId,
+        );
+        return (
+          dependency !== undefined &&
+          isMissionReviewGateSettledByEvidence(mission, dependency.workstreamId, context)
+        );
+      },
+    );
+    if (workstreamDependenciesSettled === false) continue;
     if (
       occupiedMembers.has(assignment.assigneeMemberId) ||
       selectedMembers.has(assignment.assigneeMemberId)
@@ -2298,13 +2554,20 @@ function isMissionReadyToComplete(
   }
   const factsByTurnId = new Map(stored.acceptedTurnFacts.map((fact) => [fact.turnId, fact]));
   const coverage = resolveMissionAssignmentCoverage(mission, { acceptedTurnsById: factsByTurnId });
+  const settledReviewGateWorkstreamIds = resolveMissionSettledReviewGateWorkstreamIds(mission, {
+    acceptedTurnsById: factsByTurnId,
+  });
   const qualityGates = planMissionQualityGates({
     mission,
     coverage,
+    settledReviewGateWorkstreamIds,
+    acceptedTurnsById: factsByTurnId,
     createdAt: mission.updatedAt,
   });
   if (
     qualityGates.additions.length > 0 ||
+    qualityGates.obsoleteReviewAssignments.length > 0 ||
+    qualityGates.obsoleteVerificationAssignments.length > 0 ||
     qualityGates.currentVerificationAssignments.length !== 1 ||
     hasUnsettledCurrentPlanAssignments(mission)
   ) {

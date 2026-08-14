@@ -592,6 +592,34 @@ function WorkstreamCard({ row }: { row: TeamPlanRow }): ReactElement {
           value={`${row.reviewer.role} · @${row.reviewer.mentionHandle}`}
         />
       ) : null}
+      {row.reviewSelection !== "not_required" ? (
+        <>
+          <DataRow
+            bordered
+            label={t("teams.v2Settings.plan.reviewGate")}
+            value={`${t(`teams.v2Settings.plan.reviewOutcome.${row.reviewOutcome}`)} · ${t(`teams.v2Settings.plan.reviewSelection.${row.reviewSelection}`)}`}
+          />
+          <DataRow
+            bordered
+            label={t("teams.v2Settings.plan.reviewSubject")}
+            value={row.reviewSubjectAssignmentIds.join(", ") || "—"}
+          />
+        </>
+      ) : null}
+      {row.reviewReport ? (
+        <DataRow
+          bordered
+          label={t("teams.v2Settings.plan.reviewEvidence")}
+          value={row.reviewReport.summary}
+        />
+      ) : null}
+      {row.reviewWaiver ? (
+        <DataRow
+          bordered
+          label={t("teams.v2Settings.plan.reviewEvidence")}
+          value={`${row.reviewWaiver.actorId}: ${row.reviewWaiver.reason}`}
+        />
+      ) : null}
       <DataRow
         bordered
         label={t("teams.v2Settings.plan.scope")}
@@ -892,6 +920,7 @@ function resolutionKindsFor(kind: MissionAttentionItem["kind"]): TeamAttentionRe
     case "dispatch_acceptance_unknown":
     case "participant_unavailable":
     case "reviewer_unavailable":
+    case "review_gate_reviewer_unavailable":
       return ["cancel_mission"];
   }
 }

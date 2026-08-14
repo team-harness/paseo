@@ -1891,6 +1891,7 @@ export class TeamMissionService {
             {
               attentionId,
               kind: "lead_unavailable",
+              scope: { kind: "mission" },
               status: "open",
               priorMissionStatus,
               assignmentId: null,
@@ -2510,7 +2511,9 @@ function resolveMissionAttention(
   return {
     ...mission,
     attentionItems,
-    ...(mission.status === "needs_attention" && !hasOpenAttention
+    ...(mission.status === "needs_attention" &&
+    !hasOpenAttention &&
+    attention.priorMissionStatus !== null
       ? { status: attention.priorMissionStatus, suspendedStatus: null }
       : {}),
   };
@@ -2539,6 +2542,7 @@ function applyLeadReplacement(input: {
   const replanAttention = {
     attentionId: `lead-replacement:${input.intent.attentionId}:replan`,
     kind: "assignment_requires_replan" as const,
+    scope: { kind: "mission" as const },
     status: "open" as const,
     priorMissionStatus: recoverableMissionStatus(input.mission),
     assignmentId: null,
@@ -3144,6 +3148,7 @@ function addRecoveryAttention(
     {
       attentionId,
       kind: input.kind,
+      scope: { kind: "mission" as const },
       status: "open" as const,
       priorMissionStatus,
       assignmentId: null,

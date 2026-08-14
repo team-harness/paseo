@@ -283,7 +283,7 @@ describe("workstream reviewer matching", () => {
     });
   });
 
-  it("allows the only qualified member to review while preserving the exception evidence", () => {
+  it("does not treat the subject owner as an independent reviewer", () => {
     const result = matchWorkstreamReviewer({
       candidates: [
         { profile: member("member-owner", 4, ["typescript", "review"]), openAssignments: 0 },
@@ -298,13 +298,6 @@ describe("workstream reviewer matching", () => {
       ownerMutableScope: { kind: "workspace" },
     });
 
-    expect(result).toMatchObject({
-      kind: "matched",
-      memberId: "member-owner",
-      explanation: {
-        eligibleMemberIds: ["member-owner"],
-        excludedMemberIds: [],
-      },
-    });
+    expect(result).toEqual({ kind: "unmatched", reason: "no_eligible_member" });
   });
 });
