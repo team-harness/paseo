@@ -3,14 +3,9 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-11
-    state: dispatched
-    run: subagent:/root/tm11_recovery
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-gates
-    base: 1206406b9
-next_action: TM-ITEM-11 仅修复 scheduler 对 approved/waived outcome 的权威验证消费边界，完成定点验证与一次 fresh review
-blocked_by: null
+active_items: []
+next_action: 等待 owner 裁决 TM-ITEM-11 Round 3 后唯一 blocker；冻结候选不得修改、提交、集成或继续审查
+blocked_by: "TM-ITEM-11 change review 三轮上限后仍有 1 blocking：替换 needs_report 的损坏 review 未在同一 aggregate CAS 清理旧 assignmentReportRecoveryOutbox，孤立 recovery 会永久阻塞 Mission 完成"
 item_progression: parallel
 milestone_commit: authorized
 remote_publish: final
@@ -37,6 +32,20 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-11 恢复后的 change review 达到三轮上限并暂停。最终冻结候选 HEAD
+  `1206406b9…`、staged diff
+  `acf50236276a5a16d7e1ffe654e43f05ad3ab9ab80ef838874623dd4a7f0379f`（31 files，
+  +4563/-394），实现者报告相关测试 217/217、build/server、lint、format、diff-check 通过，typecheck
+  仅有改动外 `draggable-list.native.tsx:122` 基线错误。fresh reviewer
+  `/root/tm11_scheduler_final_review`（`gpt-5.6-sol/xhigh`，只读）三轮从 4 blocking / 1 important，
+  收敛为 2 blocking / 2 important，最终为 1 blocking / 0 important / 0 suggestions。owner 自审、
+  全历史 waiver 唯一性、CLI report evidence、final-verification authority、V1 required schema 与
+  shape-only gate 旁路均已关闭。唯一未决路径：scheduler 替换 identity/subjects/dependencies 不匹配且
+  已处于 `needs_report` 的 review 时，只用 Mission update 取消旧 Assignment 并追加 replacement，没有在
+  同一 `updateAggregate` CAS 移除旧 review 的 pending/dispatched `assignmentReportRecoveryOutbox`；
+  recovery 处理器随后跳过 canceled Assignment，而 Mission completion 永久拒绝未结算 recovery。按三轮
+  上限未继续修复或审查，未创建 checkpoint，TM-ITEM-12 及后续项不派发。
 
 - 2026-08-14：owner 明确授权恢复 TM-ITEM-11。主流程复用原 Paseo worktree 与实现 worker，不创建
   重复 worktree；修复范围只包含上一轮两条 scheduler recovery blocker。领域层提供一条可由 scheduler
