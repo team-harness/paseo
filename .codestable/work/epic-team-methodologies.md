@@ -3,8 +3,13 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 派发 TM-ITEM-13：实体化不可豁免的最终验证
+active_items:
+  - item: TM-ITEM-13
+    state: dispatched
+    run: paseo:baf98f00-5feb-47ae-ba1b-cd1827b728dc
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-final-verification
+    base: 58051f382
+next_action: 等待 TM-ITEM-13 完成 final gate、定向 E2E 与独立审查
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +37,16 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-13 已从里程碑 `58051f382` 派发到 Paseo 托管 worktree
+  `wks_0ef3044007f090e6`（`team-methodology-final-verification`），实现 agent
+  `baf98f00-5feb-47ae-ba1b-cd1827b728dc` 使用 Agent Profile `GPT-5.6-Sol` 的
+  `codex/gpt-5.6-sol`、full-access/xhigh。任务包冻结 assignment-independent final gate、
+  `awaiting_verifier` / `awaiting_capabilities` / `assigned` 三态、唯一只读 verification Assignment、
+  typed approved review evidence、不可豁免与 Mission completion 门禁，并要求定向 daemon/App/CLI
+  证据及 Claude Opus 独立审查。禁止提前实现 TM-ITEM-14、兼容层、迁移、fallback 或 dual-write；
+  Team capsule 保持独立，upstream 热文件只做窄 façade/wiring。异步执行期间主流程不轮询或重启
+  agent，等待 Paseo finish/permission 通知。
 
 - 2026-08-14：TM-ITEM-12 完成。单父 checkpoint
   `abc21a206148add2ab7d7b25baecec2a052e5709`（parent `fa8ae741d…`，tree
