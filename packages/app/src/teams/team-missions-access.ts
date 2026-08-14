@@ -6,5 +6,10 @@ export function resolveTeamMissionsAccess(
   serverInfo: Pick<DaemonServerInfo, "features"> | null | undefined,
 ): TeamMissionsAccess {
   if (serverInfo == null) return "checking_host";
-  return serverInfo.features?.teamMissions === true ? "supported" : "upgrade_required";
+  const features = serverInfo.features;
+  return features?.teamMissions === true &&
+    features.globalTeamProfiles === true &&
+    features.teamMethodologies === true
+    ? "supported"
+    : "upgrade_required";
 }

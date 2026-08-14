@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 
 import type {
   MethodologyDescriptor,
-  TeamExecutionProfileSelection,
   TeamMissionAttentionResolutionInput,
   TeamProfileCreateMemberInput,
   TeamProfileMemberInput,
@@ -448,17 +447,14 @@ export class TeamMissionService {
         const selections = [
           ...(input.memberAdds ?? []).map((member, index) => ({
             clientMemberKey: `add:${index}`,
-            executionProfileSelection: memberExecutionSelection(member),
+            executionProfileSelection: member.executionProfileSelection,
           })),
           ...(input.memberUpdates ?? []).flatMap((member) =>
-            memberPatchExecutionSelection(member)
+            member.executionProfileSelection
               ? [
                   {
                     clientMemberKey: `update:${member.memberId}`,
-                    executionProfileSelection: requireValue(
-                      memberPatchExecutionSelection(member),
-                      `Member ${member.memberId} execution selection disappeared`,
-                    ),
+                    executionProfileSelection: member.executionProfileSelection,
                   },
                 ]
               : [],
@@ -3129,7 +3125,7 @@ function applyMemberPatch(
   executionByKey: ReadonlyMap<string, MaterializedTeamMemberExecution>,
 ): TeamMemberProfile {
   if (!patch) return member;
-  const executionProfileSelection = memberPatchExecutionSelection(patch);
+  const executionProfileSelection = patch.executionProfileSelection;
   const base: TeamMemberProfile = {
     ...member,
     ...(patch.role !== undefined ? { role: patch.role } : {}),
@@ -3149,38 +3145,6 @@ function applyMemberPatch(
       ? { executionProfileSource: structuredClone(execution.executionProfileSource) }
       : {}),
   };
-}
-
-// COMPAT(teamProfileMemberExecutionSelection): added in v0.3.1, remove after
-// 2027-02-13 once legacy inline member inputs have aged out.
-function memberExecutionSelection(member: TeamProfileMemberInput): TeamExecutionProfileSelection {
-  const explicit = (member as { executionProfileSelection?: TeamExecutionProfileSelection })
-    .executionProfileSelection;
-  if (explicit) return explicit;
-  return {
-    kind: "inline",
-    executionProfile: (
-      member as unknown as {
-        executionProfile: TeamMemberProfile["executionProfile"];
-      }
-    ).executionProfile,
-  };
-}
-
-// COMPAT(teamProfileMemberExecutionSelection): added in v0.3.1, remove after
-// 2027-02-13 once legacy inline member patches have aged out.
-function memberPatchExecutionSelection(
-  patch: TeamProfileMemberPatch,
-): TeamExecutionProfileSelection | undefined {
-  const explicit = (patch as { executionProfileSelection?: TeamExecutionProfileSelection })
-    .executionProfileSelection;
-  if (explicit) return explicit;
-  const legacy = (patch as { executionProfile?: TeamMemberProfile["executionProfile"] })
-    .executionProfile;
-  if (legacy) {
-    return { kind: "inline", executionProfile: legacy };
-  }
-  return undefined;
 }
 
 function assertMutableTeam(team: TeamV2, archiveIntent: StoredTeamProfile["archiveIntent"]): void {
@@ -3708,9 +3672,7 @@ function toAttentionResolution(
       ...common,
       ownerAssignmentId: null,
       recoveryAssignmentId: null,
-      ...(input.resolution.replacementMemberId
-        ? { replacementMemberId: input.resolution.replacementMemberId }
-        : {}),
+      replacementMemberId: input.resolution.replacementMemberId,
     };
   }
   if (input.resolution.kind === "replan") {

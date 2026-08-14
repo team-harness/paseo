@@ -1,15 +1,10 @@
 ---
 epic: ../epics/team-methodologies.md
-phase: executing
+phase: acceptance
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-17
-    state: dispatched
-    run: paseo:25b17133-64e4-4621-bf7f-2765cca7215c
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-final-conformance
-    base: 2836bd1d1
-next_action: 等待 TM-ITEM-17 完成 V1 conformance、双宿主证据、跨 workspace/real-provider 验收与独立审查
+active_items: []
+next_action: 运行 Epic 组合验证并创建 fresh final acceptance reviewer
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -34,9 +29,25 @@ remote_publish: final
 - [x] TM-ITEM-14
 - [x] TM-ITEM-15
 - [x] TM-ITEM-16
-- [ ] TM-ITEM-17
+- [x] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-17 完成。单父 checkpoint
+  `5a2d6bd47af018a67de9f27bd72d3b7cb8bf9d83`（parent `2836bd1d1…`，tree
+  `e4f2102395606e91e394738acb358dc5ab4dec9f`，diff
+  `17daffa52faeb90f5a99fef1ed25602e994e3b7e11fdc283857afc7d867dc3fa`，17 files，
+  +308/-186）闭合 Team V1 必需 schema fixture、无 Team compatibility 代码审计、三能力
+  physical-source 门、跨 workspace 流程与双宿主 exporter/install 冻结证据。异构
+  Claude Opus 5/high reviewer 有终态的两轮从 1 blocking / 1 important 收敛到 0/0
+  ACCEPT；其中假设 Team 已发布的 blocking 被撤回。worker 验证 Vitest 7 文件 70/70、
+  隔离 daemon E2E 1/1、Playwright browser 1/1、build/server、lint、format 与 diff-check；
+  typecheck 仅命中改动外 `draggable-list.native.tsx:122` 基线错误。真实 provider 沿用 6 次
+  冻结 Codex 运行，plan/review/final report 齐全且 Mission completed。主分支无冲突合入，
+  staged diff 与受审 checkpoint 逐字节一致；code-deep 覆盖 17/17 文件，定点追踪未发现
+  非 Team RPC 回归、Session 聚合授权、错误 workspace fallback 或冻结 source 回读。Native
+  iOS/Android 与真实 Electron 未执行：本机无 `agent-device`/Maestro、无 booted simulator；没有
+  用 JSDOM/mock 冒充，该缺口交给 Epic final acceptance review 独立判定。
 
 - 2026-08-14：TM-ITEM-17 已从里程碑 `2836bd1d1` 派发到 Paseo 托管 worktree
   `wks_4cdb50abb0a8a85d`（`team-methodology-final-conformance`），实现 agent

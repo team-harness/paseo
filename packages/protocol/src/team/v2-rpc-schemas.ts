@@ -33,14 +33,9 @@ const TeamProfileMemberFactsSchema = z.object({
   skillIds: z.array(z.string().min(1)).min(1),
 });
 
-export const TeamProfileMemberInputSchema = z.union([
-  TeamProfileMemberFactsSchema.extend({
-    executionProfileSelection: TeamExecutionProfileSelectionSchema,
-  }).strict(),
-  // COMPAT(teamProfileMemberExecutionSelection): added in v0.3.1, remove after
-  // 2027-02-13 once the client floor sends explicit execution selections.
-  TeamProfileMemberFactsSchema.extend({ executionProfile: TeamExecutionProfileSchema }).strict(),
-]);
+export const TeamProfileMemberInputSchema = TeamProfileMemberFactsSchema.extend({
+  executionProfileSelection: TeamExecutionProfileSelectionSchema,
+}).strict();
 export type TeamProfileMemberInput = z.infer<typeof TeamProfileMemberInputSchema>;
 
 const TeamProfileMemberPatchFactsSchema = z.object({
@@ -50,17 +45,9 @@ const TeamProfileMemberPatchFactsSchema = z.object({
   skillIds: z.array(z.string().min(1)).min(1).optional(),
 });
 
-export const TeamProfileMemberPatchSchema = z.union([
-  TeamProfileMemberPatchFactsSchema.extend({
-    executionProfileSelection: TeamExecutionProfileSelectionSchema,
-  }).strict(),
-  // COMPAT(teamProfileMemberExecutionSelection): added in v0.3.1, remove after
-  // 2027-02-13 once the client floor sends explicit execution selections.
-  TeamProfileMemberPatchFactsSchema.extend({
-    executionProfile: TeamExecutionProfileSchema,
-  }).strict(),
-  TeamProfileMemberPatchFactsSchema.strict(),
-]);
+export const TeamProfileMemberPatchSchema = TeamProfileMemberPatchFactsSchema.extend({
+  executionProfileSelection: TeamExecutionProfileSelectionSchema.optional(),
+}).strict();
 export type TeamProfileMemberPatch = z.infer<typeof TeamProfileMemberPatchSchema>;
 
 export const MethodologyIdentifierSchema = z.string().regex(/^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$/);
@@ -229,9 +216,7 @@ export const TeamProfileInspectRequestSchema = z.object({
 export const TeamProfileUpdateRequestSchema = z.object({
   type: z.literal("team.profile.update.request"),
   requestId: z.string().min(1),
-  // COMPAT(teamProfileUpdateIdempotency): added in v0.3.0-beta.3, remove after
-  // 2027-02-09 once the client floor always sends update idempotency keys.
-  idempotencyKey: z.string().min(1).optional(),
+  idempotencyKey: z.string().min(1),
   teamId: z.string().min(1),
   expectedRevision: z.number().int().nonnegative(),
   name: z.string().min(1).optional(),
@@ -408,9 +393,7 @@ export const TeamMissionAttentionResolutionInputSchema = z.discriminatedUnion("k
   z.object({
     kind: z.literal("replace_lead"),
     ...attentionReasonField,
-    // COMPAT(teamLeadReplacementMember): added in v0.3.0-beta.3, remove after
-    // 2027-02-10 once the client floor always selects a replacement Member.
-    replacementMemberId: z.string().min(1).optional(),
+    replacementMemberId: z.string().min(1),
   }),
   z.object({ kind: z.literal("restore_notification"), ...attentionReasonField }),
   z.object({ kind: z.literal("cancel_mission"), ...attentionReasonField }),

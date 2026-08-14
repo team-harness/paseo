@@ -5629,16 +5629,16 @@ export class DaemonClient {
   }
 
   private requireTeamMissionsSupport(): void {
-    // COMPAT(teamMissions): added in v0.3.0-beta.3, remove after 2027-02-08 once
-    // the daemon floor advertises Team Missions. Missing capability is a hard gate.
-    if (!this.supportsTeamMissions()) {
-      throw new Error("Update the host to use Team Missions.");
+    if (
+      !this.supportsTeamMissions() ||
+      !this.supportsGlobalTeamProfiles() ||
+      !this.supportsTeamMethodologies()
+    ) {
+      throw new Error("Update the host to use Team V1.");
     }
   }
 
   private requireTeamProfileUpgradesSupport(): void {
-    // COMPAT(teamProfileUpgrades): added in v0.3.2, remove after 2027-02-13 once
-    // the daemon floor implements source refresh/rebind/detach and Methodology upgrades.
     if (!this.supportsTeamProfileUpgrades()) {
       throw new Error("Update the host to use Team profile upgrades.");
     }
