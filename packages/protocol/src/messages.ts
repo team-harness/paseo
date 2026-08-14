@@ -28,6 +28,8 @@ import {
   TeamMethodologyListResponseSchema,
   TeamMissionAttentionResolveRequestSchema,
   TeamMissionAttentionResolveResponseSchema,
+  TeamMissionCapabilityRefreshRequestSchema,
+  TeamMissionCapabilityRefreshResponseSchema,
   TeamMissionCancelRequestSchema,
   TeamMissionCancelResponseSchema,
   TeamMissionInspectRequestSchema,
@@ -3093,6 +3095,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   TeamMissionInspectRequestSchema,
   TeamMissionCancelRequestSchema,
   TeamMissionAttentionResolveRequestSchema,
+  TeamMissionCapabilityRefreshRequestSchema,
   TeamMissionMessagePostRequestSchema,
   TeamMissionRoomSubscribeRequestSchema,
   TeamMissionRoomUnsubscribeRequestSchema,
@@ -6342,6 +6345,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   TeamMissionInspectResponseSchema,
   TeamMissionCancelResponseSchema,
   TeamMissionAttentionResolveResponseSchema,
+  TeamMissionCapabilityRefreshResponseSchema,
   TeamMissionMessagePostResponseSchema,
   TeamMissionRoomSubscribeResponseSchema,
   TeamMissionRoomUnsubscribeResponseSchema,
@@ -6384,6 +6388,9 @@ export type TeamMissionInspectResponse = z.infer<typeof TeamMissionInspectRespon
 export type TeamMissionCancelResponse = z.infer<typeof TeamMissionCancelResponseSchema>;
 export type TeamMissionAttentionResolveResponse = z.infer<
   typeof TeamMissionAttentionResolveResponseSchema
+>;
+export type TeamMissionCapabilityRefreshResponse = z.infer<
+  typeof TeamMissionCapabilityRefreshResponseSchema
 >;
 export type TeamMissionMessagePostResponse = z.infer<typeof TeamMissionMessagePostResponseSchema>;
 export type TeamMissionRoomSubscribeResponse = z.infer<
@@ -6676,6 +6683,9 @@ export type TeamMissionInspectRequest = z.infer<typeof TeamMissionInspectRequest
 export type TeamMissionCancelRequest = z.infer<typeof TeamMissionCancelRequestSchema>;
 export type TeamMissionAttentionResolveRequest = z.infer<
   typeof TeamMissionAttentionResolveRequestSchema
+>;
+export type TeamMissionCapabilityRefreshRequest = z.infer<
+  typeof TeamMissionCapabilityRefreshRequestSchema
 >;
 export type TeamMissionMessagePostRequest = z.infer<typeof TeamMissionMessagePostRequestSchema>;
 export type TeamMissionRoomSubscribeRequest = z.infer<typeof TeamMissionRoomSubscribeRequestSchema>;

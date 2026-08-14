@@ -86,6 +86,7 @@ function mission(): TeamMission {
     status: "active",
     suspendedStatus: null,
     activeRosterSnapshotRevision: 1,
+    capabilityReplanRequests: [],
     rosterSnapshots: [
       {
         revision: 1,

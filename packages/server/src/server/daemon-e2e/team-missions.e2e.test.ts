@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { experimental_createMCPClient } from "ai";
@@ -54,6 +54,7 @@ describe("Team Missions real-daemon WebSocket contract", () => {
     temporaryPaths.clear();
   }, 60_000);
 
+  // eslint-disable-next-line complexity -- This test preserves one real Mission lifecycle.
   test("isolates a review-gate blocker to one fork of a real-daemon Workstream DAG", async () => {
     const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-attention-home-"));
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-attention-workspace-"));
@@ -245,6 +246,123 @@ describe("Team Missions real-daemon WebSocket contract", () => {
       },
     });
     expect(denied).toMatchObject({ mission: null, errorCode: "unsupported" });
+
+    const deniedRefresh = await limitedClient.refreshTeamMissionCapabilities({
+      missionId: isolated.id,
+      attentionId: reviewAttention.attentionId,
+      expectedRevision: isolated.revision,
+      idempotencyKey: "refresh-backend-from-limited-source",
+    });
+    expect(deniedRefresh).toMatchObject({ result: null, errorCode: "unsupported" });
+
+    const currentBeforeRefresh = await inspectMission(client, isolated.id);
+    const originalRoster = currentBeforeRefresh.rosterSnapshots.find(
+      (snapshot) => snapshot.revision === currentBeforeRefresh.activeRosterSnapshotRevision,
+    );
+    if (!originalRoster) throw new Error("Original active roster snapshot is missing");
+    const missionPath = path.join(
+      daemon.paseoHome,
+      "team-missions",
+      "missions",
+      `${isolated.id}.json`,
+    );
+    const staleStored = StoredMissionSchema.parse(JSON.parse(await readFile(missionPath, "utf8")));
+    const staleRoster = staleStored.mission.rosterSnapshots.find(
+      (snapshot) => snapshot.revision === staleStored.mission.activeRosterSnapshotRevision,
+    );
+    if (!staleRoster) throw new Error("Active roster snapshot is missing from the aggregate");
+    const staleLead = staleRoster.members.find(
+      (candidate) => candidate.memberId === team.leadMemberId,
+    );
+    if (!staleLead) throw new Error("Lead is missing from the active roster snapshot");
+    staleLead.capabilityFacts = {
+      kind: "unknown",
+      providerId: staleLead.executionProfile.provider,
+      reason: "provider_declaration_unavailable",
+    };
+    await writeFile(missionPath, JSON.stringify(staleStored, null, 2), "utf8");
+    const frozenBeforeRefresh = {
+      planRevision: currentBeforeRefresh.planRevision,
+      workstreams: currentBeforeRefresh.workstreams,
+      assignments: currentBeforeRefresh.assignments,
+      participants: currentBeforeRefresh.participants,
+      attentionItems: currentBeforeRefresh.attentionItems,
+    };
+    const refreshResponse = await client.refreshTeamMissionCapabilities({
+      missionId: isolated.id,
+      attentionId: reviewAttention.attentionId,
+      expectedRevision: currentBeforeRefresh.revision,
+      idempotencyKey: "refresh-backend-capabilities",
+    });
+    if (!refreshResponse.result || refreshResponse.result.disposition !== "replan_requested") {
+      throw new Error(refreshResponse.error ?? "Controller capability refresh failed");
+    }
+    const refreshed = await inspectMission(client, isolated.id);
+    const storedAfterRefresh = StoredMissionSchema.parse(
+      JSON.parse(await readFile(missionPath, "utf8")),
+    );
+    expect(storedAfterRefresh.storageRevision).toBe(staleStored.storageRevision + 1);
+    expect(refreshed.activeRosterSnapshotRevision).toBe(
+      currentBeforeRefresh.activeRosterSnapshotRevision + 1,
+    );
+    const replanRequest = refreshed.capabilityReplanRequests.at(-1);
+    expect(refreshResponse.result).toMatchObject({
+      rosterSnapshotRevision: currentBeforeRefresh.activeRosterSnapshotRevision + 1,
+      sourceAttentionIds: [reviewAttention.attentionId],
+    });
+    expect(refreshed.rosterSnapshots).toHaveLength(currentBeforeRefresh.rosterSnapshots.length + 1);
+    expect(refreshed.rosterSnapshots.at(-1)).toMatchObject({
+      revision: currentBeforeRefresh.activeRosterSnapshotRevision + 1,
+      reason: "replan",
+    });
+    const refreshedLead = refreshed.rosterSnapshots
+      .at(-1)
+      ?.members.find((candidate) => candidate.memberId === team.leadMemberId);
+    expect(refreshedLead?.capabilityFacts).toEqual(
+      originalRoster.members.find((candidate) => candidate.memberId === team.leadMemberId)
+        ?.capabilityFacts,
+    );
+    expect(replanRequest).toMatchObject({
+      requestId: refreshResponse.result.requestId,
+      consumedAt: null,
+      rosterSnapshotRevision: currentBeforeRefresh.activeRosterSnapshotRevision + 1,
+    });
+    expect(
+      storedAfterRefresh.recipientAttentionOutbox.filter(
+        (delivery) => delivery.deliveryId === replanRequest?.deliveryId,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        recipientMemberId: team.leadMemberId,
+        senderMemberId: team.leadMemberId,
+        bindingEpoch: 1,
+        body: expect.stringContaining("mission_status"),
+      }),
+    ]);
+    expect({
+      planRevision: refreshed.planRevision,
+      workstreams: refreshed.workstreams,
+      assignments: refreshed.assignments,
+      participants: refreshed.participants,
+      attentionItems: refreshed.attentionItems,
+    }).toEqual(frozenBeforeRefresh);
+
+    const persistedOriginalRoster = storedAfterRefresh.mission.rosterSnapshots.find(
+      (snapshot) => snapshot.revision === currentBeforeRefresh.activeRosterSnapshotRevision,
+    );
+    if (!persistedOriginalRoster) {
+      throw new Error("Original roster snapshot is missing after capability refresh");
+    }
+    for (const rosterMember of persistedOriginalRoster.members) {
+      const originalMember = originalRoster.members.find(
+        (candidate) => candidate.memberId === rosterMember.memberId,
+      );
+      if (!originalMember) {
+        throw new Error(`Original roster Member ${rosterMember.memberId} is missing`);
+      }
+      rosterMember.capabilityFacts = structuredClone(originalMember.capabilityFacts);
+    }
+    await writeFile(missionPath, JSON.stringify(storedAfterRefresh, null, 2), "utf8");
 
     const currentBeforeWaiver = await inspectMission(client, isolated.id);
     const waivedResponse = await client.resolveTeamMissionAttention({

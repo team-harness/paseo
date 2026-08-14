@@ -303,6 +303,7 @@ function missionFromStartIntent(
     suspendedStatus: null,
     activeRosterSnapshotRevision: intent.rosterSnapshot.revision,
     rosterSnapshots: [intent.rosterSnapshot],
+    capabilityReplanRequests: [],
     methodologySnapshot: intent.methodologySnapshot,
     methodologyCompiledAt: intent.methodologyCompiledAt,
     planRevision: 0,

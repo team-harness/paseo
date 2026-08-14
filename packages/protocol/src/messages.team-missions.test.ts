@@ -134,6 +134,8 @@ const mission = {
   workstreamPlanSnapshots: [],
   assignments: [],
   attentionItems: [],
+  reviewWaivers: [],
+  capabilityReplanRequests: [],
   lifecycleRecoveryFailure: null,
   createdAt: timestamp,
   updatedAt: timestamp,

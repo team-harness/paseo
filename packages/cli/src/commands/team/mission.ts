@@ -160,6 +160,74 @@ export interface MissionWaiveReviewOptions extends TeamCommandOptions {
   idempotencyKey?: string;
 }
 
+export interface MissionRefreshCapabilitiesOptions extends TeamCommandOptions {
+  attention?: string;
+  expectedRevision?: string;
+  idempotencyKey?: string;
+}
+
+interface MissionCapabilityRefreshRow {
+  disposition: "unchanged" | "replan_requested";
+  missionRevision: number;
+  rosterSnapshotRevision: number;
+  requestId: string;
+  requestState: "none" | "pending";
+  note: string;
+}
+
+const missionCapabilityRefreshSchema = {
+  idField: "requestId",
+  columns: [
+    { header: "RESULT", field: "disposition", width: 18 },
+    { header: "MISSION REV", field: "missionRevision", width: 11, align: "right" },
+    { header: "ROSTER REV", field: "rosterSnapshotRevision", width: 10, align: "right" },
+    { header: "REQUEST", field: "requestId", width: 28 },
+    { header: "STATE", field: "requestState", width: 8 },
+    { header: "NOTE", field: "note", width: 60 },
+  ],
+} satisfies import("../../output/index.js").OutputSchema<MissionCapabilityRefreshRow>;
+
+export async function runMissionRefreshCapabilitiesCommand(
+  missionId: string,
+  options: MissionRefreshCapabilitiesOptions,
+  _command: Command,
+): Promise<SingleResult<MissionCapabilityRefreshRow>> {
+  const { client } = await connectTeamClient(options.host);
+  try {
+    const payload = await client.refreshTeamMissionCapabilities({
+      missionId,
+      attentionId: required(options.attention, "--attention"),
+      expectedRevision: revision(options.expectedRevision, "--expected-revision"),
+      idempotencyKey: options.idempotencyKey?.trim() || newIdempotencyKey(),
+    });
+    if (!payload.result) throw toTeamResponseError("refresh Mission capabilities", payload);
+    const result = payload.result;
+    return {
+      type: "single",
+      data: {
+        disposition: result.disposition,
+        missionRevision: result.missionRevision,
+        rosterSnapshotRevision: result.rosterSnapshotRevision,
+        requestId: result.disposition === "replan_requested" ? result.requestId : "-",
+        requestState: result.disposition === "replan_requested" ? "pending" : "none",
+        note:
+          result.disposition === "unchanged"
+            ? "Capability declarations unchanged; no Mission write occurred."
+            : "Lead replan requested; this is not a plan commit and cannot change the frozen roster, Skills, or Levels.",
+      },
+      schema: missionCapabilityRefreshSchema,
+    };
+  } catch (err) {
+    throw toTeamCommandError(
+      "TEAM_MISSION_CAPABILITY_REFRESH_FAILED",
+      "refresh Mission capabilities",
+      err,
+    );
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
 export async function runMissionWaiveReviewCommand(
   missionId: string,
   options: MissionWaiveReviewOptions,

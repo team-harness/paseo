@@ -124,6 +124,7 @@ import type {
   TeamMissionInspectRequest,
   TeamMissionCancelRequest,
   TeamMissionAttentionResolveRequest,
+  TeamMissionCapabilityRefreshRequest,
   TeamMissionMessagePostRequest,
   TeamMissionRoomSubscribeRequest,
   TeamMissionRoomUnsubscribeRequest,
@@ -597,6 +598,10 @@ type TeamMissionAttentionResolvePayload = Extract<
   SessionOutboundMessage,
   { type: "team.mission.attention.resolve.response" }
 >["payload"];
+export type TeamMissionCapabilityRefreshPayload = Extract<
+  SessionOutboundMessage,
+  { type: "team.mission.capability.refresh.response" }
+>["payload"];
 type TeamMissionMessagePostPayload = Extract<
   SessionOutboundMessage,
   { type: "team.mission.message.post.response" }
@@ -812,6 +817,8 @@ export type InspectTeamMissionOptions = TeamMissionsRequestOptions<TeamMissionIn
 export type CancelTeamMissionOptions = TeamMissionsRequestOptions<TeamMissionCancelRequest>;
 export type ResolveTeamMissionAttentionOptions =
   TeamMissionsRequestOptions<TeamMissionAttentionResolveRequest>;
+export type RefreshTeamMissionCapabilitiesOptions =
+  TeamMissionsRequestOptions<TeamMissionCapabilityRefreshRequest>;
 export type PostTeamMissionMessageOptions =
   TeamMissionsRequestOptions<TeamMissionMessagePostRequest>;
 export type SubscribeTeamMissionRoomOptions =
@@ -5527,6 +5534,17 @@ export class DaemonClient {
     return this.sendNamespacedCorrelatedSessionRequest({
       requestId,
       message: { type: "team.mission.attention.resolve.request", ...params },
+    });
+  }
+
+  async refreshTeamMissionCapabilities(
+    options: RefreshTeamMissionCapabilitiesOptions,
+  ): Promise<TeamMissionCapabilityRefreshPayload> {
+    this.requireTeamMissionsSupport();
+    const { requestId, ...params } = options;
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "team.mission.capability.refresh.request", ...params },
     });
   }
 

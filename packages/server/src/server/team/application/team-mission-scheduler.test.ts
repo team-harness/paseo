@@ -5836,6 +5836,7 @@ function activeMission(): TeamMission {
     ],
     attentionItems: [],
     reviewWaivers: [],
+    capabilityReplanRequests: [],
     lifecycleRecoveryFailure: null,
     createdAt: NOW,
     updatedAt: NOW,

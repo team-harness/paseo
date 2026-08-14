@@ -166,6 +166,18 @@ export const MissionRosterSnapshotSchema = z.object({
 });
 export type MissionRosterSnapshot = z.infer<typeof MissionRosterSnapshotSchema>;
 
+export const MissionCapabilityReplanRequestSchema = z.object({
+  requestId: z.string().min(1),
+  idempotencyKey: z.string().min(1),
+  requestFingerprint: z.string().min(1),
+  sourceAttentionIds: z.array(z.string().min(1)),
+  rosterSnapshotRevision: z.number().int().positive(),
+  deliveryId: z.string().min(1),
+  createdAt: TimestampSchema,
+  consumedAt: TimestampSchema.nullable(),
+});
+export type MissionCapabilityReplanRequest = z.infer<typeof MissionCapabilityReplanRequestSchema>;
+
 export const MissionMutableScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("read_only") }),
   z.object({ kind: z.literal("paths"), pathPrefixes: z.array(z.string().min(1)).min(1) }),
@@ -817,6 +829,7 @@ export const TeamMissionSchema = z.object({
   suspendedStatus: z.enum(["planning", "active", "verifying"]).nullable(),
   activeRosterSnapshotRevision: z.number().int().positive(),
   rosterSnapshots: z.array(MissionRosterSnapshotSchema).min(1),
+  capabilityReplanRequests: z.array(MissionCapabilityReplanRequestSchema),
   methodologySnapshot: MissionMethodologySnapshotSchema,
   methodologyCompiledAt: TimestampSchema,
   planRevision: z.number().int().nonnegative(),
