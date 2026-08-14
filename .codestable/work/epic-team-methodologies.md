@@ -3,8 +3,13 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 派发 TM-ITEM-16：让 capability replan 经受重启与 Lead 替换
+active_items:
+  - item: TM-ITEM-16
+    state: dispatched
+    run: paseo:8545d68b-479d-4483-9ad2-c3407c25c049
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-capability-recovery
+    base: 4d4c8c88b
+next_action: 等待 TM-ITEM-16 完成 recovery、fault injection、真实 provider smoke 与独立审查
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +37,16 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-16 已从里程碑 `4d4c8c88b` 派发到 Paseo 托管 worktree
+  `wks_550e32851a33ff2c`（`team-methodology-capability-recovery`），实现 agent
+  `8545d68b-479d-4483-9ad2-c3407c25c049` 使用 Agent Profile `GPT-5.6-Sol` 的
+  `codex/gpt-5.6-sol`、full-access。任务包冻结未消费 request 与当前 Lead binding 的可重放
+  delivery 不变量、acknowledged chain re-arm、Lead replacement/启动恢复/周期 reconcile、
+  `mission_plan` 的 request 消费与 delivery chain 取消原子性、fault injection、真实 provider
+  smoke，以及 Agent Profile catalog port 抛错时的冻结快照运行。禁止提前实现
+  TM-ITEM-17、兼容层、迁移、fallback 或 dual-write；Team capsule 保持独立，upstream 热文件只做窄
+  façade/wiring。异步执行期间主流程不轮询或重启 agent，等待 Paseo finish/permission 通知。
 
 - 2026-08-14：TM-ITEM-15 完成。单父 checkpoint
   `6ebd7d554c57874c091a8fc4a65b593961cfde65`（parent `cb08760fe…`，tree
