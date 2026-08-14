@@ -15,6 +15,7 @@ import { gotoAppShell } from "../support/helpers/app";
 import { buildCreateAgentPreferences, buildSeededHost } from "../support/helpers/daemon-registry";
 import { startIsolatedHostDaemon } from "../support/helpers/isolated-host-daemon";
 import { seedWorkspace, type SeedDaemonClient } from "../support/helpers/seed-client";
+import { createTempGitRepo } from "../support/helpers/workspace";
 import { buildMissionReviewGate } from "../../../server/src/server/team/domain/mission-review-gate.js";
 
 const EVIDENCE_DIR = path.resolve(
@@ -523,10 +524,22 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     teamMissionsRuntime: true,
   });
   let workspace: Awaited<ReturnType<typeof seedWorkspace>> | null = null;
+  let secondRepo: Awaited<ReturnType<typeof createTempGitRepo>> | null = null;
+  let secondProjectId: string | null = null;
 
   try {
     workspace = await seedWorkspace({ repoPrefix: "team-v2-ui-", port: daemon.port });
     const client = workspace.client as TeamMissionsSeedClient;
+    secondRepo = await createTempGitRepo("team-v2-ui-second-");
+    const secondWorkspaceResult = await client.createWorkspace({
+      source: { kind: "directory", path: secondRepo.path },
+      title: "Second Team Mission workspace",
+    });
+    if (!secondWorkspaceResult.workspace) {
+      throw new Error(secondWorkspaceResult.error ?? "Failed to create the second workspace");
+    }
+    const secondWorkspace = secondWorkspaceResult.workspace;
+    secondProjectId = secondWorkspace.projectId;
     const activeAgentsBefore = (await client.fetchAgents({ scope: "active" })).entries.length;
     const host = buildSeededHost({
       serverId,
@@ -548,7 +561,7 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
 
     await page.setViewportSize(DESKTOP_VIEWPORT);
     await gotoAppShell(page);
-    await page.locator('[data-testid^="sidebar-workspace-row-"]').first().click();
+    await page.goto(`/h/${serverId}/workspace/${workspace.workspaceId}`);
 
     const inlineAdd = page.getByTestId("workspace-new-agent-tab-inline");
     await inlineAdd.click();
@@ -810,7 +823,71 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
         .first(),
     ).toBeVisible();
     await shoot(page, "13-desktop-completed-mission");
+
+    await page.goto(`/h/${serverId}/workspace/${secondWorkspace.id}`);
+    await inlineAdd.click();
+    await expect(page.getByTestId("workspace-new-tab-inline-mission")).toBeVisible();
+    await page.getByTestId("workspace-new-tab-inline-mission").click();
+    await expect(page.getByTestId("mission-start-sheet")).toBeVisible();
+    await page.getByTestId("mission-start-team").getByRole("button").click();
+    await page
+      .getByTestId("combobox-desktop-container")
+      .getByRole("button", { name: "Release engineering" })
+      .click();
+    await page
+      .getByTestId("mission-start-objective")
+      .fill("Verify the reusable Team binding in a second workspace");
+    await page
+      .getByTestId("mission-start-acceptance-0")
+      .fill("The second Mission freezes its own workspace and Methodology snapshot");
+    await expect(page.getByTestId("mission-start-submit")).toBeEnabled();
+    await page.getByTestId("mission-start-submit").click();
+    await expect(page.getByTestId("mission-start-sheet")).toBeHidden({ timeout: 30_000 });
+
+    await expect
+      .poll(async () => {
+        const result = await client.listTeamMissions({ teamId: team!.id });
+        return result.missions.find(
+          (candidate) =>
+            candidate.objective === "Verify the reusable Team binding in a second workspace",
+        );
+      })
+      .toMatchObject({
+        workspaceId: secondWorkspace.id,
+        methodologySnapshot: { ref: team!.methodologyBinding.ref },
+        rosterSnapshots: [
+          {
+            members: expect.arrayContaining(
+              team!.members.map((member) => expect.objectContaining({ memberId: member.memberId })),
+            ),
+          },
+        ],
+      });
+    const crossWorkspaceMissions = await client.listTeamMissions({ teamId: team!.id });
+    const secondMission = crossWorkspaceMissions.missions.find(
+      (candidate) =>
+        candidate.objective === "Verify the reusable Team binding in a second workspace",
+    );
+    if (!secondMission) throw new Error("The second workspace Mission was not persisted");
+    expect(secondMission.id).not.toBe(completed.id);
+    expect(secondMission.workspaceId).not.toBe(completed.workspaceId);
+    expect(secondMission.methodologyCompiledAt).not.toBe(completed.methodologyCompiledAt);
+    expect(secondMission.methodologySnapshot).toMatchObject({
+      ref: completed.methodologySnapshot.ref,
+      rosterSnapshotRevision: secondMission.rosterSnapshots[0]?.revision,
+    });
+    expect(secondMission.methodologySnapshot.compiledDigest).not.toBe(
+      completed.methodologySnapshot.compiledDigest,
+    );
+    expect(completed.methodologySnapshot.rosterSnapshotRevision).toBe(
+      completed.rosterSnapshots[0]?.revision,
+    );
+    await shoot(page, "14-desktop-cross-workspace-mission");
   } finally {
+    if (workspace && secondProjectId) {
+      await workspace.client.removeProject(secondProjectId).catch(() => undefined);
+    }
+    await secondRepo?.cleanup();
     await workspace?.cleanup();
     await daemon.close();
   }

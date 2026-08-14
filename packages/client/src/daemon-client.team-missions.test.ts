@@ -240,36 +240,39 @@ test("detects whether the daemon supports host-global Team profiles", async () =
   expect(legacy.client.supportsTeamProfileUpgrades()).toBe(false);
 });
 
-test("a daemon without the capability is rejected locally without sending a mutation", async () => {
-  const { client, mock } = await connectedClient({});
-  const sentBefore = mock.sent.length;
+test.each([{}, { teamMissions: true }, { teamMissions: true, globalTeamProfiles: true }])(
+  "a daemon without the complete Team V1 capability is rejected locally",
+  async (features) => {
+    const { client, mock } = await connectedClient(features);
+    const sentBefore = mock.sent.length;
 
-  await expect(
-    client.createTeamProfile({
-      idempotencyKey: "idem-create",
-      name: team.name,
-      creationWorkspaceId: team.creationWorkspaceId,
-      skills: team.skills,
-      leadClientMemberKey: "lead",
-      members: [
-        {
-          clientMemberKey: "lead",
-          role: memberInput.role,
-          level: memberInput.level,
-          skillIds: memberInput.skillIds,
-          executionProfileSelection: { kind: "inline", executionProfile },
+    await expect(
+      client.createTeamProfile({
+        idempotencyKey: "idem-create",
+        name: team.name,
+        creationWorkspaceId: team.creationWorkspaceId,
+        skills: team.skills,
+        leadClientMemberKey: "lead",
+        members: [
+          {
+            clientMemberKey: "lead",
+            role: memberInput.role,
+            level: memberInput.level,
+            skillIds: memberInput.skillIds,
+            executionProfileSelection: { kind: "inline", executionProfile },
+          },
+        ],
+        methodologyBinding: {
+          ref: team.methodologyBinding.ref,
+          presetId: "lean-delivery",
+          memberArchetypeBindings: [{ clientMemberKey: "lead", archetypeId: "lead" }],
+          skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
         },
-      ],
-      methodologyBinding: {
-        ref: team.methodologyBinding.ref,
-        presetId: "lean-delivery",
-        memberArchetypeBindings: [{ clientMemberKey: "lead", archetypeId: "lead" }],
-        skillBindings: [{ teamSkillId: "typescript", methodologySkillId: null }],
-      },
-    }),
-  ).rejects.toThrow("Update the host to use Team Missions");
-  expect(mock.sent).toHaveLength(sentBefore);
-});
+      }),
+    ).rejects.toThrow("Update the host to use Team V1");
+    expect(mock.sent).toHaveLength(sentBefore);
+  },
+);
 
 test("a pre-upgrade daemon rejects TM-ITEM-10 mutations locally", async () => {
   const { client, mock } = await connectedClient({
@@ -459,7 +462,11 @@ test("the SDK sends all Team profile and Mission correlated RPCs", async () => {
 });
 
 test("Team room messaging stays inside the Team Missions capability and RPC namespace", async () => {
-  const { client, mock } = await connectedClient({ teamMissions: true });
+  const { client, mock } = await connectedClient({
+    teamMissions: true,
+    globalTeamProfiles: true,
+    teamMethodologies: true,
+  });
   const post = client.postTeamMissionMessage({
     missionId: mission.id,
     body: "Please review the plan.",
@@ -542,7 +549,11 @@ test("Team room messaging stays inside the Team Missions capability and RPC name
 });
 
 test("profile, Mission, and room message snapshots surface as addressable events", async () => {
-  const { client, mock } = await connectedClient({ teamMissions: true });
+  const { client, mock } = await connectedClient({
+    teamMissions: true,
+    globalTeamProfiles: true,
+    teamMethodologies: true,
+  });
   const events: DaemonEvent[] = [];
   client.on((event) => events.push(event));
 

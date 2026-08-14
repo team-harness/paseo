@@ -618,9 +618,7 @@ export const MissionAttentionResolutionSchema = z.discriminatedUnion("kind", [
     ...attentionResolutionCommon,
     ownerAssignmentId: z.null(),
     recoveryAssignmentId: z.null(),
-    // COMPAT(teamLeadReplacementMember): added in v0.3.0-beta.3, remove after
-    // 2027-02-10 once every stored resolution names the replacement Member.
-    replacementMemberId: z.string().min(1).optional(),
+    replacementMemberId: z.string().min(1),
   }),
   z.object({
     kind: z.literal("waive_review"),

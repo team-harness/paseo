@@ -28,8 +28,6 @@ export async function connectTeamClient(host?: string) {
     throw error;
   }
 
-  // COMPAT(teamMissions): added in v0.3.0-beta.3, remove after 2027-02-08 once
-  // the daemon floor advertises Team Missions. Missing capability is a hard gate.
   const features = connected.getLastServerInfoMessage()?.features;
   if (
     features?.teamMissions !== true ||

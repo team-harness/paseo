@@ -37,6 +37,7 @@ import {
   TeamProfileUpdateRequestSchema,
   TeamProfileUpdateResponseSchema,
 } from "./v2-rpc-schemas.js";
+import { TeamMissionSchema, TeamV2Schema } from "./v2-types.js";
 
 const timestamp = "2026-08-08T08:00:00.000Z";
 const digest = `sha256:${"0".repeat(64)}`;
@@ -92,6 +93,63 @@ const team = {
   createdAt: timestamp,
   updatedAt: timestamp,
   archivedAt: null,
+};
+
+const matchExplanation = {
+  recommendedMemberId: team.leadMemberId,
+  requiredSkillIds: ["typescript"],
+  preferredSkillIds: [],
+  matchedPreferredSkillIds: [],
+  requiredRuntimeCapabilityIds: ["structured-tools"],
+  minimumLevel: 3,
+  selectedLevel: 3,
+  eligibleMemberIds: [team.leadMemberId],
+  excludedMemberIds: [],
+  previousMemberId: null,
+  candidateOpenAssignments: [{ memberId: team.leadMemberId, openAssignments: 0 }],
+  continuedPreviousMember: false,
+  openAssignments: 0,
+  rosterIndex: 0,
+};
+
+const verificationWorkstream = {
+  workstreamId: "workstream-verification",
+  kind: "verification" as const,
+  title: "Verify Team V1",
+  objective: "Verify the frozen Team V1 contract.",
+  deliverables: ["Typed verification evidence."],
+  acceptanceCriteria: ["The Team V1 fixture passes."],
+  requiredSkillIds: ["typescript"],
+  preferredSkillIds: [],
+  requiredRuntimeCapabilityIds: ["structured-tools"],
+  minimumLevel: 3,
+  planRevision: 1,
+  rosterSnapshotRevision: 1,
+  methodologySnapshotRevision: 1 as const,
+  dependencyWorkstreamIds: [],
+  mutableScope: { kind: "read_only" as const },
+  ownerMemberId: team.leadMemberId,
+  ownerMatchExplanation: matchExplanation,
+  ownerOverrideReason: null,
+  reviewGate: { kind: "none" as const, outcome: { kind: "not_required" as const } },
+  finalVerificationGate: {
+    key: {
+      workstreamId: "workstream-verification",
+      planRevision: 1,
+      methodologySnapshotRevision: 1 as const,
+      subjectAssignmentIds: [],
+      reviewGateFingerprints: [],
+      requirements: {
+        requiredSkillIds: ["typescript"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 3,
+      },
+    },
+    fingerprint: digest,
+    selection: { kind: "awaiting_verifier" as const },
+  },
+  status: "planned" as const,
 };
 
 const mission = {
@@ -170,10 +228,25 @@ const mission = {
       archivedAt: null,
     },
   ],
-  workstreams: [],
-  workstreamPlanSnapshots: [],
+  workstreams: [verificationWorkstream],
+  workstreamPlanSnapshots: [
+    { planRevision: 1, workstreams: [verificationWorkstream], createdAt: timestamp },
+  ],
   assignments: [],
-  attentionItems: [],
+  attentionItems: [
+    {
+      attentionId: "attention-ownership",
+      kind: "ownership_violation" as const,
+      scope: { kind: "mission" as const },
+      status: "open" as const,
+      priorMissionStatus: "planning" as const,
+      assignmentId: null,
+      summary: "Workspace ownership requires controller attention.",
+      pathEvidence: [],
+      createdAt: timestamp,
+      resolution: null,
+    },
+  ],
   capabilityReplanRequests: [],
   reviewWaivers: [],
   lifecycleRecoveryFailure: null,
@@ -181,6 +254,48 @@ const mission = {
   updatedAt: timestamp,
   completedAt: null,
 };
+
+describe("Team V1 exact schema fixture", () => {
+  it("rejects every frozen required contract field when omitted", () => {
+    expect(TeamV2Schema.parse(team)).toEqual(team);
+    expect(TeamMissionSchema.parse(mission)).toEqual(mission);
+
+    const omissions = [
+      ["team", ["methodologyBinding"]],
+      ["mission", ["workspaceId"]],
+      ["mission", ["methodologySnapshot", "ref"]],
+      ["mission", ["rosterSnapshots", "0", "members", "0", "capabilityFacts"]],
+      ["mission", ["attentionItems", "0", "scope"]],
+      ["mission", ["workstreams", "0", "reviewGate"]],
+      ["mission", ["workstreams", "0", "finalVerificationGate"]],
+    ] as const;
+
+    for (const [root, path] of omissions) {
+      const fixture = omitFixturePath(root, path);
+      expect(
+        TeamV2Schema.safeParse(fixture.team).success &&
+          TeamMissionSchema.safeParse(fixture.mission).success,
+      ).toBe(false);
+    }
+  });
+});
+
+function omitFixturePath(root: "team" | "mission", path: readonly string[]) {
+  const fixture: { team: unknown; mission: unknown } = structuredClone({ team, mission });
+  let target = fixture[root];
+  for (const segment of path.slice(0, -1)) {
+    if (Array.isArray(target)) target = target[Number(segment)];
+    else if (typeof target === "object" && target !== null)
+      target = (target as Record<string, unknown>)[segment];
+  }
+  const final = path.at(-1);
+  if (!final || typeof target !== "object" || target === null) {
+    throw new Error(`Invalid Team V1 fixture omission path: ${root}.${path.join(".")}`);
+  }
+  if (Array.isArray(target)) delete target[Number(final)];
+  else delete (target as Record<string, unknown>)[final];
+  return fixture;
+}
 
 describe("Team profile v2 RPC schemas", () => {
   it("requires complete facts for every newly created or added member", () => {
@@ -346,7 +461,7 @@ describe("Team profile v2 RPC schemas", () => {
     expect(TeamProfileUpdateRequestSchema.parse(detach)).toEqual(detach);
   });
 
-  it("keeps parsing legacy inline member updates during the compatibility window", () => {
+  it("rejects pre-V1 inline member updates and missing mutation identity", () => {
     const request = {
       type: "team.profile.update.request" as const,
       requestId: "req-legacy-profile-update",
@@ -356,7 +471,14 @@ describe("Team profile v2 RPC schemas", () => {
       memberUpdates: [{ memberId: "member-lead", executionProfile }],
     };
 
-    expect(TeamProfileUpdateRequestSchema.parse(request)).toEqual(request);
+    expect(TeamProfileUpdateRequestSchema.safeParse(request).success).toBe(false);
+    expect(
+      TeamProfileUpdateRequestSchema.safeParse({
+        ...request,
+        memberAdds: undefined,
+        memberUpdates: undefined,
+      }).success,
+    ).toBe(false);
   });
 
   it("plans a Methodology upgrade against the exact ref the form was built from", () => {
@@ -450,7 +572,7 @@ describe("Team profile v2 RPC schemas", () => {
     }
   });
 
-  it("keeps parsing a profile update without update idempotency during compatibility", () => {
+  it("rejects a profile update without V1 mutation identity", () => {
     const request = {
       type: "team.profile.update.request" as const,
       requestId: "req-profile-update-without-idempotency",
@@ -459,7 +581,7 @@ describe("Team profile v2 RPC schemas", () => {
       name: "Platform runtime",
     };
 
-    expect(TeamProfileUpdateRequestSchema.safeParse(request).success).toBe(true);
+    expect(TeamProfileUpdateRequestSchema.safeParse(request).success).toBe(false);
   });
 
   it("round-trips list, inspect and archive", () => {
@@ -641,7 +763,7 @@ describe("Team Mission v2 RPC schemas", () => {
     }
   });
 
-  it("keeps the replacement Member optional on the wire for Lead recovery", () => {
+  it("requires the replacement Member on the V1 Lead recovery wire shape", () => {
     const request = {
       type: "team.mission.attention.resolve.request",
       requestId: "req-replace-lead",
@@ -664,9 +786,9 @@ describe("Team Mission v2 RPC schemas", () => {
         reason: "Promote an active roster Member.",
       },
     };
-    expect(TeamMissionAttentionResolveRequestSchema.parse(requestWithoutReplacement)).toEqual(
-      requestWithoutReplacement,
-    );
+    expect(
+      TeamMissionAttentionResolveRequestSchema.safeParse(requestWithoutReplacement).success,
+    ).toBe(false);
   });
 
   it("requires exact gate identity and a non-empty reason for controller review waiver", () => {

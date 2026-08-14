@@ -150,16 +150,8 @@ export interface TeamProfileUpdatePayload {
   memberRemovals?: string[];
 }
 
-type ExplicitTeamProfileMemberInput = Extract<
-  TeamProfileMemberInput,
-  { executionProfileSelection: unknown }
->;
-type ExplicitTeamProfileMemberPatch = Omit<
-  Extract<TeamProfileMemberPatch, { executionProfileSelection: unknown }>,
-  "executionProfileSelection"
-> & {
-  executionProfileSelection?: ExplicitTeamProfileMemberInput["executionProfileSelection"];
-};
+type ExplicitTeamProfileMemberInput = TeamProfileMemberInput;
+type ExplicitTeamProfileMemberPatch = TeamProfileMemberPatch;
 
 export type TeamProfileSubmitIntent =
   | {

@@ -10,6 +10,22 @@ describe("Team Missions capability access", () => {
     expect(resolveTeamMissionsAccess({ features: { teamMissions: false } })).toBe(
       "upgrade_required",
     );
-    expect(resolveTeamMissionsAccess({ features: { teamMissions: true } })).toBe("supported");
+    expect(resolveTeamMissionsAccess({ features: { teamMissions: true } })).toBe(
+      "upgrade_required",
+    );
+    expect(
+      resolveTeamMissionsAccess({
+        features: { teamMissions: true, globalTeamProfiles: true },
+      }),
+    ).toBe("upgrade_required");
+    expect(
+      resolveTeamMissionsAccess({
+        features: {
+          teamMissions: true,
+          globalTeamProfiles: true,
+          teamMethodologies: true,
+        },
+      }),
+    ).toBe("supported");
   });
 });

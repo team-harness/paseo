@@ -6,7 +6,6 @@ const BASE = {
   serverId: "host-1",
   teamId: "team-1",
   supported: true,
-  globalTeamProfilesSupported: true,
   connectionStatus: "online" as const,
   hydrated: true,
   activeMissionId: null as string | null,
@@ -46,29 +45,8 @@ describe("resolving a team URL to the workspace that holds it", () => {
     ).toEqual({ kind: "resolved", workspaceId: "ws-1" });
   });
 
-  it("does not move a legacy idle Team off its archived creation workspace", () => {
-    expect(
-      resolveTeamRoute({
-        ...BASE,
-        globalTeamProfilesSupported: false,
-        creationWorkspaceId: "ws-archived",
-        liveWorkspaceIds: ["ws-b"],
-      }),
-    ).toEqual({ kind: "hydrating" });
-  });
-
   it("keeps a hydrated idle Team at host level when no live workspace is available", () => {
     expect(resolveTeamRoute({ ...BASE, liveWorkspaceIds: [] })).toEqual({ kind: "hostLevel" });
-  });
-
-  it("does not treat a legacy workspace Team as host-level", () => {
-    expect(
-      resolveTeamRoute({
-        ...BASE,
-        globalTeamProfilesSupported: false,
-        liveWorkspaceIds: [],
-      }),
-    ).toEqual({ kind: "hydrating" });
   });
 
   it("rejects a URL with nothing to resolve", () => {
