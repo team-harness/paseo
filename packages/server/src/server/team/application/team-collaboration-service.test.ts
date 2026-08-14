@@ -28,6 +28,7 @@ import {
   type TeamOperationPermit,
 } from "./team-operation-coordinator.js";
 import { buildLeadReplanDeliveries } from "./assignment-replan.js";
+import { missionReviewReportFingerprint } from "../domain/mission-review-gate.js";
 import {
   testCreateMember,
   testCreateMethodologyBinding,
@@ -258,7 +259,11 @@ describe("TeamCollaborationService queries", () => {
         {
           workstreamId: "api",
           ownerMemberId: team.members[1]?.memberId,
-          reviewerMemberId: team.leadMemberId,
+          reviewGate: {
+            kind: "required",
+            selection: { kind: "assigned", reviewerMemberId: team.leadMemberId },
+            outcome: { kind: "pending" },
+          },
           status: "planned",
         },
         {
@@ -366,6 +371,7 @@ describe("TeamCollaborationService queries", () => {
           {
             attentionId: "attention-lead-unavailable",
             kind: "lead_unavailable",
+            scope: { kind: "mission" as const },
             status: "open",
             priorMissionStatus: "planning",
             assignmentId: null,
@@ -410,10 +416,56 @@ describe("TeamCollaborationService queries", () => {
         { kind: "lead_unavailable", status: "resolved" },
         {
           kind: "assignment_requires_replan",
+          scope: { kind: "mission" as const },
           status: "resolved",
           resolution: { kind: "replan", actorId: "agent-2" },
         },
       ],
+    });
+  });
+
+  test("derives reviewer requirements when frozen methodology forces independent review", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { team, mission } = await createMission(fixture.lifecycle);
+    const forced = await fixture.missions.update({
+      missionId: mission.id,
+      expectedRevision: mission.revision,
+      update: (current) => ({
+        ...current,
+        methodologySnapshot: {
+          ...current.methodologySnapshot,
+          hardPolicy: {
+            ...current.methodologySnapshot.hardPolicy,
+            review: {
+              ...current.methodologySnapshot.hardPolicy.review,
+              writableWorkstreams: "independent_required" as const,
+            },
+          },
+        },
+      }),
+    });
+
+    const planned = await fixture.collaboration.planMission({
+      callerAgentId: "agent-1",
+      missionId: mission.id,
+      expectedRevision: forced.mission.revision,
+      expectedPlanRevision: 0,
+      workstreams: missionPlanWithoutRequiredReview(),
+    });
+
+    expect(planned.workstreams[0]).toMatchObject({
+      ownerMemberId: team.members[1]?.memberId,
+      reviewGate: {
+        kind: "required",
+        requirements: {
+          requiredSkillIds: ["typescript"],
+          preferredSkillIds: [],
+          requiredRuntimeCapabilityIds: ["structured-tools"],
+          minimumLevel: 3,
+        },
+        selection: { kind: "assigned", reviewerMemberId: team.leadMemberId },
+        outcome: { kind: "pending" },
+      },
     });
   });
 
@@ -1009,8 +1061,9 @@ describe("TeamCollaborationService queries", () => {
       replanned.assignments.find((assignment) => assignment.assignmentId === failedVerificationId),
     ).toMatchObject({
       semanticState: "canceled",
-      terminationReason: "superseded",
-      supersededBy: "assignment:mission-1:2:final-verification:verification",
+      terminationReason: null,
+      supersededBy: null,
+      planChangeReason: "quality_gate_no_longer_required",
     });
     expect(replanned.assignments.filter((assignment) => assignment.planRevision === 2)).toEqual([
       expect.objectContaining({
@@ -1020,23 +1073,11 @@ describe("TeamCollaborationService queries", () => {
         dependencyAssignmentIds: [running.assignmentId],
         semanticState: "planned",
       }),
-      expect.objectContaining({
-        assignmentId: "assignment:mission-1:2:final-verification:verification",
-        kind: "verification",
-        subjectAssignmentIds: [
-          "assignment:mission-1:2:api:review",
-          running.assignmentId,
-        ].toSorted(),
-        dependencyAssignmentIds: [
-          "assignment:mission-1:2:api:review",
-          running.assignmentId,
-        ].toSorted(),
-        semanticState: "planned",
-      }),
     ]);
     expect(replanned.attentionItems).toEqual([
       expect.objectContaining({
         kind: "assignment_requires_replan",
+        scope: { kind: "mission" as const },
         status: "resolved",
         resolution: expect.objectContaining({ kind: "replan", actorId: "agent-1" }),
       }),
@@ -1076,6 +1117,55 @@ describe("TeamCollaborationService queries", () => {
         dependencyAssignmentIds: [running.assignmentId],
       }),
     ]);
+  });
+
+  test("cancels stale quality gates when replan must wait for a reviewer", async () => {
+    const fixture = createFixture(rootDirectory);
+    const running = await createRunningDelivery(fixture);
+    const { blocked, failedVerificationId } = await createFailedDaemonOwnedVerification(
+      fixture,
+      running,
+    );
+    const { stored: withReview, reviewId: oldReviewId } = await addPlannedReview(
+      fixture,
+      running,
+      blocked.mission.revision,
+    );
+    const waitingPlan = missionPlan();
+    waitingPlan[0] = {
+      ...waitingPlan[0]!,
+      reviewerRequirements: {
+        ...waitingPlan[0]!.reviewerRequirements!,
+        requiredRuntimeCapabilityIds: ["unavailable-review-runtime"],
+      },
+    };
+
+    const replanned = await fixture.collaboration.planMission({
+      callerAgentId: "agent-1",
+      missionId: running.mission.id,
+      expectedRevision: withReview.mission.revision,
+      expectedPlanRevision: 1,
+      workstreams: waitingPlan,
+    });
+
+    expect(replanned.workstreams[0]?.reviewGate).toMatchObject({
+      kind: "required",
+      selection: { kind: "awaiting_reviewer" },
+      outcome: { kind: "pending" },
+    });
+    expect(replanned.assignments).not.toContainEqual(
+      expect.objectContaining({ planRevision: 2, kind: "review" }),
+    );
+    for (const assignmentId of [oldReviewId, failedVerificationId]) {
+      expect(
+        replanned.assignments.find((assignment) => assignment.assignmentId === assignmentId),
+      ).toMatchObject({
+        semanticState: "canceled",
+        terminationReason: null,
+        planChangeReason: "quality_gate_no_longer_required",
+        supersededBy: null,
+      });
+    }
   });
 
   test("cancels a review when its Workstream is removed by replan", async () => {
@@ -1131,7 +1221,11 @@ describe("TeamCollaborationService queries", () => {
         const workstream = mission.workstreams.find(
           (candidate) => candidate.workstreamId === delivery?.workstreamId,
         );
-        const reviewerMemberId = workstream?.reviewerMemberId;
+        const reviewerMemberId =
+          workstream?.reviewGate.kind === "required" &&
+          workstream.reviewGate.selection.kind === "assigned"
+            ? workstream.reviewGate.selection.reviewerMemberId
+            : null;
         const reviewerParticipant = mission.participants.find(
           (participant) =>
             participant.memberId === reviewerMemberId && participant.archivedAt === null,
@@ -1150,6 +1244,14 @@ describe("TeamCollaborationService queries", () => {
           assignmentId: approvedReviewId,
           kind: "review" as const,
           subjectAssignmentIds: [delivery.assignmentId],
+          reviewGateFingerprint:
+            workstream.reviewGate.kind === "required"
+              ? workstream.reviewGate.gateKeyFingerprint
+              : null,
+          reviewSubjectFingerprint:
+            workstream.reviewGate.kind === "required"
+              ? workstream.reviewGate.subjectFingerprint
+              : null,
           assigneeMemberId: reviewerMemberId,
           runtimeAgentId: reviewerParticipant.agentId,
           objective: workstream.objective,
@@ -1192,8 +1294,29 @@ describe("TeamCollaborationService queries", () => {
           semanticState: "failed" as const,
           acceptedTurnId: "turn-api-review-failed",
         };
+        const reviewGate = workstream.reviewGate;
+        if (reviewGate.kind !== "required") throw new Error("Required review gate expected");
         return {
           ...mission,
+          workstreams: mission.workstreams.map((candidate) =>
+            candidate.workstreamId === workstream.workstreamId
+              ? {
+                  ...candidate,
+                  reviewGate: {
+                    ...reviewGate,
+                    outcome: {
+                      kind: "approved" as const,
+                      gateKeyFingerprint: reviewGate.gateKeyFingerprint,
+                      subjectFingerprint: reviewGate.subjectFingerprint,
+                      reviewAssignmentId: approvedReviewId,
+                      reportFingerprint: missionReviewReportFingerprint(approvedReview.report),
+                      inheritedFromGateFingerprint: null,
+                      decidedAt: NOW,
+                    },
+                  },
+                }
+              : candidate,
+          ),
           assignments: [...mission.assignments, approvedReview, failedReview],
         };
       },
@@ -1517,6 +1640,7 @@ describe("TeamCollaborationService queries", () => {
           {
             attentionId,
             kind: "assignment_requires_replan" as const,
+            scope: { kind: "mission" as const },
             status: "open" as const,
             priorMissionStatus: "active" as const,
             assignmentId: running.assignmentId,
@@ -2494,6 +2618,7 @@ describe("TeamCollaborationService queries", () => {
         attentionItems: [
           {
             kind: "participant_unavailable",
+            scope: { kind: "mission" as const },
             status: "open",
             priorMissionStatus: "planning",
           },
@@ -2517,6 +2642,7 @@ describe("TeamCollaborationService queries", () => {
       attentionItems: [
         {
           kind: "participant_unavailable",
+          scope: { kind: "mission" as const },
           status: "resolved",
           resolution: { kind: "replan", actorId: "agent-1" },
         },
@@ -2621,6 +2747,7 @@ describe("TeamCollaborationService queries", () => {
         attentionItems: [
           {
             kind: "notification_unacknowledged",
+            scope: { kind: "mission" as const },
             status: "open",
             priorMissionStatus: "planning",
           },
@@ -3469,6 +3596,7 @@ describe("TeamCollaborationService queries", () => {
           {
             attentionId: `${mission.id}:${running.assignmentId}:missing-report`,
             kind: "missing_report" as const,
+            scope: { kind: "mission" as const },
             status: "open" as const,
             priorMissionStatus: "active" as const,
             assignmentId: running.assignmentId,
@@ -3600,10 +3728,12 @@ describe("TeamCollaborationService queries", () => {
         attentionItems: [
           expect.objectContaining({
             kind: "missing_report",
+            scope: { kind: "mission" as const },
             status: "resolved",
           }),
           expect.objectContaining({
             kind: "assignment_requires_replan",
+            scope: { kind: "mission" as const },
             status: "open",
             assignmentId: running.assignmentId,
           }),
@@ -3639,6 +3769,7 @@ describe("TeamCollaborationService queries", () => {
           {
             attentionId: `${mission.id}:${failedVerificationId}:missing-report`,
             kind: "missing_report" as const,
+            scope: { kind: "mission" as const },
             status: "open" as const,
             priorMissionStatus: "verifying" as const,
             assignmentId: failedVerificationId,
@@ -3689,6 +3820,7 @@ describe("TeamCollaborationService queries", () => {
       expect.objectContaining({ kind: "missing_report", status: "resolved" }),
       expect.objectContaining({
         kind: "assignment_requires_replan",
+        scope: { kind: "mission" as const },
         status: "open",
         assignmentId: failedVerificationId,
       }),
@@ -3706,9 +3838,15 @@ describe("TeamCollaborationService queries", () => {
       replanned.assignments.find((assignment) => assignment.assignmentId === failedVerificationId),
     ).toMatchObject({
       semanticState: "canceled",
-      terminationReason: "superseded",
-      supersededBy: "assignment:mission-1:2:final-verification:verification",
+      terminationReason: null,
+      supersededBy: null,
+      planChangeReason: "quality_gate_no_longer_required",
     });
+    expect(
+      replanned.assignments.filter(
+        (assignment) => assignment.planRevision === 2 && assignment.kind === "verification",
+      ),
+    ).toEqual([]);
   });
 
   test("reads Team chat immediately and acknowledges deliveries through the returned cursor", async () => {
@@ -4271,6 +4409,7 @@ async function createFailedDaemonOwnedVerification(
           {
             attentionId: `${mission.id}:${failedVerificationId}:requires-replan`,
             kind: "assignment_requires_replan" as const,
+            scope: { kind: "mission" as const },
             status: "open" as const,
             priorMissionStatus: "verifying" as const,
             assignmentId: failedVerificationId,
@@ -4302,7 +4441,12 @@ async function addPlannedReview(
       const workstream = mission.workstreams.find(
         (candidate) => candidate.workstreamId === delivery?.workstreamId,
       );
-      if (!delivery || !workstream?.reviewerMemberId) {
+      const reviewerMemberId =
+        workstream?.reviewGate.kind === "required" &&
+        workstream.reviewGate.selection.kind === "assigned"
+          ? workstream.reviewGate.selection.reviewerMemberId
+          : null;
+      if (!delivery || !workstream || !reviewerMemberId) {
         throw new Error("Review fixture is incomplete");
       }
       return {
@@ -4314,7 +4458,9 @@ async function addPlannedReview(
             assignmentId: reviewId,
             kind: "review" as const,
             subjectAssignmentIds: [delivery.assignmentId],
-            assigneeMemberId: workstream.reviewerMemberId,
+            reviewGateFingerprint: workstream.reviewGate.gateKeyFingerprint,
+            reviewSubjectFingerprint: workstream.reviewGate.subjectFingerprint,
+            assigneeMemberId: reviewerMemberId,
             runtimeAgentId: null,
             bindingEpoch: null,
             objective: workstream.objective,
@@ -4376,6 +4522,7 @@ async function markAssignmentNeedsReport(
         {
           attentionId: `${mission.id}:${running.assignmentId}:missing-report`,
           kind: "missing_report" as const,
+          scope: { kind: "mission" as const },
           status: "open" as const,
           priorMissionStatus: "active" as const,
           assignmentId: running.assignmentId,

@@ -3,6 +3,7 @@ import {
   MissionAssignmentContractSchema,
   MissionAttentionItemSchema,
   MissionRosterSnapshotSchema,
+  MissionReviewWaiverSchema,
   MissionScopeLeaseSchema,
   MissionWorkspaceAuditPolicySchema,
   MissionWorkstreamPlanSnapshotSchema,
@@ -142,10 +143,79 @@ describe("team mission", () => {
     expect(TeamLifecycleRecoveryFailureSchema.parse(failure)).toEqual(failure);
   });
 
+  it("persists review waivers with controller attribution and exact gate identity", () => {
+    const waiver = {
+      waiverId: "waiver-api",
+      attentionId: "attention-review-api",
+      actorId: "controller",
+      gateKey: {
+        subject: { workstreamId: "workstream-api", subjectAssignmentIds: ["assignment-api"] },
+        planRevision: 1,
+      },
+      gateKeyFingerprint: testDigest,
+      subjectFingerprint: testDigest,
+      connectionId: "connection-1",
+      selfReportedClientLabel: "paseo-app",
+      reason: "No structurally eligible reviewer is available.",
+      createdAt: "2026-08-07T11:09:00.000Z",
+    };
+
+    expect(MissionReviewWaiverSchema.parse(waiver)).toEqual(waiver);
+  });
+
+  it("persists a workstream-scoped review waiver Attention resolution", () => {
+    const attention = {
+      attentionId: "attention-review-api",
+      kind: "review_gate_reviewer_unavailable" as const,
+      scope: {
+        kind: "workstream" as const,
+        workstreamId: "workstream-api",
+        blockDependents: true as const,
+      },
+      reviewGateDetails: {
+        gateKey: {
+          subject: { workstreamId: "workstream-api", subjectAssignmentIds: ["assignment-api"] },
+          planRevision: 1,
+        },
+        gateKeyFingerprint: testDigest,
+        subjectFingerprint: testDigest,
+      },
+      status: "resolved" as const,
+      priorMissionStatus: null,
+      assignmentId: null,
+      summary: "No structurally eligible reviewer is available.",
+      pathEvidence: [],
+      createdAt: "2026-08-07T11:08:00.000Z",
+      resolution: {
+        kind: "waive_review" as const,
+        actorId: "controller",
+        connectionId: "connection-1",
+        selfReportedClientLabel: "paseo-app",
+        reason: "No structurally eligible reviewer is available.",
+        ownerAssignmentId: null,
+        recoveryAssignmentId: null,
+        resolvedAt: "2026-08-07T11:09:00.000Z",
+      },
+    };
+
+    expect(MissionAttentionItemSchema.parse(attention)).toEqual(attention);
+    expect(
+      MissionAttentionItemSchema.safeParse({
+        ...attention,
+        reviewGateDetails: undefined,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires the unshipped V1 Mission waiver collection", () => {
+    expect(TeamMissionSchema.shape.reviewWaivers.safeParse(undefined).success).toBe(false);
+  });
+
   it("stores auditable resolution of a workspace ownership violation", () => {
     const attention = {
       attentionId: "attention-unowned-path",
       kind: "ownership_violation" as const,
+      scope: { kind: "mission" as const },
       status: "resolved" as const,
       priorMissionStatus: "active" as const,
       assignmentId: "assignment-mission-schema",
@@ -174,6 +244,7 @@ describe("team mission", () => {
     const attention = {
       attentionId: "attention-assignment-replan",
       kind: "assignment_requires_replan" as const,
+      scope: { kind: "mission" as const },
       status: "open" as const,
       priorMissionStatus: "active" as const,
       assignmentId: "assignment-server",
@@ -343,22 +414,34 @@ describe("team mission", () => {
       ownerMemberId: "member-engineer",
       ownerMatchExplanation: explanation,
       ownerOverrideReason: null,
-      reviewPolicy: "required" as const,
-      reviewerRequirements: {
-        requiredSkillIds: ["review"],
-        preferredSkillIds: ["protocol"],
-        requiredRuntimeCapabilityIds: ["structured-tools"],
-        minimumLevel: 4,
+      reviewGate: {
+        kind: "required" as const,
+        gateKey: {
+          subject: { workstreamId: "workstream-protocol", subjectAssignmentIds: [] },
+          planRevision: 2,
+        },
+        gateKeyFingerprint: testDigest,
+        subjectFingerprint: testDigest,
+        requirements: {
+          requiredSkillIds: ["review"],
+          preferredSkillIds: ["protocol"],
+          requiredRuntimeCapabilityIds: ["structured-tools"],
+          minimumLevel: 4,
+        },
+        selection: {
+          kind: "assigned" as const,
+          reviewerMemberId: "member-reviewer",
+          matchExplanation: {
+            ...explanation,
+            recommendedMemberId: "member-reviewer",
+            requiredSkillIds: ["review"],
+            excludedMemberIds: ["member-engineer"],
+            rosterIndex: 1,
+          },
+          overrideReason: null,
+        },
+        outcome: { kind: "pending" as const },
       },
-      reviewerMemberId: "member-reviewer",
-      reviewerMatchExplanation: {
-        ...explanation,
-        recommendedMemberId: "member-reviewer",
-        requiredSkillIds: ["review"],
-        excludedMemberIds: ["member-engineer"],
-        rosterIndex: 1,
-      },
-      reviewerOverrideReason: null,
       status: "planned" as const,
     };
 
@@ -490,11 +573,7 @@ describe("team mission", () => {
             rosterIndex: 0,
           },
           ownerOverrideReason: null,
-          reviewPolicy: "none" as const,
-          reviewerRequirements: null,
-          reviewerMemberId: null,
-          reviewerMatchExplanation: null,
-          reviewerOverrideReason: null,
+          reviewGate: { kind: "none" as const, outcome: { kind: "not_required" as const } },
           status: "active" as const,
         },
       ],
@@ -505,6 +584,8 @@ describe("team mission", () => {
           revision: 2,
           kind: "delivery" as const,
           subjectAssignmentIds: [],
+          reviewGateFingerprint: null,
+          reviewSubjectFingerprint: null,
           missionId: "mission-sdk",
           workstreamId: "workstream-protocol",
           assigneeMemberId: "member-engineer",
@@ -551,6 +632,7 @@ describe("team mission", () => {
         },
       ],
       attentionItems: [],
+      reviewWaivers: [],
       lifecycleRecoveryFailure: null,
       createdAt: "2026-08-07T11:00:00.000Z",
       updatedAt: "2026-08-07T11:02:00.000Z",
@@ -566,6 +648,8 @@ describe("team mission", () => {
       revision: 1,
       kind: "delivery" as const,
       subjectAssignmentIds: [],
+      reviewGateFingerprint: null,
+      reviewSubjectFingerprint: null,
       missionId: "mission-sdk",
       workstreamId: "workstream-protocol",
       assigneeMemberId: "member-engineer",
@@ -628,6 +712,8 @@ describe("team mission", () => {
       revision: 2,
       kind: "review" as const,
       subjectAssignmentIds: ["assignment-delivery"],
+      reviewGateFingerprint: testDigest,
+      reviewSubjectFingerprint: testDigest,
       missionId: "mission-sdk",
       workstreamId: "workstream-protocol",
       assigneeMemberId: "member-reviewer",
@@ -678,6 +764,8 @@ describe("team mission", () => {
       revision: 1,
       kind: "delivery" as const,
       subjectAssignmentIds: [],
+      reviewGateFingerprint: null,
+      reviewSubjectFingerprint: null,
       missionId: "mission-sdk",
       workstreamId: "workstream-integration",
       assigneeMemberId: "member-engineer",

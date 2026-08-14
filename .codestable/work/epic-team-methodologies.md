@@ -3,13 +3,8 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-11
-    state: dispatched
-    run: subagent:/root/tm11_recovery
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-review-gates
-    base: 1206406b9
-next_action: TM-ITEM-11 只修复 needs_report review replacement 的 aggregate recovery 清理，并追加同一 reviewer 窄复审
+active_items: []
+next_action: 派发 TM-ITEM-12：Review Gate 调度与依赖闭包阻塞
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -28,7 +23,7 @@ remote_publish: final
 - [x] TM-ITEM-8
 - [x] TM-ITEM-9
 - [x] TM-ITEM-10
-- [ ] TM-ITEM-11
+- [x] TM-ITEM-11
 - [ ] TM-ITEM-12
 - [ ] TM-ITEM-13
 - [ ] TM-ITEM-14
@@ -37,6 +32,21 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-11 完成并通过最终 recovery 窄复审。单父 checkpoint
+  `526b8c0f6241a720e4e26a385a9df934eb3d74ed`（parent `1206406b9…`，tree
+  `372abf243da3ab5ff337224511e581e08abce83d`，diff
+  `5a9ac895d608838e3807bc880870846506bc4d460d76b62df3384c68094d5e91`，31 files，
+  +4921/-443）将 invalid `needs_report` review 的 supersede、deterministic replacement 与旧
+  Assignment report-recovery 全链清理收敛到同一 `MissionStore.updateAggregate` CAS；保留其他
+  Assignment recovery。新增回归覆盖 pending、dispatched、二次 reconcile storage revision 零 churn，
+  以及 replacement review → final verification → Mission completed。原 reviewer
+  `/root/tm11_scheduler_final_review` 在 owner 授权的附加窄轮核对相同冻结 hash，结论为 0 blocking /
+  0 important；R3 唯一 blocker resolved。隔离验证为 scheduler 47/47、build/server、lint 0/0、
+  format/diff-check 通过；隔离 typecheck 仅命中改动外 `draggable-list.native.tsx:122` 基线错误。
+  主分支在 TM-ITEM-10 后无提交集成，仅 `packages/cli/src/commands/team/schema.ts` 出现一个 import
+  冲突，合并后同时保留 methodology execution-source 与 review evidence 输出；重建声明后 CLI schema +
+  scheduler 53/53、build/server、全仓 typecheck、lint 0/0、format 与双 diff-check 全部通过。
 
 - 2026-08-14：owner 明确授权超过原三轮上限，修复 TM-ITEM-11 唯一剩余 recovery blocker 并追加
   同一 reviewer 的一次窄复审。范围仅限 invalid `needs_report` review replacement：取消旧 Assignment、

@@ -812,6 +812,7 @@ describe("TeamMissionService lifecycle", () => {
           {
             attentionId: `runtime-scheduler:${mission.id}`,
             kind: "lead_unavailable",
+            scope: { kind: "mission" as const },
             status: "open",
             summary: "Scheduler recovery failed: workspace unavailable",
           },
@@ -986,6 +987,7 @@ describe("TeamMissionService lifecycle", () => {
           {
             attentionId: `persistence:team_profile_missing:${mission.id}`,
             kind: "ownership_violation",
+            scope: { kind: "mission" as const },
             status: "open",
             summary: "Team profile is missing for this Mission",
           },
@@ -2959,6 +2961,7 @@ describe("TeamMissionService lifecycle", () => {
           {
             attentionId: "attention-1",
             kind: "ownership_violation",
+            scope: { kind: "mission" as const },
             status: "open",
             priorMissionStatus: "planning",
             assignmentId: null,
@@ -3027,6 +3030,7 @@ describe("TeamMissionService lifecycle", () => {
           {
             attentionId: "attention-ownership",
             kind: "ownership_violation",
+            scope: { kind: "mission" as const },
             status: "open",
             priorMissionStatus: "planning",
             assignmentId: null,
@@ -3083,6 +3087,7 @@ describe("TeamMissionService lifecycle", () => {
           {
             attentionId: "attention-provider",
             kind: "provider_unavailable",
+            scope: { kind: "mission" as const },
             status: "open",
             priorMissionStatus: "planning",
             assignmentId: "assignment-provider",
@@ -3160,6 +3165,7 @@ describe("TeamMissionService lifecycle", () => {
           {
             attentionId: "attention-owner",
             kind: "ownership_violation",
+            scope: { kind: "mission" as const },
             status: "open",
             priorMissionStatus: "active",
             assignmentId: "assignment-source",
@@ -3238,6 +3244,7 @@ describe("TeamMissionService lifecycle", () => {
           {
             attentionId: "attention-invalid-owner",
             kind: "ownership_violation",
+            scope: { kind: "mission" as const },
             status: "open",
             priorMissionStatus: "active",
             assignmentId: "assignment-source",
@@ -3315,6 +3322,7 @@ describe("TeamMissionService lifecycle", () => {
             {
               attentionId: "attention-unimplemented",
               kind: attentionKind,
+              scope: { kind: "mission" },
               status: "open",
               priorMissionStatus: "planning",
               assignmentId: null,
@@ -3531,6 +3539,7 @@ describe("TeamMissionService lifecycle", () => {
             {
               attentionId: "assignment-existing:replan",
               kind: "assignment_requires_replan",
+              scope: { kind: "mission" as const },
               status: "open",
               priorMissionStatus: "planning",
               assignmentId: "assignment-existing",
@@ -3833,6 +3842,7 @@ describe("TeamMissionService lifecycle", () => {
           {
             attentionId: "notification:delivery-restore",
             kind: "notification_unacknowledged",
+            scope: { kind: "mission" as const },
             status: "open",
             priorMissionStatus: "planning",
             assignmentId: null,
@@ -3957,6 +3967,7 @@ describe("TeamMissionService lifecycle", () => {
           {
             attentionId: "attention-provider",
             kind: "provider_unavailable",
+            scope: { kind: "mission" as const },
             status: "open",
             priorMissionStatus: "planning",
             assignmentId: null,
@@ -4022,6 +4033,7 @@ describe("TeamMissionService lifecycle", () => {
           {
             attentionId: "attention-recovery",
             kind: "provider_unavailable",
+            scope: { kind: "mission" as const },
             status: "open",
             priorMissionStatus: "planning",
             assignmentId: null,
@@ -4439,6 +4451,8 @@ function providerBlockedAssignment(missionId: string) {
     revision: 1,
     kind: "delivery" as const,
     subjectAssignmentIds: [],
+    reviewGateFingerprint: null,
+    reviewSubjectFingerprint: null,
     missionId,
     workstreamId: "workstream-provider",
     assigneeMemberId: "member-1",
@@ -4489,6 +4503,7 @@ function leadUnavailableMission(mission: TeamMission): TeamMission {
       {
         attentionId: "attention-lead-unavailable",
         kind: "lead_unavailable",
+        scope: { kind: "mission" as const },
         status: "open",
         priorMissionStatus: "planning",
         assignmentId: null,

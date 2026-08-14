@@ -1183,12 +1183,42 @@ function projectWorkstream(workstream: Record<string, unknown>): Record<string, 
     ownerMemberId: structuralScalar(workstream, "ownerMemberId"),
     ownerMatchExplanation: projectMatchExplanation(workstream.ownerMatchExplanation),
     ownerOverrideReasonDigest: digestValue(workstream.ownerOverrideReason),
-    reviewPolicy: structuralScalar(workstream, "reviewPolicy"),
-    reviewerRequirements: projectMemberRequirements(workstream.reviewerRequirements),
-    reviewerMemberId: structuralScalar(workstream, "reviewerMemberId"),
-    reviewerMatchExplanation: projectMatchExplanation(workstream.reviewerMatchExplanation),
-    reviewerOverrideReasonDigest: digestValue(workstream.reviewerOverrideReason),
+    reviewGate: projectReviewGate(workstream.reviewGate),
     status: structuralScalar(workstream, "status"),
+  };
+}
+
+function projectReviewGate(value: unknown): Record<string, unknown> | null {
+  const gate = asRecord(value);
+  if (!gate) return null;
+  const gateKey = asRecord(gate.gateKey);
+  const subject = asRecord(gateKey?.subject);
+  const selection = asRecord(gate.selection);
+  const outcome = asRecord(gate.outcome);
+  return {
+    kind: structuralScalar(gate, "kind"),
+    gateKeyFingerprint: structuralScalar(gate, "gateKeyFingerprint"),
+    subjectFingerprint: structuralScalar(gate, "subjectFingerprint"),
+    subjectAssignmentIds: structuralStringArray(subject?.subjectAssignmentIds),
+    requirements: projectMemberRequirements(gate.requirements),
+    selection: selection
+      ? {
+          kind: structuralScalar(selection, "kind"),
+          reviewerMemberId: structuralScalar(selection, "reviewerMemberId"),
+          candidateMemberIds: structuralStringArray(selection.candidateMemberIds),
+          matchExplanation: projectMatchExplanation(selection.matchExplanation),
+          overrideReasonDigest: digestValue(selection.overrideReason),
+        }
+      : null,
+    outcome: outcome
+      ? {
+          kind: structuralScalar(outcome, "kind"),
+          reviewAssignmentId: structuralScalar(outcome, "reviewAssignmentId"),
+          reportFingerprint: structuralScalar(outcome, "reportFingerprint"),
+          inheritedFromGateFingerprint: structuralScalar(outcome, "inheritedFromGateFingerprint"),
+          waiverId: structuralScalar(outcome, "waiverId"),
+        }
+      : null,
   };
 }
 
@@ -2070,8 +2100,12 @@ interface ParallelDagMissionEvidence {
     mutableScope: DagScope;
     dependencyWorkstreamIds: string[];
     ownerMemberId: string;
-    reviewPolicy: string;
-    reviewerMemberId: string | null;
+    reviewGate: {
+      kind: string;
+      gateKey?: { subject: { subjectAssignmentIds: string[] } };
+      selection?: { kind: string; reviewerMemberId?: string };
+      outcome: { kind: string; reviewAssignmentId?: string };
+    };
   }>;
   assignments: Array<{
     assignmentId: string;
@@ -2678,14 +2712,20 @@ function findRecoveryReview(
   delivery: DagAssignmentEvidence | null,
   violations: string[],
 ): DagAssignmentEvidence | null {
-  if (!workstream || workstream.reviewPolicy !== "required") return null;
-  if (!workstream.reviewerMemberId) {
+  if (!workstream || workstream.reviewGate.kind !== "required") return null;
+  const reviewerMemberId = workstream.reviewGate.selection?.reviewerMemberId ?? null;
+  if (!reviewerMemberId) {
     violations.push(`recovery_dependency:${role}_reviewer_required`);
-  } else if (workstream.reviewerMemberId === workstream.ownerMemberId) {
+  } else if (reviewerMemberId === workstream.ownerMemberId) {
     violations.push(`recovery_dependency:${role}_reviewer_must_differ_from_owner`);
   }
+  if (workstream.reviewGate.outcome.kind !== "approved") {
+    violations.push(`recovery_dependency:${role}_review_gate_must_be_approved`);
+  }
+  const approvedReviewAssignmentId = workstream.reviewGate.outcome.reviewAssignmentId;
   const candidates = mission.assignments.filter(
     (candidate) =>
+      candidate.assignmentId === approvedReviewAssignmentId &&
       candidate.workstreamId === workstream.workstreamId &&
       candidate.kind === "review" &&
       candidate.planRevision <= mission.planRevision &&
@@ -2708,7 +2748,7 @@ function findRecoveryReview(
   }
   if (
     review.planRevision === mission.planRevision &&
-    review.assigneeMemberId !== workstream.reviewerMemberId
+    review.assigneeMemberId !== reviewerMemberId
   ) {
     violations.push(`recovery_dependency:${role}_review_assignee_mismatch`);
   }
@@ -2746,8 +2786,10 @@ function validateApiReview(
 ): DagAssignmentEvidence | null {
   if (!apiWorkstream) return null;
   validateApiReviewWorkstream(apiWorkstream, violations);
+  const approvedReviewAssignmentId = apiWorkstream.reviewGate.outcome.reviewAssignmentId;
   const matches = mission.assignments.filter(
     (candidate) =>
+      candidate.assignmentId === approvedReviewAssignmentId &&
       candidate.workstreamId === apiWorkstream.workstreamId &&
       candidate.kind === "review" &&
       candidate.planRevision === mission.planRevision,
@@ -2766,13 +2808,17 @@ function validateApiReviewWorkstream(
   apiWorkstream: DagWorkstreamEvidence,
   violations: string[],
 ): void {
-  if (apiWorkstream.reviewPolicy !== "required") {
+  if (apiWorkstream.reviewGate.kind !== "required") {
     violations.push("parallel_delivery:api_review_policy_must_be_required");
   }
-  if (!apiWorkstream.reviewerMemberId) {
+  const reviewerMemberId = apiWorkstream.reviewGate.selection?.reviewerMemberId ?? null;
+  if (!reviewerMemberId) {
     violations.push("parallel_delivery:api_reviewer_required");
-  } else if (apiWorkstream.reviewerMemberId === apiWorkstream.ownerMemberId) {
+  } else if (reviewerMemberId === apiWorkstream.ownerMemberId) {
     violations.push("parallel_delivery:api_reviewer_must_differ_from_owner");
+  }
+  if (apiWorkstream.reviewGate.outcome.kind !== "approved") {
+    violations.push("parallel_delivery:api_review_gate_must_be_approved");
   }
 }
 
@@ -2785,7 +2831,10 @@ function validateApiReviewContract(
   if (review.mutableScope.kind !== "read_only") {
     violations.push("parallel_delivery:api_review_must_be_read_only");
   }
-  if (review.assigneeMemberId !== apiWorkstream.reviewerMemberId) {
+  if (review.assignmentId !== apiWorkstream.reviewGate.outcome.reviewAssignmentId) {
+    violations.push("parallel_delivery:api_review_outcome_assignment_mismatch");
+  }
+  if (review.assigneeMemberId !== (apiWorkstream.reviewGate.selection?.reviewerMemberId ?? null)) {
     violations.push("parallel_delivery:api_review_assignee_mismatch");
   }
   if (apiDelivery && review.assigneeMemberId === apiDelivery.assigneeMemberId) {

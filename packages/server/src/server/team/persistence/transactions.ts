@@ -321,6 +321,7 @@ function missionFromStartIntent(
     workstreamPlanSnapshots: [],
     assignments: [],
     attentionItems: [],
+    reviewWaivers: [],
     lifecycleRecoveryFailure: null,
   };
 }

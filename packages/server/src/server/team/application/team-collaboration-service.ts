@@ -9,6 +9,8 @@ import type {
   MissionMutableScope,
   MissionParticipant,
   MissionRosterMemberSnapshot,
+  MissionReviewGate,
+  MissionReviewGateSelection,
   MissionWorkstream,
   TeamMission,
   TeamMemberLevel,
@@ -30,9 +32,16 @@ import {
 import {
   type MissionAssignmentCoverage,
   resolveMissionAssignmentCoverage,
+  resolveMissionSettledReviewGateWorkstreamIds,
   validateMissionAttentionResolution,
   validateTeamMission,
 } from "../domain/mission-validation.js";
+import {
+  buildMissionReviewGate,
+  inheritableApprovedReview,
+  notRequiredReviewGate,
+  reviewGateReviewerMemberId,
+} from "../domain/mission-review-gate.js";
 import {
   MissionRevisionConflictError,
   MissionStore,
@@ -155,7 +164,7 @@ export interface MissionWorkstreamDraft {
   minimumLevel: TeamMemberLevel;
   dependencyWorkstreamIds: string[];
   mutableScope: MissionMutableScope;
-  reviewPolicy: MissionWorkstream["reviewPolicy"];
+  reviewPolicy: "none" | "required";
   reviewerRequirements: MissionMemberRequirements | null;
   ownerMemberId?: string;
   ownerOverrideReason?: string;
@@ -566,8 +575,14 @@ export class TeamCollaborationService {
               : assignment,
           )
         : assignments;
+    const reviewBoundWorkstreams = bindReviewGateSubjects({
+      workstreams,
+      previousWorkstreams: context.mission.workstreams,
+      coverage,
+    });
     const normalizedProjection = {
       ...planProjection,
+      workstreams: reviewBoundWorkstreams,
       assignments: normalizedDeliveryAssignments,
     };
     const qualityGates =
@@ -575,6 +590,11 @@ export class TeamCollaborationService {
         ? planMissionQualityGates({
             mission: normalizedProjection,
             coverage,
+            settledReviewGateWorkstreamIds: resolveMissionSettledReviewGateWorkstreamIds(
+              normalizedProjection,
+              { acceptedTurnsById },
+            ),
+            acceptedTurnsById,
             createdAt: now,
             materializePending: true,
           })
@@ -584,7 +604,7 @@ export class TeamCollaborationService {
           assignments: [...normalizedDeliveryAssignments, ...qualityGates.additions],
           replaceableQualityGates: replaceableQualityGateAssignments,
           currentQualityGates: qualityGates.selectedAssignments,
-          workstreams,
+          workstreams: reviewBoundWorkstreams,
           now,
         })
       : normalizedDeliveryAssignments;
@@ -592,6 +612,7 @@ export class TeamCollaborationService {
     const candidate = {
       ...planProjection,
       status: planStatus as TeamMission["status"],
+      workstreams: reviewBoundWorkstreams,
       assignments: normalizedAssignments,
     };
     assertValidPlanProjection(candidate, acceptedTurnsById);
@@ -624,7 +645,7 @@ export class TeamCollaborationService {
             status: planStatus,
             suspendedStatus: null,
             planRevision: nextPlanRevision,
-            workstreams,
+            workstreams: reviewBoundWorkstreams,
             workstreamPlanSnapshots,
             assignments: normalizedAssignments,
             attentionItems,
@@ -770,9 +791,15 @@ export class TeamCollaborationService {
         );
       }
     }
+    const reviewBoundWorkstreams = bindReviewGateSubjects({
+      workstreams: context.mission.workstreams,
+      previousWorkstreams: context.mission.workstreams,
+      coverage,
+    });
     const candidate = {
       ...context.mission,
       status: "active" as const,
+      workstreams: reviewBoundWorkstreams,
       assignments: [...context.mission.assignments, ...created],
     };
     const aggregateValidation = validateTeamMission(candidate, { acceptedTurnsById });
@@ -804,6 +831,7 @@ export class TeamCollaborationService {
             ...mission,
             status: "active",
             suspendedStatus: null,
+            workstreams: reviewBoundWorkstreams,
             assignments: [...mission.assignments, ...created],
           },
           recovery: {
@@ -1973,6 +2001,7 @@ export class TeamCollaborationService {
             {
               attentionId,
               kind: "notification_unacknowledged",
+              scope: { kind: "mission" },
               status: "open",
               priorMissionStatus,
               assignmentId: null,
@@ -2026,6 +2055,7 @@ export class TeamCollaborationService {
             {
               attentionId,
               kind: "participant_unavailable",
+              scope: { kind: "mission" },
               status: "open",
               priorMissionStatus,
               assignmentId: null,
@@ -2350,17 +2380,20 @@ function buildMissionWorkstreams(input: BuildMissionWorkstreamsInput): MissionWo
       writableOwnerMemberIds,
     });
     incrementLoad(openAssignmentsByMember, ownerSelection.memberId);
-    const reviewerSelection = selectWorkstreamReviewer({
+    const reviewGate = createPlannedReviewGate({
       draft,
       previous,
       candidates: matchingCandidates(input.roster, openAssignmentsByMember),
       ownerSelection,
+      mission: input.mission,
+      planRevision: input.planRevision,
     });
-    if (reviewerSelection) incrementLoad(openAssignmentsByMember, reviewerSelection.memberId);
+    const reviewerMemberId = reviewGateReviewerMemberId(reviewGate);
+    if (reviewerMemberId) incrementLoad(openAssignmentsByMember, reviewerMemberId);
     const workstream = createPlannedWorkstream({
       draft,
       ownerSelection,
-      reviewerSelection,
+      reviewGate,
       planRevision: input.planRevision,
       rosterSnapshotRevision: input.mission.activeRosterSnapshotRevision,
       methodologySnapshotRevision: input.mission.methodologySnapshot.revision,
@@ -2443,20 +2476,7 @@ function selectWorkstreamReviewer(input: {
   previous: MissionWorkstream | undefined;
   candidates: WorkstreamMatchCandidate[];
   ownerSelection: SelectedMatch;
-}): SelectedMatch | null {
-  if (input.draft.reviewPolicy !== "required") {
-    if (
-      input.draft.reviewerRequirements ||
-      input.draft.reviewerMemberId ||
-      input.draft.reviewerOverrideReason
-    ) {
-      throw new TeamApplicationError(
-        "unexpected_reviewer_configuration",
-        `Workstream ${input.draft.workstreamId} does not require review`,
-      );
-    }
-    return null;
-  }
+}): MissionReviewGateSelection {
   if (!input.draft.reviewerRequirements) {
     throw new TeamApplicationError(
       "reviewer_requirements_required",
@@ -2467,7 +2487,9 @@ function selectWorkstreamReviewer(input: {
     match: matchWorkstreamReviewer({
       candidates: input.candidates,
       ...input.draft.reviewerRequirements,
-      previousReviewerMemberId: input.previous?.reviewerMemberId ?? null,
+      previousReviewerMemberId: input.previous
+        ? reviewGateReviewerMemberId(input.previous.reviewGate)
+        : null,
       ownerMemberId: input.ownerSelection.memberId,
       ownerMutableScope: input.draft.mutableScope,
     }),
@@ -2476,22 +2498,102 @@ function selectWorkstreamReviewer(input: {
     workstreamId: input.draft.workstreamId,
     selectionKind: "reviewer",
   });
-  const lacksIndependentReviewer =
+  return {
+    kind: "assigned",
+    reviewerMemberId: matched.memberId,
+    matchExplanation: matched.explanation,
+    overrideReason: matched.overrideReason,
+  };
+}
+
+function createPlannedReviewGate(input: {
+  draft: MissionWorkstreamDraft;
+  previous: MissionWorkstream | undefined;
+  candidates: WorkstreamMatchCandidate[];
+  ownerSelection: SelectedMatch;
+  mission: TeamMission;
+  planRevision: number;
+}): MissionReviewGate {
+  const policyRequiresReview =
+    input.draft.kind !== "verification" &&
     input.draft.mutableScope.kind !== "read_only" &&
-    matched.memberId === input.ownerSelection.memberId &&
-    matched.overrideReason === null;
-  return lacksIndependentReviewer
-    ? {
-        ...matched,
-        overrideReason: "No independent reviewer satisfies the hard requirements",
-      }
-    : matched;
+    input.mission.methodologySnapshot.hardPolicy.review.writableWorkstreams ===
+      "independent_required";
+  const requiresReview = policyRequiresReview || input.draft.reviewPolicy === "required";
+  if (!requiresReview) {
+    if (
+      input.draft.reviewerRequirements ||
+      input.draft.reviewerMemberId ||
+      input.draft.reviewerOverrideReason
+    ) {
+      throw new TeamApplicationError(
+        "unexpected_reviewer_configuration",
+        `Workstream ${input.draft.workstreamId} does not require review`,
+      );
+    }
+    return structuredClone(notRequiredReviewGate);
+  }
+  const reviewerRequirements =
+    input.draft.reviewerRequirements ??
+    (policyRequiresReview
+      ? {
+          requiredSkillIds: input.draft.requiredSkillIds,
+          preferredSkillIds: input.draft.preferredSkillIds,
+          requiredRuntimeCapabilityIds: input.draft.requiredRuntimeCapabilityIds,
+          minimumLevel: input.draft.minimumLevel,
+        }
+      : null);
+  if (!reviewerRequirements) {
+    throw new TeamApplicationError(
+      "reviewer_requirements_required",
+      `Workstream ${input.draft.workstreamId} requires reviewer requirements`,
+    );
+  }
+  const match = matchWorkstreamReviewer({
+    candidates: input.candidates,
+    ...reviewerRequirements,
+    previousReviewerMemberId: input.previous
+      ? reviewGateReviewerMemberId(input.previous.reviewGate)
+      : null,
+    ownerMemberId: input.ownerSelection.memberId,
+    ownerMutableScope: input.draft.mutableScope,
+  });
+  let selection: MissionReviewGateSelection;
+  if (match.kind === "matched") {
+    selection = selectWorkstreamReviewer({
+      ...input,
+      draft: { ...input.draft, reviewerRequirements },
+    });
+  } else {
+    const requiredSkills = new Set(reviewerRequirements.requiredSkillIds);
+    const unknownCandidates = input.candidates
+      .filter(
+        ({ profile }) =>
+          profile.memberId !== input.ownerSelection.memberId &&
+          profile.level >= reviewerRequirements.minimumLevel &&
+          [...requiredSkills].every((skillId) => profile.skillIds.includes(skillId)) &&
+          profile.capabilityFacts.kind === "unknown",
+      )
+      .map(({ profile }) => profile.memberId);
+    selection =
+      unknownCandidates.length > 0
+        ? { kind: "awaiting_capabilities", candidateMemberIds: unknownCandidates }
+        : { kind: "awaiting_reviewer" };
+  }
+  return buildMissionReviewGate({
+    workstreamId: input.draft.workstreamId,
+    planRevision: input.planRevision,
+    subjectAssignmentIds: [],
+    requirements: reviewerRequirements,
+    selection,
+    outcome: { kind: "pending" },
+  });
 }
 
 function createPlannedWorkstream(input: {
   draft: MissionWorkstreamDraft;
   ownerSelection: SelectedMatch;
-  reviewerSelection: SelectedMatch | null;
+  reviewGate: MissionReviewGate;
   planRevision: number;
   rosterSnapshotRevision: number;
   methodologySnapshotRevision: 1;
@@ -2515,11 +2617,7 @@ function createPlannedWorkstream(input: {
     ownerMemberId: input.ownerSelection.memberId,
     ownerMatchExplanation: input.ownerSelection.explanation,
     ownerOverrideReason: input.ownerSelection.overrideReason,
-    reviewPolicy: input.draft.reviewPolicy,
-    reviewerRequirements: structuredClone(input.draft.reviewerRequirements),
-    reviewerMemberId: input.reviewerSelection?.memberId ?? null,
-    reviewerMatchExplanation: input.reviewerSelection?.explanation ?? null,
-    reviewerOverrideReason: input.reviewerSelection?.overrideReason ?? null,
+    reviewGate: structuredClone(input.reviewGate),
     status: "planned",
   };
 }
@@ -2583,6 +2681,62 @@ function matchingCandidates(
 
 function incrementLoad(loadByMember: Map<string, number>, memberId: string): void {
   loadByMember.set(memberId, (loadByMember.get(memberId) ?? 0) + 1);
+}
+
+function bindReviewGateSubjects(input: {
+  workstreams: ReadonlyArray<MissionWorkstream>;
+  previousWorkstreams: ReadonlyArray<MissionWorkstream>;
+  coverage: MissionAssignmentCoverage;
+}): MissionWorkstream[] {
+  const previousById = new Map(
+    input.previousWorkstreams.map((workstream) => [workstream.workstreamId, workstream]),
+  );
+  return input.workstreams.map((workstream) => {
+    if (workstream.reviewGate.kind !== "required") return workstream;
+    const assignmentId = input.coverage.assignmentIdsByWorkstreamId.get(workstream.workstreamId);
+    if (!assignmentId) return workstream;
+    const pendingGate = buildMissionReviewGate({
+      workstreamId: workstream.workstreamId,
+      planRevision: workstream.planRevision,
+      subjectAssignmentIds: [assignmentId],
+      requirements: workstream.reviewGate.requirements,
+      selection: workstream.reviewGate.selection,
+      outcome: { kind: "pending" },
+    });
+    if (pendingGate.kind !== "required") return workstream;
+    const inherited = inheritableApprovedReview({
+      previous: previousById.get(workstream.workstreamId),
+      current: { ...workstream, reviewGate: pendingGate },
+      subjectFingerprint: pendingGate.subjectFingerprint,
+    });
+    const inheritedGate = inherited
+      ? buildMissionReviewGate({
+          workstreamId: workstream.workstreamId,
+          planRevision: workstream.planRevision,
+          subjectAssignmentIds: pendingGate.gateKey.subject.subjectAssignmentIds,
+          requirements: pendingGate.requirements,
+          selection: inherited.selection,
+          outcome: { kind: "pending" },
+        })
+      : null;
+    return {
+      ...workstream,
+      reviewGate: inherited
+        ? {
+            ...(inheritedGate?.kind === "required" ? inheritedGate : pendingGate),
+            outcome: {
+              kind: "approved",
+              gateKeyFingerprint: pendingGate.gateKeyFingerprint,
+              subjectFingerprint: pendingGate.subjectFingerprint,
+              reviewAssignmentId: inherited.reviewAssignmentId,
+              reportFingerprint: inherited.reportFingerprint,
+              inheritedFromGateFingerprint: inherited.inheritedFromGateFingerprint,
+              decidedAt: inherited.decidedAt,
+            },
+          }
+        : pendingGate,
+    };
+  });
 }
 
 function assertValidPlanProjection(
@@ -2796,6 +2950,12 @@ function supersedeDaemonQualityGates(input: {
 }): MissionAssignmentContract[] {
   const replacementBySourceId = new Map<string, MissionAssignmentContract>();
   const canceledByPlanChangeIds = new Set<string>();
+  const hasWaitingReviewGate = input.workstreams.some(
+    (workstream) =>
+      workstream.reviewGate.kind === "required" &&
+      workstream.reviewGate.outcome.kind === "pending" &&
+      workstream.reviewGate.selection.kind !== "assigned",
+  );
   for (const assignment of input.replaceableQualityGates) {
     const replacement = input.currentQualityGates.find((candidate) =>
       assignment.kind === "verification"
@@ -2806,7 +2966,22 @@ function supersedeDaemonQualityGates(input: {
       const workstream = input.workstreams.find(
         (candidate) => candidate.workstreamId === assignment.workstreamId,
       );
-      if (assignment.kind === "review" && workstream?.reviewPolicy !== "required") {
+      const reviewIsNoLongerMaterialized =
+        assignment.kind === "review" &&
+        (workstream?.reviewGate.kind !== "required" ||
+          workstream.reviewGate.selection.kind !== "assigned");
+      const verificationWaitsForReview =
+        assignment.kind === "verification" &&
+        input.workstreams.some(
+          (candidate) =>
+            candidate.kind !== "verification" &&
+            candidate.reviewGate.kind === "required" &&
+            candidate.reviewGate.outcome.kind === "pending",
+        );
+      if (
+        reviewIsNoLongerMaterialized ||
+        (assignment.kind === "verification" && (hasWaitingReviewGate || verificationWaitsForReview))
+      ) {
         canceledByPlanChangeIds.add(assignment.assignmentId);
         continue;
       }
@@ -3013,6 +3188,8 @@ function buildAssignment(input: {
       input.assignmentIdsByClientKey,
       "subject",
     ),
+    reviewGateFingerprint: null,
+    reviewSubjectFingerprint: null,
     missionId: input.mission.id,
     workstreamId: workstream.workstreamId,
     assigneeMemberId,
@@ -3054,8 +3231,9 @@ function assignmentAssignee(
   if (kind === "delivery" && workstream.kind !== "verification") {
     return workstream.ownerMemberId;
   }
-  if (kind === "review" && workstream.kind !== "verification" && workstream.reviewerMemberId) {
-    return workstream.reviewerMemberId;
+  if (kind === "review" && workstream.kind !== "verification") {
+    const reviewerMemberId = reviewGateReviewerMemberId(workstream.reviewGate);
+    if (reviewerMemberId) return reviewerMemberId;
   }
   if (kind === "verification" && workstream.kind === "verification") {
     return workstream.ownerMemberId;
@@ -3376,6 +3554,7 @@ function projectAssignmentReplanAttention(input: {
         {
           attentionId,
           kind: "assignment_requires_replan" as const,
+          scope: { kind: "mission" as const },
           status: "open" as const,
           priorMissionStatus,
           assignmentId: input.assignment.assignmentId,

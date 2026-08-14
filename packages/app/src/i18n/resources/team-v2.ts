@@ -179,6 +179,21 @@ export const teamV2En = {
       none: "No Plan yet",
       owner: "Owner",
       reviewer: "Reviewer",
+      reviewGate: "Review gate",
+      reviewSubject: "Review subject",
+      reviewEvidence: "Review evidence",
+      reviewSelection: {
+        not_required: "Not required",
+        assigned: "Reviewer assigned",
+        awaiting_reviewer: "Awaiting reviewer",
+        awaiting_capabilities: "Awaiting capability facts",
+      },
+      reviewOutcome: {
+        not_required: "Not required",
+        pending: "Awaiting independent review",
+        approved: "Approved",
+        waived: "Waived",
+      },
       scope: "Scope",
       assignments: "Assignments",
       artifacts: "Artifacts",
@@ -262,6 +277,23 @@ type DeepPartial<T> = {
   [Key in keyof T]?: T[Key] extends string ? string : DeepPartial<T[Key]>;
 };
 
+function teamV2PlanLocale(
+  overrides: DeepPartial<TeamV2Resources["v2Settings"]["plan"]> | undefined,
+): TeamV2Resources["v2Settings"]["plan"] {
+  return {
+    ...teamV2En.v2Settings.plan,
+    ...overrides,
+    reviewSelection: {
+      ...teamV2En.v2Settings.plan.reviewSelection,
+      ...overrides?.reviewSelection,
+    },
+    reviewOutcome: {
+      ...teamV2En.v2Settings.plan.reviewOutcome,
+      ...overrides?.reviewOutcome,
+    },
+  };
+}
+
 function teamV2Locale(overrides: DeepPartial<TeamV2Resources>): TeamV2Resources {
   return {
     host: {
@@ -297,7 +329,7 @@ function teamV2Locale(overrides: DeepPartial<TeamV2Resources>): TeamV2Resources 
         ...overrides.v2Settings?.participant,
       },
       mission: { ...teamV2En.v2Settings.mission, ...overrides.v2Settings?.mission },
-      plan: { ...teamV2En.v2Settings.plan, ...overrides.v2Settings?.plan },
+      plan: teamV2PlanLocale(overrides.v2Settings?.plan),
       attention: {
         ...teamV2En.v2Settings.attention,
         ...overrides.v2Settings?.attention,
@@ -500,6 +532,21 @@ export const teamV2ZhCN: TeamV2Resources = {
       none: "还没有计划",
       owner: "负责人",
       reviewer: "Reviewer",
+      reviewGate: "审查门禁",
+      reviewSubject: "审查对象",
+      reviewEvidence: "审查证据",
+      reviewSelection: {
+        not_required: "无需分配",
+        assigned: "已分配 Reviewer",
+        awaiting_reviewer: "等待 Reviewer",
+        awaiting_capabilities: "等待能力事实",
+      },
+      reviewOutcome: {
+        not_required: "无需审查",
+        pending: "等待独立审查",
+        approved: "已批准",
+        waived: "已豁免",
+      },
       scope: "范围",
       assignments: "Assignment",
       artifacts: "产物",

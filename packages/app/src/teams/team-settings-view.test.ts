@@ -130,6 +130,7 @@ function mission(): TeamMission {
     workstreamPlanSnapshots: [],
     assignments: [],
     attentionItems: [],
+    reviewWaivers: [],
     lifecycleRecoveryFailure: null,
     createdAt: "2026-08-09T00:00:00.000Z",
     updatedAt: "2026-08-09T00:00:00.000Z",
@@ -146,6 +147,8 @@ function acceptedAssignment(
     revision: 1,
     kind: "delivery",
     subjectAssignmentIds: [],
+    reviewGateFingerprint: null,
+    reviewSubjectFingerprint: null,
     missionId: "mission-1",
     workstreamId: "workstream-ui",
     assigneeMemberId,
@@ -355,16 +358,28 @@ describe("Team settings view", () => {
       ownerMemberId: "member-lead",
       ownerMatchExplanation: match,
       ownerOverrideReason: null,
-      reviewPolicy: "required",
-      reviewerRequirements: {
-        requiredSkillIds: ["testing"],
-        preferredSkillIds: [],
-        requiredRuntimeCapabilityIds: [],
-        minimumLevel: 2,
+      reviewGate: {
+        kind: "required",
+        gateKey: {
+          subject: { workstreamId: "workstream-ui", subjectAssignmentIds: ["assignment-ui"] },
+          planRevision: 1,
+        },
+        gateKeyFingerprint: `sha256:${"1".repeat(64)}`,
+        subjectFingerprint: `sha256:${"2".repeat(64)}`,
+        requirements: {
+          requiredSkillIds: ["testing"],
+          preferredSkillIds: [],
+          requiredRuntimeCapabilityIds: [],
+          minimumLevel: 2,
+        },
+        selection: {
+          kind: "assigned",
+          reviewerMemberId: "member-reviewer",
+          matchExplanation: { ...match, recommendedMemberId: "member-reviewer" },
+          overrideReason: null,
+        },
+        outcome: { kind: "pending" },
       },
-      reviewerMemberId: "member-reviewer",
-      reviewerMatchExplanation: { ...match, recommendedMemberId: "member-reviewer" },
-      reviewerOverrideReason: null,
       status: "active",
     });
     aggregate.assignments.push({
@@ -372,6 +387,8 @@ describe("Team settings view", () => {
       revision: 1,
       kind: "delivery",
       subjectAssignmentIds: [],
+      reviewGateFingerprint: null,
+      reviewSubjectFingerprint: null,
       missionId: aggregate.id,
       workstreamId: "workstream-ui",
       assigneeMemberId: "member-lead",
@@ -406,10 +423,41 @@ describe("Team settings view", () => {
         workstreamId: "workstream-ui",
         owner: expect.objectContaining({ mentionHandle: "lead" }),
         reviewer: expect.objectContaining({ mentionHandle: "reviewer" }),
+        reviewSelection: "assigned",
+        reviewOutcome: "pending",
+        reviewSubjectAssignmentIds: ["assignment-ui"],
         assignmentStates: ["running"],
         scope: { kind: "paths", pathPrefixes: ["packages/app/src/components/teams"] },
       }),
     ]);
+
+    const reviewGate = aggregate.workstreams[0]!.reviewGate;
+    if (reviewGate.kind !== "required") throw new Error("required review gate expected");
+    reviewGate.outcome = {
+      kind: "waived",
+      gateKeyFingerprint: reviewGate.gateKeyFingerprint,
+      subjectFingerprint: reviewGate.subjectFingerprint,
+      waiverId: "waiver-ui",
+      decidedAt: "2026-08-09T00:02:00.000Z",
+    };
+    aggregate.reviewWaivers.push({
+      waiverId: "waiver-ui",
+      attentionId: "attention-review-ui",
+      actorId: "controller-user",
+      gateKey: reviewGate.gateKey,
+      gateKeyFingerprint: reviewGate.gateKeyFingerprint,
+      subjectFingerprint: reviewGate.subjectFingerprint,
+      connectionId: "connection-1",
+      selfReportedClientLabel: "paseo-app",
+      reason: "No eligible reviewer is available.",
+      createdAt: "2026-08-09T00:02:00.000Z",
+    });
+
+    expect(selectTeamPlanRows(team(), aggregate)[0]?.reviewWaiver).toEqual({
+      waiverId: "waiver-ui",
+      actorId: "controller-user",
+      reason: "No eligible reviewer is available.",
+    });
   });
 
   it("only exposes open Attention items as actionable rows", () => {
@@ -418,6 +466,7 @@ describe("Team settings view", () => {
       {
         attentionId: "attention-open",
         kind: "provider_unavailable",
+        scope: { kind: "mission" as const },
         status: "open",
         priorMissionStatus: "active",
         assignmentId: "assignment-ui",
@@ -429,6 +478,7 @@ describe("Team settings view", () => {
       {
         attentionId: "attention-resolved",
         kind: "missing_report",
+        scope: { kind: "mission" as const },
         status: "resolved",
         priorMissionStatus: "active",
         assignmentId: "assignment-ui",

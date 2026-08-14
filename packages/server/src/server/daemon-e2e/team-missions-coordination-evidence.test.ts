@@ -489,8 +489,19 @@ describe("sanitized evidence persistence", () => {
             acceptanceCriteria: [secret],
             ownerMemberId: "member-1",
             ownerOverrideReason: secret,
-            reviewerMemberId: "member-2",
-            reviewerOverrideReason: secret,
+            reviewGate: {
+              kind: "required",
+              gateKey: { subject: { subjectAssignmentIds: ["assignment-1"] } },
+              gateKeyFingerprint: `sha256:${"a".repeat(64)}`,
+              subjectFingerprint: `sha256:${"b".repeat(64)}`,
+              requirements: null,
+              selection: {
+                kind: "assigned",
+                reviewerMemberId: "member-2",
+                overrideReason: secret,
+              },
+              outcome: { kind: "pending" },
+            },
             planRevision: 3,
             rosterSnapshotRevision: 1,
             methodologySnapshotRevision: 1,
@@ -527,6 +538,7 @@ describe("sanitized evidence persistence", () => {
           {
             attentionId: "attention-1",
             kind: "assignment_requires_replan",
+            scope: { kind: "mission" as const },
             status: "resolved",
             priorMissionStatus: "active",
             assignmentId: "assignment-1",
@@ -661,7 +673,7 @@ describe("sanitized evidence persistence", () => {
     });
     expect(persistedWorkstream.titleDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(persistedWorkstream.ownerOverrideReasonDigest).toMatch(/^[a-f0-9]{64}$/);
-    expect(persistedWorkstream.reviewerOverrideReasonDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(persistedWorkstream.reviewGate.selection.overrideReasonDigest).toMatch(/^[a-f0-9]{64}$/);
     const persistedReport = persisted.mission.assignments[0].report;
     expect(persistedReport.tests).toEqual([
       { commandDigest: expect.stringMatching(/^[a-f0-9]{64}$/), passed: false },
@@ -743,6 +755,7 @@ describe("sanitized evidence persistence", () => {
           {
             attentionId: "attention-1",
             kind: "provider_unavailable",
+            scope: { kind: "mission" as const },
             status: "open",
             summary: secret,
             priorMissionStatus: "active",
@@ -1059,7 +1072,9 @@ describe("auditParallelDeliveryDag", () => {
           (workstream) => workstream.workstreamId === "workstream-api",
         );
         if (!api) throw new Error("missing API workstream fixture");
-        api.reviewerMemberId = api.ownerMemberId;
+        api.reviewGate = requiredReviewGate("assignment-api-review", api.ownerMemberId, [
+          "assignment-api",
+        ]);
       },
       "parallel_delivery:api_reviewer_must_differ_from_owner",
     ],
@@ -1092,7 +1107,7 @@ describe("auditParallelDeliveryDag", () => {
           (workstream) => workstream.workstreamId === "workstream-api",
         );
         if (!api) throw new Error("missing API workstream fixture");
-        api.reviewPolicy = "none";
+        api.reviewGate = notRequiredReviewGate();
       },
       "parallel_delivery:api_review_policy_must_be_required",
     ],
@@ -1178,8 +1193,7 @@ describe("auditParallelDeliveryDag", () => {
       mutableScope: { kind: "paths", pathPrefixes: ["src/extra.mjs"] },
       dependencyWorkstreamIds: [],
       ownerMemberId: "member-extra",
-      reviewPolicy: "none",
-      reviewerMemberId: null,
+      reviewGate: notRequiredReviewGate(),
     });
     fixture.assignments.push(
       makeAssignment(
@@ -1294,8 +1308,7 @@ describe("auditRecoveryDependencyDag", () => {
       mutableScope: { kind: "paths", pathPrefixes: ["docs/feature-flags-contract.md"] },
       dependencyWorkstreamIds: ["workstream-contract"],
       ownerMemberId: "member-contract",
-      reviewPolicy: "none",
-      reviewerMemberId: null,
+      reviewGate: notRequiredReviewGate(),
     });
     const branch = makeAssignment(
       "assignment-contract-alternative-amendment",
@@ -1396,8 +1409,11 @@ describe("auditRecoveryDependencyDag", () => {
       (assignment) => assignment.assignmentId === "assignment-final",
     );
     if (!amendmentWorkstream || !final) throw new Error("missing recovery review fixture");
-    amendmentWorkstream.reviewPolicy = "required";
-    amendmentWorkstream.reviewerMemberId = "member-verification";
+    amendmentWorkstream.reviewGate = requiredReviewGate(
+      "assignment-contract-amendment-review",
+      "member-verification",
+      ["assignment-contract-amendment"],
+    );
     const review = makeAssignment(
       "assignment-contract-amendment-review",
       "review",
@@ -1489,9 +1505,11 @@ describe("auditRecoveryDependencyDag", () => {
 
   test("accepts a historical approved review after the current reviewer changes", () => {
     const fixture = recoveryDagFixture();
-    const { review, workstream } = addRequiredRecoveryReview(fixture, "contract", 4, 5);
+    const { delivery, review, workstream } = addRequiredRecoveryReview(fixture, "contract", 4, 5);
     fixture.planRevision = 2;
-    workstream.reviewerMemberId = "member-current-reviewer";
+    workstream.reviewGate = requiredReviewGate(review.assignmentId, "member-current-reviewer", [
+      delivery.assignmentId,
+    ]);
     review.planRevision = 1;
     for (const assignment of fixture.assignments) {
       if (assignment.assignmentId !== "assignment-contract" && assignment !== review) {
@@ -1548,7 +1566,9 @@ describe("auditRecoveryDependencyDag", () => {
   test("rejects a writable self-review", () => {
     const fixture = recoveryDagFixture();
     const { delivery, review, workstream } = addRequiredRecoveryReview(fixture, "contract", 4, 5);
-    workstream.reviewerMemberId = delivery.assigneeMemberId;
+    workstream.reviewGate = requiredReviewGate(review.assignmentId, delivery.assigneeMemberId, [
+      delivery.assignmentId,
+    ]);
     review.assigneeMemberId = delivery.assigneeMemberId;
     review.mutableScope = { kind: "paths", pathPrefixes: ["docs/feature-flags-contract.md"] };
 
@@ -1570,8 +1590,11 @@ describe("auditRecoveryDependencyDag", () => {
       (workstream) => workstream.workstreamId === "workstream-contract",
     );
     if (!contractWorkstream) throw new Error("missing recovery contract Workstream fixture");
-    contractWorkstream.reviewPolicy = "required";
-    contractWorkstream.reviewerMemberId = "member-verification";
+    contractWorkstream.reviewGate = requiredReviewGate(
+      "assignment-contract-review",
+      "member-verification",
+      ["assignment-contract"],
+    );
 
     const audit = auditRecoveryDependencyDag(fixture);
 
@@ -1579,7 +1602,7 @@ describe("auditRecoveryDependencyDag", () => {
     expect(audit.violations).toContain("recovery_dependency:contract_review_assignment_matches:0");
   });
 
-  test("rejects multiple approved reviews for the same Workstream revision", () => {
+  test("rejects an approved review not selected by the persisted gate outcome", () => {
     const fixture = recoveryDagFixture();
     addRequiredRecoveryReview(fixture, "contract", 4, 5);
     fixture.assignments.splice(
@@ -1600,7 +1623,6 @@ describe("auditRecoveryDependencyDag", () => {
     const audit = auditRecoveryDependencyDag(fixture);
 
     expect(audit.valid).toBe(false);
-    expect(audit.violations).toContain("recovery_dependency:contract_review_assignment_matches:2");
     expect(audit.violations).toContain("recovery_dependency:unexpected_assignment_nodes:1");
   });
 
@@ -1767,8 +1789,7 @@ describe("auditRecoveryDependencyDag", () => {
       mutableScope: { kind: "paths", pathPrefixes: ["src/extra-recovery.mjs"] },
       dependencyWorkstreamIds: [],
       ownerMemberId: "member-extra",
-      reviewPolicy: "none",
-      reviewerMemberId: null,
+      reviewGate: notRequiredReviewGate(),
     });
     fixture.assignments.push(
       makeAssignment(
@@ -2520,6 +2541,30 @@ function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 }
 
+interface TestReviewGate {
+  kind: string;
+  gateKey?: { subject: { subjectAssignmentIds: string[] } };
+  selection?: { kind: string; reviewerMemberId?: string };
+  outcome: { kind: string; reviewAssignmentId?: string };
+}
+
+function notRequiredReviewGate(): TestReviewGate {
+  return { kind: "none", outcome: { kind: "not_required" } };
+}
+
+function requiredReviewGate(
+  reviewAssignmentId: string,
+  reviewerMemberId: string,
+  subjectAssignmentIds: string[],
+): TestReviewGate {
+  return {
+    kind: "required",
+    gateKey: { subject: { subjectAssignmentIds } },
+    selection: { kind: "assigned", reviewerMemberId },
+    outcome: { kind: "approved", reviewAssignmentId },
+  };
+}
+
 function parallelDagFixture() {
   const scope = (pathPrefix: string) => ({ kind: "paths" as const, pathPrefixes: [pathPrefix] });
   return {
@@ -2531,8 +2576,9 @@ function parallelDagFixture() {
         mutableScope: scope("src/profile-api.mjs"),
         dependencyWorkstreamIds: [],
         ownerMemberId: "member-api",
-        reviewPolicy: "required" as const,
-        reviewerMemberId: "member-api-reviewer",
+        reviewGate: requiredReviewGate("assignment-api-review", "member-api-reviewer", [
+          "assignment-api",
+        ]),
       },
       {
         workstreamId: "workstream-ui",
@@ -2540,8 +2586,7 @@ function parallelDagFixture() {
         mutableScope: scope("src/profile-card.mjs"),
         dependencyWorkstreamIds: [],
         ownerMemberId: "member-ui",
-        reviewPolicy: "none" as const,
-        reviewerMemberId: null,
+        reviewGate: notRequiredReviewGate(),
       },
       {
         workstreamId: "workstream-test",
@@ -2549,8 +2594,7 @@ function parallelDagFixture() {
         mutableScope: scope("test/profile.acceptance.test.mjs"),
         dependencyWorkstreamIds: [],
         ownerMemberId: "member-test",
-        reviewPolicy: "none" as const,
-        reviewerMemberId: null,
+        reviewGate: notRequiredReviewGate(),
       },
       {
         workstreamId: "workstream-integration",
@@ -2558,8 +2602,7 @@ function parallelDagFixture() {
         mutableScope: scope("src/index.mjs"),
         dependencyWorkstreamIds: ["workstream-api", "workstream-ui", "workstream-test"],
         ownerMemberId: "member-integration",
-        reviewPolicy: "none" as const,
-        reviewerMemberId: null,
+        reviewGate: notRequiredReviewGate(),
       },
       {
         workstreamId: "workstream-final",
@@ -2567,8 +2610,7 @@ function parallelDagFixture() {
         mutableScope: { kind: "read_only" as const },
         dependencyWorkstreamIds: ["workstream-integration"],
         ownerMemberId: "member-verification",
-        reviewPolicy: "none" as const,
-        reviewerMemberId: null,
+        reviewGate: notRequiredReviewGate(),
       },
     ],
     assignments: [
@@ -2653,8 +2695,7 @@ function recoveryDagFixture() {
         mutableScope: scope("docs/feature-flags-contract.md"),
         dependencyWorkstreamIds: [],
         ownerMemberId: "member-contract",
-        reviewPolicy: "none" as const,
-        reviewerMemberId: null,
+        reviewGate: notRequiredReviewGate(),
       },
       {
         workstreamId: "workstream-implementation",
@@ -2662,8 +2703,7 @@ function recoveryDagFixture() {
         mutableScope: scope("src/parse-feature-flags.mjs"),
         dependencyWorkstreamIds: ["workstream-contract"],
         ownerMemberId: "member-implementation",
-        reviewPolicy: "none" as const,
-        reviewerMemberId: null,
+        reviewGate: notRequiredReviewGate(),
       },
       {
         workstreamId: "workstream-final",
@@ -2671,8 +2711,7 @@ function recoveryDagFixture() {
         mutableScope: { kind: "read_only" as const },
         dependencyWorkstreamIds: ["workstream-contract", "workstream-implementation"],
         ownerMemberId: "member-verification",
-        reviewPolicy: "none" as const,
-        reviewerMemberId: null,
+        reviewGate: notRequiredReviewGate(),
       },
     ],
     assignments: [
@@ -2738,8 +2777,7 @@ function addRecoveryContractAmendment(fixture: ReturnType<typeof recoveryDagFixt
     mutableScope: { kind: "paths", pathPrefixes: ["docs/feature-flags-contract.md"] },
     dependencyWorkstreamIds: ["workstream-contract"],
     ownerMemberId: "member-contract",
-    reviewPolicy: "none",
-    reviewerMemberId: null,
+    reviewGate: notRequiredReviewGate(),
   });
   implementationWorkstream.dependencyWorkstreamIds = ["workstream-contract-amendment"];
   finalWorkstream.dependencyWorkstreamIds = [
@@ -2788,8 +2826,9 @@ function addRequiredRecoveryReview(
     (candidate) => candidate.assignmentId === "assignment-final",
   );
   if (!workstream || !delivery || !final) throw new Error("missing recovery review fixture");
-  workstream.reviewPolicy = "required";
-  workstream.reviewerMemberId = "member-verification";
+  workstream.reviewGate = requiredReviewGate(`${deliveryId}-review`, "member-verification", [
+    deliveryId,
+  ]);
   const review = makeAssignment(
     `${deliveryId}-review`,
     "review",
