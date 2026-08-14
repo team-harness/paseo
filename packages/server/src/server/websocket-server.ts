@@ -1410,6 +1410,13 @@ export class VoiceAssistantWebSocketServer {
         ? { ...base, lifecycle: "ephemeral-plugin", pluginId: lifecycle.pluginId }
         : { ...base, lifecycle: "reconnectable", externalDisconnectCleanupTimeout: null };
     session.updateClientCapabilities(clientCapabilities, ws);
+    const identity = this.socketIdentities.get(ws);
+    if (identity) {
+      session.updatePhysicalSourceIdentity(ws, {
+        connectionId: identity.connectionId,
+        selfReportedClientLabel: clientId,
+      });
+    }
     return connection;
   }
 
@@ -1624,6 +1631,10 @@ export class VoiceAssistantWebSocketServer {
     // hello resets membership before server_info so stale retained-session
     // state cannot leak. Remove after 2027-01-12.
     existing.session.updateClientCapabilities(newClientCapabilities, ws);
+    existing.session.updatePhysicalSourceIdentity(ws, {
+      connectionId: pending.identity.connectionId,
+      selfReportedClientLabel: existing.clientId,
+    });
     if (
       JSON.stringify(existing.clientCapabilities ?? null) !==
       JSON.stringify(newClientCapabilities ?? null)

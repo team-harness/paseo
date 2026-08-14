@@ -150,3 +150,40 @@ export async function runMissionCancelCommand(
     await client.close().catch(() => {});
   }
 }
+
+export interface MissionWaiveReviewOptions extends TeamCommandOptions {
+  attention?: string;
+  expectedRevision?: string;
+  gateFingerprint?: string;
+  subjectFingerprint?: string;
+  reason?: string;
+  idempotencyKey?: string;
+}
+
+export async function runMissionWaiveReviewCommand(
+  missionId: string,
+  options: MissionWaiveReviewOptions,
+  _command: Command,
+): Promise<SingleResult<MissionDetail>> {
+  const { client } = await connectTeamClient(options.host);
+  try {
+    const payload = await client.resolveTeamMissionAttention({
+      idempotencyKey: options.idempotencyKey?.trim() || newIdempotencyKey(),
+      missionId,
+      attentionId: required(options.attention, "--attention"),
+      expectedRevision: revision(options.expectedRevision, "--expected-revision"),
+      resolution: {
+        kind: "waive_review",
+        gateKeyFingerprint: required(options.gateFingerprint, "--gate-fingerprint"),
+        subjectFingerprint: required(options.subjectFingerprint, "--subject-fingerprint"),
+        reason: required(options.reason, "--reason"),
+      },
+    });
+    if (!payload.mission) throw toTeamResponseError("waive the review gate", payload);
+    return { type: "single", data: toMissionDetail(payload.mission), schema: missionDetailSchema };
+  } catch (err) {
+    throw toTeamCommandError("TEAM_MISSION_REVIEW_WAIVER_FAILED", "waive review gate", err);
+  } finally {
+    await client.close().catch(() => {});
+  }
+}

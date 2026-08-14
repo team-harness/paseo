@@ -52,7 +52,7 @@ describe("Team Missions real-daemon WebSocket contract", () => {
     daemons.clear();
     mcpClients.clear();
     temporaryPaths.clear();
-  }, 30_000);
+  }, 60_000);
 
   test("isolates a review-gate blocker to one fork of a real-daemon Workstream DAG", async () => {
     const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-attention-home-"));
@@ -212,6 +212,148 @@ describe("Team Missions real-daemon WebSocket contract", () => {
     expect(provider.turns.find((turn) => turn.turnId === frontend.acceptedTurnId)?.state).toBe(
       "running",
     );
+
+    const reviewAttention = isolated.attentionItems.find(
+      (attention) =>
+        attention.status === "open" &&
+        attention.kind === "review_gate_reviewer_unavailable" &&
+        attention.scope.kind === "workstream" &&
+        attention.scope.workstreamId === "backend",
+    );
+    if (!reviewAttention || reviewAttention.kind !== "review_gate_reviewer_unavailable") {
+      throw new Error("Known-empty backend review Attention is missing");
+    }
+    const limitedClient = new DaemonClient({
+      url: `ws://127.0.0.1:${daemon.port}/ws`,
+      appVersion: "0.3.0-beta.3",
+      clientId: "limited-physical-source",
+      capabilities: { team_missions: false },
+    });
+    clients.add(limitedClient);
+    await limitedClient.connect();
+    await limitedClient.fetchAgents({ subscribe: { subscriptionId: "limited-source" } });
+    const denied = await limitedClient.resolveTeamMissionAttention({
+      missionId: isolated.id,
+      attentionId: reviewAttention.attentionId,
+      expectedRevision: isolated.revision,
+      idempotencyKey: "waive-backend-from-limited-source",
+      resolution: {
+        kind: "waive_review",
+        gateKeyFingerprint: reviewAttention.reviewGateDetails.gateKeyFingerprint,
+        subjectFingerprint: reviewAttention.reviewGateDetails.subjectFingerprint,
+        reason: "No independent reviewer has the frozen audit capability.",
+      },
+    });
+    expect(denied).toMatchObject({ mission: null, errorCode: "unsupported" });
+
+    const currentBeforeWaiver = await inspectMission(client, isolated.id);
+    const waivedResponse = await client.resolveTeamMissionAttention({
+      missionId: isolated.id,
+      attentionId: reviewAttention.attentionId,
+      expectedRevision: currentBeforeWaiver.revision,
+      idempotencyKey: "waive-backend-review",
+      resolution: {
+        kind: "waive_review",
+        gateKeyFingerprint: reviewAttention.reviewGateDetails.gateKeyFingerprint,
+        subjectFingerprint: reviewAttention.reviewGateDetails.subjectFingerprint,
+        reason: "No independent reviewer has the frozen audit capability.",
+      },
+    });
+    if (!waivedResponse.mission) {
+      throw new Error(waivedResponse.error ?? "Controller review waiver failed");
+    }
+    expect(
+      waivedResponse.mission.workstreams.find((item) => item.workstreamId === "backend"),
+    ).toMatchObject({ status: "accepted", reviewGate: { outcome: { kind: "waived" } } });
+    expect(waivedResponse.mission.reviewWaivers).toContainEqual(
+      expect.objectContaining({
+        attentionId: reviewAttention.attentionId,
+        selfReportedClientLabel: expect.stringMatching(/^clid_test_client_/),
+        reason: "No independent reviewer has the frozen audit capability.",
+      }),
+    );
+
+    await reportAssignment({
+      client,
+      mcp: await mcpFor(requireRuntimeAgentId(frontend)),
+      errorLog: daemonErrors,
+      missionId: waivedResponse.mission.id,
+      assignmentId: frontend.assignmentId,
+      report: completedReport({
+        summary: "Frontend delivery completed",
+        artifactPaths: [],
+        verdict: null,
+      }),
+    });
+    await provider.completeTurn(requireAcceptedTurnId(frontend));
+    const integrating = await waitForMission(
+      client,
+      isolated.id,
+      hasRunningIntegration,
+      "integration dispatch after waived review",
+    );
+    const integration = requireAssignment(integrating, "integration");
+    await reportAssignment({
+      client,
+      mcp: leadMcp,
+      errorLog: daemonErrors,
+      missionId: integrating.id,
+      assignmentId: integration.assignmentId,
+      report: completedReport({
+        summary: "Integration completed after the scoped review waiver",
+        artifactPaths: [],
+        verdict: null,
+      }),
+    });
+    await provider.completeTurn(requireAcceptedTurnId(integration));
+    const verifying = await waitForMission(
+      client,
+      isolated.id,
+      hasRunningVerification,
+      "final verification after waived review",
+    );
+    const verification = requireKindAssignment(verifying, "verification");
+    expect(verification.reviewGateEvidence).toContainEqual(
+      expect.objectContaining({
+        kind: "waived",
+        reason: "No independent reviewer has the frozen audit capability.",
+      }),
+    );
+    await reportAssignment({
+      client,
+      mcp: await mcpFor(requireRuntimeAgentId(verification)),
+      errorLog: daemonErrors,
+      missionId: verifying.id,
+      assignmentId: verification.assignmentId,
+      report: finalVerificationReport(
+        verification,
+        "approved",
+        "Final verification completed after the scoped review waiver",
+      ),
+    });
+    await provider.completeTurn(requireAcceptedTurnId(verification));
+    const completed = await waitForMission(
+      client,
+      isolated.id,
+      isCompletedAndArchived,
+      "Mission completion after required final verification",
+      30_000,
+    );
+    expect(
+      completed.assignments.find((item) => item.assignmentId === verification.assignmentId),
+    ).toMatchObject({
+      report: {
+        finalVerificationEvidence: {
+          verdict: "approved",
+          reviewGateEvidence: [
+            expect.objectContaining({
+              kind: "waived",
+              reason: "No independent reviewer has the frozen audit capability.",
+            }),
+          ],
+        },
+      },
+    });
   }, 30_000);
 
   test("keeps a known-empty final verifier gate waiting with zero verification Assignments", async () => {

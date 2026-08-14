@@ -566,13 +566,19 @@ function bindCompletedFinalGate(aggregate: TeamMission): void {
       ];
     }
     if (gate.outcome.kind === "waived") {
+      const waiverId = gate.outcome.waiverId;
+      const waiver = aggregate.reviewWaivers.find((candidate) => candidate.waiverId === waiverId);
+      if (!waiver) return [];
       return [
         {
           kind: "waived" as const,
           gateKey: structuredClone(gate.gateKey),
           gateKeyFingerprint: gate.gateKeyFingerprint,
           subjectFingerprint: gate.subjectFingerprint,
-          waiverId: gate.outcome.waiverId,
+          waiverId,
+          connectionId: waiver.connectionId,
+          selfReportedClientLabel: waiver.selfReportedClientLabel,
+          reason: waiver.reason,
         },
       ];
     }
@@ -843,7 +849,9 @@ describe("team mission validation", () => {
     expect(
       validateMissionAttentionResolution(aggregate, item, {
         kind: "waive_review",
-        actorId: "user-owner",
+        idempotencyKey: "waive-final",
+        gateKeyFingerprint: `sha256:${"a".repeat(64)}`,
+        subjectFingerprint: `sha256:${"b".repeat(64)}`,
         connectionId: "connection-1",
         selfReportedClientLabel: "paseo-app",
         reason: "Skip final verification.",
@@ -2210,7 +2218,6 @@ describe("team mission validation", () => {
       {
         waiverId: "waiver-api",
         attentionId: "attention-review-api",
-        actorId: "controller",
         gateKey: gate.gateKey,
         gateKeyFingerprint: gate.gateKeyFingerprint,
         subjectFingerprint: gate.subjectFingerprint,
@@ -2241,7 +2248,9 @@ describe("team mission validation", () => {
       createdAt: "2026-08-07T11:08:00.000Z",
       resolution: {
         kind: "waive_review",
-        actorId: "controller",
+        idempotencyKey: "waive-review",
+        gateKeyFingerprint: gate.gateKeyFingerprint,
+        subjectFingerprint: gate.subjectFingerprint,
         connectionId: "connection-controller",
         selfReportedClientLabel: "paseo-app",
         reason: "No structurally eligible reviewer is available.",
@@ -2287,10 +2296,6 @@ describe("team mission validation", () => {
     ).toBe(false);
     aggregate.rosterSnapshots[0]!.members[1]!.level = 3;
 
-    aggregate.reviewWaivers[0]!.actorId = "different-controller";
-    expect(validateTeamMission(aggregate).ok).toBe(false);
-    aggregate.reviewWaivers[0]!.actorId = "controller";
-
     aggregate.reviewWaivers[0]!.connectionId = "connection-other";
     expect(validateTeamMission(aggregate).ok).toBe(false);
 
@@ -2299,6 +2304,12 @@ describe("team mission validation", () => {
     expect(validateTeamMission(aggregate).ok).toBe(false);
 
     aggregate.reviewWaivers[0]!.selfReportedClientLabel = "paseo-app";
+    aggregate.attentionItems.at(-1)!.resolution!.gateKeyFingerprint = "sha256:tampered";
+    expect(validateTeamMission(aggregate).ok).toBe(false);
+    aggregate.attentionItems.at(-1)!.resolution!.gateKeyFingerprint = gate.gateKeyFingerprint;
+    aggregate.attentionItems.at(-1)!.resolution!.subjectFingerprint = "sha256:tampered";
+    expect(validateTeamMission(aggregate).ok).toBe(false);
+    aggregate.attentionItems.at(-1)!.resolution!.subjectFingerprint = gate.subjectFingerprint;
     const historicalGateKey = {
       ...gate.gateKey,
       planRevision: gate.gateKey.planRevision + 1,

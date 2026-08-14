@@ -6,6 +6,7 @@ import {
   runMissionInspectCommand,
   runMissionListCommand,
   runMissionStartCommand,
+  runMissionWaiveReviewCommand,
 } from "./mission.js";
 import { runMethodologyInspectCommand, runMethodologyListCommand } from "./methodology.js";
 import {
@@ -234,6 +235,20 @@ export function createTeamCommand(): Command {
         .requiredOption("--reason <text>", "Cancellation reason"),
     ),
   ).action(withOutput(runMissionCancelCommand));
+
+  addJsonAndDaemonHostOptions(
+    addMutationKey(
+      mission
+        .command("waive-review")
+        .description("Waive a current known-empty Workstream review gate")
+        .argument("<mission-id>", "Mission ID")
+        .requiredOption("--attention <id>", "Scoped review gate Attention ID")
+        .requiredOption("--expected-revision <revision>", "Expected Mission revision")
+        .requiredOption("--gate-fingerprint <sha256>", "Exact review gate fingerprint")
+        .requiredOption("--subject-fingerprint <sha256>", "Exact review subject fingerprint")
+        .requiredOption("--reason <text>", "Immutable waiver reason"),
+    ),
+  ).action(withOutput(runMissionWaiveReviewCommand));
 
   return team;
 }
