@@ -4,7 +4,7 @@ phase: acceptance
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
 active_items: []
-next_action: 运行 Epic 组合验证并创建 fresh final acceptance reviewer
+next_action: 等待 Epic final acceptance reviewer 的终态报告
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +32,15 @@ remote_publish: final
 - [x] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：Epic final acceptance review 已启动。fresh Paseo reviewer
+  `adb76106-a12f-4f3a-b9a4-b5dc09d237ef` 使用 `claude/claude-opus-5`、Plan 只读模式，
+  冻结目标为里程碑 `dde4725763456c9f9197ee870bd6e51a4e2047ee` 与 approved revision
+  `9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1`。审查覆盖
+  TM-ITEM-1..17 的整体验收矩阵、npm 数据包与双宿主 exporter/install、三能力 physical-source
+  门、跨 workspace、持久化恢复与质量门、Team capsule/upstream wiring 边界、真实 provider
+  证据，以及 Native iOS/Android 与真实 Electron 未执行的残余缺口。reviewer 不编辑、不委派，
+  必须以 blocking/important 数量与 ACCEPT/REJECT 终态收口；主流程不轮询，等待 Paseo 通知。
 
 - 2026-08-14：TM-ITEM-17 完成。单父 checkpoint
   `5a2d6bd47af018a67de9f27bd72d3b7cb8bf9d83`（parent `2836bd1d1…`，tree
