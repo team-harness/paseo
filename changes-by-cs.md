@@ -285,7 +285,7 @@
 
 **行为**：保留 macOS desktop 打包所需的 entitlements 与 daemon packaging 测试，并允许 desktop 开发环境在 React DevTools 下载失败时继续运行。同步发布两个用途不同的产物：仅支持 Apple Silicon 的固定本地签名 APFS DMG，以及供非 arm64 主机和浏览器用户升级的 Web + Paseo Server tar.gz。承载用户会话的构建机上只做离线产物校验；发布流程不启动打包后的 Paseo 或 Server，也不控制当前运行的主 daemon。
 
-Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highlight`、`relay`、`protocol`、`client`、`plugin`、`server` 和 `cli` 七个 fork npm 包；server 包内嵌同版本 Web UI。归档不携带构建机的 arm64 `node_modules`，目标主机使用 Node.js 22/npm 为自身架构安装外部依赖。
+Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highlight`、`relay`、`protocol`、`client`、`plugin`、`server` 和 `cli` 七个 fork npm 包；server 包内嵌同发布版本 Web UI。各 workspace 按自身 `package.json` 版本写入 manifest 并逐项验证，允许 plugin SDK 独立版本化。归档不携带构建机的 arm64 `node_modules`，目标主机使用 Node.js 22/npm 为自身架构安装外部依赖。
 
 **关键文件**：
 

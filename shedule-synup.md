@@ -111,7 +111,7 @@
    - `node --check scripts/build-web-server-release.mjs` 成功；
    - 解压到新建临时目录后，`node verify.mjs` 成功，且恰好包含上述 7 个 fork package；
    - server tgz 包含 `package/dist/server/web-ui/index.html`；
-   - 使用临时 `NPM_CONFIG_PREFIX` 运行 `install.sh`，确认 7 个已安装 package 的版本都等于当前版本；
+   - 使用临时 `NPM_CONFIG_PREFIX` 运行 `install.sh`，确认 7 个已安装 package 的版本逐项等于归档 `manifest.json`；workspace 可以独立版本化，例如本轮 `@paseo/plugin` 为 `0.3.0`，而发布版本为 `0.4.0`；
    - 不启动已安装的 server，不运行任何 `paseo daemon start`、`paseo daemon stop` 或 `paseo daemon restart`。`PASEO_HOME` 只隔离数据目录，不能保证 daemon 控制命令不会连接默认端口 `6767`；
    - 记录文件名、版本号、提交 SHA、大小和 SHA-256。
 

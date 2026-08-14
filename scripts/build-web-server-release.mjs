@@ -232,11 +232,11 @@ async function main() {
   for (const releaseWorkspace of RELEASE_WORKSPACES) {
     const { workspace, name } = releaseWorkspace;
     const packageJson = await readJson(path.join(REPO_ROOT, "packages", workspace, "package.json"));
-    if (packageJson.version !== version) {
-      throw new Error(`${packageJson.name} is ${packageJson.version}; expected ${version}`);
-    }
     if (packageJson.name !== name) {
       throw new Error(`${workspace} is named ${packageJson.name}; expected ${name}`);
+    }
+    if (typeof packageJson.version !== "string" || packageJson.version.trim().length === 0) {
+      throw new Error(`${name} has no package version`);
     }
     packageMetadata.push({ workspace, name: packageJson.name, version: packageJson.version });
   }
