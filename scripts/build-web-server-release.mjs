@@ -12,7 +12,15 @@ const execFileAsync = promisify(execFile);
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..");
 const DEFAULT_OUTPUT_DIR = path.join(REPO_ROOT, "artifacts", "releases");
-const RELEASE_WORKSPACES = ["highlight", "relay", "protocol", "client", "server", "cli"];
+const RELEASE_WORKSPACES = [
+  { workspace: "highlight", name: "@getpaseo/highlight" },
+  { workspace: "relay", name: "@getpaseo/relay" },
+  { workspace: "protocol", name: "@getpaseo/protocol" },
+  { workspace: "client", name: "@getpaseo/client" },
+  { workspace: "plugin", name: "@paseo/plugin" },
+  { workspace: "server", name: "@getpaseo/server" },
+  { workspace: "cli", name: "@getpaseo/cli" },
+];
 
 function parseArgs(argv) {
   let outputDir = DEFAULT_OUTPUT_DIR;
@@ -155,7 +163,7 @@ function createReadme({ version, commit, archiveName }) {
 
 Commit: \`${commit}\`
 
-This archive installs the fork's CLI, server, protocol, client, relay, and syntax-highlighting packages together. The server package embeds the matching browser Web UI.
+This archive installs the fork's CLI, server, protocol, client, plugin SDK, relay, and syntax-highlighting packages together. The server package embeds the matching browser Web UI.
 
 This is not the Linux x64 Electron desktop tarball published by the upstream GitHub release. It contains architecture-neutral npm package archives; npm installs external and native dependencies for the target computer during installation.
 
@@ -183,7 +191,7 @@ The installer verifies all included fork packages and installs them in one npm c
 
 ## Use in the existing Docker build
 
-Put \`${archiveName}\` in the Docker build context, then replace the Git checkout, \`npm ci\`, and six \`npm pack\` commands with this stage:
+Put \`${archiveName}\` in the Docker build context, then replace the Git checkout, \`npm ci\`, and seven \`npm pack\` commands with this stage:
 
 \`\`\`dockerfile
 FROM node:22-bookworm-slim AS paseo-pack
@@ -197,7 +205,7 @@ RUN node /tmp/paseo-release/verify.mjs
 # RUN npm install -g /tmp/paseo-packs/*.tgz
 \`\`\`
 
-The archive's \`paseo-packs/\` directory contains the same six workspace archives produced by the official Docker build, in the same dependency order. The runtime image still installs external and native dependencies for its own architecture.
+The archive's \`paseo-packs/\` directory contains the same seven workspace archives produced by the official Docker build, in the same dependency order. The runtime image still installs external and native dependencies for its own architecture.
 
 After all running agents have finished, enable the bundled Web UI while restarting:
 
@@ -221,10 +229,14 @@ async function main() {
   const version = rootPackage.version;
   const packageMetadata = [];
 
-  for (const workspace of RELEASE_WORKSPACES) {
+  for (const releaseWorkspace of RELEASE_WORKSPACES) {
+    const { workspace, name } = releaseWorkspace;
     const packageJson = await readJson(path.join(REPO_ROOT, "packages", workspace, "package.json"));
     if (packageJson.version !== version) {
       throw new Error(`${packageJson.name} is ${packageJson.version}; expected ${version}`);
+    }
+    if (packageJson.name !== name) {
+      throw new Error(`${workspace} is named ${packageJson.name}; expected ${name}`);
     }
     packageMetadata.push({ workspace, name: packageJson.name, version: packageJson.version });
   }
@@ -250,12 +262,7 @@ async function main() {
 
     for (const entry of packageMetadata) {
       const before = new Set(await readdir(packagesDir));
-      await run("npm", [
-        "pack",
-        `--workspace=@getpaseo/${entry.workspace}`,
-        "--pack-destination",
-        packagesDir,
-      ]);
+      await run("npm", ["pack", `--workspace=${entry.name}`, "--pack-destination", packagesDir]);
       const created = (await readdir(packagesDir)).filter(
         (file) => file.endsWith(".tgz") && !before.has(file),
       );

@@ -21,6 +21,7 @@ import {
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useHosts } from "@/runtime/host-runtime";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
+import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 
 const COMPACT_SNAP_POINTS = ["45%", "85%"];
 
@@ -63,9 +64,10 @@ export function StatusBarSessionPinsTrigger({ serverId }: { serverId: string }) 
   const { projects, workspacePlacements } = useSidebarWorkspacesList();
   const workspaceEntriesByKey = useSidebarWorkspaceEntries(workspacePlacements);
   const pinnedKeys = usePinnedSidebarKeys(projects);
+  const pinnedWorkspaceOrder = useSidebarOrderStore((state) => state.pinnedWorkspaceOrder);
   const { pinnedChats } = useMemo(
-    () => splitPinnedSidebarGroups({ projects, keys: pinnedKeys }),
-    [pinnedKeys, projects],
+    () => splitPinnedSidebarGroups({ projects, keys: pinnedKeys, pinnedWorkspaceOrder }),
+    [pinnedKeys, pinnedWorkspaceOrder, projects],
   );
   const hosts = useHosts();
   const [open, setOpen] = useState(false);

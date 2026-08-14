@@ -92,25 +92,26 @@
    npm run build:web-server-release
    ```
 
-   产物为 `artifacts/releases/Paseo-<version>-web-server-<commit>.tar.gz`。脚本沿用官方 Docker 发布机制，依次 `npm pack` 以下 6 个 workspace：
+   产物为 `artifacts/releases/Paseo-<version>-web-server-<commit>.tar.gz`。脚本沿用官方 Docker 发布机制，依次 `npm pack` 以下 7 个 workspace：
    - `@getpaseo/highlight`
    - `@getpaseo/relay`
    - `@getpaseo/protocol`
    - `@getpaseo/client`
+   - `@paseo/plugin`
    - `@getpaseo/server`
    - `@getpaseo/cli`
 
-   `@getpaseo/server` 的 `prepack` 会构建并嵌入匹配版本的浏览器 Web UI。必须同时交付 6 个包；只发布 server/CLI 会从 npm registry 拉取上游依赖，导致 fork 协议和功能丢失。
+   `@getpaseo/server` 的 `prepack` 会构建并嵌入匹配版本的浏览器 Web UI。必须同时交付 7 个包；只发布 server/CLI 会从 npm registry 拉取上游依赖，导致 fork 协议和功能丢失。
 
-2. 归档根目录必须包含 `paseo-packs/*.tgz`、`manifest.json`、`paseo-source-revision`、`SHA256SUMS`、校验/安装脚本和 README。这个布局可以直接替换同事现有 Dockerfile 中拉 Git 源码、执行 `npm ci` 和 6 次 `npm pack` 的 `paseo-pack` 阶段。
+2. 归档根目录必须包含 `paseo-packs/*.tgz`、`manifest.json`、`paseo-source-revision`、`SHA256SUMS`、校验/安装脚本和 README。这个布局可以直接替换同事现有 Dockerfile 中拉 Git 源码、执行 `npm ci` 和 7 次 `npm pack` 的 `paseo-pack` 阶段。
 
 3. 此包中的 workspace `.tgz` 与 CPU 架构无关，不携带本机 arm64 `node_modules`。目标电脑或 Docker runtime 使用 Node.js 22 和 npm，一次性安装 `paseo-packs/*.tgz`，由 npm 为目标架构下载外部依赖和原生模块。因此目标环境需要可访问 npm registry；该包不是离线依赖镜像。
 
 4. 交付前必须全部验证：
    - `node --check scripts/build-web-server-release.mjs` 成功；
-   - 解压到新建临时目录后，`node verify.mjs` 成功，且恰好包含上述 6 个 fork package；
+   - 解压到新建临时目录后，`node verify.mjs` 成功，且恰好包含上述 7 个 fork package；
    - server tgz 包含 `package/dist/server/web-ui/index.html`；
-   - 使用临时 `NPM_CONFIG_PREFIX` 运行 `install.sh`，确认 6 个已安装 package 的版本都等于当前版本；
+   - 使用临时 `NPM_CONFIG_PREFIX` 运行 `install.sh`，确认 7 个已安装 package 的版本都等于当前版本；
    - 不启动已安装的 server，不运行任何 `paseo daemon start`、`paseo daemon stop` 或 `paseo daemon restart`。`PASEO_HOME` 只隔离数据目录，不能保证 daemon 控制命令不会连接默认端口 `6767`；
    - 记录文件名、版本号、提交 SHA、大小和 SHA-256。
 

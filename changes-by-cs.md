@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `b5610928a5ce1e4365ac62a0ffcbfbd826e3190c`，同步于 2026-08-14。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `b5610928a5ce1e4365ac62a0ffcbfbd826e3190c`）。
+- 最近同步基线：`upstream/main` = `4748aad103bf3c4d4f23dacef37616450e490f4a`，同步于 2026-08-15。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `4748aad103bf3c4d4f23dacef37616450e490f4a`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-08-15: `upstream/main` `4748aad10` / post-`v0.4.0`
+
+- 合入上游 managed local plugin 生命周期与 `@paseo/plugin` SDK、daemon 配置热重载、缓存时间线无尾部重放续传、Host 目录即时恢复、Composer IME/粘贴安全重构、Pinned workspace 排序、完成子 Agent 跨 track 手动归档，以及桌面 element selector 和 Relay 稳定性修复。
+- Composer 采用上游 native-owned text/IME 与 paste 链路，同时保留 fork 的 Host Prompt、选区引用和完整消息历史；Session dispatcher 同时保留 fork 的 Status Summary/Prompt Library 与上游 Plugin RPC。完成子 Agent 的归档仅覆盖已终态条目，不会随父 turn 结束处理仍在运行的异步子 Agent。
+- Web + Server 归档跟随官方 Docker pack 链路增加 `@paseo/plugin`，由六包升级为七包。保留 fork 的 Status Bar/usage ledger、多 Host 汇总、Threadshare 分享、跨 File/Changes Review Comments、固定签名 DMG、独立 Android APK、Haseo TestFlight 身份和 bounded canonical timeline `limit: 100`；本轮没有上游等价能力可下线。
 
 ### 2026-08-14: `upstream/main` `b5610928a` / `v0.4.0`
 
@@ -279,7 +285,7 @@
 
 **行为**：保留 macOS desktop 打包所需的 entitlements 与 daemon packaging 测试，并允许 desktop 开发环境在 React DevTools 下载失败时继续运行。同步发布两个用途不同的产物：仅支持 Apple Silicon 的固定本地签名 APFS DMG，以及供非 arm64 主机和浏览器用户升级的 Web + Paseo Server tar.gz。承载用户会话的构建机上只做离线产物校验；发布流程不启动打包后的 Paseo 或 Server，也不控制当前运行的主 daemon。
 
-Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highlight`、`relay`、`protocol`、`client`、`server` 和 `cli` 六个 fork npm 包；server 包内嵌同版本 Web UI。归档不携带构建机的 arm64 `node_modules`，目标主机使用 Node.js 22/npm 为自身架构安装外部依赖。
+Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highlight`、`relay`、`protocol`、`client`、`plugin`、`server` 和 `cli` 七个 fork npm 包；server 包内嵌同版本 Web UI。归档不携带构建机的 arm64 `node_modules`，目标主机使用 Node.js 22/npm 为自身架构安装外部依赖。
 
 **关键文件**：
 
@@ -294,7 +300,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 **同步规则**：
 
 - 上游调整 Electron 版本、签名、entitlements 或 daemon 打包时，先保留本 fork 的 macOS 打包约束，再按上游机制重写；不要只解决 TypeScript 冲突后跳过实际 arm64 DMG 验证。
-- 上游 GitHub Release 的 x64 tar.gz 是 Linux Electron 桌面包，不视为 Web + Server 等价产物。若上游改变 Docker/npm 发布机制，保持六个内部 package 同批安装和 server 内嵌 Web UI，再按新机制迁移。
+- 上游 GitHub Release 的 x64 tar.gz 是 Linux Electron 桌面包，不视为 Web + Server 等价产物。若上游改变 Docker/npm 发布机制，保持七个内部 package 同批安装和 server 内嵌 Web UI，再按新机制迁移。
 - 必跑：desktop packaging 目标测试、macOS arm64 DMG/签名/包内容离线校验，以及 Web + Server 归档校验和临时 npm prefix 安装。需要 daemon 或 packaged desktop 端到端冒烟时，改在不承载用户会话的独立主机或容器执行。
 - 本地构建前删除同版本的 `Paseo-*.dmg`、`*.blockmap`、`*.zip` 和 `release/mac-arm64/`，防止误将旧产物当成新包上传。
 - 发布流程禁止运行 packaged desktop smoke 以及 `paseo daemon start`、`stop`、`restart`。临时 `PASEO_HOME` 只隔离数据，不保证控制命令不会连接默认端口 `6767`；构建前和上传前只读核对主 daemon 的监听 PID 与 `/api/health`，状态变化时中止并报告。
