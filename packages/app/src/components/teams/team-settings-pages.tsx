@@ -12,7 +12,12 @@ import {
   X,
 } from "lucide-react-native";
 
-import type { MissionAttentionItem, TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
+import type {
+  MissionAttentionItem,
+  MissionCapabilityReplanInspectRequest,
+  TeamMission,
+  TeamV2,
+} from "@getpaseo/protocol/team/v2-types";
 import type { TeamMissionAttentionResolutionInput } from "@getpaseo/protocol/team/v2-rpc-schemas";
 import type { MethodologyDescriptor } from "@getpaseo/protocol/team/v2-rpc-schemas";
 import type { AgentProfileExecutionFacts } from "@getpaseo/protocol/team/execution-source-status";
@@ -487,16 +492,29 @@ export function TeamAttentionSettingsPage({
       ) : null}
 
       <SettingsSection title={t("teams.v2Settings.attention.title")}>
-        {mission?.capabilityReplanRequests.map((request) => (
-          <Text key={request.requestId} style={settingsStyles.rowHint}>
-            {t(
-              request.consumedAt
-                ? "teams.v2Settings.attention.capabilityRefreshConsumed"
-                : "teams.v2Settings.attention.capabilityRefreshPending",
-              { revision: request.rosterSnapshotRevision },
-            )}
-          </Text>
-        ))}
+        {mission?.capabilityReplanRequests.map((request) => {
+          const currentBindingDelivery =
+            "currentBindingDelivery" in request
+              ? (request as MissionCapabilityReplanInspectRequest).currentBindingDelivery
+              : null;
+          return (
+            <Text key={request.requestId} style={settingsStyles.rowHint}>
+              {t(
+                request.consumedAt
+                  ? "teams.v2Settings.attention.capabilityRefreshConsumed"
+                  : "teams.v2Settings.attention.capabilityRefreshPending",
+                {
+                  requestId: request.requestId,
+                  revision: request.rosterSnapshotRevision,
+                  sources: request.sourceAttentionIds.join(", "),
+                  delivery: currentBindingDelivery
+                    ? `${currentBindingDelivery.state}@${currentBindingDelivery.bindingEpoch}`
+                    : "none",
+                },
+              )}
+            </Text>
+          );
+        })}
         {actions.capabilityRefreshNotice ? (
           <Text style={settingsStyles.rowHint}>{actions.capabilityRefreshNotice}</Text>
         ) : null}

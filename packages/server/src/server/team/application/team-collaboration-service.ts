@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import type {
   MissionAssignmentContract,
   MissionAssignmentReport,
+  MissionAttentionItem,
   MissionFinalVerificationGate,
   MissionMemberMatchExplanation,
   MissionMemberRequirements,
@@ -25,6 +26,7 @@ import {
   validateAssignmentContract,
 } from "../domain/assignment-contract-validation.js";
 import { applyMissionAttentionTransition } from "../domain/mission-attention-transition.js";
+import { carryStructuralGateAttentions } from "../domain/structural-gate-attention.js";
 import {
   matchMissionFinalVerifier,
   matchWorkstreamOwner,
@@ -104,6 +106,14 @@ const REPLAN_ATTENTION_KINDS = new Set<TeamMission["attentionItems"][number]["ki
   "provider_unavailable",
   "participant_unavailable",
   "reviewer_unavailable",
+  "review_gate_reviewer_unavailable",
+  "review_gate_capability_unknown",
+  "final_verifier_unavailable",
+  "final_verifier_capability_unknown",
+]);
+const STRUCTURAL_CAPABILITY_ATTENTION_KINDS = new Set<
+  TeamMission["attentionItems"][number]["kind"]
+>([
   "review_gate_reviewer_unavailable",
   "review_gate_capability_unknown",
   "final_verifier_unavailable",
@@ -476,8 +486,12 @@ export class TeamCollaborationService {
     const nextPlanRevision = context.mission.planRevision + 1;
     const now = this.options.clock.now();
     const attentionProjection = resolveReplanAttention(context.mission, input.callerAgentId, now);
-    const resolvedAttentionDeliveryIds = new Set(
-      context.mission.attentionItems
+    const consumedCapabilityRequestIds = selectConsumedCapabilityReplanRequestIds(
+      context.mission,
+      attentionProjection,
+    );
+    const resolvedAttentionDeliveryIds = new Set([
+      ...context.mission.attentionItems
         .filter((item) => item.status === "open")
         .flatMap((item) => {
           if (item.kind === "participant_unavailable") {
@@ -488,7 +502,10 @@ export class TeamCollaborationService {
           }
           return [];
         }),
-    );
+      ...context.mission.capabilityReplanRequests
+        .filter((request) => consumedCapabilityRequestIds.has(request.requestId))
+        .map((request) => request.deliveryId),
+    ]);
     const workstreams = buildMissionWorkstreams({
       mission: context.mission,
       roster: this.activeRoster(context.mission).members,
@@ -631,12 +648,16 @@ export class TeamCollaborationService {
         })
       : normalizedDeliveryAssignments;
     const planStatus = missingAssignmentWorkstreamIds.length > 0 ? "planning" : "active";
-    const candidate = {
-      ...planProjection,
-      status: planStatus as TeamMission["status"],
-      workstreams: materializedWorkstreams,
-      assignments: normalizedAssignments,
-    };
+    const candidate = carryStructuralGateAttentions({
+      previous: context.mission,
+      createdAt: now,
+      candidate: {
+        ...planProjection,
+        status: planStatus as TeamMission["status"],
+        workstreams: materializedWorkstreams,
+        assignments: normalizedAssignments,
+      },
+    });
     assertValidPlanProjection(candidate, acceptedTurnsById);
     const assignmentCoverageDelivery =
       missingAssignmentWorkstreamIds.length > 0
@@ -670,7 +691,12 @@ export class TeamCollaborationService {
             workstreams: materializedWorkstreams,
             workstreamPlanSnapshots,
             assignments: normalizedAssignments,
-            attentionItems: attentionProjection.attentionItems,
+            attentionItems: candidate.attentionItems,
+            capabilityReplanRequests: mission.capabilityReplanRequests.map((request) =>
+              consumedCapabilityRequestIds.has(request.requestId) && request.consumedAt === null
+                ? { ...request, consumedAt: now }
+                : request,
+            ),
           },
           recovery: {
             ...recovery,
@@ -2837,6 +2863,9 @@ function resolveReplanAttention(
       resolvedAt,
       ownerAssignmentId: null,
       recoveryAssignmentId: null,
+      rosterSnapshotRevision: isStructuralCapabilityAttention(item)
+        ? mission.activeRosterSnapshotRevision
+        : null,
     };
     const issues = validateMissionAttentionResolution(mission, item, resolution);
     if (issues.length > 0) {
@@ -2851,6 +2880,41 @@ function resolveReplanAttention(
       resolution,
     });
   }, mission);
+}
+
+function isStructuralCapabilityAttention(item: MissionAttentionItem): boolean {
+  return STRUCTURAL_CAPABILITY_ATTENTION_KINDS.has(item.kind);
+}
+
+function selectConsumedCapabilityReplanRequestIds(
+  before: TeamMission,
+  afterAttentionResolution: TeamMission,
+): Set<string> {
+  const afterById = new Map(
+    afterAttentionResolution.attentionItems.map((item) => [item.attentionId, item]),
+  );
+  return new Set(
+    before.capabilityReplanRequests.flatMap((request) => {
+      if (
+        request.consumedAt !== null ||
+        request.rosterSnapshotRevision !== before.activeRosterSnapshotRevision
+      ) {
+        return [];
+      }
+      const resolvesEverySource = request.sourceAttentionIds.every((attentionId) => {
+        const source = before.attentionItems.find((item) => item.attentionId === attentionId);
+        const resolved = afterById.get(attentionId);
+        return (
+          source?.status === "open" &&
+          isStructuralCapabilityAttention(source) &&
+          resolved?.status === "resolved" &&
+          resolved.resolution?.kind === "replan" &&
+          resolved.resolution.rosterSnapshotRevision === request.rosterSnapshotRevision
+        );
+      });
+      return resolvesEverySource ? [request.requestId] : [];
+    }),
+  );
 }
 
 function resolveMissingReportAttention(

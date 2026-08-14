@@ -4,6 +4,7 @@ import {
   ExactMethodologyRefSchema,
   TeamExecutionProfileSchema,
   TeamMemberLevelSchema,
+  TeamMissionInspectSchema,
   TeamMissionSchema,
   TeamRoomMessageSchema,
   TeamSkillSchema,
@@ -469,7 +470,7 @@ export const TeamMissionListResponseSchema = z.object({
 
 export const TeamMissionInspectResponseSchema = z.object({
   type: z.literal("team.mission.inspect.response"),
-  payload: z.object(missionResponseFields),
+  payload: z.object({ ...missionResponseFields, mission: TeamMissionInspectSchema.nullable() }),
 });
 
 export const TeamMissionCancelResponseSchema = z.object({

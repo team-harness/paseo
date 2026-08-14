@@ -5752,6 +5752,129 @@ describe("TeamMissionScheduler", () => {
     ]);
     expect(updated?.mission.attentionItems).toEqual([]);
   });
+
+  test("recovers exactly one capability delivery after binding write succeeds before rearm", async () => {
+    const missions = new MissionStore({
+      directory: join(rootDirectory, "missions"),
+      logger: createTestLogger(),
+      now: () => NOW,
+    });
+    const mission: TeamMission = {
+      ...activeMission(),
+      status: "planning",
+      workstreams: [],
+      assignments: [],
+      activeRosterSnapshotRevision: 2,
+      rosterSnapshots: [
+        {
+          revision: 1,
+          teamRevision: 1,
+          leadMemberId: "member-old-lead",
+          reason: "replan",
+          skills: [],
+          members: [rosterMember("member-old-lead", "Old Lead", "old-lead")],
+          createdAt: NOW,
+        },
+        {
+          revision: 2,
+          teamRevision: 1,
+          leadMemberId: "member-new-lead",
+          reason: "replan",
+          skills: [],
+          members: [rosterMember("member-new-lead", "New Lead", "new-lead")],
+          createdAt: NOW,
+        },
+      ],
+      participants: [
+        {
+          memberId: "member-old-lead",
+          agentId: "agent-old-lead",
+          bindingEpoch: 1,
+          joinedAt: NOW,
+          archivedAt: NOW,
+        },
+        {
+          memberId: "member-new-lead",
+          agentId: "agent-new-lead",
+          bindingEpoch: 1,
+          joinedAt: NOW,
+          archivedAt: null,
+        },
+      ],
+      capabilityReplanRequests: [
+        {
+          requestId: "capability-request",
+          idempotencyKey: "capability-refresh",
+          requestFingerprint: "capability-fingerprint",
+          sourceAttentionIds: ["attention-review"],
+          rosterSnapshotRevision: 1,
+          deliveryId: "capability-request:delivery",
+          createdAt: NOW,
+          consumedAt: null,
+        },
+      ],
+    };
+    await missions.createIfAbsent({
+      mission,
+      idempotencyKey: "start-capability-recovery",
+      requestFingerprint: "start-capability-recovery-fingerprint",
+    });
+    const created = await missions.get(mission.id);
+    if (!created) throw new Error("Mission expected");
+    await missions.updateRecoveryState({
+      missionId: mission.id,
+      expectedStorageRevision: created.storageRevision,
+      update: (recovery) => ({
+        ...recovery,
+        recipientAttentionOutbox: [
+          {
+            deliveryId: "capability-request:delivery",
+            idempotencyKey: "capability-refresh",
+            requestFingerprint: "capability-fingerprint",
+            roomMessageId: "capability-request:message",
+            senderMemberId: "member-old-lead",
+            senderAgentId: "agent-old-lead",
+            recipientMemberId: "member-old-lead",
+            bindingEpoch: 1,
+            mentionHandle: "lead",
+            body: "@lead submit a replacement plan",
+            roomPostedAt: NOW,
+            roomCursor: 1,
+            attempts: 1,
+            createdAt: NOW,
+            successorDeliveryId: null,
+            state: "acknowledged",
+            lastAttemptAt: NOW,
+            nextEligibleAt: null,
+            acknowledgedAt: NOW,
+            canceledAt: null,
+            cancelReason: null,
+          },
+        ],
+      }),
+    });
+    const scheduler = reviewRecoveryScheduler(missions, []);
+
+    await expect(scheduler.reconcileMission(mission.id)).resolves.toMatchObject({
+      createdRecipientAttentionDeliveryIds: ["capability-request:delivery:binding:1"],
+    });
+    const afterRecovery = await missions.get(mission.id);
+    expect(afterRecovery?.recipientAttentionOutbox).toHaveLength(2);
+    expect(afterRecovery?.recipientAttentionOutbox[1]).toMatchObject({
+      deliveryId: "capability-request:delivery:binding:1",
+      recipientMemberId: "member-new-lead",
+      mentionHandle: "new-lead",
+      body: expect.stringContaining("@new-lead"),
+      bindingEpoch: 1,
+      state: "pending",
+    });
+    const recoveredBytes = JSON.stringify(afterRecovery);
+
+    await expect(scheduler.reconcileMission(mission.id)).resolves.toMatchObject({
+      createdRecipientAttentionDeliveryIds: [],
+    });
+    expect(JSON.stringify(await missions.get(mission.id))).toBe(recoveredBytes);
+  });
 });
 
 function activeMission(): TeamMission {
