@@ -45,6 +45,15 @@ export interface TeamPlanRow {
   readonly status: "planned" | "ready" | "active" | "blocked" | "review" | "accepted" | "canceled";
   readonly owner: TeamPlanMember;
   readonly reviewer: TeamPlanMember | null;
+  readonly reviewSubjectAssignmentIds: readonly string[];
+  readonly reviewSelection:
+    | "not_required"
+    | "assigned"
+    | "awaiting_reviewer"
+    | "awaiting_capabilities";
+  readonly reviewOutcome: "not_required" | "pending" | "approved" | "waived";
+  readonly reviewReport: MissionAssignmentReport | null;
+  readonly reviewWaiver: { waiverId: string; actorId: string; reason: string } | null;
   readonly dependencyWorkstreamIds: readonly string[];
   readonly scope: MissionMutableScope;
   readonly assignmentStates: readonly string[];
@@ -264,6 +273,21 @@ export function selectTeamPlanRows(team: TeamV2, mission: TeamMission | null): T
     const reports = assignments.flatMap((assignment) =>
       assignment.report ? [assignment.report] : [],
     );
+    const gate = workstream.reviewGate;
+    const reviewerMemberId =
+      gate.kind === "required" && gate.selection.kind === "assigned"
+        ? gate.selection.reviewerMemberId
+        : null;
+    const reviewAssignmentId =
+      gate.kind === "required" && gate.outcome.kind === "approved"
+        ? gate.outcome.reviewAssignmentId
+        : null;
+    const waiverId =
+      gate.kind === "required" && gate.outcome.kind === "waived" ? gate.outcome.waiverId : null;
+    const reviewWaiver =
+      waiverId === null
+        ? null
+        : (mission.reviewWaivers.find((waiver) => waiver.waiverId === waiverId) ?? null);
     return {
       workstreamId: workstream.workstreamId,
       kind: workstream.kind,
@@ -271,9 +295,25 @@ export function selectTeamPlanRows(team: TeamV2, mission: TeamMission | null): T
       objective: workstream.objective,
       status: workstream.status,
       owner: memberForPlan(team, mission, workstream.ownerMemberId),
-      reviewer: workstream.reviewerMemberId
-        ? memberForPlan(team, mission, workstream.reviewerMemberId)
-        : null,
+      reviewer: reviewerMemberId ? memberForPlan(team, mission, reviewerMemberId) : null,
+      reviewSubjectAssignmentIds:
+        gate.kind === "required" ? gate.gateKey.subject.subjectAssignmentIds : [],
+      reviewSelection: gate.kind === "required" ? gate.selection.kind : "not_required",
+      reviewOutcome: gate.outcome.kind,
+      reviewReport:
+        reviewAssignmentId === null
+          ? null
+          : (mission.assignments.find(
+              (assignment) => assignment.assignmentId === reviewAssignmentId,
+            )?.report ?? null),
+      reviewWaiver:
+        reviewWaiver === null
+          ? null
+          : {
+              waiverId: reviewWaiver.waiverId,
+              actorId: reviewWaiver.actorId,
+              reason: reviewWaiver.reason,
+            },
       dependencyWorkstreamIds: workstream.dependencyWorkstreamIds,
       scope: workstream.mutableScope,
       assignmentStates: assignments.map((assignment) => assignment.semanticState),

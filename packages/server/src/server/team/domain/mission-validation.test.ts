@@ -10,6 +10,13 @@ import type {
 import type { AcceptedTurnFact } from "./assignment-contract-validation.js";
 import { testMissionMethodologySnapshot } from "../test-fixtures.js";
 import {
+  buildMissionReviewGate,
+  missionReviewGateKeyFingerprint,
+  missionReviewReportFingerprint,
+  missionReviewSubjectFingerprint,
+} from "./mission-review-gate.js";
+import {
+  isMissionReviewGateSettledByEvidence,
   resolveMissionAssignmentCoverage,
   validateMissionAttentionResolution,
   validateTeamMission as validateStrictTeamMission,
@@ -78,11 +85,7 @@ function workstream(workstreamId: string): MissionWorkstream {
       rosterIndex: 0,
     },
     ownerOverrideReason: null,
-    reviewPolicy: "none",
-    reviewerRequirements: null,
-    reviewerMemberId: null,
-    reviewerMatchExplanation: null,
-    reviewerOverrideReason: null,
+    reviewGate: { kind: "none", outcome: { kind: "not_required" } },
     status: "planned",
   };
 }
@@ -128,6 +131,8 @@ function assignment(
     revision: 1,
     kind: "delivery",
     subjectAssignmentIds: [],
+    reviewGateFingerprint: null,
+    reviewSubjectFingerprint: null,
     missionId: "mission-sdk",
     workstreamId,
     assigneeMemberId: "member-engineer",
@@ -174,6 +179,7 @@ function attentionItem(overrides: Partial<MissionAttentionItem> = {}): MissionAt
   return {
     attentionId: "attention-missing-report",
     kind: "missing_report",
+    scope: { kind: "mission" as const },
     status: "open",
     priorMissionStatus: "active",
     assignmentId: "assignment-api",
@@ -273,6 +279,7 @@ function mission(): TeamMission {
     workstreamPlanSnapshots: [],
     assignments: [assignment("assignment-api", "workstream-api")],
     attentionItems: [],
+    reviewWaivers: [],
     createdAt: "2026-08-07T11:00:00.000Z",
     updatedAt: "2026-08-07T11:00:00.000Z",
     completedAt: null,
@@ -347,18 +354,6 @@ function completedMissionWithRequiredReview(): TeamMission {
   const verificationWorkstream = aggregate.workstreams.find(
     (candidate) => candidate.kind === "verification",
   )!;
-  deliveryWorkstream.reviewPolicy = "required";
-  deliveryWorkstream.reviewerRequirements = {
-    requiredSkillIds: ["verification"],
-    preferredSkillIds: [],
-    requiredRuntimeCapabilityIds: ["structured-tools"],
-    minimumLevel: 3,
-  };
-  deliveryWorkstream.reviewerMemberId = "member-verifier";
-  deliveryWorkstream.reviewerMatchExplanation = {
-    ...verificationWorkstream.ownerMatchExplanation,
-  };
-
   const delivery = aggregate.assignments.find((candidate) => candidate.kind === "delivery")!;
   const verificationIndex = aggregate.assignments.findIndex(
     (candidate) => candidate.kind === "verification",
@@ -369,6 +364,8 @@ function completedMissionWithRequiredReview(): TeamMission {
     assignmentId: "assignment-api-review",
     kind: "review",
     subjectAssignmentIds: [delivery.assignmentId],
+    reviewGateFingerprint: null,
+    reviewSubjectFingerprint: null,
     assigneeMemberId: "member-verifier",
     runtimeAgentId: "agent-verifier",
     mutableScope: { kind: "read_only" },
@@ -382,6 +379,40 @@ function completedMissionWithRequiredReview(): TeamMission {
     report: {
       ...completedReport("Approved the API delivery."),
       verdict: "approved",
+    },
+  };
+  const gate = buildMissionReviewGate({
+    workstreamId: deliveryWorkstream.workstreamId,
+    planRevision: deliveryWorkstream.planRevision,
+    subjectAssignmentIds: [delivery.assignmentId],
+    requirements: {
+      requiredSkillIds: ["verification"],
+      preferredSkillIds: [],
+      requiredRuntimeCapabilityIds: ["structured-tools"],
+      minimumLevel: 3,
+    },
+    selection: {
+      kind: "assigned",
+      reviewerMemberId: "member-verifier",
+      matchExplanation: { ...verificationWorkstream.ownerMatchExplanation },
+      overrideReason: null,
+    },
+    outcome: { kind: "pending" },
+  });
+  if (gate.kind !== "required" || review.report === null)
+    throw new Error("required review fixture");
+  review.reviewGateFingerprint = gate.gateKeyFingerprint;
+  review.reviewSubjectFingerprint = gate.subjectFingerprint;
+  deliveryWorkstream.reviewGate = {
+    ...gate,
+    outcome: {
+      kind: "approved",
+      gateKeyFingerprint: gate.gateKeyFingerprint,
+      subjectFingerprint: gate.subjectFingerprint,
+      reviewAssignmentId: review.assignmentId,
+      reportFingerprint: missionReviewReportFingerprint(review.report),
+      inheritedFromGateFingerprint: null,
+      decidedAt: "2026-08-07T11:09:00.000Z",
     },
   };
   aggregate.assignments.splice(verificationIndex, 0, review);
@@ -1231,17 +1262,27 @@ describe("team mission validation", () => {
   it("requires an approved review Assignment before accepting required-review work", () => {
     const aggregate = completedMission();
     const delivery = aggregate.workstreams[0]!;
-    delivery.reviewPolicy = "required";
-    delivery.reviewerRequirements = {
-      requiredSkillIds: ["verification"],
-      preferredSkillIds: [],
-      requiredRuntimeCapabilityIds: ["structured-tools"],
-      minimumLevel: 3,
-    };
-    delivery.reviewerMemberId = "member-verifier";
-    delivery.reviewerMatchExplanation = {
-      ...aggregate.workstreams[1]!.ownerMatchExplanation,
-    };
+    const deliveryAssignment = aggregate.assignments.find(
+      (candidate) => candidate.kind === "delivery",
+    )!;
+    delivery.reviewGate = buildMissionReviewGate({
+      workstreamId: delivery.workstreamId,
+      planRevision: delivery.planRevision,
+      subjectAssignmentIds: [deliveryAssignment.assignmentId],
+      requirements: {
+        requiredSkillIds: ["verification"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 3,
+      },
+      selection: {
+        kind: "assigned",
+        reviewerMemberId: "member-verifier",
+        matchExplanation: { ...aggregate.workstreams[1]!.ownerMatchExplanation },
+        overrideReason: null,
+      },
+      outcome: { kind: "pending" },
+    });
 
     expect(validateTeamMission(aggregate)).toEqual({
       ok: false,
@@ -1254,31 +1295,125 @@ describe("team mission validation", () => {
     });
   });
 
+  it("does not settle an owner self-review even with an override and durable approval", () => {
+    const aggregate = completedMissionWithRequiredReview();
+    const delivery = aggregate.workstreams.find((candidate) => candidate.kind === "delivery")!;
+    const gate = delivery.reviewGate;
+    if (gate.kind !== "required" || gate.selection.kind !== "assigned") {
+      throw new Error("assigned review gate expected");
+    }
+    delivery.ownerMemberId = gate.selection.reviewerMemberId;
+    gate.selection.overrideReason = "The single-member Team has no independent reviewer.";
+    aggregate.rosterSnapshots[0]!.members = aggregate.rosterSnapshots[0]!.members.filter(
+      (member) => member.memberId === gate.selection.reviewerMemberId,
+    );
+
+    expect(
+      isMissionReviewGateSettledByEvidence(
+        aggregate,
+        delivery.workstreamId,
+        validationContext(aggregate),
+      ),
+    ).toBe(false);
+  });
+
+  it("does not settle a writable Workstream with no gate when frozen policy requires review", () => {
+    const aggregate = completedMission();
+    aggregate.methodologySnapshot.hardPolicy.review.writableWorkstreams = "independent_required";
+    aggregate.workstreams[0]!.mutableScope = {
+      kind: "paths",
+      pathPrefixes: ["packages/server"],
+    };
+
+    expect(
+      isMissionReviewGateSettledByEvidence(
+        aggregate,
+        "workstream-api",
+        validationContext(aggregate),
+      ),
+    ).toBe(false);
+  });
+
+  it("recomputes gate identity instead of trusting matching stored fingerprints", () => {
+    const aggregate = completedMissionWithRequiredReview();
+    const delivery = aggregate.workstreams[0]!;
+    const gate = delivery.reviewGate;
+    const review = aggregate.assignments.find((candidate) => candidate.kind === "review")!;
+    if (gate.kind !== "required" || gate.outcome.kind !== "approved") {
+      throw new Error("approved review gate expected");
+    }
+    gate.gateKey.planRevision = 99;
+    gate.gateKeyFingerprint = "sha256:forged";
+    gate.outcome.gateKeyFingerprint = "sha256:forged";
+    review.reviewGateFingerprint = "sha256:forged";
+
+    expect(
+      isMissionReviewGateSettledByEvidence(
+        aggregate,
+        delivery.workstreamId,
+        validationContext(aggregate),
+      ),
+    ).toBe(false);
+  });
+
+  it("requires the review subject to be the delivery selected by current coverage", () => {
+    const aggregate = completedMissionWithRequiredReview();
+    const delivery = aggregate.assignments.find((candidate) => candidate.kind === "delivery")!;
+    aggregate.assignments.push({
+      ...delivery,
+      assignmentId: "assignment-api-competing",
+      acceptedTurnId: "turn-api-competing",
+      workspaceBaseline: {
+        ...delivery.workspaceBaseline!,
+        baselineId: "baseline-assignment-api-competing",
+        assignmentId: "assignment-api-competing",
+      },
+    });
+
+    expect(
+      isMissionReviewGateSettledByEvidence(
+        aggregate,
+        "workstream-api",
+        validationContext(aggregate),
+      ),
+    ).toBe(false);
+  });
+
   it("does not reuse an approved historical review for a different selected delivery", () => {
     const aggregate = replanCompletedMission();
     const currentDelivery = aggregate.workstreams[0]!;
     const historicalDelivery = aggregate.workstreamPlanSnapshots[0]!.workstreams[0]!;
-    for (const candidate of [currentDelivery, historicalDelivery]) {
-      candidate.reviewPolicy = "required";
-      candidate.reviewerRequirements = {
-        requiredSkillIds: ["verification"],
-        preferredSkillIds: [],
-        requiredRuntimeCapabilityIds: ["structured-tools"],
-        minimumLevel: 3,
-      };
-      candidate.reviewerMemberId = "member-verifier";
-      candidate.reviewerMatchExplanation = {
-        ...aggregate.workstreams[1]!.ownerMatchExplanation,
-      };
-    }
+    const requirements = {
+      requiredSkillIds: ["verification"],
+      preferredSkillIds: [],
+      requiredRuntimeCapabilityIds: ["structured-tools"],
+      minimumLevel: 3 as const,
+    };
+    const selection = {
+      kind: "assigned" as const,
+      reviewerMemberId: "member-verifier",
+      matchExplanation: { ...aggregate.workstreams[1]!.ownerMatchExplanation },
+      overrideReason: null,
+    };
     const v1Delivery = aggregate.assignments.find(
       (candidate) => candidate.assignmentId === "assignment-api",
     )!;
-    aggregate.assignments.push({
+    const historicalGate = buildMissionReviewGate({
+      workstreamId: historicalDelivery.workstreamId,
+      planRevision: historicalDelivery.planRevision,
+      subjectAssignmentIds: [v1Delivery.assignmentId],
+      requirements,
+      selection,
+      outcome: { kind: "pending" },
+    });
+    if (historicalGate.kind !== "required") throw new Error("Required review gate expected");
+    const historicalReview: MissionAssignmentContract = {
       ...v1Delivery,
       assignmentId: "assignment-api-review-v1",
       kind: "review",
       subjectAssignmentIds: [v1Delivery.assignmentId],
+      reviewGateFingerprint: historicalGate.gateKeyFingerprint,
+      reviewSubjectFingerprint: historicalGate.subjectFingerprint,
       dependencyAssignmentIds: [v1Delivery.assignmentId],
       assigneeMemberId: "member-verifier",
       runtimeAgentId: "agent-verifier",
@@ -1293,8 +1428,20 @@ describe("team mission validation", () => {
         ...completedReport("Approved the first API delivery."),
         verdict: "approved",
       },
-    });
-    aggregate.assignments.push({
+    };
+    historicalDelivery.reviewGate = {
+      ...historicalGate,
+      outcome: {
+        kind: "approved",
+        gateKeyFingerprint: historicalGate.gateKeyFingerprint,
+        subjectFingerprint: historicalGate.subjectFingerprint,
+        reviewAssignmentId: historicalReview.assignmentId,
+        reportFingerprint: missionReviewReportFingerprint(historicalReview.report!),
+        inheritedFromGateFingerprint: null,
+        decidedAt: "2026-08-07T11:09:00.000Z",
+      },
+    };
+    const currentDeliveryAssignment: MissionAssignmentContract = {
       ...v1Delivery,
       assignmentId: "assignment-api-v2",
       planRevision: 2,
@@ -1304,7 +1451,16 @@ describe("team mission validation", () => {
         baselineId: "baseline-assignment-api-v2",
         assignmentId: "assignment-api-v2",
       },
+    };
+    currentDelivery.reviewGate = buildMissionReviewGate({
+      workstreamId: currentDelivery.workstreamId,
+      planRevision: currentDelivery.planRevision,
+      subjectAssignmentIds: [currentDeliveryAssignment.assignmentId],
+      requirements,
+      selection,
+      outcome: { kind: "pending" },
     });
+    aggregate.assignments.push(historicalReview, currentDeliveryAssignment);
     const verification = aggregate.assignments.find(
       (candidate) => candidate.assignmentId === "assignment-final-verification-v2",
     )!;
@@ -1322,6 +1478,388 @@ describe("team mission validation", () => {
     expect(result.issues).toContainEqual({
       kind: "accepted_workstream_missing_approved_review",
       workstreamId: "workstream-api",
+    });
+  });
+
+  it("rejects an inherited review when reviewer requirements changed", () => {
+    const aggregate = completedMissionWithRequiredReview();
+    aggregate.workstreamPlanSnapshots = [
+      {
+        planRevision: 1,
+        workstreams: structuredClone(aggregate.workstreams),
+        createdAt: "2026-08-07T11:10:00.000Z",
+      },
+    ];
+    aggregate.planRevision = 2;
+    for (const candidate of aggregate.workstreams) candidate.planRevision = 2;
+
+    const historicalDelivery = aggregate.workstreamPlanSnapshots[0]!.workstreams[0]!;
+    const historicalGate = historicalDelivery.reviewGate;
+    if (
+      historicalGate.kind !== "required" ||
+      historicalGate.outcome.kind !== "approved" ||
+      historicalGate.selection.kind !== "assigned"
+    ) {
+      throw new Error("approved historical review fixture expected");
+    }
+    const currentDelivery = aggregate.workstreams[0]!;
+    const currentGate = buildMissionReviewGate({
+      workstreamId: currentDelivery.workstreamId,
+      planRevision: currentDelivery.planRevision,
+      subjectAssignmentIds: historicalGate.gateKey.subject.subjectAssignmentIds,
+      requirements: { ...historicalGate.requirements, minimumLevel: 2 },
+      selection: {
+        ...historicalGate.selection,
+        matchExplanation: {
+          ...historicalGate.selection.matchExplanation,
+          minimumLevel: 2,
+        },
+      },
+      outcome: { kind: "pending" },
+    });
+    if (currentGate.kind !== "required") throw new Error("required current review gate expected");
+    currentDelivery.reviewGate = {
+      ...currentGate,
+      outcome: {
+        ...historicalGate.outcome,
+        gateKeyFingerprint: currentGate.gateKeyFingerprint,
+        subjectFingerprint: currentGate.subjectFingerprint,
+        inheritedFromGateFingerprint: historicalGate.gateKeyFingerprint,
+      },
+    };
+
+    const historicalVerification = aggregate.assignments.find(
+      (candidate) => candidate.kind === "verification",
+    )!;
+    aggregate.assignments.push({
+      ...historicalVerification,
+      assignmentId: "assignment-final-verification-v2",
+      planRevision: 2,
+      subjectAssignmentIds: ["assignment-api"],
+      dependencyAssignmentIds: ["assignment-api"],
+      acceptedTurnId: "turn-final-verification-v2",
+      workspaceBaseline: {
+        ...historicalVerification.workspaceBaseline!,
+        baselineId: "baseline-assignment-final-verification-v2",
+        assignmentId: "assignment-final-verification-v2",
+      },
+    });
+
+    const result = validateTeamMission(aggregate);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "invalid_review_gate_outcome",
+      workstreamId: "workstream-api",
+    });
+  });
+
+  it("rejects inheritance that points to a historical pending gate", () => {
+    const aggregate = completedMissionWithRequiredReview();
+    aggregate.workstreamPlanSnapshots = [
+      {
+        planRevision: 1,
+        workstreams: structuredClone(aggregate.workstreams),
+        createdAt: "2026-08-07T11:10:00.000Z",
+      },
+    ];
+    const historicalDelivery = aggregate.workstreamPlanSnapshots[0]!.workstreams[0]!;
+    const historicalGate = historicalDelivery.reviewGate;
+    if (historicalGate.kind !== "required") throw new Error("required historical gate expected");
+    historicalGate.outcome = { kind: "pending" };
+
+    aggregate.planRevision = 2;
+    for (const candidate of aggregate.workstreams) candidate.planRevision = 2;
+    const currentDelivery = aggregate.workstreams[0]!;
+    const currentGate = currentDelivery.reviewGate;
+    if (currentGate.kind !== "required" || currentGate.outcome.kind !== "approved") {
+      throw new Error("approved current gate expected");
+    }
+    const rebuilt = buildMissionReviewGate({
+      workstreamId: currentDelivery.workstreamId,
+      planRevision: 2,
+      subjectAssignmentIds: currentGate.gateKey.subject.subjectAssignmentIds,
+      requirements: currentGate.requirements,
+      selection: currentGate.selection,
+      outcome: { kind: "pending" },
+    });
+    if (rebuilt.kind !== "required") throw new Error("required rebuilt gate expected");
+    currentDelivery.reviewGate = {
+      ...rebuilt,
+      outcome: {
+        ...currentGate.outcome,
+        gateKeyFingerprint: rebuilt.gateKeyFingerprint,
+        subjectFingerprint: rebuilt.subjectFingerprint,
+        inheritedFromGateFingerprint: historicalGate.gateKeyFingerprint,
+      },
+    };
+
+    expect(
+      isMissionReviewGateSettledByEvidence(
+        aggregate,
+        currentDelivery.workstreamId,
+        validationContext(aggregate),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects an approved outcome backed by a canceled review", () => {
+    const aggregate = completedMissionWithRequiredReview();
+    const review = aggregate.assignments.find((candidate) => candidate.kind === "review")!;
+    review.semanticState = "canceled";
+    review.terminationReason = "mission_canceled";
+    const verification = aggregate.assignments.find(
+      (candidate) => candidate.kind === "verification",
+    )!;
+    verification.subjectAssignmentIds = ["assignment-api"];
+    verification.dependencyAssignmentIds = ["assignment-api"];
+
+    const result = validateTeamMission(aggregate);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "invalid_review_gate_outcome",
+      workstreamId: "workstream-api",
+    });
+  });
+
+  it.each(["forbidden", "allowed_with_reason"] as const)(
+    "rejects a fabricated waiver when operator waiver is %s",
+    (operatorWaiver) => {
+      const aggregate = completedMission();
+      aggregate.methodologySnapshot.hardPolicy.review.operatorWaiver = operatorWaiver;
+      const delivery = aggregate.workstreams[0]!;
+      const gate = buildMissionReviewGate({
+        workstreamId: delivery.workstreamId,
+        planRevision: delivery.planRevision,
+        subjectAssignmentIds: ["assignment-api"],
+        requirements: {
+          requiredSkillIds: ["verification"],
+          preferredSkillIds: [],
+          requiredRuntimeCapabilityIds: ["structured-tools"],
+          minimumLevel: 5,
+        },
+        selection: { kind: "awaiting_reviewer" },
+        outcome: { kind: "pending" },
+      });
+      if (gate.kind !== "required") throw new Error("required review gate expected");
+      delivery.reviewGate = {
+        ...gate,
+        outcome: {
+          kind: "waived",
+          gateKeyFingerprint: gate.gateKeyFingerprint,
+          subjectFingerprint: gate.subjectFingerprint,
+          waiverId: "waiver-api",
+          decidedAt: "2026-08-07T11:09:00.000Z",
+        },
+      };
+
+      const result = validateTeamMission(aggregate);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues).toContainEqual({
+        kind: "invalid_review_gate_outcome",
+        workstreamId: "workstream-api",
+      });
+    },
+  );
+
+  it("accepts a waiver bound to its persisted scoped Attention and controller decision", () => {
+    const aggregate = completedMission();
+    aggregate.methodologySnapshot.hardPolicy.review.operatorWaiver = "allowed_with_reason";
+    const delivery = aggregate.workstreams[0]!;
+    const gate = buildMissionReviewGate({
+      workstreamId: delivery.workstreamId,
+      planRevision: delivery.planRevision,
+      subjectAssignmentIds: ["assignment-api"],
+      requirements: {
+        requiredSkillIds: ["verification"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 5,
+      },
+      selection: { kind: "awaiting_reviewer" },
+      outcome: { kind: "pending" },
+    });
+    if (gate.kind !== "required") throw new Error("required review gate expected");
+    const decidedAt = "2026-08-07T11:09:00.000Z";
+    delivery.reviewGate = {
+      ...gate,
+      outcome: {
+        kind: "waived",
+        gateKeyFingerprint: gate.gateKeyFingerprint,
+        subjectFingerprint: gate.subjectFingerprint,
+        waiverId: "waiver-api",
+        decidedAt,
+      },
+    };
+    aggregate.reviewWaivers = [
+      {
+        waiverId: "waiver-api",
+        attentionId: "attention-review-api",
+        actorId: "controller",
+        gateKey: gate.gateKey,
+        gateKeyFingerprint: gate.gateKeyFingerprint,
+        subjectFingerprint: gate.subjectFingerprint,
+        connectionId: "connection-controller",
+        selfReportedClientLabel: "paseo-app",
+        reason: "No structurally eligible reviewer is available.",
+        createdAt: decidedAt,
+      },
+    ];
+    aggregate.attentionItems.push({
+      attentionId: "attention-review-api",
+      kind: "review_gate_reviewer_unavailable",
+      status: "resolved",
+      priorMissionStatus: null,
+      assignmentId: null,
+      scope: {
+        kind: "workstream",
+        workstreamId: delivery.workstreamId,
+        blockDependents: true,
+      },
+      reviewGateDetails: {
+        gateKey: gate.gateKey,
+        gateKeyFingerprint: gate.gateKeyFingerprint,
+        subjectFingerprint: gate.subjectFingerprint,
+      },
+      summary: "No structurally eligible reviewer is available.",
+      pathEvidence: [],
+      createdAt: "2026-08-07T11:08:00.000Z",
+      resolution: {
+        kind: "waive_review",
+        actorId: "controller",
+        connectionId: "connection-controller",
+        selfReportedClientLabel: "paseo-app",
+        reason: "No structurally eligible reviewer is available.",
+        ownerAssignmentId: null,
+        recoveryAssignmentId: null,
+        resolvedAt: decidedAt,
+      },
+    });
+
+    expect(validateTeamMission(aggregate)).toEqual({ ok: true });
+
+    aggregate.reviewWaivers.push({
+      ...aggregate.reviewWaivers[0]!,
+      waiverId: "waiver-api-duplicate",
+    });
+    expect(
+      isMissionReviewGateSettledByEvidence(
+        aggregate,
+        delivery.workstreamId,
+        validationContext(aggregate),
+      ),
+    ).toBe(false);
+    aggregate.reviewWaivers.pop();
+
+    aggregate.attentionItems.push(structuredClone(aggregate.attentionItems[0]!));
+    expect(
+      isMissionReviewGateSettledByEvidence(
+        aggregate,
+        delivery.workstreamId,
+        validationContext(aggregate),
+      ),
+    ).toBe(false);
+    aggregate.attentionItems.pop();
+
+    aggregate.rosterSnapshots[0]!.members[1]!.level = 5;
+    expect(
+      isMissionReviewGateSettledByEvidence(
+        aggregate,
+        delivery.workstreamId,
+        validationContext(aggregate),
+      ),
+    ).toBe(false);
+    aggregate.rosterSnapshots[0]!.members[1]!.level = 3;
+
+    aggregate.reviewWaivers[0]!.actorId = "different-controller";
+    expect(validateTeamMission(aggregate).ok).toBe(false);
+    aggregate.reviewWaivers[0]!.actorId = "controller";
+
+    aggregate.reviewWaivers[0]!.connectionId = "connection-other";
+    expect(validateTeamMission(aggregate).ok).toBe(false);
+
+    aggregate.reviewWaivers[0]!.connectionId = "connection-controller";
+    aggregate.reviewWaivers[0]!.selfReportedClientLabel = "client-other";
+    expect(validateTeamMission(aggregate).ok).toBe(false);
+
+    aggregate.reviewWaivers[0]!.selfReportedClientLabel = "paseo-app";
+    const historicalGateKey = {
+      ...gate.gateKey,
+      planRevision: gate.gateKey.planRevision + 1,
+    };
+    const historicalGateKeyFingerprint = missionReviewGateKeyFingerprint(historicalGateKey);
+    const historicalSubjectFingerprint = missionReviewSubjectFingerprint(historicalGateKey.subject);
+    aggregate.reviewWaivers.push(
+      {
+        ...aggregate.reviewWaivers[0]!,
+        waiverId: "waiver-historical-1",
+        gateKey: historicalGateKey,
+        gateKeyFingerprint: historicalGateKeyFingerprint,
+        subjectFingerprint: historicalSubjectFingerprint,
+      },
+      {
+        ...aggregate.reviewWaivers[0]!,
+        waiverId: "waiver-historical-2",
+        gateKey: historicalGateKey,
+        gateKeyFingerprint: historicalGateKeyFingerprint,
+        subjectFingerprint: historicalSubjectFingerprint,
+      },
+    );
+    const historicalResult = validateTeamMission(aggregate);
+    expect(historicalResult.ok).toBe(false);
+    if (historicalResult.ok) return;
+    expect(historicalResult.issues).toContainEqual({
+      kind: "duplicate_review_waiver_gate",
+      gateKeyFingerprint: historicalGateKeyFingerprint,
+    });
+    expect(historicalResult.issues).toContainEqual({
+      kind: "duplicate_review_waiver_attention",
+      attentionId: "attention-review-api",
+    });
+  });
+
+  it("rejects a waived outcome on final verification", () => {
+    const aggregate = completedMission();
+    const verification = aggregate.workstreams.find(
+      (candidate) => candidate.kind === "verification",
+    )!;
+    const gate = buildMissionReviewGate({
+      workstreamId: verification.workstreamId,
+      planRevision: verification.planRevision,
+      subjectAssignmentIds: ["assignment-final-verification"],
+      requirements: {
+        requiredSkillIds: ["verification"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 5,
+      },
+      selection: { kind: "awaiting_reviewer" },
+      outcome: { kind: "pending" },
+    });
+    if (gate.kind !== "required") throw new Error("required review gate expected");
+    verification.reviewGate = {
+      ...gate,
+      outcome: {
+        kind: "waived",
+        gateKeyFingerprint: gate.gateKeyFingerprint,
+        subjectFingerprint: gate.subjectFingerprint,
+        waiverId: "waiver-final",
+        decidedAt: "2026-08-07T11:09:00.000Z",
+      },
+    };
+
+    const result = validateTeamMission(aggregate);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "invalid_review_gate_outcome",
+      workstreamId: "workstream-final-verification",
     });
   });
 
@@ -1468,22 +2006,144 @@ describe("team mission validation", () => {
 
   it("rejects an incomplete required-review contract", () => {
     const aggregate = mission();
-    aggregate.workstreams[0]!.reviewPolicy = "required";
-    aggregate.workstreams[0]!.reviewerRequirements = {
-      requiredSkillIds: ["typescript"],
-      preferredSkillIds: [],
-      requiredRuntimeCapabilityIds: ["structured-tools"],
-      minimumLevel: 3,
-    };
+    aggregate.workstreams[0]!.reviewGate = buildMissionReviewGate({
+      workstreamId: "different-workstream",
+      planRevision: 1,
+      subjectAssignmentIds: ["assignment-api"],
+      requirements: {
+        requiredSkillIds: ["typescript"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 3,
+      },
+      selection: { kind: "awaiting_reviewer" },
+      outcome: { kind: "pending" },
+    });
 
     expect(validateTeamMission(aggregate)).toEqual({
       ok: false,
       issues: [
         {
-          kind: "incomplete_required_review",
+          kind: "invalid_review_gate",
           workstreamId: "workstream-api",
         },
       ],
+    });
+  });
+
+  it("rejects no review for a writable Workstream when frozen policy requires it", () => {
+    const aggregate = mission();
+    aggregate.methodologySnapshot.hardPolicy.review.writableWorkstreams = "independent_required";
+    aggregate.workstreams[0]!.mutableScope = {
+      kind: "paths",
+      pathPrefixes: ["packages/server"],
+    };
+
+    const result = validateTeamMission(aggregate);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "invalid_review_gate",
+      workstreamId: "workstream-api",
+    });
+  });
+
+  it("rejects a waiting reviewer selection when a known eligible reviewer exists", () => {
+    const aggregate = mission();
+    aggregate.workstreams[0]!.reviewGate = buildMissionReviewGate({
+      workstreamId: "workstream-api",
+      planRevision: 1,
+      subjectAssignmentIds: ["assignment-api"],
+      requirements: {
+        requiredSkillIds: ["verification"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 3,
+      },
+      selection: { kind: "awaiting_reviewer" },
+      outcome: { kind: "pending" },
+    });
+
+    const result = validateTeamMission(aggregate);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "invalid_review_gate",
+      workstreamId: "workstream-api",
+    });
+  });
+
+  it("rejects an inexact awaiting-capabilities candidate set", () => {
+    const aggregate = mission();
+    const verifier = aggregate.rosterSnapshots[0]!.members[1]!;
+    verifier.capabilityFacts = { kind: "unknown" };
+    aggregate.workstreams[0]!.reviewGate = buildMissionReviewGate({
+      workstreamId: "workstream-api",
+      planRevision: 1,
+      subjectAssignmentIds: ["assignment-api"],
+      requirements: {
+        requiredSkillIds: ["verification"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 3,
+      },
+      selection: {
+        kind: "awaiting_capabilities",
+        candidateMemberIds: ["member-engineer"],
+      },
+      outcome: { kind: "pending" },
+    });
+
+    const result = validateTeamMission(aggregate);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "invalid_review_gate",
+      workstreamId: "workstream-api",
+    });
+  });
+
+  it("rejects a waiver while reviewer capability facts are unknown", () => {
+    const aggregate = mission();
+    const deliveryWorkstream = aggregate.workstreams[0]!;
+    const gate = buildMissionReviewGate({
+      workstreamId: deliveryWorkstream.workstreamId,
+      planRevision: deliveryWorkstream.planRevision,
+      subjectAssignmentIds: ["assignment-api"],
+      requirements: {
+        requiredSkillIds: ["verification"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 3,
+      },
+      selection: {
+        kind: "awaiting_capabilities",
+        candidateMemberIds: ["member-verifier"],
+      },
+      outcome: { kind: "pending" },
+    });
+    if (gate.kind !== "required") throw new Error("Required review gate expected");
+    deliveryWorkstream.reviewGate = {
+      ...gate,
+      outcome: {
+        kind: "waived",
+        gateKeyFingerprint: gate.gateKeyFingerprint,
+        subjectFingerprint: gate.subjectFingerprint,
+        waiverId: "waiver-api",
+        decidedAt: "2026-08-07T11:09:00.000Z",
+      },
+    };
+
+    const result = validateTeamMission(aggregate);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "invalid_review_gate_outcome",
+      workstreamId: "workstream-api",
     });
   });
 
@@ -1537,23 +2197,31 @@ describe("team mission validation", () => {
     aggregate.workstreams[0] = {
       ...aggregate.workstreams[0]!,
       mutableScope: { kind: "paths", pathPrefixes: ["packages/server"] },
-      reviewPolicy: "required",
-      reviewerRequirements: {
-        requiredSkillIds: ["review"],
-        preferredSkillIds: [],
-        requiredRuntimeCapabilityIds: ["structured-tools"],
-        minimumLevel: 3,
-      },
-      reviewerMemberId: "member-engineer",
-      reviewerMatchExplanation: {
-        ...aggregate.workstreams[0]!.ownerMatchExplanation,
-        recommendedMemberId: "member-reviewer",
-        requiredSkillIds: ["review"],
-        eligibleMemberIds: ["member-engineer", "member-reviewer"],
-        excludedMemberIds: ["member-engineer"],
-        rosterIndex: 2,
-      },
-      reviewerOverrideReason: "Exercise the independent-review guard.",
+      reviewGate: buildMissionReviewGate({
+        workstreamId: "workstream-api",
+        planRevision: 1,
+        subjectAssignmentIds: ["assignment-api"],
+        requirements: {
+          requiredSkillIds: ["review"],
+          preferredSkillIds: [],
+          requiredRuntimeCapabilityIds: ["structured-tools"],
+          minimumLevel: 3,
+        },
+        selection: {
+          kind: "assigned",
+          reviewerMemberId: "member-engineer",
+          matchExplanation: {
+            ...aggregate.workstreams[0]!.ownerMatchExplanation,
+            recommendedMemberId: "member-reviewer",
+            requiredSkillIds: ["review"],
+            eligibleMemberIds: ["member-engineer", "member-reviewer"],
+            excludedMemberIds: ["member-engineer"],
+            rosterIndex: 2,
+          },
+          overrideReason: "Exercise the independent-review guard.",
+        },
+        outcome: { kind: "pending" },
+      }),
     };
 
     expect(validateTeamMission(aggregate)).toEqual({
@@ -1633,18 +2301,24 @@ describe("team mission validation", () => {
     });
     aggregate.rosterSnapshots[0]!.members[0]!.skillIds.push("review");
     delivery.mutableScope = { kind: "paths", pathPrefixes: ["packages/server"] };
-    delivery.reviewPolicy = "required";
-    delivery.reviewerRequirements = {
-      requiredSkillIds: ["review"],
-      preferredSkillIds: [],
-      requiredRuntimeCapabilityIds: ["structured-tools"],
-      minimumLevel: 3,
-    };
-    delivery.reviewerMemberId = "member-engineer";
-    delivery.reviewerMatchExplanation = {
-      ...delivery.ownerMatchExplanation,
-      requiredSkillIds: ["review"],
-    };
+    delivery.reviewGate = buildMissionReviewGate({
+      workstreamId: delivery.workstreamId,
+      planRevision: delivery.planRevision,
+      subjectAssignmentIds: ["assignment-api"],
+      requirements: {
+        requiredSkillIds: ["review"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 3,
+      },
+      selection: {
+        kind: "assigned",
+        reviewerMemberId: "member-engineer",
+        matchExplanation: { ...delivery.ownerMatchExplanation, requiredSkillIds: ["review"] },
+        overrideReason: null,
+      },
+      outcome: { kind: "pending" },
+    });
 
     expect(validateTeamMission(aggregate).ok).toBe(false);
   });
@@ -1652,21 +2326,32 @@ describe("team mission validation", () => {
   it("requires review assignments to be read-only", () => {
     const aggregate = mission();
     const delivery = aggregate.workstreams[0]!;
-    delivery.reviewPolicy = "required";
-    delivery.reviewerRequirements = {
-      requiredSkillIds: ["verification"],
-      preferredSkillIds: [],
-      requiredRuntimeCapabilityIds: ["structured-tools"],
-      minimumLevel: 3,
-    };
-    delivery.reviewerMemberId = "member-verifier";
-    delivery.reviewerMatchExplanation = {
-      ...aggregate.workstreams[1]!.ownerMatchExplanation,
-    };
+    const gate = buildMissionReviewGate({
+      workstreamId: delivery.workstreamId,
+      planRevision: delivery.planRevision,
+      subjectAssignmentIds: ["assignment-api"],
+      requirements: {
+        requiredSkillIds: ["verification"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 3,
+      },
+      selection: {
+        kind: "assigned",
+        reviewerMemberId: "member-verifier",
+        matchExplanation: { ...aggregate.workstreams[1]!.ownerMatchExplanation },
+        overrideReason: null,
+      },
+      outcome: { kind: "pending" },
+    });
+    if (gate.kind !== "required") throw new Error("Required review gate expected");
+    delivery.reviewGate = gate;
     aggregate.assignments.push({
       ...assignment("assignment-review", "workstream-api", ["assignment-api"]),
       kind: "review",
       subjectAssignmentIds: ["assignment-api"],
+      reviewGateFingerprint: gate.gateKeyFingerprint,
+      reviewSubjectFingerprint: gate.subjectFingerprint,
       assigneeMemberId: "member-verifier",
       mutableScope: { kind: "workspace" },
     });

@@ -233,6 +233,102 @@ export const MissionMemberRequirementsSchema = z.object({
 });
 export type MissionMemberRequirements = z.infer<typeof MissionMemberRequirementsSchema>;
 
+const MissionReviewFingerprintSchema = z.string().regex(/^sha256:[0-9a-f]{64}$/);
+
+// The stable identity of one review subject: a Workstream plus the exact,
+// sorted, duplicate-free delivery Assignment set under review. It survives a
+// replan that reuses those exact Assignments, so an approved report can be
+// inherited. Empty while the plan is staged without delivery Assignments.
+export const MissionReviewSubjectKeySchema = z.object({
+  workstreamId: z.string().min(1),
+  subjectAssignmentIds: z.array(z.string().min(1)),
+});
+export type MissionReviewSubjectKey = z.infer<typeof MissionReviewSubjectKeySchema>;
+
+// The plan-instance identity. Replanning creates a new gate instance for the
+// same subject; settled evidence from the previous instance is never rewritten.
+export const MissionReviewGateKeySchema = z.object({
+  subject: MissionReviewSubjectKeySchema,
+  planRevision: z.number().int().positive(),
+});
+export type MissionReviewGateKey = z.infer<typeof MissionReviewGateKeySchema>;
+
+export const MissionReviewGateOutcomeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("pending") }),
+  z.object({
+    kind: z.literal("approved"),
+    gateKeyFingerprint: MissionReviewFingerprintSchema,
+    subjectFingerprint: MissionReviewFingerprintSchema,
+    reviewAssignmentId: z.string().min(1),
+    reportFingerprint: MissionReviewFingerprintSchema,
+    inheritedFromGateFingerprint: MissionReviewFingerprintSchema.nullable(),
+    decidedAt: TimestampSchema,
+  }),
+  z.object({
+    kind: z.literal("waived"),
+    gateKeyFingerprint: MissionReviewFingerprintSchema,
+    subjectFingerprint: MissionReviewFingerprintSchema,
+    waiverId: z.string().min(1),
+    decidedAt: TimestampSchema,
+  }),
+]);
+export type MissionReviewGateOutcome = z.infer<typeof MissionReviewGateOutcomeSchema>;
+
+// Structural eligibility only. Busy Members, Participant state and runtime
+// provider failures change scheduling readiness, never this selection.
+export const MissionReviewGateSelectionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("assigned"),
+    reviewerMemberId: z.string().min(1),
+    matchExplanation: MissionMemberMatchExplanationSchema,
+    overrideReason: z.string().min(1).nullable(),
+  }),
+  // Every candidate is structurally known and none qualifies.
+  z.object({ kind: z.literal("awaiting_reviewer") }),
+  // No known qualifying candidate, and at least one candidate's capability
+  // facts are unknown. Unknown is never treated as ineligible.
+  z.object({
+    kind: z.literal("awaiting_capabilities"),
+    candidateMemberIds: z.array(z.string().min(1)).min(1),
+  }),
+]);
+export type MissionReviewGateSelection = z.infer<typeof MissionReviewGateSelectionSchema>;
+
+// The single authoritative review fact. Workstream transitions, dependency
+// readiness, final verification materialization, Mission validation, UI and
+// audit export read this and never re-derive approval from completed
+// Assignments or room text.
+export const MissionReviewGateSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("none"),
+    outcome: z.object({ kind: z.literal("not_required") }),
+  }),
+  z.object({
+    kind: z.literal("required"),
+    gateKey: MissionReviewGateKeySchema,
+    gateKeyFingerprint: MissionReviewFingerprintSchema,
+    subjectFingerprint: MissionReviewFingerprintSchema,
+    requirements: MissionMemberRequirementsSchema,
+    selection: MissionReviewGateSelectionSchema,
+    outcome: MissionReviewGateOutcomeSchema,
+  }),
+]);
+export type MissionReviewGate = z.infer<typeof MissionReviewGateSchema>;
+
+export const MissionReviewWaiverSchema = z.object({
+  waiverId: z.string().min(1),
+  attentionId: z.string().min(1),
+  actorId: z.string().min(1),
+  gateKey: MissionReviewGateKeySchema,
+  gateKeyFingerprint: MissionReviewFingerprintSchema,
+  subjectFingerprint: MissionReviewFingerprintSchema,
+  connectionId: z.string().min(1),
+  selfReportedClientLabel: z.string().min(1),
+  reason: z.string().min(1),
+  createdAt: TimestampSchema,
+});
+export type MissionReviewWaiver = z.infer<typeof MissionReviewWaiverSchema>;
+
 export const MissionWorkstreamSchema = z.object({
   workstreamId: z.string().min(1),
   kind: z.enum(["delivery", "integration", "verification"]),
@@ -252,11 +348,7 @@ export const MissionWorkstreamSchema = z.object({
   ownerMemberId: z.string().min(1),
   ownerMatchExplanation: MissionMemberMatchExplanationSchema,
   ownerOverrideReason: z.string().min(1).nullable(),
-  reviewPolicy: z.enum(["none", "required"]),
-  reviewerRequirements: MissionMemberRequirementsSchema.nullable(),
-  reviewerMemberId: z.string().min(1).nullable(),
-  reviewerMatchExplanation: MissionMemberMatchExplanationSchema.nullable(),
-  reviewerOverrideReason: z.string().min(1).nullable(),
+  reviewGate: MissionReviewGateSchema,
   status: z.enum(["planned", "ready", "active", "blocked", "review", "accepted", "canceled"]),
 });
 export type MissionWorkstream = z.infer<typeof MissionWorkstreamSchema>;
@@ -431,6 +523,14 @@ export const MissionAttentionResolutionSchema = z.discriminatedUnion("kind", [
     // 2027-02-10 once every stored resolution names the replacement Member.
     replacementMemberId: z.string().min(1).optional(),
   }),
+  z.object({
+    kind: z.literal("waive_review"),
+    ...attentionResolutionCommon,
+    connectionId: z.string().min(1),
+    selfReportedClientLabel: z.string().min(1),
+    ownerAssignmentId: z.null(),
+    recoveryAssignmentId: z.null(),
+  }),
   ...(
     [
       "report_received",
@@ -450,21 +550,9 @@ export const MissionAttentionResolutionSchema = z.discriminatedUnion("kind", [
 ]);
 export type MissionAttentionResolution = z.infer<typeof MissionAttentionResolutionSchema>;
 
-export const MissionAttentionItemSchema = z.object({
+const missionAttentionItemCommon = {
   attentionId: z.string().min(1),
-  kind: z.enum([
-    "ownership_violation",
-    "missing_report",
-    "assignment_requires_replan",
-    "provider_unavailable",
-    "dispatch_acceptance_unknown",
-    "participant_unavailable",
-    "reviewer_unavailable",
-    "lead_unavailable",
-    "notification_unacknowledged",
-  ]),
   status: z.enum(["open", "resolved"]),
-  priorMissionStatus: z.enum(["planning", "active", "verifying"]),
   assignmentId: z.string().min(1).nullable(),
   summary: z.string().min(1),
   pathEvidence: z.array(
@@ -475,7 +563,54 @@ export const MissionAttentionItemSchema = z.object({
   ),
   createdAt: TimestampSchema,
   resolution: MissionAttentionResolutionSchema.nullable(),
-});
+};
+
+function missionScopedAttentionItemSchema<
+  const Kind extends
+    | "ownership_violation"
+    | "missing_report"
+    | "assignment_requires_replan"
+    | "provider_unavailable"
+    | "dispatch_acceptance_unknown"
+    | "participant_unavailable"
+    | "reviewer_unavailable"
+    | "lead_unavailable"
+    | "notification_unacknowledged",
+>(kind: Kind) {
+  return z.object({
+    ...missionAttentionItemCommon,
+    kind: z.literal(kind),
+    scope: z.object({ kind: z.literal("mission") }),
+    priorMissionStatus: z.enum(["planning", "active", "verifying"]),
+  });
+}
+
+export const MissionAttentionItemSchema = z.discriminatedUnion("kind", [
+  missionScopedAttentionItemSchema("ownership_violation"),
+  missionScopedAttentionItemSchema("missing_report"),
+  missionScopedAttentionItemSchema("assignment_requires_replan"),
+  missionScopedAttentionItemSchema("provider_unavailable"),
+  missionScopedAttentionItemSchema("dispatch_acceptance_unknown"),
+  missionScopedAttentionItemSchema("participant_unavailable"),
+  missionScopedAttentionItemSchema("reviewer_unavailable"),
+  missionScopedAttentionItemSchema("lead_unavailable"),
+  missionScopedAttentionItemSchema("notification_unacknowledged"),
+  z.object({
+    ...missionAttentionItemCommon,
+    kind: z.literal("review_gate_reviewer_unavailable"),
+    scope: z.object({
+      kind: z.literal("workstream"),
+      workstreamId: z.string().min(1),
+      blockDependents: z.literal(true),
+    }),
+    reviewGateDetails: z.object({
+      gateKey: MissionReviewGateKeySchema,
+      gateKeyFingerprint: MissionReviewFingerprintSchema,
+      subjectFingerprint: MissionReviewFingerprintSchema,
+    }),
+    priorMissionStatus: z.null(),
+  }),
+]);
 export type MissionAttentionItem = z.infer<typeof MissionAttentionItemSchema>;
 
 export const MissionAssignmentContractSchema = z.object({
@@ -483,6 +618,8 @@ export const MissionAssignmentContractSchema = z.object({
   revision: z.number().int().positive(),
   kind: z.enum(["delivery", "review", "verification"]),
   subjectAssignmentIds: z.array(z.string().min(1)),
+  reviewGateFingerprint: MissionReviewFingerprintSchema.nullable(),
+  reviewSubjectFingerprint: MissionReviewFingerprintSchema.nullable(),
   missionId: z.string().min(1),
   workstreamId: z.string().min(1),
   assigneeMemberId: z.string().min(1),
@@ -569,6 +706,7 @@ export const TeamMissionSchema = z.object({
   workstreamPlanSnapshots: z.array(MissionWorkstreamPlanSnapshotSchema),
   assignments: z.array(MissionAssignmentContractSchema),
   attentionItems: z.array(MissionAttentionItemSchema),
+  reviewWaivers: z.array(MissionReviewWaiverSchema),
   lifecycleRecoveryFailure: TeamLifecycleRecoveryFailureSchema.nullable(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,

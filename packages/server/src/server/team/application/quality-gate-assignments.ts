@@ -5,11 +5,18 @@ import type {
 } from "@getpaseo/protocol/team/v2-types";
 
 import type { MissionAssignmentCoverage } from "../domain/mission-validation.js";
+import { reviewGateReviewerMemberId } from "../domain/mission-review-gate.js";
+import {
+  type AcceptedTurnFact,
+  validateAssignmentContract,
+} from "../domain/assignment-contract-validation.js";
 
 export interface MissionQualityGatePlan {
   additions: MissionAssignmentContract[];
   selectedAssignments: MissionAssignmentContract[];
+  obsoleteReviewAssignments: MissionAssignmentContract[];
   currentVerificationAssignments: MissionAssignmentContract[];
+  obsoleteVerificationAssignments: MissionAssignmentContract[];
   expectedVerificationSubjectIds: string[];
 }
 
@@ -17,6 +24,8 @@ export function planMissionQualityGates(input: {
   mission: TeamMission;
   coverage: MissionAssignmentCoverage;
   createdAt: string;
+  settledReviewGateWorkstreamIds: ReadonlySet<string>;
+  acceptedTurnsById: ReadonlyMap<string, AcceptedTurnFact>;
   materializePending?: boolean;
 }): MissionQualityGatePlan {
   const assignmentsById = new Map(
@@ -24,6 +33,7 @@ export function planMissionQualityGates(input: {
   );
   const additions: MissionAssignmentContract[] = [];
   const selectedAssignments: MissionAssignmentContract[] = [];
+  const obsoleteReviewAssignments: MissionAssignmentContract[] = [];
   const verificationSubjects: MissionAssignmentContract[] = [];
   let hasCompleteLineage = true;
 
@@ -53,20 +63,21 @@ export function planMissionQualityGates(input: {
       deliveryAssignment,
       assignmentsById,
     });
-    if (!review.complete) {
+    obsoleteReviewAssignments.push(...review.obsoleteAssignments);
+    if (review.addition) additions.push(review.addition);
+    if (review.assignment) selectedAssignments.push(review.assignment);
+    if (!review.settled) {
       hasCompleteLineage = false;
       continue;
     }
     if (!review.assignment) continue;
-    if (review.addition) additions.push(review.addition);
     verificationSubjects.push(review.assignment);
-    selectedAssignments.push(review.assignment);
   }
 
   const finalVerification = input.mission.workstreams.find(
     (workstream) => workstream.kind === "verification",
   );
-  const currentVerificationAssignments = finalVerification
+  const verificationAssignments = finalVerification
     ? input.mission.assignments.filter(
         (assignment) =>
           assignment.kind === "verification" &&
@@ -78,6 +89,20 @@ export function planMissionQualityGates(input: {
   const expectedVerificationSubjectIds = canonicalAssignmentIds(
     verificationSubjects.map((assignment) => assignment.assignmentId),
   );
+
+  const matchingVerificationAssignments = verificationAssignments.filter(
+    (assignment) =>
+      sameAssignmentIdSet(assignment.subjectAssignmentIds, expectedVerificationSubjectIds) &&
+      sameAssignmentIdSet(assignment.dependencyAssignmentIds, expectedVerificationSubjectIds),
+  );
+  const currentVerificationAssignments =
+    matchingVerificationAssignments.length === 1 ? [...matchingVerificationAssignments] : [];
+  const obsoleteVerificationAssignments =
+    matchingVerificationAssignments.length <= 1
+      ? verificationAssignments.filter(
+          (assignment) => assignment !== matchingVerificationAssignments[0],
+        )
+      : [...verificationAssignments];
 
   if (
     finalVerification &&
@@ -104,7 +129,9 @@ export function planMissionQualityGates(input: {
   return {
     additions,
     selectedAssignments,
+    obsoleteReviewAssignments,
     currentVerificationAssignments,
+    obsoleteVerificationAssignments,
     expectedVerificationSubjectIds,
   };
 }
@@ -113,6 +140,8 @@ function planWorkstreamReview(input: {
   mission: TeamMission;
   coverage: MissionAssignmentCoverage;
   createdAt: string;
+  settledReviewGateWorkstreamIds: ReadonlySet<string>;
+  acceptedTurnsById: ReadonlyMap<string, AcceptedTurnFact>;
   materializePending?: boolean;
   workstream: MissionWorkstream;
   deliveryAssignment: MissionAssignmentContract;
@@ -120,19 +149,27 @@ function planWorkstreamReview(input: {
 }): {
   assignment: MissionAssignmentContract | null;
   addition: MissionAssignmentContract | null;
-  complete: boolean;
+  obsoleteAssignments: MissionAssignmentContract[];
+  settled: boolean;
 } {
-  if (input.workstream.reviewPolicy !== "required") {
-    return { assignment: null, addition: null, complete: true };
+  if (input.settledReviewGateWorkstreamIds.has(input.workstream.workstreamId)) {
+    const approved =
+      input.workstream.reviewGate.kind === "required" &&
+      input.workstream.reviewGate.outcome.kind === "approved"
+        ? input.assignmentsById.get(input.workstream.reviewGate.outcome.reviewAssignmentId)
+        : undefined;
+    return {
+      assignment: approved ?? null,
+      addition: null,
+      obsoleteAssignments: [],
+      settled: true,
+    };
   }
-  const approvedReviewAssignmentId = input.coverage.approvedReviewAssignmentIdsByWorkstreamId.get(
-    input.workstream.workstreamId,
-  );
-  const approvedReviewAssignment = approvedReviewAssignmentId
-    ? input.assignmentsById.get(approvedReviewAssignmentId)
-    : undefined;
-  if (approvedReviewAssignment) {
-    return { assignment: approvedReviewAssignment, addition: null, complete: true };
+  if (input.workstream.reviewGate.kind !== "required") {
+    return { assignment: null, addition: null, obsoleteAssignments: [], settled: false };
+  }
+  if (input.workstream.reviewGate.outcome.kind !== "pending") {
+    return { assignment: null, addition: null, obsoleteAssignments: [], settled: false };
   }
   const currentReviews = input.mission.assignments.filter(
     (assignment) =>
@@ -141,27 +178,96 @@ function planWorkstreamReview(input: {
       assignment.planRevision === input.mission.planRevision &&
       assignment.semanticState !== "canceled",
   );
-  if (currentReviews.length > 1) {
-    return { assignment: null, addition: null, complete: false };
+  const reusableReviews = currentReviews.filter((assignment) =>
+    isReusablePendingReviewAssignment(input, assignment),
+  );
+  if (reusableReviews.length === 1 && currentReviews.length === 1) {
+    return {
+      assignment: reusableReviews[0]!,
+      addition: null,
+      obsoleteAssignments: [],
+      settled: false,
+    };
   }
-  if (currentReviews[0]) {
-    return { assignment: currentReviews[0], addition: null, complete: true };
-  }
+  const obsoleteAssignments = [...currentReviews];
   if (!input.materializePending && input.workstream.status !== "review") {
-    return { assignment: null, addition: null, complete: false };
+    return { assignment: null, addition: null, obsoleteAssignments, settled: false };
   }
-  if (!input.workstream.reviewerMemberId) {
-    throw new Error(`Workstream ${input.workstream.workstreamId} has no required reviewer`);
+  const reviewerMemberId = reviewGateReviewerMemberId(input.workstream.reviewGate);
+  if (!reviewerMemberId) {
+    return { assignment: null, addition: null, obsoleteAssignments, settled: false };
   }
   const assignment = buildQualityGateAssignment({
     mission: input.mission,
     workstream: input.workstream,
     kind: "review",
-    assigneeMemberId: input.workstream.reviewerMemberId,
+    assigneeMemberId: reviewerMemberId,
     subjects: [input.deliveryAssignment],
     createdAt: input.createdAt,
   });
-  return { assignment, addition: assignment, complete: true };
+  return { assignment, addition: assignment, obsoleteAssignments, settled: false };
+}
+
+function isReusablePendingReviewAssignment(
+  input: Parameters<typeof planWorkstreamReview>[0],
+  assignment: MissionAssignmentContract,
+): boolean {
+  const gate = input.workstream.reviewGate;
+  if (gate.kind !== "required" || gate.selection.kind !== "assigned") return false;
+  if (!["planned", "running", "needs_report"].includes(assignment.semanticState)) {
+    return false;
+  }
+  return (
+    hasReusableReviewLifecycle(input, assignment) &&
+    assignment.missionId === input.mission.id &&
+    assignment.assigneeMemberId === gate.selection.reviewerMemberId &&
+    assignment.rosterSnapshotRevision === input.workstream.rosterSnapshotRevision &&
+    assignment.methodologySnapshotRevision === input.workstream.methodologySnapshotRevision &&
+    assignment.objective === input.workstream.objective &&
+    sameStringArray(assignment.deliverables, input.workstream.deliverables) &&
+    sameStringArray(assignment.acceptanceCriteria, input.workstream.acceptanceCriteria) &&
+    assignment.mutableScope.kind === "read_only" &&
+    assignment.reviewGateFingerprint === gate.gateKeyFingerprint &&
+    assignment.reviewSubjectFingerprint === gate.subjectFingerprint &&
+    sameAssignmentIdSet(assignment.subjectAssignmentIds, [input.deliveryAssignment.assignmentId]) &&
+    sameAssignmentIdSet(assignment.dependencyAssignmentIds, [input.deliveryAssignment.assignmentId])
+  );
+}
+
+function hasReusableReviewLifecycle(
+  input: Parameters<typeof planWorkstreamReview>[0],
+  assignment: MissionAssignmentContract,
+): boolean {
+  if (assignment.semanticState === "running") {
+    return (
+      assignment.dispatchState === "dispatched" &&
+      assignment.acceptedTurnId !== null &&
+      assignment.runtimeAgentId !== null &&
+      assignment.bindingEpoch !== null &&
+      assignment.workspaceBaseline !== null &&
+      assignment.workspaceBaseline.workspaceId === input.mission.workspaceId &&
+      assignment.workspaceBaseline.assignmentId === assignment.assignmentId &&
+      assignment.report === null &&
+      assignment.scopeLease === null &&
+      assignment.dispatchedAt !== null &&
+      assignment.settledAt === null &&
+      assignment.terminationReason === null &&
+      assignment.supersededBy === null
+    );
+  }
+  const acceptedTurn =
+    assignment.acceptedTurnId === null
+      ? null
+      : (input.acceptedTurnsById.get(assignment.acceptedTurnId) ?? null);
+  return validateAssignmentContract({
+    assignment,
+    acceptedTurn,
+    expectedWorkspaceId: input.mission.workspaceId,
+  }).ok;
+}
+
+function sameStringArray(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 export function sameAssignmentIdSet(
@@ -198,6 +304,14 @@ function buildQualityGateAssignment(input: {
     revision: 1,
     kind: input.kind,
     subjectAssignmentIds,
+    reviewGateFingerprint:
+      input.kind === "review" && input.workstream.reviewGate.kind === "required"
+        ? input.workstream.reviewGate.gateKeyFingerprint
+        : null,
+    reviewSubjectFingerprint:
+      input.kind === "review" && input.workstream.reviewGate.kind === "required"
+        ? input.workstream.reviewGate.subjectFingerprint
+        : null,
     missionId: input.mission.id,
     workstreamId: input.workstream.workstreamId,
     assigneeMemberId: input.assigneeMemberId,

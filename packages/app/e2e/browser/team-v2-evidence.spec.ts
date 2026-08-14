@@ -184,11 +184,7 @@ function buildParallelSnapshot(mission: TeamMission, team: TeamV2): TeamMission 
     ownerMemberId: definition.owner.memberId,
     ownerMatchExplanation: matchExplanation(team, definition.owner),
     ownerOverrideReason: null,
-    reviewPolicy: "none",
-    reviewerRequirements: null,
-    reviewerMemberId: null,
-    reviewerMatchExplanation: null,
-    reviewerOverrideReason: null,
+    reviewGate: { kind: "none", outcome: { kind: "not_required" } },
     status: "active",
   }));
   const participantsByMemberId = new Map(
@@ -212,6 +208,8 @@ function buildParallelSnapshot(mission: TeamMission, team: TeamV2): TeamMission 
     revision: 1,
     kind: "delivery",
     subjectAssignmentIds: [],
+    reviewGateFingerprint: null,
+    reviewSubjectFingerprint: null,
     missionId: mission.id,
     workstreamId: definition.workstreamId,
     assigneeMemberId: definition.owner.memberId,
@@ -324,6 +322,7 @@ function buildBlockedSnapshot(mission: TeamMission): TeamMission {
       {
         attentionId: "attention-participant-unavailable",
         kind: "participant_unavailable",
+        scope: { kind: "mission" as const },
         status: "open",
         priorMissionStatus: "active",
         assignmentId: blockedAssignmentId,

@@ -16,6 +16,10 @@ import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { MissionStore } from "../persistence/mission-store.js";
 import { WorkspaceScopeLeaseStore } from "../persistence/workspace-scope-lease-store.js";
 import { testMissionMethodologySnapshot } from "../test-fixtures.js";
+import {
+  buildMissionReviewGate,
+  missionReviewReportFingerprint,
+} from "../domain/mission-review-gate.js";
 import { TeamOperationCoordinator } from "./team-operation-coordinator.js";
 import {
   TeamMissionScheduler,
@@ -192,6 +196,7 @@ describe("TeamMissionScheduler", () => {
       {
         attentionId: "lead-replacement:attention-lead:replan",
         kind: "assignment_requires_replan",
+        scope: { kind: "mission" as const },
         status: "open",
         priorMissionStatus: "active",
         assignmentId: null,
@@ -960,6 +965,7 @@ describe("TeamMissionScheduler", () => {
         expect.objectContaining({
           attentionId: "mission-1:assignment-api:provider-unavailable",
           kind: "provider_unavailable",
+          scope: { kind: "mission" as const },
           status: "open",
           assignmentId: "assignment-api",
         }),
@@ -1058,6 +1064,7 @@ describe("TeamMissionScheduler", () => {
         expect.objectContaining({
           attentionId: "mission-1:assignment-api:dispatch-acceptance-unknown",
           kind: "dispatch_acceptance_unknown",
+          scope: { kind: "mission" as const },
           status: "open",
           assignmentId: "assignment-api",
         }),
@@ -1520,6 +1527,7 @@ describe("TeamMissionScheduler", () => {
         expect.objectContaining({
           attentionId: `${mission.id}:${reviewId}:reviewer-unavailable`,
           kind: "reviewer_unavailable",
+          scope: { kind: "mission" as const },
           status: "open",
           assignmentId: reviewId,
         }),
@@ -2079,6 +2087,7 @@ describe("TeamMissionScheduler", () => {
         {
           attentionId: "mission-1:assignment-api:ownership-violation",
           kind: "ownership_violation",
+          scope: { kind: "mission" as const },
           status: "open",
           priorMissionStatus: "active",
           assignmentId: "assignment-api",
@@ -2379,18 +2388,42 @@ describe("TeamMissionScheduler", () => {
     const mission = activeMission();
     const apiWorkstream = {
       ...mission.workstreams[0]!,
-      reviewPolicy: "required" as const,
-      reviewerRequirements: {
-        requiredSkillIds: ["typescript"],
-        preferredSkillIds: [],
-        requiredRuntimeCapabilityIds: ["structured-tools"],
-        minimumLevel: 3,
-      },
-      reviewerMemberId: "member-app",
-      reviewerMatchExplanation: matchExplanation("member-app"),
+      reviewGate: buildMissionReviewGate({
+        workstreamId: "workstream-api",
+        planRevision: 1,
+        subjectAssignmentIds: ["assignment-api"],
+        requirements: {
+          requiredSkillIds: ["typescript"],
+          preferredSkillIds: [],
+          requiredRuntimeCapabilityIds: ["structured-tools"],
+          minimumLevel: 3,
+        },
+        selection: {
+          kind: "assigned",
+          reviewerMemberId: "member-app",
+          matchExplanation: reviewerMatchExplanation(),
+          overrideReason: null,
+        },
+        outcome: { kind: "pending" },
+      }),
     };
     const api = mission.assignments[0]!;
-    mission.workstreams = [{ ...apiWorkstream, status: "active" }];
+    const downstreamWorkstream = workstream({
+      workstreamId: "workstream-downstream",
+      ownerMemberId: "member-lead",
+      dependencyWorkstreamIds: [apiWorkstream.workstreamId],
+      mutableScope: { kind: "read_only" },
+    });
+    const downstreamAssignment = assignment(
+      "assignment-downstream",
+      downstreamWorkstream,
+      "member-lead",
+      [api.assignmentId],
+    );
+    mission.workstreams = [
+      { ...apiWorkstream, status: "active" },
+      { ...downstreamWorkstream, status: "ready" },
+    ];
     mission.assignments = [
       {
         ...api,
@@ -2421,6 +2454,7 @@ describe("TeamMissionScheduler", () => {
         acceptedTurnId: "turn-assignment-api",
         dispatchedAt: NOW,
       },
+      downstreamAssignment,
     ];
     await missions.createIfAbsent({
       mission,
@@ -2490,6 +2524,645 @@ describe("TeamMissionScheduler", () => {
       semanticState: "running",
       acceptedTurnId: "turn-assignment:mission-1:1:workstream-api:review",
     });
+    expect(
+      updated?.mission.assignments.find(
+        (candidate) => candidate.assignmentId === downstreamAssignment.assignmentId,
+      ),
+    ).toMatchObject({
+      semanticState: "planned",
+      acceptedTurnId: null,
+    });
+
+    if (!updated || !review?.acceptedTurnId || !review.runtimeAgentId) {
+      throw new Error("Dispatched review fixture is incomplete");
+    }
+    await missions.update({
+      missionId: mission.id,
+      expectedRevision: updated.mission.revision,
+      update: (current) => ({
+        ...current,
+        assignments: current.assignments.map((candidate) =>
+          candidate.assignmentId === review.assignmentId
+            ? {
+                ...candidate,
+                revision: candidate.revision + 1,
+                report: {
+                  ...completedReport(),
+                  verdict: "approved" as const,
+                  summary: "Independent review approved the delivery",
+                },
+                dispatchState: "settled" as const,
+                semanticState: "completed" as const,
+                settledAt: NOW,
+              }
+            : candidate,
+        ),
+      }),
+    });
+    await missions.recordAcceptedTurnFacts({
+      missionId: mission.id,
+      facts: [
+        {
+          assignmentId: review.assignmentId,
+          turnId: review.acceptedTurnId,
+          runtimeAgentId: review.runtimeAgentId,
+          outcome: "completed",
+          recordedAt: NOW,
+        },
+      ],
+    });
+
+    await scheduler.reconcileMission(mission.id);
+    const approved = await missions.get(mission.id);
+    expect(
+      approved?.mission.workstreams.find(
+        (candidate) => candidate.workstreamId === apiWorkstream.workstreamId,
+      )?.reviewGate,
+    ).toMatchObject({
+      kind: "required",
+      outcome: {
+        kind: "approved",
+        reviewAssignmentId: review.assignmentId,
+      },
+    });
+    expect(
+      approved?.mission.assignments.find(
+        (candidate) => candidate.assignmentId === downstreamAssignment.assignmentId,
+      ),
+    ).toMatchObject({
+      semanticState: "running",
+      acceptedTurnId: `turn-${downstreamAssignment.assignmentId}`,
+    });
+  });
+
+  test("does not accept a Workstream or dispatch dependents from a fabricated approved gate", async () => {
+    const missions = new MissionStore({
+      directory: join(rootDirectory, "missions"),
+      logger: createTestLogger(),
+      now: () => NOW,
+    });
+    const mission = activeMission();
+    const pendingGate = buildMissionReviewGate({
+      workstreamId: "workstream-api",
+      planRevision: 1,
+      subjectAssignmentIds: ["assignment-api"],
+      requirements: {
+        requiredSkillIds: ["typescript"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 3,
+      },
+      selection: {
+        kind: "assigned",
+        reviewerMemberId: "member-app",
+        matchExplanation: reviewerMatchExplanation(),
+        overrideReason: null,
+      },
+      outcome: { kind: "pending" },
+    });
+    if (pendingGate.kind !== "required") throw new Error("required review gate expected");
+    const apiWorkstream: MissionWorkstream = {
+      ...mission.workstreams[0]!,
+      reviewGate: {
+        ...pendingGate,
+        outcome: {
+          kind: "approved",
+          gateKeyFingerprint: pendingGate.gateKeyFingerprint,
+          subjectFingerprint: pendingGate.subjectFingerprint,
+          reviewAssignmentId: "assignment-review-fabricated",
+          reportFingerprint: pendingGate.gateKeyFingerprint,
+          inheritedFromGateFingerprint: null,
+          decidedAt: NOW,
+        },
+      },
+      status: "active",
+    };
+    const downstreamWorkstream = workstream({
+      workstreamId: "workstream-downstream",
+      ownerMemberId: "member-lead",
+      dependencyWorkstreamIds: [apiWorkstream.workstreamId],
+      mutableScope: { kind: "read_only" },
+    });
+    const completedApi: MissionAssignmentContract = {
+      ...mission.assignments[0]!,
+      runtimeAgentId: "agent-lead",
+      bindingEpoch: 1,
+      report: completedReport(),
+      dispatchState: "settled",
+      semanticState: "completed",
+      acceptedTurnId: "turn-assignment-api",
+      dispatchedAt: NOW,
+      settledAt: NOW,
+    };
+    const downstreamAssignment = assignment(
+      "assignment-downstream",
+      downstreamWorkstream,
+      "member-lead",
+      [completedApi.assignmentId],
+    );
+    mission.workstreams = [apiWorkstream, downstreamWorkstream];
+    mission.workstreams.push({
+      ...workstream({
+        workstreamId: "workstream-final-verification",
+        ownerMemberId: "member-app",
+        dependencyWorkstreamIds: [apiWorkstream.workstreamId],
+        mutableScope: { kind: "read_only" },
+      }),
+      kind: "verification",
+      ownerMatchExplanation: matchExplanation("member-app"),
+      status: "planned",
+    });
+    mission.assignments = [completedApi, downstreamAssignment];
+    await missions.createIfAbsent({
+      mission,
+      idempotencyKey: "start-fabricated-approved",
+      requestFingerprint: "start-fabricated-approved-fingerprint",
+    });
+    await missions.recordAcceptedTurnFacts({
+      missionId: mission.id,
+      facts: [
+        {
+          assignmentId: completedApi.assignmentId,
+          turnId: "turn-assignment-api",
+          runtimeAgentId: "agent-lead",
+          outcome: "completed",
+          recordedAt: NOW,
+        },
+      ],
+    });
+    const dispatches: string[] = [];
+    const scheduler = new TeamMissionScheduler({
+      missions,
+      turnFacts: noDurableTurnFacts,
+      lifecycle: lifecycleMustNotComplete,
+      participants: { ensureParticipant: async () => undefined },
+      leases: {
+        acquire: async () => null,
+        transitionToReportHold,
+        release: async () => undefined,
+        releaseAssignment: releaseAssignmentNoop,
+        releaseMission: releaseMissionNoop,
+      },
+      workspace: {
+        captureBaseline: async (input) => ({
+          baselineId: `baseline-${input.assignmentId}`,
+          workspaceId: input.workspaceId,
+          assignmentId: input.assignmentId,
+          policyRevision: input.policy.revision,
+          capturedAt: NOW,
+          entries: [],
+        }),
+        captureDelta: async () => ({ capturedDelta: [], violations: [] }),
+      },
+      dispatch: {
+        dispatch: async (input) => {
+          dispatches.push(input.assignmentId);
+          return { kind: "accepted", turnId: `turn-${input.assignmentId}` };
+        },
+        requestReport: requestReportBusy,
+      },
+      events: { publishMission: async () => undefined },
+      clock: { now: () => NOW },
+    });
+
+    await scheduler.reconcileMission(mission.id);
+    const updated = await missions.get(mission.id);
+
+    expect(dispatches).toEqual([]);
+    expect(updated?.mission.workstreams[0]).toMatchObject({ status: "review" });
+    expect(updated?.mission.assignments).toContainEqual(
+      expect.objectContaining({
+        assignmentId: downstreamAssignment.assignmentId,
+        semanticState: "planned",
+        acceptedTurnId: null,
+      }),
+    );
+    expect(updated?.mission.assignments).not.toContainEqual(
+      expect.objectContaining({ kind: "verification" }),
+    );
+    const revisionAfterFirstReconcile = updated?.mission.revision;
+
+    await scheduler.reconcileMission(mission.id);
+    const reconciledAgain = await missions.get(mission.id);
+
+    expect(dispatches).toEqual([]);
+    expect(reconciledAgain?.mission.revision).toBe(revisionAfterFirstReconcile);
+  });
+
+  test("does not dispatch dependents or verification from an owner self-review approval", async () => {
+    const missions = new MissionStore({
+      directory: join(rootDirectory, "missions"),
+      logger: createTestLogger(),
+      now: () => NOW,
+    });
+    const { mission, completedApi, completedReview, downstreamAssignment } =
+      ownerSelfReviewMission();
+    await missions.createIfAbsent({
+      mission,
+      idempotencyKey: "start-owner-self-review",
+      requestFingerprint: "start-owner-self-review-fingerprint",
+    });
+    await missions.recordAcceptedTurnFacts({
+      missionId: mission.id,
+      facts: [completedApi, completedReview].map((candidate) => ({
+        assignmentId: candidate.assignmentId,
+        turnId: candidate.acceptedTurnId!,
+        runtimeAgentId: candidate.runtimeAgentId!,
+        outcome: "completed" as const,
+        recordedAt: NOW,
+      })),
+    });
+    const dispatches: string[] = [];
+    const scheduler = reviewRecoveryScheduler(missions, dispatches);
+
+    await scheduler.reconcileMission(mission.id);
+    const updated = await missions.get(mission.id);
+
+    expect(dispatches).toEqual([]);
+    expect(updated?.mission.workstreams[0]).toMatchObject({ status: "review" });
+    expect(updated?.mission.assignments).toContainEqual(
+      expect.objectContaining({
+        assignmentId: downstreamAssignment.assignmentId,
+        semanticState: "planned",
+        acceptedTurnId: null,
+      }),
+    );
+    expect(updated?.mission.assignments).not.toContainEqual(
+      expect.objectContaining({ kind: "verification" }),
+    );
+  });
+
+  test("replaces an invalid terminal review and verifies only the repaired lineage", async () => {
+    const missions = new MissionStore({
+      directory: join(rootDirectory, "missions"),
+      logger: createTestLogger(),
+      now: () => NOW,
+    });
+    const { mission, completedApi, completedReview } = invalidTerminalReviewMission();
+    await missions.createIfAbsent({
+      mission,
+      idempotencyKey: "start-invalid-review-lineage",
+      requestFingerprint: "start-invalid-review-lineage-fingerprint",
+    });
+    await missions.recordAcceptedTurnFacts({
+      missionId: mission.id,
+      facts: [
+        {
+          assignmentId: completedApi.assignmentId,
+          turnId: completedApi.acceptedTurnId!,
+          runtimeAgentId: completedApi.runtimeAgentId!,
+          outcome: "completed" as const,
+          recordedAt: NOW,
+        },
+      ],
+    });
+    const dispatches: string[] = [];
+    const scheduler = reviewRecoveryScheduler(missions, dispatches);
+
+    await scheduler.reconcileMission(mission.id);
+    const first = await missions.get(mission.id);
+    expect(first?.mission.workstreams[0]?.reviewGate).toMatchObject({
+      kind: "required",
+      outcome: { kind: "pending" },
+    });
+    const replacement = first?.mission.assignments.find(
+      (candidate) => candidate.kind === "review" && candidate.semanticState !== "canceled",
+    );
+    expect(
+      first?.mission.assignments.find(
+        (candidate) => candidate.assignmentId === completedReview.assignmentId,
+      ),
+    ).toMatchObject({
+      semanticState: "canceled",
+      terminationReason: "superseded",
+      supersededBy: "assignment:mission-1:1:workstream-api:review",
+      acceptedTurnId: null,
+      runtimeAgentId: null,
+      report: null,
+    });
+    expect(replacement).toMatchObject({
+      assignmentId: "assignment:mission-1:1:workstream-api:review",
+      semanticState: "running",
+      subjectAssignmentIds: [completedApi.assignmentId],
+      dependencyAssignmentIds: [completedApi.assignmentId],
+    });
+    expect(dispatches).toEqual([replacement?.assignmentId]);
+    expect(first?.mission.assignments).not.toContainEqual(
+      expect.objectContaining({ kind: "verification" }),
+    );
+    const revisionAfterFirstReconcile = first?.mission.revision;
+
+    await scheduler.reconcileMission(mission.id);
+    const second = await missions.get(mission.id);
+    expect(missionRevisionProjection(second)).toEqual({
+      ...missionRevisionProjection(first),
+      revision: revisionAfterFirstReconcile,
+    });
+    expect(dispatches).toEqual([replacement?.assignmentId]);
+
+    await approveReplacementReview(missions, second, replacement);
+
+    await scheduler.reconcileMission(mission.id);
+    const repaired = await missions.get(mission.id);
+    expect(repaired?.mission.workstreams[0]?.reviewGate).toMatchObject({
+      kind: "required",
+      outcome: { kind: "approved", reviewAssignmentId: replacement.assignmentId },
+    });
+    const verifications = repaired?.mission.assignments.filter(
+      (candidate) => candidate.kind === "verification" && candidate.semanticState !== "canceled",
+    );
+    expect(verifications).toHaveLength(1);
+    expect(verifications?.[0]).toMatchObject({
+      subjectAssignmentIds: [completedApi.assignmentId, replacement.assignmentId],
+      dependencyAssignmentIds: [completedApi.assignmentId, replacement.assignmentId],
+      semanticState: "running",
+    });
+  });
+
+  test("removes the full pending report-recovery chain when replacing an invalid review", async () => {
+    const missions = new MissionStore({
+      directory: join(rootDirectory, "missions"),
+      logger: createTestLogger(),
+      now: () => NOW,
+    });
+    const { mission, completedApi, reviewNeedsReport } = invalidReviewWaitingForReportMission();
+    await missions.createIfAbsent({
+      mission,
+      idempotencyKey: "start-invalid-review-pending-recovery",
+      requestFingerprint: "start-invalid-review-pending-recovery-fingerprint",
+    });
+    await missions.recordAcceptedTurnFacts({
+      missionId: mission.id,
+      facts: [completedApi, reviewNeedsReport].map((candidate) => ({
+        assignmentId: candidate.assignmentId,
+        turnId: candidate.acceptedTurnId!,
+        runtimeAgentId: candidate.runtimeAgentId!,
+        outcome: "completed" as const,
+        recordedAt: NOW,
+      })),
+    });
+    const withFacts = await missions.get(mission.id);
+    if (!withFacts) throw new Error("Mission disappeared");
+    const unrelatedRecovery = reportRecoveryForAssignment(
+      completedApi,
+      settledReportRecovery(1, "turn-unrelated-recovery-1"),
+    );
+    await missions.updateRecoveryState({
+      missionId: mission.id,
+      expectedStorageRevision: withFacts.storageRevision,
+      update: (recovery) => ({
+        ...recovery,
+        assignmentReportRecoveryOutbox: [
+          reportRecoveryForAssignment(
+            reviewNeedsReport,
+            settledReportRecovery(1, "turn-review-recovery-1"),
+          ),
+          reportRecoveryForAssignment(reviewNeedsReport, {
+            ...pendingReportRecovery(2),
+            nextEligibleAt: "2026-08-08T13:00:00.000Z",
+          }),
+          unrelatedRecovery,
+        ],
+      }),
+    });
+    const dispatches: string[] = [];
+    const scheduler = reviewRecoveryScheduler(missions, dispatches);
+
+    await scheduler.reconcileMission(mission.id);
+    const updated = await missions.get(mission.id);
+
+    expect(updated?.mission.assignments).toContainEqual(
+      expect.objectContaining({
+        assignmentId: reviewNeedsReport.assignmentId,
+        semanticState: "canceled",
+        supersededBy: "assignment:mission-1:1:workstream-api:review",
+      }),
+    );
+    expect(updated?.assignmentReportRecoveryOutbox).toEqual([unrelatedRecovery]);
+  });
+
+  test("removes a dispatched review recovery without churn and completes through repaired gates", async () => {
+    const missions = new MissionStore({
+      directory: join(rootDirectory, "missions"),
+      logger: createTestLogger(),
+      now: () => NOW,
+    });
+    const { mission, completedApi, reviewNeedsReport } = invalidReviewWaitingForReportMission();
+    await missions.createIfAbsent({
+      mission,
+      idempotencyKey: "start-invalid-review-dispatched-recovery",
+      requestFingerprint: "start-invalid-review-dispatched-recovery-fingerprint",
+    });
+    await missions.recordAcceptedTurnFacts({
+      missionId: mission.id,
+      facts: [completedApi, reviewNeedsReport].map((candidate) => ({
+        assignmentId: candidate.assignmentId,
+        turnId: candidate.acceptedTurnId!,
+        runtimeAgentId: candidate.runtimeAgentId!,
+        outcome: "completed" as const,
+        recordedAt: NOW,
+      })),
+    });
+    const withFacts = await missions.get(mission.id);
+    if (!withFacts) throw new Error("Mission disappeared");
+    const withEvidence = await missions.update({
+      missionId: mission.id,
+      expectedRevision: withFacts.mission.revision,
+      update: (current) => ({
+        ...current,
+        assignments: current.assignments.map((candidate) => {
+          if (candidate.assignmentId === completedApi.assignmentId) {
+            return {
+              ...candidate,
+              terminalEvidence: terminalEvidenceFor(completedApi, completedApi.report),
+            };
+          }
+          if (candidate.assignmentId === reviewNeedsReport.assignmentId) {
+            return {
+              ...candidate,
+              terminalEvidence: terminalEvidenceFor(reviewNeedsReport, null),
+            };
+          }
+          return candidate;
+        }),
+      }),
+    });
+    await missions.updateRecoveryState({
+      missionId: mission.id,
+      expectedStorageRevision: withEvidence.storageRevision,
+      update: (recovery) => ({
+        ...recovery,
+        assignmentReportRecoveryOutbox: [
+          reportRecoveryForAssignment(
+            reviewNeedsReport,
+            settledReportRecovery(1, "turn-review-recovery-1"),
+          ),
+          reportRecoveryForAssignment(
+            reviewNeedsReport,
+            dispatchedReportRecovery(2, "turn-review-recovery-2"),
+          ),
+        ],
+      }),
+    });
+    let completionCalls = 0;
+    const dispatches: string[] = [];
+    const scheduler = reviewRecoveryScheduler(missions, dispatches, {
+      completeMission: async (input) => {
+        completionCalls += 1;
+        const intentId = "finish-invalid-review-dispatched-recovery";
+        await missions.beginFinish({
+          missionId: input.missionId,
+          expectedRevision: input.expectedRevision,
+          intent: {
+            intentId,
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint: "finish-invalid-review-dispatched-recovery-fingerprint",
+            completionEventId: "completion-invalid-review-dispatched-recovery",
+            kind: "completed",
+            reason: "Repaired review and verification passed",
+            stage: "requested",
+            requestedAt: NOW,
+            updatedAt: NOW,
+          },
+        });
+        await missions.advanceFinish({
+          missionId: input.missionId,
+          intentId,
+          from: "requested",
+          to: "dispatch_stopped",
+        });
+        await missions.advanceFinish({
+          missionId: input.missionId,
+          intentId,
+          from: "dispatch_stopped",
+          to: "participants_archived",
+        });
+        await missions.prepareFinishEvidence({ missionId: input.missionId, intentId });
+        return (await missions.finalize({ missionId: input.missionId, intentId })).mission;
+      },
+    });
+
+    await scheduler.reconcileMission(mission.id);
+    const replaced = await missions.get(mission.id);
+    const replacement = replaced?.mission.assignments.find(
+      (candidate) => candidate.kind === "review" && candidate.semanticState === "running",
+    );
+    expect(replaced?.assignmentReportRecoveryOutbox).toEqual([]);
+    expect(replacement).toMatchObject({
+      assignmentId: "assignment:mission-1:1:workstream-api:review",
+      subjectAssignmentIds: [completedApi.assignmentId],
+    });
+    const stableProjection = missionRevisionProjection(replaced);
+    const stableStorageRevision = replaced?.storageRevision;
+
+    await scheduler.reconcileMission(mission.id);
+    const reconciledAgain = await missions.get(mission.id);
+    expect(missionRevisionProjection(reconciledAgain)).toEqual(stableProjection);
+    expect(reconciledAgain?.storageRevision).toBe(stableStorageRevision);
+    expect(dispatches).toEqual([replacement?.assignmentId]);
+
+    await reportRunningQualityGate(missions, reconciledAgain, replacement, "review");
+    await scheduler.reconcileMission(mission.id);
+    const verifying = await missions.get(mission.id);
+    const verification = verifying?.mission.assignments.find(
+      (candidate) => candidate.kind === "verification" && candidate.semanticState === "running",
+    );
+    expect(verification).toMatchObject({
+      subjectAssignmentIds: [completedApi.assignmentId, replacement?.assignmentId],
+      dependencyAssignmentIds: [completedApi.assignmentId, replacement?.assignmentId],
+    });
+
+    await reportRunningQualityGate(missions, verifying, verification, "verification");
+    await scheduler.reconcileMission(mission.id);
+
+    expect(completionCalls).toBe(1);
+    expect((await missions.get(mission.id))?.mission.status).toBe("completed");
+  });
+
+  test("dispatches downstream work when the persisted review gate is waived", async () => {
+    const missions = new MissionStore({
+      directory: join(rootDirectory, "missions"),
+      logger: createTestLogger(),
+      now: () => NOW,
+    });
+    const { mission, completedApi, downstreamAssignment } = waivedReviewRecoveryMission();
+    await missions.createIfAbsent({
+      mission,
+      idempotencyKey: "start-1",
+      requestFingerprint: "start-fingerprint-1",
+    });
+    await missions.recordAcceptedTurnFacts({
+      missionId: mission.id,
+      facts: [
+        {
+          assignmentId: completedApi.assignmentId,
+          turnId: "turn-assignment-api",
+          runtimeAgentId: "agent-lead",
+          outcome: "completed",
+          recordedAt: NOW,
+        },
+      ],
+    });
+    const dispatches: string[] = [];
+    const scheduler = reviewRecoveryScheduler(missions, dispatches);
+
+    await scheduler.reconcileMission(mission.id);
+    const updated = await missions.get(mission.id);
+
+    expect(dispatches).toEqual([downstreamAssignment.assignmentId]);
+    expect(updated?.mission.assignments).not.toContainEqual(
+      expect.objectContaining({ kind: "review" }),
+    );
+    expect(updated?.mission.workstreams[0]).toMatchObject({
+      status: "accepted",
+      reviewGate: { outcome: { kind: "waived", waiverId: "waiver-api" } },
+    });
+  });
+
+  test("does not accept a Workstream or dispatch dependents from a fabricated waiver", async () => {
+    const missions = new MissionStore({
+      directory: join(rootDirectory, "missions"),
+      logger: createTestLogger(),
+      now: () => NOW,
+    });
+    const { mission, completedApi, downstreamAssignment } = waivedReviewRecoveryMission();
+    mission.reviewWaivers = [];
+    mission.attentionItems = [];
+    await missions.createIfAbsent({
+      mission,
+      idempotencyKey: "start-fabricated-waiver",
+      requestFingerprint: "start-fabricated-waiver-fingerprint",
+    });
+    await missions.recordAcceptedTurnFacts({
+      missionId: mission.id,
+      facts: [
+        {
+          assignmentId: completedApi.assignmentId,
+          turnId: completedApi.acceptedTurnId!,
+          runtimeAgentId: completedApi.runtimeAgentId!,
+          outcome: "completed",
+          recordedAt: NOW,
+        },
+      ],
+    });
+    const dispatches: string[] = [];
+    const scheduler = reviewRecoveryScheduler(missions, dispatches);
+
+    await scheduler.reconcileMission(mission.id);
+    const updated = await missions.get(mission.id);
+
+    expect(dispatches).toEqual([]);
+    expect(updated?.mission.workstreams[0]).toMatchObject({
+      status: "review",
+      reviewGate: { outcome: { kind: "waived", waiverId: "waiver-api" } },
+    });
+    expect(updated?.mission.assignments).toContainEqual(
+      expect.objectContaining({
+        assignmentId: downstreamAssignment.assignmentId,
+        semanticState: "planned",
+        acceptedTurnId: null,
+      }),
+    );
   });
 
   test("materializes final verification after every delivery path is accepted", async () => {
@@ -2512,6 +3185,16 @@ describe("TeamMissionScheduler", () => {
       status: "planned",
     };
     const api = mission.assignments[0]!;
+    const staleVerification = {
+      ...assignment(
+        "assignment:mission-1:1:workstream-final-verification:verification",
+        verificationWorkstream,
+        "member-app",
+        ["assignment-review-fabricated"],
+      ),
+      kind: "verification" as const,
+      subjectAssignmentIds: ["assignment-review-fabricated"],
+    };
     mission.workstreams = [apiWorkstream, verificationWorkstream];
     mission.assignments = [
       {
@@ -2533,6 +3216,7 @@ describe("TeamMissionScheduler", () => {
         dispatchedAt: NOW,
         settledAt: NOW,
       },
+      staleVerification,
     ];
     await missions.createIfAbsent({
       mission,
@@ -2552,6 +3236,7 @@ describe("TeamMissionScheduler", () => {
       ],
     });
     const verificationDispatches: string[] = [];
+    const releasedAssignments: string[] = [];
     const scheduler = new TeamMissionScheduler({
       missions,
       turnFacts: noDurableTurnFacts,
@@ -2561,7 +3246,9 @@ describe("TeamMissionScheduler", () => {
         acquire: async () => null,
         transitionToReportHold,
         release: async () => undefined,
-        releaseAssignment: releaseAssignmentNoop,
+        releaseAssignment: async ({ assignmentId }) => {
+          releasedAssignments.push(assignmentId);
+        },
 
         releaseMission: releaseMissionNoop,
       },
@@ -2592,12 +3279,22 @@ describe("TeamMissionScheduler", () => {
     await scheduler.reconcileMission(mission.id);
     const updated = await missions.get(mission.id);
     const verification = updated?.mission.assignments.find(
-      (candidate) => candidate.kind === "verification",
+      (candidate) => candidate.kind === "verification" && candidate.semanticState !== "canceled",
     );
 
     expect(verificationDispatches).toEqual([
-      "assignment:mission-1:1:workstream-final-verification:verification",
+      "assignment:mission-1:1:workstream-final-verification:verification:2",
     ]);
+    expect(releasedAssignments).toContain(staleVerification.assignmentId);
+    expect(
+      updated?.mission.assignments.find(
+        (candidate) => candidate.assignmentId === staleVerification.assignmentId,
+      ),
+    ).toMatchObject({
+      semanticState: "canceled",
+      terminationReason: "superseded",
+      supersededBy: "assignment:mission-1:1:workstream-final-verification:verification:2",
+    });
     expect(updated?.mission.status).toBe("verifying");
     expect(verification).toMatchObject({
       kind: "verification",
@@ -3539,6 +4236,7 @@ describe("TeamMissionScheduler", () => {
         expect.objectContaining({
           attentionId: `${mission.id}:${verification.assignmentId}:requires-replan`,
           kind: "assignment_requires_replan",
+          scope: { kind: "mission" as const },
           status: "open",
           assignmentId: verification.assignmentId,
           summary: `Verification Assignment ${verification.assignmentId} requested changes: Integration contract still needs an error-path test`,
@@ -4598,6 +5296,7 @@ describe("TeamMissionScheduler", () => {
         {
           attentionId: "mission-1:assignment-api:missing-report",
           kind: "missing_report",
+          scope: { kind: "mission" as const },
           status: "open",
           priorMissionStatus: "active",
           assignmentId: "assignment-api",
@@ -4855,11 +5554,160 @@ function activeMission(): TeamMission {
       ]),
     ],
     attentionItems: [],
+    reviewWaivers: [],
     lifecycleRecoveryFailure: null,
     createdAt: NOW,
     updatedAt: NOW,
     completedAt: null,
   };
+}
+
+function waivedReviewRecoveryMission(): {
+  mission: TeamMission;
+  completedApi: MissionAssignmentContract;
+  downstreamAssignment: MissionAssignmentContract;
+} {
+  const mission = activeMission();
+  const pendingGate = buildMissionReviewGate({
+    workstreamId: "workstream-api",
+    planRevision: 1,
+    subjectAssignmentIds: ["assignment-api"],
+    requirements: {
+      requiredSkillIds: ["typescript"],
+      preferredSkillIds: [],
+      requiredRuntimeCapabilityIds: ["isolated-review"],
+      minimumLevel: 5,
+    },
+    selection: { kind: "awaiting_reviewer" },
+    outcome: { kind: "pending" },
+  });
+  if (pendingGate.kind !== "required") throw new Error("required review gate expected");
+  const apiWorkstream: MissionWorkstream = {
+    ...mission.workstreams[0]!,
+    reviewGate: {
+      ...pendingGate,
+      outcome: {
+        kind: "waived",
+        gateKeyFingerprint: pendingGate.gateKeyFingerprint,
+        subjectFingerprint: pendingGate.subjectFingerprint,
+        waiverId: "waiver-api",
+        decidedAt: NOW,
+      },
+    },
+    status: "active",
+  };
+  const downstreamWorkstream = workstream({
+    workstreamId: "workstream-downstream",
+    ownerMemberId: "member-lead",
+    dependencyWorkstreamIds: [apiWorkstream.workstreamId],
+    mutableScope: { kind: "read_only" },
+  });
+  const completedApi: MissionAssignmentContract = {
+    ...mission.assignments[0]!,
+    runtimeAgentId: "agent-lead",
+    bindingEpoch: 1,
+    report: completedReport(),
+    dispatchState: "settled",
+    semanticState: "completed",
+    acceptedTurnId: "turn-assignment-api",
+    dispatchedAt: NOW,
+    settledAt: NOW,
+  };
+  const downstreamAssignment = assignment(
+    "assignment-downstream",
+    downstreamWorkstream,
+    "member-lead",
+    [completedApi.assignmentId],
+  );
+  mission.workstreams = [apiWorkstream, downstreamWorkstream];
+  mission.assignments = [completedApi, downstreamAssignment];
+  mission.reviewWaivers = [
+    {
+      waiverId: "waiver-api",
+      attentionId: "attention-review-api",
+      actorId: "controller",
+      gateKey: pendingGate.gateKey,
+      gateKeyFingerprint: pendingGate.gateKeyFingerprint,
+      subjectFingerprint: pendingGate.subjectFingerprint,
+      connectionId: "connection-controller",
+      selfReportedClientLabel: "paseo-app",
+      reason: "No structurally eligible reviewer is available.",
+      createdAt: NOW,
+    },
+  ];
+  mission.attentionItems = [
+    {
+      attentionId: "attention-review-api",
+      kind: "review_gate_reviewer_unavailable",
+      scope: {
+        kind: "workstream",
+        workstreamId: apiWorkstream.workstreamId,
+        blockDependents: true,
+      },
+      reviewGateDetails: {
+        gateKey: pendingGate.gateKey,
+        gateKeyFingerprint: pendingGate.gateKeyFingerprint,
+        subjectFingerprint: pendingGate.subjectFingerprint,
+      },
+      status: "resolved",
+      priorMissionStatus: null,
+      assignmentId: null,
+      summary: "No structurally eligible reviewer is available.",
+      pathEvidence: [],
+      createdAt: NOW,
+      resolution: {
+        kind: "waive_review",
+        actorId: "controller",
+        connectionId: "connection-controller",
+        selfReportedClientLabel: "paseo-app",
+        reason: "No structurally eligible reviewer is available.",
+        ownerAssignmentId: null,
+        recoveryAssignmentId: null,
+        resolvedAt: NOW,
+      },
+    },
+  ];
+  return { mission, completedApi, downstreamAssignment };
+}
+
+function reviewRecoveryScheduler(
+  missions: MissionStore,
+  dispatches: string[],
+  lifecycle: TeamMissionCompletionPort = lifecycleMustNotComplete,
+): TeamMissionScheduler {
+  return new TeamMissionScheduler({
+    missions,
+    turnFacts: noDurableTurnFacts,
+    lifecycle,
+    participants: { ensureParticipant: async () => undefined },
+    leases: {
+      acquire: async () => null,
+      transitionToReportHold,
+      release: async () => undefined,
+      releaseAssignment: releaseAssignmentNoop,
+      releaseMission: releaseMissionNoop,
+    },
+    workspace: {
+      captureBaseline: async (input) => ({
+        baselineId: `baseline-${input.assignmentId}`,
+        workspaceId: input.workspaceId,
+        assignmentId: input.assignmentId,
+        policyRevision: input.policy.revision,
+        capturedAt: NOW,
+        entries: [],
+      }),
+      captureDelta: async () => ({ capturedDelta: [], violations: [] }),
+    },
+    dispatch: {
+      dispatch: async (input) => {
+        dispatches.push(input.assignmentId);
+        return { kind: "accepted", turnId: `turn-${input.assignmentId}` };
+      },
+      requestReport: requestReportBusy,
+    },
+    events: { publishMission: async () => undefined },
+    clock: { now: () => NOW },
+  });
 }
 
 function rosterMember(memberId: string, role: string, mentionHandle: string) {
@@ -4908,11 +5756,7 @@ function workstream(input: {
     ownerMemberId: input.ownerMemberId,
     ownerMatchExplanation: matchExplanation(input.ownerMemberId),
     ownerOverrideReason: null,
-    reviewPolicy: "none",
-    reviewerRequirements: null,
-    reviewerMemberId: null,
-    reviewerMatchExplanation: null,
-    reviewerOverrideReason: null,
+    reviewGate: { kind: "none", outcome: { kind: "not_required" } },
     status: "ready",
   };
 }
@@ -4928,6 +5772,8 @@ function assignment(
     revision: 1,
     kind: "delivery",
     subjectAssignmentIds: [],
+    reviewGateFingerprint: null,
+    reviewSubjectFingerprint: null,
     missionId: "mission-1",
     workstreamId: stream.workstreamId,
     assigneeMemberId,
@@ -4974,6 +5820,303 @@ function matchExplanation(memberId: string): MissionMemberMatchExplanation {
     continuedPreviousMember: false,
     openAssignments: 0,
     rosterIndex: memberId === "member-lead" ? 0 : 1,
+  };
+}
+
+function reviewerMatchExplanation(): MissionMemberMatchExplanation {
+  return {
+    ...matchExplanation("member-app"),
+    eligibleMemberIds: ["member-lead", "member-app"],
+    excludedMemberIds: ["member-lead"],
+    candidateOpenAssignments: [
+      { memberId: "member-lead", openAssignments: 0 },
+      { memberId: "member-app", openAssignments: 0 },
+    ],
+  };
+}
+
+function invalidTerminalReviewMission(): {
+  mission: TeamMission;
+  completedApi: MissionAssignmentContract;
+  completedReview: MissionAssignmentContract;
+} {
+  const { mission, completedApi } = waivedReviewRecoveryMission();
+  const gate = buildMissionReviewGate({
+    workstreamId: "workstream-api",
+    planRevision: 1,
+    subjectAssignmentIds: [completedApi.assignmentId],
+    requirements: {
+      requiredSkillIds: ["typescript"],
+      preferredSkillIds: [],
+      requiredRuntimeCapabilityIds: ["structured-tools"],
+      minimumLevel: 3,
+    },
+    selection: {
+      kind: "assigned",
+      reviewerMemberId: "member-app",
+      matchExplanation: reviewerMatchExplanation(),
+      overrideReason: null,
+    },
+    outcome: { kind: "pending" },
+  });
+  if (gate.kind !== "required") throw new Error("required review gate expected");
+  mission.workstreams[0] = { ...mission.workstreams[0]!, reviewGate: gate };
+  mission.workstreams = [
+    mission.workstreams[0]!,
+    {
+      ...workstream({
+        workstreamId: "workstream-final-verification",
+        ownerMemberId: "member-app",
+        dependencyWorkstreamIds: ["workstream-api"],
+        mutableScope: { kind: "read_only" },
+      }),
+      kind: "verification",
+      status: "planned",
+    },
+  ];
+  const completedReview: MissionAssignmentContract = {
+    ...completedApi,
+    assignmentId: "assignment-api-review",
+    kind: "review",
+    subjectAssignmentIds: [completedApi.assignmentId],
+    dependencyAssignmentIds: [],
+    reviewGateFingerprint: gate.gateKeyFingerprint,
+    reviewSubjectFingerprint: gate.subjectFingerprint,
+    assigneeMemberId: "member-app",
+    runtimeAgentId: "agent-member",
+    acceptedTurnId: "turn-assignment-api-review",
+    mutableScope: { kind: "read_only" },
+    report: { ...completedReport(), verdict: "approved" },
+  };
+  mission.assignments = [completedApi, completedReview];
+  mission.attentionItems = [];
+  mission.reviewWaivers = [];
+  return { mission, completedApi, completedReview };
+}
+
+function ownerSelfReviewMission(): {
+  mission: TeamMission;
+  completedApi: MissionAssignmentContract;
+  completedReview: MissionAssignmentContract;
+  downstreamAssignment: MissionAssignmentContract;
+} {
+  const { mission, completedApi, downstreamAssignment } = waivedReviewRecoveryMission();
+  const report = { ...completedReport(), verdict: "approved" as const };
+  const gate = buildMissionReviewGate({
+    workstreamId: "workstream-api",
+    planRevision: 1,
+    subjectAssignmentIds: [completedApi.assignmentId],
+    requirements: {
+      requiredSkillIds: ["typescript"],
+      preferredSkillIds: [],
+      requiredRuntimeCapabilityIds: ["structured-tools"],
+      minimumLevel: 3,
+    },
+    selection: {
+      kind: "assigned",
+      reviewerMemberId: "member-lead",
+      matchExplanation: matchExplanation("member-lead"),
+      overrideReason: "The only Team member is the Workstream owner.",
+    },
+    outcome: { kind: "pending" },
+  });
+  if (gate.kind !== "required") throw new Error("required review gate expected");
+  const completedReview: MissionAssignmentContract = {
+    ...completedApi,
+    assignmentId: "assignment-api-owner-review",
+    kind: "review",
+    subjectAssignmentIds: [completedApi.assignmentId],
+    dependencyAssignmentIds: [completedApi.assignmentId],
+    reviewGateFingerprint: gate.gateKeyFingerprint,
+    reviewSubjectFingerprint: gate.subjectFingerprint,
+    acceptedTurnId: "turn-assignment-api-owner-review",
+    mutableScope: { kind: "read_only" },
+    report,
+  };
+  mission.rosterSnapshots = mission.rosterSnapshots.map((snapshot) => ({
+    ...snapshot,
+    members: snapshot.members.filter((member) => member.memberId === "member-lead"),
+  }));
+  mission.participants = mission.participants.filter(
+    (participant) => participant.memberId === "member-lead",
+  );
+  mission.workstreams[0] = {
+    ...mission.workstreams[0]!,
+    status: "active",
+    reviewGate: {
+      ...gate,
+      outcome: {
+        kind: "approved",
+        gateKeyFingerprint: gate.gateKeyFingerprint,
+        subjectFingerprint: gate.subjectFingerprint,
+        reviewAssignmentId: completedReview.assignmentId,
+        reportFingerprint: missionReviewReportFingerprint(report),
+        inheritedFromGateFingerprint: null,
+        decidedAt: NOW,
+      },
+    },
+  };
+  mission.workstreams.push({
+    ...workstream({
+      workstreamId: "workstream-final-verification",
+      ownerMemberId: "member-lead",
+      dependencyWorkstreamIds: [mission.workstreams[0]!.workstreamId],
+      mutableScope: { kind: "read_only" },
+    }),
+    kind: "verification",
+    status: "planned",
+  });
+  mission.assignments = [completedApi, completedReview, downstreamAssignment];
+  mission.attentionItems = [];
+  mission.reviewWaivers = [];
+  return { mission, completedApi, completedReview, downstreamAssignment };
+}
+
+function invalidReviewWaitingForReportMission(): {
+  mission: TeamMission;
+  completedApi: MissionAssignmentContract;
+  reviewNeedsReport: MissionAssignmentContract;
+} {
+  const { mission, completedApi, completedReview } = invalidTerminalReviewMission();
+  const reviewNeedsReport: MissionAssignmentContract = {
+    ...completedReview,
+    scopeLease: null,
+    workspaceBaseline: {
+      baselineId: "baseline-assignment-api-review",
+      workspaceId: mission.workspaceId,
+      assignmentId: completedReview.assignmentId,
+      policyRevision: mission.workspaceAuditPolicy.revision,
+      capturedAt: NOW,
+      entries: [],
+    },
+    report: null,
+    semanticState: "needs_report",
+  };
+  mission.assignments = [completedApi, reviewNeedsReport];
+  return { mission, completedApi, reviewNeedsReport };
+}
+
+function missionRevisionProjection(stored: Awaited<ReturnType<MissionStore["get"]>>): unknown {
+  return {
+    revision: stored?.mission.revision,
+    status: stored?.mission.status,
+    workstreams: stored?.mission.workstreams.map((candidate) => ({
+      id: candidate.workstreamId,
+      status: candidate.status,
+    })),
+    assignments: stored?.mission.assignments.map((candidate) => ({
+      id: candidate.assignmentId,
+      revision: candidate.revision,
+      state: candidate.semanticState,
+      supersededBy: candidate.supersededBy,
+    })),
+  };
+}
+
+async function approveReplacementReview(
+  missions: MissionStore,
+  stored: Awaited<ReturnType<MissionStore["get"]>>,
+  replacement: MissionAssignmentContract | undefined,
+): Promise<void> {
+  if (!stored || !replacement?.acceptedTurnId || !replacement.runtimeAgentId) {
+    throw new Error("replacement review fixture is incomplete");
+  }
+  await missions.update({
+    missionId: stored.mission.id,
+    expectedRevision: stored.mission.revision,
+    update: (current) => ({
+      ...current,
+      assignments: current.assignments.map((candidate) =>
+        candidate.assignmentId === replacement.assignmentId
+          ? {
+              ...candidate,
+              revision: candidate.revision + 1,
+              dispatchState: "settled" as const,
+              semanticState: "completed" as const,
+              report: {
+                ...completedReport(),
+                verdict: "approved" as const,
+                summary: "Approved the repaired review lineage.",
+              },
+              settledAt: NOW,
+            }
+          : candidate,
+      ),
+    }),
+  });
+  await missions.recordAcceptedTurnFacts({
+    missionId: stored.mission.id,
+    facts: [
+      {
+        assignmentId: replacement.assignmentId,
+        turnId: replacement.acceptedTurnId,
+        runtimeAgentId: replacement.runtimeAgentId,
+        outcome: "completed",
+        recordedAt: NOW,
+      },
+    ],
+  });
+}
+
+async function reportRunningQualityGate(
+  missions: MissionStore,
+  stored: Awaited<ReturnType<MissionStore["get"]>>,
+  qualityGateAssignment: MissionAssignmentContract | undefined,
+  kind: "review" | "verification",
+): Promise<void> {
+  if (!stored || !qualityGateAssignment?.acceptedTurnId || !qualityGateAssignment.runtimeAgentId) {
+    throw new Error(`${kind} fixture is incomplete`);
+  }
+  await missions.update({
+    missionId: stored.mission.id,
+    expectedRevision: stored.mission.revision,
+    update: (current) => ({
+      ...current,
+      assignments: current.assignments.map((candidate) =>
+        candidate.assignmentId === qualityGateAssignment.assignmentId
+          ? {
+              ...candidate,
+              report: {
+                ...completedReport(),
+                verdict: "approved" as const,
+                summary: `Approved repaired ${kind} lineage.`,
+              },
+            }
+          : candidate,
+      ),
+    }),
+  });
+  await missions.recordAcceptedTurnFacts({
+    missionId: stored.mission.id,
+    facts: [
+      {
+        assignmentId: qualityGateAssignment.assignmentId,
+        turnId: qualityGateAssignment.acceptedTurnId,
+        runtimeAgentId: qualityGateAssignment.runtimeAgentId,
+        outcome: "completed",
+        recordedAt: NOW,
+      },
+    ],
+  });
+}
+
+function terminalEvidenceFor(
+  qualityGateAssignment: MissionAssignmentContract,
+  report: MissionAssignmentContract["report"],
+) {
+  return {
+    assignmentId: qualityGateAssignment.assignmentId,
+    acceptedTurn: {
+      turnId: qualityGateAssignment.acceptedTurnId!,
+      runtimeAgentId: qualityGateAssignment.runtimeAgentId!,
+      outcome: "completed" as const,
+      recordedAt: NOW,
+    },
+    capturedDelta: [],
+    ownershipViolations: [],
+    report,
+    handoffs: report?.handoffs ?? [],
+    capturedAt: NOW,
   };
 }
 
@@ -5063,6 +6206,20 @@ function settledReportRecovery(attempt: 1 | 2, turnId: string) {
     ...dispatchedReportRecovery(attempt, turnId),
     state: "settled" as const,
     settledAt: NOW,
+  };
+}
+
+function reportRecoveryForAssignment(
+  qualityGateAssignment: MissionAssignmentContract,
+  recovery: ReturnType<typeof pendingReportRecovery> | ReturnType<typeof settledReportRecovery>,
+) {
+  return {
+    ...recovery,
+    deliveryId: `mission-1:${qualityGateAssignment.assignmentId}:report-recovery:${recovery.attempt}`,
+    assignmentId: qualityGateAssignment.assignmentId,
+    agentId: qualityGateAssignment.runtimeAgentId!,
+    bindingEpoch: qualityGateAssignment.bindingEpoch!,
+    messageId: `team-mission:mission-1:assignment:${qualityGateAssignment.assignmentId}:report-recovery:${recovery.attempt}`,
   };
 }
 
