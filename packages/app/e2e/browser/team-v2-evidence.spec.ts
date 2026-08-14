@@ -185,6 +185,7 @@ function buildParallelSnapshot(mission: TeamMission, team: TeamV2): TeamMission 
     ownerMatchExplanation: matchExplanation(team, definition.owner),
     ownerOverrideReason: null,
     reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+    finalVerificationGate: null,
     status: "active",
   }));
   const participantsByMemberId = new Map(
@@ -210,6 +211,8 @@ function buildParallelSnapshot(mission: TeamMission, team: TeamV2): TeamMission 
     subjectAssignmentIds: [],
     reviewGateFingerprint: null,
     reviewSubjectFingerprint: null,
+    finalVerificationGateFingerprint: null,
+    reviewGateEvidence: [],
     missionId: mission.id,
     workstreamId: definition.workstreamId,
     assigneeMemberId: definition.owner.memberId,
@@ -269,6 +272,7 @@ function completedReport(
   return {
     status: "completed",
     verdict: null,
+    finalVerificationEvidence: null,
     summary: `${assignment.objective} completed with focused coverage`,
     artifactPaths:
       assignment.mutableScope.kind === "paths" ? assignment.mutableScope.pathPrefixes : [],

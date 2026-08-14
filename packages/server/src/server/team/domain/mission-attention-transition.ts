@@ -10,7 +10,11 @@ type SuspendableMissionStatus = "planning" | "active" | "verifying";
 type WorkstreamAttentionItem = Extract<
   MissionAttentionItem,
   {
-    kind: "review_gate_reviewer_unavailable" | "review_gate_capability_unknown";
+    kind:
+      | "review_gate_reviewer_unavailable"
+      | "review_gate_capability_unknown"
+      | "final_verifier_unavailable"
+      | "final_verifier_capability_unknown";
   }
 >;
 
@@ -21,6 +25,17 @@ export type MissionAttentionTransition =
       attentionId: string;
       resolution: MissionAttentionResolution;
     };
+
+export class FinalVerificationWaiverRejectedError extends Error {
+  readonly name = "FinalVerificationWaiverRejectedError";
+
+  constructor(
+    readonly missionId: string,
+    readonly attentionId: string,
+  ) {
+    super(`Final verification Attention ${attentionId} cannot be waived`);
+  }
+}
 
 export function applyMissionAttentionTransition(
   mission: TeamMission,
@@ -54,7 +69,9 @@ function raiseAttention(mission: TeamMission, item: MissionAttentionItem): Missi
 function isWorkstreamAttentionItem(item: MissionAttentionItem): item is WorkstreamAttentionItem {
   return (
     item.kind === "review_gate_reviewer_unavailable" ||
-    item.kind === "review_gate_capability_unknown"
+    item.kind === "review_gate_capability_unknown" ||
+    item.kind === "final_verifier_unavailable" ||
+    item.kind === "final_verifier_capability_unknown"
   );
 }
 
@@ -63,9 +80,18 @@ function resolveAttention(
   attentionId: string,
   resolution: MissionAttentionResolution,
 ): MissionAttentionItem[] {
+  if (resolution.kind === "waive_review") {
+    const target = mission.attentionItems.find((item) => item.attentionId === attentionId);
+    if (
+      target?.kind === "final_verifier_unavailable" ||
+      target?.kind === "final_verifier_capability_unknown"
+    ) {
+      throw new FinalVerificationWaiverRejectedError(mission.id, attentionId);
+    }
+  }
   return mission.attentionItems.map((item) =>
     item.attentionId === attentionId && item.status === "open"
-      ? { ...item, status: "resolved" as const, resolution }
+      ? ({ ...item, status: "resolved" as const, resolution } as MissionAttentionItem)
       : item,
   );
 }

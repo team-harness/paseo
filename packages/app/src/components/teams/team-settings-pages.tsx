@@ -623,6 +623,36 @@ function WorkstreamCard({ row }: { row: TeamPlanRow }): ReactElement {
           value={row.reviewReport.summary}
         />
       ) : null}
+      {row.finalVerificationStatus ? (
+        <>
+          <DataRow
+            bordered
+            label={t("teams.v2Settings.plan.finalVerificationGate")}
+            value={t(
+              `teams.v2Settings.plan.finalVerificationStatus.${row.finalVerificationStatus}`,
+            )}
+          />
+          {row.finalVerifier ? (
+            <DataRow
+              bordered
+              label={t("teams.v2Settings.plan.finalVerifier")}
+              value={`${row.finalVerifier.role} · @${row.finalVerifier.mentionHandle}`}
+            />
+          ) : null}
+          <DataRow
+            bordered
+            label={t("teams.v2Settings.plan.finalVerificationFingerprint")}
+            value={row.finalGateFingerprint ?? "—"}
+          />
+          {row.finalVerificationEvidence ? (
+            <DataRow
+              bordered
+              label={t("teams.v2Settings.plan.finalVerificationEvidence")}
+              value={`${row.finalVerificationEvidence.verdict} · ${row.finalVerificationEvidence.reviewGateEvidence.length}`}
+            />
+          ) : null}
+        </>
+      ) : null}
       {row.blockers.map((blocker) => (
         <View
           key={blocker.attentionId}
@@ -950,6 +980,8 @@ function resolutionKindsFor(kind: MissionAttentionItem["kind"]): TeamAttentionRe
     case "reviewer_unavailable":
     case "review_gate_reviewer_unavailable":
     case "review_gate_capability_unknown":
+    case "final_verifier_unavailable":
+    case "final_verifier_capability_unknown":
       return ["cancel_mission"];
   }
 }

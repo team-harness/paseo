@@ -4,6 +4,7 @@ import type {
   FrozenPromptSection,
   MissionAttentionItem,
   MissionAssignmentContract,
+  MissionFinalVerificationGate,
   MissionWorkstream,
   MissionScopeLease,
   MissionWorkspaceAuditPolicy,
@@ -35,7 +36,10 @@ import {
   resolveMissionAssignmentCoverage,
   resolveMissionSettledReviewGateWorkstreamIds,
 } from "../domain/mission-validation.js";
-import { missionReviewReportFingerprint } from "../domain/mission-review-gate.js";
+import {
+  missionReviewReportFingerprint,
+  sameCanonicalValue,
+} from "../domain/mission-review-gate.js";
 import {
   assignmentReplanAttentionId,
   assignmentReplanSummary,
@@ -55,6 +59,57 @@ type SettledTurnOutcome = Exclude<AcceptedTurnOutcome, "running">;
 type SettledAcceptedTurnFact = Omit<AcceptedTurnFact, "outcome"> & {
   outcome: SettledTurnOutcome;
 };
+
+function hasOpenMissionScopedAttention(mission: TeamMission): boolean {
+  return mission.attentionItems.some(
+    (item) => item.status === "open" && item.scope.kind === "mission",
+  );
+}
+
+function selectMaterializableQualityGateAdditions(
+  mission: TeamMission,
+  additions: MissionAssignmentContract[],
+): MissionAssignmentContract[] {
+  if (hasOpenMissionScopedAttention(mission)) return [];
+  const blockedWorkstreamIds = selectAttentionBlockedWorkstreamIds(mission);
+  return additions.filter((assignment) => !blockedWorkstreamIds.has(assignment.workstreamId));
+}
+
+function selectReplacementReviewIds(
+  selectedAssignments: MissionAssignmentContract[],
+  additions: MissionAssignmentContract[],
+): Map<string, string> {
+  const additionIds = new Set(additions.map((assignment) => assignment.assignmentId));
+  return new Map(
+    selectedAssignments.flatMap((assignment) =>
+      assignment.kind === "review" && additionIds.has(assignment.assignmentId)
+        ? [[assignment.workstreamId, assignment.assignmentId] as const]
+        : [],
+    ),
+  );
+}
+
+function isSelectedVerificationMaterialized(
+  selected: MissionAssignmentContract | undefined,
+  currentAssignments: MissionAssignmentContract[],
+  additions: MissionAssignmentContract[],
+): boolean {
+  if (!selected) return false;
+  return [...currentAssignments, ...additions].some(
+    (assignment) => assignment.assignmentId === selected.assignmentId,
+  );
+}
+
+function requiresFinalVerificationGateUpdate(
+  mission: TeamMission,
+  expectedGate: MissionFinalVerificationGate | null,
+): boolean {
+  if (expectedGate === null) return false;
+  const currentGate = mission.workstreams.find(
+    (workstream) => workstream.kind === "verification",
+  )?.finalVerificationGate;
+  return currentGate?.fingerprint !== expectedGate.fingerprint;
+}
 
 export interface TeamWorkspaceLeasePort {
   acquire(input: {
@@ -374,6 +429,7 @@ export class TeamMissionScheduler {
     await this.synchronizeReportHolds(stored.mission);
     stored = await this.reconcileReportRecoveries(stored, observedTurnFacts);
     stored = await this.materializeQualityGates(stored);
+    stored = await this.synchronizeFinalVerifierAttentions(stored);
     if (isTerminalMissionStatus(stored.mission.status)) {
       return this.reconcileTerminalMission(stored);
     }
@@ -1028,6 +1084,68 @@ export class TeamMissionScheduler {
     return updated;
   }
 
+  private async synchronizeFinalVerifierAttentions(
+    stored: NonNullable<Awaited<ReturnType<MissionStore["get"]>>>,
+  ): Promise<NonNullable<Awaited<ReturnType<MissionStore["get"]>>>> {
+    let projected = stored.mission;
+    const workstreamById = new Map(
+      stored.mission.workstreams.map((workstream) => [workstream.workstreamId, workstream]),
+    );
+    for (const workstream of stored.mission.workstreams) {
+      const gate = workstream.finalVerificationGate;
+      if (
+        workstream.kind !== "verification" ||
+        !gate ||
+        gate.selection.kind === "assigned" ||
+        !workstream.dependencyWorkstreamIds.every(
+          (dependencyId) => workstreamById.get(dependencyId)?.status === "accepted",
+        )
+      ) {
+        continue;
+      }
+      const kind =
+        gate.selection.kind === "awaiting_verifier"
+          ? "final_verifier_unavailable"
+          : "final_verifier_capability_unknown";
+      const attentionId = finalVerifierAttentionId(stored.mission.id, gate.fingerprint, kind);
+      if (projected.attentionItems.some((item) => item.attentionId === attentionId)) continue;
+      projected = applyMissionAttentionTransition(projected, {
+        kind: "raise",
+        item: {
+          attentionId,
+          kind,
+          scope: {
+            kind: "workstream",
+            workstreamId: workstream.workstreamId,
+            blockDependents: true,
+          },
+          finalVerificationGateDetails: {
+            gateKey: gate.key,
+            gateFingerprint: gate.fingerprint,
+          },
+          status: "open",
+          priorMissionStatus: null,
+          assignmentId: null,
+          summary:
+            kind === "final_verifier_unavailable"
+              ? `No structurally eligible final verifier is available for Workstream ${workstream.workstreamId}`
+              : `Final verifier capabilities are unknown for Workstream ${workstream.workstreamId}`,
+          pathEvidence: [],
+          createdAt: this.options.clock.now(),
+          resolution: null,
+        },
+      });
+    }
+    if (projected === stored.mission) return stored;
+    const updated = await this.options.missions.update({
+      missionId: stored.mission.id,
+      expectedRevision: stored.mission.revision,
+      update: () => projected,
+    });
+    await this.options.events.publishMission(updated.mission);
+    return updated;
+  }
+
   private async reconcileReviewGateOutcomes(
     stored: NonNullable<Awaited<ReturnType<MissionStore["get"]>>>,
   ): Promise<NonNullable<Awaited<ReturnType<MissionStore["get"]>>>> {
@@ -1217,22 +1335,11 @@ export class TeamMissionScheduler {
       acceptedTurnsById,
       createdAt: this.options.clock.now(),
     });
-    const hasOpenMissionAttention = mission.attentionItems.some(
-      (item) => item.status === "open" && item.scope.kind === "mission",
-    );
-    const attentionBlockedWorkstreamIds = selectAttentionBlockedWorkstreamIds(mission);
-    const additions = hasOpenMissionAttention
-      ? []
-      : qualityGates.additions.filter(
-          (assignment) => !attentionBlockedWorkstreamIds.has(assignment.workstreamId),
-        );
-    const replacementReviewIdByWorkstreamId = new Map(
-      qualityGates.selectedAssignments.flatMap((assignment) =>
-        assignment.kind === "review" &&
-        additions.some((candidate) => candidate.assignmentId === assignment.assignmentId)
-          ? [[assignment.workstreamId, assignment.assignmentId] as const]
-          : [],
-      ),
+    const hasOpenMissionAttention = hasOpenMissionScopedAttention(mission);
+    const additions = selectMaterializableQualityGateAdditions(mission, qualityGates.additions);
+    const replacementReviewIdByWorkstreamId = selectReplacementReviewIds(
+      qualityGates.selectedAssignments,
+      additions,
     );
     const obsoleteReviewIds = new Set(
       qualityGates.obsoleteReviewAssignments.flatMap((assignment) =>
@@ -1252,14 +1359,11 @@ export class TeamMissionScheduler {
       }),
     );
     const selectedVerification = qualityGates.currentVerificationAssignments[0];
-    const selectedVerificationIsMaterialized =
-      selectedVerification !== undefined &&
-      (mission.assignments.some(
-        (assignment) => assignment.assignmentId === selectedVerification.assignmentId,
-      ) ||
-        additions.some(
-          (assignment) => assignment.assignmentId === selectedVerification.assignmentId,
-        ));
+    const selectedVerificationIsMaterialized = isSelectedVerificationMaterialized(
+      selectedVerification,
+      mission.assignments,
+      additions,
+    );
     const obsoleteVerificationIds = new Set(
       selectedVerificationIsMaterialized
         ? qualityGates.obsoleteVerificationAssignments.map((assignment) => assignment.assignmentId)
@@ -1289,10 +1393,15 @@ export class TeamMissionScheduler {
 
     const advancesExistingVerification =
       canEnterVerification && canAdvanceExistingVerification && mission.status !== "verifying";
+    const updatesFinalVerificationGate = requiresFinalVerificationGateUpdate(
+      mission,
+      qualityGates.expectedFinalVerificationGate,
+    );
     if (
       additions.length === 0 &&
       obsoleteReviewIds.size === 0 &&
       obsoleteVerificationIds.size === 0 &&
+      !updatesFinalVerificationGate &&
       !advancesExistingVerification
     ) {
       return stored;
@@ -1304,11 +1413,16 @@ export class TeamMissionScheduler {
         mission: {
           ...current,
           status: advancesExistingVerification ? "verifying" : current.status,
-          workstreams: current.workstreams.map((workstream) =>
-            replacementReviewIdByWorkstreamId.has(workstream.workstreamId)
-              ? { ...workstream, status: "review" as const }
-              : workstream,
-          ),
+          workstreams: current.workstreams.map((workstream) => ({
+            ...workstream,
+            status: replacementReviewIdByWorkstreamId.has(workstream.workstreamId)
+              ? ("review" as const)
+              : workstream.status,
+            finalVerificationGate:
+              workstream.kind === "verification" && qualityGates.expectedFinalVerificationGate
+                ? qualityGates.expectedFinalVerificationGate
+                : workstream.finalVerificationGate,
+          })),
           assignments: [
             ...current.assignments.map((assignment) =>
               obsoleteVerificationIds.has(assignment.assignmentId) ||
@@ -2459,6 +2573,16 @@ function reviewGateAttentionId(
     .digest("hex")}`;
 }
 
+function finalVerifierAttentionId(
+  missionId: string,
+  gateFingerprint: string,
+  kind: "final_verifier_unavailable" | "final_verifier_capability_unknown",
+): string {
+  return `final-verifier:${createHash("sha256")
+    .update(`${missionId}\0${gateFingerprint}\0${kind}`)
+    .digest("hex")}`;
+}
+
 function selectReadyAssignments(
   mission: TeamMission,
   reportRecoveries: ReadonlyArray<{ assignmentId: string; state: string }> = [],
@@ -2624,11 +2748,15 @@ function hasExpectedVerificationLineage(
 }
 
 function isApprovedCompletedVerification(assignment: MissionAssignmentContract): boolean {
+  const report = assignment.report;
+  if (report?.status !== "completed") return false;
+  const evidence = report.finalVerificationEvidence;
   return (
     assignment.semanticState === "completed" &&
     assignment.dispatchState === "settled" &&
-    assignment.report?.status === "completed" &&
-    assignment.report.verdict === "approved"
+    evidence?.verdict === "approved" &&
+    evidence.finalGateFingerprint === assignment.finalVerificationGateFingerprint &&
+    sameCanonicalValue(evidence.reviewGateEvidence, assignment.reviewGateEvidence)
   );
 }
 

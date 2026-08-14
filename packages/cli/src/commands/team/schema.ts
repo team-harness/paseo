@@ -1,5 +1,6 @@
 import type {
   MissionAssignmentContract,
+  MissionFinalVerificationEvidence,
   TeamMission,
   TeamSkill,
   TeamV2,
@@ -217,10 +218,47 @@ export interface MissionDetail extends MissionRow {
     waiverReason: string | null;
     report: MissionAssignmentContract["report"];
   }>;
+  finalVerification: {
+    workstreamId: string;
+    status:
+      | "awaiting_capabilities"
+      | "awaiting_verifier"
+      | "assigned"
+      | "approved"
+      | "changes_requested";
+    coordinatorMemberId: string;
+    verifierMemberId: string | null;
+    fingerprint: string;
+    subjectAssignmentIds: string[];
+    reviewGateFingerprints: string[];
+    assignmentId: string | null;
+    evidence: MissionFinalVerificationEvidence | null;
+  } | null;
 }
 
 export function toMissionDetail(mission: TeamMission): MissionDetail {
   const attentionAttributions = selectOpenWorkstreamAttentionAttributions(mission);
+  const verificationWorkstream = mission.workstreams.find(
+    (workstream) => workstream.kind === "verification",
+  );
+  const finalGate = verificationWorkstream?.finalVerificationGate ?? null;
+  const verificationAssignment =
+    finalGate?.selection.kind === "assigned"
+      ? (mission.assignments.find(
+          (assignment) =>
+            assignment.kind === "verification" &&
+            assignment.workstreamId === verificationWorkstream?.workstreamId &&
+            assignment.planRevision === mission.planRevision &&
+            assignment.semanticState !== "canceled" &&
+            assignment.finalVerificationGateFingerprint === finalGate.fingerprint,
+        ) ?? null)
+      : null;
+  const finalEvidence =
+    verificationAssignment?.report?.status === "completed" &&
+    verificationAssignment.report.finalVerificationEvidence?.finalGateFingerprint ===
+      finalGate?.fingerprint
+      ? verificationAssignment.report.finalVerificationEvidence
+      : null;
   return {
     ...toMissionRow(mission),
     workspace: mission.workspaceId,
@@ -281,6 +319,24 @@ export function toMissionDetail(mission: TeamMission): MissionDetail {
         },
       ];
     }),
+    finalVerification:
+      verificationWorkstream && finalGate
+        ? {
+            workstreamId: verificationWorkstream.workstreamId,
+            status:
+              finalGate.selection.kind === "assigned"
+                ? (finalEvidence?.verdict ?? "assigned")
+                : finalGate.selection.kind,
+            coordinatorMemberId: verificationWorkstream.ownerMemberId,
+            verifierMemberId:
+              finalGate.selection.kind === "assigned" ? finalGate.selection.verifierMemberId : null,
+            fingerprint: finalGate.fingerprint,
+            subjectAssignmentIds: finalGate.key.subjectAssignmentIds,
+            reviewGateFingerprints: finalGate.key.reviewGateFingerprints,
+            assignmentId: verificationAssignment?.assignmentId ?? null,
+            evidence: finalEvidence,
+          }
+        : null,
   };
 }
 
@@ -330,6 +386,11 @@ function renderMissionBlock(mission: MissionDetail): string {
       `  review gate ${gate.workstreamId}: ${gate.outcome} (${gate.selection}) subjects=${gate.subjectAssignmentIds.join(",") || "-"}`,
       ...renderReviewGateEvidence(gate),
     ]),
+    ...(mission.finalVerification
+      ? [
+          `  final verification: ${mission.finalVerification.status} verifier=${mission.finalVerification.verifierMemberId ?? "-"} fingerprint=${mission.finalVerification.fingerprint} assignment=${mission.finalVerification.assignmentId ?? "-"} evidence=${mission.finalVerification.evidence?.verdict ?? "-"}`,
+        ]
+      : []),
   ].join("\n");
 }
 

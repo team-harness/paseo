@@ -323,4 +323,83 @@ describe("Mission output", () => {
     );
     expect(output).not.toContain("paused");
   });
+
+  it("renders final verification from the gate and typed evidence", () => {
+    const aggregate = structuredClone(mission);
+    aggregate.planRevision = 1;
+    const fingerprint = `sha256:${"a".repeat(64)}`;
+    aggregate.workstreams.push({
+      workstreamId: "workstream-final-verification",
+      kind: "verification",
+      title: "Final verification",
+      ownerMemberId: "member-lead",
+      reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+      dependencyWorkstreamIds: [],
+      status: "active",
+      finalVerificationGate: {
+        key: {
+          workstreamId: "workstream-final-verification",
+          planRevision: 1,
+          methodologySnapshotRevision: 1,
+          subjectAssignmentIds: ["assignment-api"],
+          reviewGateFingerprints: [],
+          requirements: {
+            requiredSkillIds: ["verification"],
+            preferredSkillIds: [],
+            requiredRuntimeCapabilityIds: [],
+            minimumLevel: 3,
+          },
+        },
+        fingerprint,
+        selection: {
+          kind: "assigned",
+          verifierMemberId: "member-verifier",
+          matchExplanation: {} as never,
+          independenceExceptionReason: null,
+        },
+      },
+    } as TeamMission["workstreams"][number]);
+    aggregate.assignments.push({
+      assignmentId: "assignment-final-verification",
+      kind: "verification",
+      workstreamId: "workstream-final-verification",
+      planRevision: 1,
+      semanticState: "completed",
+      assigneeMemberId: "member-verifier",
+      finalVerificationGateFingerprint: fingerprint,
+      reviewGateEvidence: [],
+      report: {
+        status: "completed",
+        verdict: "changes_requested",
+        finalVerificationEvidence: {
+          kind: "final_verification",
+          finalGateFingerprint: fingerprint,
+          verdict: "changes_requested",
+          reviewGateEvidence: [],
+        },
+        summary: "Integration proof is incomplete",
+        artifactPaths: [],
+        tests: [],
+        decisions: [],
+        handoffs: [],
+      },
+    } as TeamMission["assignments"][number]);
+
+    const detail = toMissionDetail(aggregate);
+    expect(detail.finalVerification).toMatchObject({
+      status: "changes_requested",
+      coordinatorMemberId: "member-lead",
+      verifierMemberId: "member-verifier",
+      fingerprint,
+      assignmentId: "assignment-final-verification",
+      evidence: { verdict: "changes_requested", finalGateFingerprint: fingerprint },
+    });
+    const output = missionDetailSchema.renderHuman?.(
+      { type: "single", data: detail, schema: missionDetailSchema },
+      { format: "table", quiet: false, noHeaders: false, noColor: true },
+    );
+    expect(output).toContain(
+      `final verification: changes_requested verifier=member-verifier fingerprint=${fingerprint}`,
+    );
+  });
 });

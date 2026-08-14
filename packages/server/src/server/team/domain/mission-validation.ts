@@ -1,7 +1,9 @@
 import type {
   MissionAssignmentContract,
   MissionAttentionItem,
+  MissionFinalVerificationGate,
   MissionMemberRequirements,
+  MissionReviewGateEvidence,
   MissionReviewGateKey,
   MissionReviewWaiver,
   MissionRosterMemberSnapshot,
@@ -16,7 +18,12 @@ import {
   type AssignmentStateViolation,
   validateAssignmentContract,
 } from "./assignment-contract-validation.js";
-import { matchWorkstreamOwner, matchWorkstreamReviewer } from "./member-matching.js";
+import {
+  matchMissionFinalVerifier,
+  matchWorkstreamOwner,
+  matchWorkstreamReviewer,
+} from "./member-matching.js";
+import { buildMissionFinalVerificationGate } from "./mission-final-verification-gate.js";
 import {
   missionReviewGateKeyFingerprint,
   missionReviewReportFingerprint,
@@ -40,7 +47,12 @@ export type TeamMissionIssue =
       workstreamId: string;
       assignmentIds: string[];
     }
+  | { kind: "awaiting_final_verification_has_assignment"; workstreamId: string }
+  | { kind: "final_verification_assignment_gate_mismatch"; assignmentId: string }
+  | { kind: "invalid_final_verification_review_evidence"; assignmentId: string }
+  | { kind: "invalid_final_verification_report_evidence"; assignmentId: string }
   | { kind: "writable_final_verification"; workstreamId: string }
+  | { kind: "invalid_final_verification_gate"; workstreamId: string }
   | {
       kind: "uncovered_final_verification_path";
       verificationWorkstreamId: string;
@@ -376,6 +388,8 @@ const allowedAttentionResolutionKinds: Record<
   reviewer_unavailable: new Set(["replan", "cancel_mission"]),
   review_gate_reviewer_unavailable: new Set(["replan", "waive_review", "cancel_mission"]),
   review_gate_capability_unknown: new Set(["replan", "cancel_mission"]),
+  final_verifier_unavailable: new Set(["replan", "cancel_mission"]),
+  final_verifier_capability_unknown: new Set(["replan", "cancel_mission"]),
   lead_unavailable: new Set(["replace_lead", "cancel_mission"]),
   notification_unacknowledged: new Set(["restore_notification", "cancel_mission"]),
 };
@@ -386,7 +400,8 @@ export function validateMissionAttentionResolution(
   resolution: NonNullable<TeamMission["attentionItems"][number]["resolution"]>,
 ): TeamMissionIssue[] {
   const assignmentIds = new Set(mission.assignments.map((assignment) => assignment.assignmentId));
-  return validateAttentionItem({ ...item, status: "resolved", resolution }, assignmentIds);
+  const resolved = { ...item, status: "resolved", resolution } as MissionAttentionItem;
+  return validateAttentionItem(resolved, assignmentIds);
 }
 
 function validateAttentionItem(
@@ -470,7 +485,9 @@ function validateWorkstreamAttentionState(mission: TeamMission): TeamMissionIssu
   for (const item of mission.attentionItems) {
     if (
       item.kind !== "review_gate_reviewer_unavailable" &&
-      item.kind !== "review_gate_capability_unknown"
+      item.kind !== "review_gate_capability_unknown" &&
+      item.kind !== "final_verifier_unavailable" &&
+      item.kind !== "final_verifier_capability_unknown"
     ) {
       continue;
     }
@@ -503,11 +520,27 @@ function validateWorkstreamAttentionState(mission: TeamMission): TeamMissionIssu
 type WorkstreamAttentionItem = Extract<
   MissionAttentionItem,
   {
-    kind: "review_gate_reviewer_unavailable" | "review_gate_capability_unknown";
+    kind:
+      | "review_gate_reviewer_unavailable"
+      | "review_gate_capability_unknown"
+      | "final_verifier_unavailable"
+      | "final_verifier_capability_unknown";
   }
 >;
 
 function hasValidWorkstreamAttentionHistory(item: WorkstreamAttentionItem): boolean {
+  if ("finalVerificationGateDetails" in item) {
+    const details = item.finalVerificationGateDetails;
+    return (
+      item.priorMissionStatus === null &&
+      details.gateKey.workstreamId === item.scope.workstreamId &&
+      details.gateFingerprint ===
+        buildMissionFinalVerificationGate({
+          ...details.gateKey,
+          selection: { kind: "awaiting_verifier" },
+        }).fingerprint
+    );
+  }
   const details = item.reviewGateDetails;
   return (
     item.priorMissionStatus === null &&
@@ -528,6 +561,42 @@ function matchesCurrentWorkstreamAttention(
   const workstream = mission.workstreams.find(
     (candidate) => candidate.workstreamId === item.scope.workstreamId,
   );
+  if ("finalVerificationGateDetails" in item) {
+    return matchesCurrentFinalVerifierAttention(mission, workstream, item);
+  }
+  return matchesCurrentReviewGateAttention(mission, workstream, item);
+}
+
+function matchesCurrentFinalVerifierAttention(
+  mission: TeamMission,
+  workstream: MissionWorkstream | undefined,
+  item: Extract<WorkstreamAttentionItem, { finalVerificationGateDetails: unknown }>,
+): boolean {
+  const gate = workstream?.finalVerificationGate;
+  const expectedSelectionKind =
+    item.kind === "final_verifier_unavailable" ? "awaiting_verifier" : "awaiting_capabilities";
+  const hasVerificationAssignment = mission.assignments.some(
+    (assignment) =>
+      assignment.kind === "verification" &&
+      assignment.workstreamId === item.scope.workstreamId &&
+      assignment.planRevision === mission.planRevision &&
+      assignment.semanticState !== "canceled",
+  );
+  return (
+    workstream?.kind === "verification" &&
+    workstream.planRevision === mission.planRevision &&
+    gate?.selection.kind === expectedSelectionKind &&
+    !hasVerificationAssignment &&
+    sameCanonicalValue(gate.key, item.finalVerificationGateDetails.gateKey) &&
+    gate.fingerprint === item.finalVerificationGateDetails.gateFingerprint
+  );
+}
+
+function matchesCurrentReviewGateAttention(
+  mission: TeamMission,
+  workstream: MissionWorkstream | undefined,
+  item: Extract<WorkstreamAttentionItem, { reviewGateDetails: unknown }>,
+): boolean {
   if (
     workstream?.planRevision !== mission.planRevision ||
     workstream.reviewGate.kind !== "required"
@@ -629,17 +698,156 @@ function validateFinalVerificationAssignments(
 ): TeamMissionIssue[] {
   const finalVerification = finalVerifications.length === 1 ? finalVerifications[0] : null;
   if (!finalVerification) return [];
-  const assignmentIds = currentFinalVerificationAssignments(mission, finalVerification)
-    .map((assignment) => assignment.assignmentId)
-    .toSorted();
-  if (assignmentIds.length <= 1) return [];
-  return [
-    {
+  const assignments = currentFinalVerificationAssignments(mission, finalVerification);
+  const assignmentIds = assignments.map((assignment) => assignment.assignmentId).toSorted();
+  const issues: TeamMissionIssue[] = [];
+  if (
+    finalVerification.finalVerificationGate?.selection.kind !== "assigned" &&
+    assignmentIds.length > 0
+  ) {
+    issues.push({
+      kind: "awaiting_final_verification_has_assignment",
+      workstreamId: finalVerification.workstreamId,
+    });
+  }
+  const gate = finalVerification.finalVerificationGate;
+  const assignment = assignments.length === 1 ? assignments[0] : null;
+  if (assignmentIds.length > 1) {
+    issues.push({
       kind: "multiple_final_verification_assignments",
       workstreamId: finalVerification.workstreamId,
       assignmentIds,
-    },
-  ];
+    });
+  }
+  if (!assignment || gate?.selection.kind !== "assigned") return issues;
+  issues.push(...validateFinalVerificationAssignmentEvidence(mission, assignment, gate));
+  return issues;
+}
+
+export function validateFinalVerificationAssignmentEvidence(
+  mission: TeamMission,
+  assignment: MissionAssignmentContract,
+  gate: MissionFinalVerificationGate,
+): TeamMissionIssue[] {
+  if (
+    gate.selection.kind !== "assigned" ||
+    assignment.assigneeMemberId !== gate.selection.verifierMemberId ||
+    assignment.finalVerificationGateFingerprint !== gate.fingerprint ||
+    assignment.mutableScope.kind !== "read_only"
+  ) {
+    return [
+      {
+        kind: "final_verification_assignment_gate_mismatch",
+        assignmentId: assignment.assignmentId,
+      },
+    ];
+  }
+  const expectedAssignmentIds = gate.key.subjectAssignmentIds.toSorted();
+  const missionAssignmentIds = new Set(
+    mission.assignments.map((candidate) => candidate.assignmentId),
+  );
+  const referencesUnknownAssignment = [
+    ...assignment.subjectAssignmentIds,
+    ...assignment.dependencyAssignmentIds,
+  ].some((assignmentId) => !missionAssignmentIds.has(assignmentId));
+  if (
+    mission.status !== "completed" &&
+    !referencesUnknownAssignment &&
+    (!hasExactUniqueAssignmentIds(assignment.subjectAssignmentIds, expectedAssignmentIds) ||
+      !hasExactUniqueAssignmentIds(assignment.dependencyAssignmentIds, expectedAssignmentIds))
+  ) {
+    return [
+      {
+        kind: "invalid_final_verification_assignment_coverage",
+        verificationAssignmentId: assignment.assignmentId,
+        expectedAssignmentIds,
+        subjectAssignmentIds: assignment.subjectAssignmentIds.toSorted(),
+        dependencyAssignmentIds: assignment.dependencyAssignmentIds.toSorted(),
+      },
+    ];
+  }
+  const expectedReviewGateEvidence = expectedFinalReviewGateEvidence(mission);
+  const expectedReviewGateFingerprints = expectedReviewGateEvidence
+    .map((evidence) => evidence.gateKeyFingerprint)
+    .toSorted();
+  if (
+    !sameCanonicalValue(
+      canonicalReviewGateEvidence(assignment.reviewGateEvidence),
+      canonicalReviewGateEvidence(expectedReviewGateEvidence),
+    ) ||
+    !sameCanonicalValue(gate.key.reviewGateFingerprints, expectedReviewGateFingerprints)
+  ) {
+    return [
+      {
+        kind: "invalid_final_verification_review_evidence",
+        assignmentId: assignment.assignmentId,
+      },
+    ];
+  }
+  if (assignment.report === null) return [];
+  if (assignment.report.status !== "completed") {
+    return [
+      {
+        kind: "invalid_final_verification_report_evidence",
+        assignmentId: assignment.assignmentId,
+      },
+    ];
+  }
+  const evidence = assignment.report.finalVerificationEvidence;
+  return !evidence ||
+    evidence.finalGateFingerprint !== gate.fingerprint ||
+    evidence.verdict !== assignment.report.verdict ||
+    !sameCanonicalValue(
+      canonicalReviewGateEvidence(evidence.reviewGateEvidence),
+      canonicalReviewGateEvidence(assignment.reviewGateEvidence),
+    )
+    ? [
+        {
+          kind: "invalid_final_verification_report_evidence",
+          assignmentId: assignment.assignmentId,
+        },
+      ]
+    : [];
+}
+
+function expectedFinalReviewGateEvidence(mission: TeamMission): MissionReviewGateEvidence[] {
+  return mission.workstreams.flatMap<MissionReviewGateEvidence>((workstream) => {
+    const gate = workstream.reviewGate;
+    if (gate.kind !== "required") return [];
+    if (gate.outcome.kind === "approved") {
+      return [
+        {
+          kind: "approved" as const,
+          gateKey: gate.gateKey,
+          gateKeyFingerprint: gate.gateKeyFingerprint,
+          subjectFingerprint: gate.subjectFingerprint,
+          reviewAssignmentId: gate.outcome.reviewAssignmentId,
+          reportFingerprint: gate.outcome.reportFingerprint,
+          inheritedFromGateFingerprint: gate.outcome.inheritedFromGateFingerprint,
+        },
+      ];
+    }
+    if (gate.outcome.kind === "waived") {
+      return [
+        {
+          kind: "waived" as const,
+          gateKey: gate.gateKey,
+          gateKeyFingerprint: gate.gateKeyFingerprint,
+          subjectFingerprint: gate.subjectFingerprint,
+          waiverId: gate.outcome.waiverId,
+        },
+      ];
+    }
+    return [];
+  });
+}
+
+function canonicalReviewGateEvidence(
+  evidence: ReadonlyArray<MissionReviewGateEvidence>,
+): MissionReviewGateEvidence[] {
+  return [...evidence].toSorted((left, right) =>
+    left.gateKeyFingerprint.localeCompare(right.gateKeyFingerprint),
+  );
 }
 
 function validateRosterSnapshot(snapshot: MissionRosterSnapshot): TeamMissionIssue[] {
@@ -768,12 +976,19 @@ function candidatesFromExplanation(
 function recomputeOwnerMatch(workstream: MissionWorkstream, snapshot: MissionRosterSnapshot) {
   const candidates = candidatesFromExplanation(snapshot, workstream.ownerMatchExplanation);
   if (!candidates) return null;
+  const requirements =
+    workstream.kind === "verification"
+      ? {
+          requiredSkillIds: workstream.ownerMatchExplanation.requiredSkillIds,
+          preferredSkillIds: workstream.ownerMatchExplanation.preferredSkillIds,
+          requiredRuntimeCapabilityIds:
+            workstream.ownerMatchExplanation.requiredRuntimeCapabilityIds,
+          minimumLevel: workstream.ownerMatchExplanation.minimumLevel,
+        }
+      : ownerRequirements(workstream);
   return matchWorkstreamOwner({
     candidates,
-    requiredSkillIds: workstream.requiredSkillIds,
-    preferredSkillIds: workstream.preferredSkillIds,
-    requiredRuntimeCapabilityIds: workstream.requiredRuntimeCapabilityIds,
-    minimumLevel: workstream.minimumLevel,
+    ...requirements,
     previousOwnerMemberId: workstream.ownerMatchExplanation.previousMemberId,
   });
 }
@@ -795,7 +1010,6 @@ function recomputeReviewerMatch(workstream: MissionWorkstream, snapshot: Mission
 function validateWorkstreamOwnerSelection(
   workstream: MissionWorkstream,
   snapshot: MissionRosterSnapshot,
-  writableOwnerMemberIds: ReadonlySet<string>,
 ): TeamMissionIssue[] {
   const owner = snapshot.members.find((member) => member.memberId === workstream.ownerMemberId);
   if (!owner) {
@@ -817,7 +1031,11 @@ function validateWorkstreamOwnerSelection(
   ) {
     issues.push({ kind: "invalid_owner_match_explanation", workstreamId: workstream.workstreamId });
   }
-  if (!memberMeetsHardRequirements(owner, ownerRequirements(workstream))) {
+  const ownerEligibilityRequirements =
+    workstream.kind === "verification"
+      ? workstream.ownerMatchExplanation
+      : ownerRequirements(workstream);
+  if (!memberMeetsHardRequirements(owner, ownerEligibilityRequirements)) {
     issues.push({
       kind: "ineligible_workstream_owner",
       workstreamId: workstream.workstreamId,
@@ -836,29 +1054,139 @@ function validateWorkstreamOwnerSelection(
       selectedMemberId: workstream.ownerMemberId,
     });
   }
-  if (workstream.kind !== "verification" || !writableOwnerMemberIds.has(workstream.ownerMemberId)) {
-    return issues;
-  }
-  const requirements = ownerRequirements(workstream);
-  const hasIndependentAlternative = snapshot.members.some(
-    (member) =>
-      !writableOwnerMemberIds.has(member.memberId) &&
-      memberMeetsHardRequirements(member, requirements),
-  );
-  if (hasIndependentAlternative) {
-    issues.push({
-      kind: "non_independent_final_verification",
-      workstreamId: workstream.workstreamId,
-      memberId: workstream.ownerMemberId,
-    });
-  } else if (workstream.ownerOverrideReason === null) {
-    issues.push({
-      kind: "undocumented_final_verification_exception",
-      workstreamId: workstream.workstreamId,
-      memberId: workstream.ownerMemberId,
-    });
-  }
   return issues;
+}
+
+function validateFinalVerificationGate(
+  workstream: MissionWorkstream,
+  snapshot: MissionRosterSnapshot,
+  writableOwnerMemberIds: ReadonlySet<string>,
+): TeamMissionIssue[] {
+  const gate = workstream.finalVerificationGate;
+  if (workstream.kind !== "verification") {
+    return gate === null
+      ? []
+      : [{ kind: "invalid_final_verification_gate", workstreamId: workstream.workstreamId }];
+  }
+  if (!gate) {
+    return [{ kind: "invalid_final_verification_gate", workstreamId: workstream.workstreamId }];
+  }
+  if (!isCanonicalFinalVerificationGate(workstream, gate)) {
+    return [{ kind: "invalid_final_verification_gate", workstreamId: workstream.workstreamId }];
+  }
+  const expected = expectedFinalVerifierSelection(gate, snapshot, writableOwnerMemberIds);
+  if (gate.selection.kind !== "assigned") {
+    return sameCanonicalValue(gate.selection, expected)
+      ? []
+      : [{ kind: "invalid_final_verification_gate", workstreamId: workstream.workstreamId }];
+  }
+  return validateAssignedFinalVerifier(
+    workstream,
+    gate,
+    expected,
+    snapshot,
+    writableOwnerMemberIds,
+  );
+}
+
+function isCanonicalFinalVerificationGate(
+  workstream: MissionWorkstream,
+  gate: MissionFinalVerificationGate,
+): boolean {
+  const canonicalSubjectAssignmentIds = [...new Set(gate.key.subjectAssignmentIds)].toSorted();
+  const canonicalReviewGateFingerprints = [...new Set(gate.key.reviewGateFingerprints)].toSorted();
+  const rebuilt = buildMissionFinalVerificationGate({
+    workstreamId: gate.key.workstreamId,
+    planRevision: gate.key.planRevision,
+    methodologySnapshotRevision: gate.key.methodologySnapshotRevision,
+    subjectAssignmentIds: gate.key.subjectAssignmentIds,
+    reviewGateFingerprints: gate.key.reviewGateFingerprints,
+    requirements: gate.key.requirements,
+    selection: gate.selection,
+  });
+  return !(
+    gate.key.workstreamId !== workstream.workstreamId ||
+    gate.key.planRevision !== workstream.planRevision ||
+    gate.key.methodologySnapshotRevision !== workstream.methodologySnapshotRevision ||
+    !sameCanonicalValue(gate.key.subjectAssignmentIds, canonicalSubjectAssignmentIds) ||
+    !sameCanonicalValue(gate.key.reviewGateFingerprints, canonicalReviewGateFingerprints) ||
+    !sameCanonicalValue(gate.key.requirements, ownerRequirements(workstream)) ||
+    gate.fingerprint !== rebuilt.fingerprint
+  );
+}
+
+function expectedFinalVerifierSelection(
+  gate: MissionFinalVerificationGate,
+  snapshot: MissionRosterSnapshot,
+  writableOwnerMemberIds: ReadonlySet<string>,
+): MissionFinalVerificationGate["selection"] {
+  const candidateLoads =
+    gate.selection.kind === "assigned"
+      ? new Map(
+          gate.selection.matchExplanation.candidateOpenAssignments.map((candidate) => [
+            candidate.memberId,
+            candidate.openAssignments,
+          ]),
+        )
+      : new Map<string, number>();
+  return matchMissionFinalVerifier({
+    candidates: snapshot.members.map((profile) => ({
+      profile,
+      openAssignments: candidateLoads.get(profile.memberId) ?? 0,
+    })),
+    ...gate.key.requirements,
+    previousVerifierMemberId:
+      gate.selection.kind === "assigned" ? gate.selection.matchExplanation.previousMemberId : null,
+    writableOwnerMemberIds,
+  });
+}
+
+function validateAssignedFinalVerifier(
+  workstream: MissionWorkstream,
+  gate: MissionFinalVerificationGate,
+  expected: MissionFinalVerificationGate["selection"],
+  snapshot: MissionRosterSnapshot,
+  writableOwnerMemberIds: ReadonlySet<string>,
+): TeamMissionIssue[] {
+  if (gate.selection.kind !== "assigned") return [];
+  const assignedSelection = gate.selection;
+  const verifier = snapshot.members.find(
+    (member) => member.memberId === assignedSelection.verifierMemberId,
+  );
+  if (!verifier || !memberMeetsHardRequirements(verifier, gate.key.requirements)) {
+    return [{ kind: "invalid_final_verification_gate", workstreamId: workstream.workstreamId }];
+  }
+  if (writableOwnerMemberIds.has(assignedSelection.verifierMemberId)) {
+    const hasIndependentAlternative = snapshot.members.some(
+      (member) =>
+        !writableOwnerMemberIds.has(member.memberId) &&
+        memberMeetsHardRequirements(member, gate.key.requirements),
+    );
+    if (hasIndependentAlternative) {
+      return [
+        {
+          kind: "non_independent_final_verification",
+          workstreamId: workstream.workstreamId,
+          memberId: assignedSelection.verifierMemberId,
+        },
+      ];
+    }
+    if (assignedSelection.independenceExceptionReason === null) {
+      return [
+        {
+          kind: "undocumented_final_verification_exception",
+          workstreamId: workstream.workstreamId,
+          memberId: assignedSelection.verifierMemberId,
+        },
+      ];
+    }
+  }
+  return expected.kind === "assigned" &&
+    expected.verifierMemberId === assignedSelection.verifierMemberId &&
+    (expected.independenceExceptionReason === null) ===
+      (assignedSelection.independenceExceptionReason === null)
+    ? []
+    : [{ kind: "invalid_final_verification_gate", workstreamId: workstream.workstreamId }];
 }
 
 function validateReviewerMatchAudit(
@@ -1531,7 +1859,8 @@ function validateWorkstreamSelections(
     ) {
       continue;
     }
-    issues.push(...validateWorkstreamOwnerSelection(workstream, snapshot, writableOwnerMemberIds));
+    issues.push(...validateWorkstreamOwnerSelection(workstream, snapshot));
+    issues.push(...validateFinalVerificationGate(workstream, snapshot, writableOwnerMemberIds));
     issues.push(
       ...validateWorkstreamReviewSelection(
         workstream,
@@ -1775,7 +2104,9 @@ function expectedAssignmentMemberId(
     return workstream.reviewGate.selection.reviewerMemberId;
   }
   if (assignment.kind === "verification" && workstream.kind === "verification") {
-    return workstream.ownerMemberId;
+    return workstream.finalVerificationGate?.selection.kind === "assigned"
+      ? workstream.finalVerificationGate.selection.verifierMemberId
+      : null;
   }
   return null;
 }

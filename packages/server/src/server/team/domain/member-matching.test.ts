@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { MissionRosterMemberSnapshot } from "@getpaseo/protocol/team/v2-types";
 
-import { matchWorkstreamOwner, matchWorkstreamReviewer } from "./member-matching.js";
+import {
+  matchMissionFinalVerifier,
+  matchWorkstreamOwner,
+  matchWorkstreamReviewer,
+} from "./member-matching.js";
 
 function member(
   memberId: string,
@@ -299,5 +303,85 @@ describe("workstream reviewer matching", () => {
     });
 
     expect(result).toEqual({ kind: "unmatched", reason: "no_eligible_member" });
+  });
+});
+
+describe("Mission final verifier matching", () => {
+  it("prefers a hard-eligible Member independent from writable Workstream owners", () => {
+    const result = matchMissionFinalVerifier({
+      candidates: [
+        { profile: member("member-owner", 4, ["verification"]), openAssignments: 0 },
+        { profile: member("member-verifier", 4, ["verification"]), openAssignments: 1 },
+      ],
+      requiredSkillIds: ["verification"],
+      preferredSkillIds: [],
+      requiredRuntimeCapabilityIds: ["structured-tools"],
+      minimumLevel: 4,
+      previousVerifierMemberId: null,
+      writableOwnerMemberIds: new Set(["member-owner"]),
+    });
+
+    expect(result).toMatchObject({
+      kind: "assigned",
+      verifierMemberId: "member-verifier",
+      independenceExceptionReason: null,
+      matchExplanation: { excludedMemberIds: ["member-owner"] },
+    });
+  });
+
+  it("falls back to a non-independent hard-eligible Member with an explicit exception", () => {
+    const result = matchMissionFinalVerifier({
+      candidates: [
+        { profile: member("member-owner", 4, ["verification"]), openAssignments: 0 },
+        { profile: member("member-junior", 2, ["verification"]), openAssignments: 0 },
+      ],
+      requiredSkillIds: ["verification"],
+      preferredSkillIds: [],
+      requiredRuntimeCapabilityIds: ["structured-tools"],
+      minimumLevel: 4,
+      previousVerifierMemberId: null,
+      writableOwnerMemberIds: new Set(["member-owner"]),
+    });
+
+    expect(result).toMatchObject({
+      kind: "assigned",
+      verifierMemberId: "member-owner",
+      independenceExceptionReason: expect.any(String),
+    });
+  });
+
+  it("distinguishes unknown capability facts from a known-empty eligible set", () => {
+    const base = {
+      requiredSkillIds: ["verification"],
+      preferredSkillIds: [],
+      requiredRuntimeCapabilityIds: ["structured-tools"],
+      minimumLevel: 4 as const,
+      previousVerifierMemberId: null,
+      writableOwnerMemberIds: new Set<string>(),
+    };
+    const unknown = matchMissionFinalVerifier({
+      ...base,
+      candidates: [
+        {
+          profile: member("member-unknown", 4, ["verification"], [], false),
+          openAssignments: 0,
+        },
+      ],
+    });
+    const knownEmpty = matchMissionFinalVerifier({
+      ...base,
+      candidates: [
+        {
+          profile: member("member-known", 4, ["verification"], []),
+          openAssignments: 0,
+        },
+      ],
+    });
+
+    expect(unknown).toEqual({
+      kind: "awaiting_capabilities",
+      candidateMemberIds: ["member-unknown"],
+    });
+    expect(knownEmpty).toEqual({ kind: "awaiting_verifier" });
   });
 });

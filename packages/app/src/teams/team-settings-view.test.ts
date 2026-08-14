@@ -149,6 +149,8 @@ function acceptedAssignment(
     subjectAssignmentIds: [],
     reviewGateFingerprint: null,
     reviewSubjectFingerprint: null,
+    finalVerificationGateFingerprint: null,
+    reviewGateEvidence: [],
     missionId: "mission-1",
     workstreamId: "workstream-ui",
     assigneeMemberId,
@@ -380,6 +382,7 @@ describe("Team settings view", () => {
         },
         outcome: { kind: "pending" },
       },
+      finalVerificationGate: null,
       status: "active",
     });
     aggregate.assignments.push({
@@ -389,6 +392,8 @@ describe("Team settings view", () => {
       subjectAssignmentIds: [],
       reviewGateFingerprint: null,
       reviewSubjectFingerprint: null,
+      finalVerificationGateFingerprint: null,
+      reviewGateEvidence: [],
       missionId: aggregate.id,
       workstreamId: "workstream-ui",
       assigneeMemberId: "member-lead",
@@ -505,6 +510,95 @@ describe("Team settings view", () => {
     ]);
   });
 
+  it("derives final verification state and verifier only from typed gate evidence", () => {
+    const aggregate = mission();
+    const fingerprint = `sha256:${"a".repeat(64)}`;
+    const finalGate = {
+      key: {
+        workstreamId: "workstream-final-verification",
+        planRevision: 1,
+        methodologySnapshotRevision: 1 as const,
+        subjectAssignmentIds: ["assignment-ui"],
+        reviewGateFingerprints: [],
+        requirements: {
+          requiredSkillIds: ["testing"],
+          preferredSkillIds: [],
+          requiredRuntimeCapabilityIds: [],
+          minimumLevel: 3,
+        },
+      },
+      fingerprint,
+      selection: {
+        kind: "assigned" as const,
+        verifierMemberId: "member-reviewer",
+        matchExplanation: {} as never,
+        independenceExceptionReason: null,
+      },
+    };
+    aggregate.workstreams = [
+      {
+        workstreamId: "workstream-final-verification",
+        kind: "verification",
+        title: "Final verification",
+        objective: "Verify the Mission",
+        ownerMemberId: "member-lead",
+        reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+        finalVerificationGate: finalGate,
+        dependencyWorkstreamIds: [],
+        mutableScope: { kind: "read_only" },
+        status: "active",
+      } as unknown as TeamMission["workstreams"][number],
+    ];
+    aggregate.assignments = [
+      {
+        assignmentId: "assignment-final-verification",
+        kind: "verification",
+        workstreamId: "workstream-final-verification",
+        planRevision: 1,
+        semanticState: "completed",
+        finalVerificationGateFingerprint: fingerprint,
+        reviewGateEvidence: [],
+        report: {
+          status: "completed",
+          verdict: "approved",
+          finalVerificationEvidence: {
+            kind: "final_verification",
+            finalGateFingerprint: fingerprint,
+            verdict: "approved",
+            reviewGateEvidence: [],
+          },
+          summary: "Final verification approved",
+          artifactPaths: [],
+          tests: [],
+          decisions: [],
+          handoffs: [],
+        },
+      } as unknown as TeamMission["assignments"][number],
+    ];
+
+    expect(selectTeamPlanRows(team(), aggregate)[0]).toMatchObject({
+      owner: { memberId: "member-lead" },
+      finalVerificationStatus: "approved",
+      finalVerifier: { memberId: "member-reviewer", mentionHandle: "reviewer" },
+      finalGateFingerprint: fingerprint,
+      finalVerificationEvidence: {
+        verdict: "approved",
+        finalGateFingerprint: fingerprint,
+      },
+    });
+
+    aggregate.assignments = [];
+    finalGate.selection = {
+      kind: "awaiting_capabilities",
+      candidateMemberIds: ["member-reviewer"],
+    } as never;
+    expect(selectTeamPlanRows(team(), aggregate)[0]).toMatchObject({
+      finalVerificationStatus: "awaiting_capabilities",
+      finalVerifier: null,
+      finalVerificationEvidence: null,
+    });
+  });
+
   it("attributes scoped blockers while preserving independent Workstream readiness", () => {
     const aggregate = mission();
     aggregate.workstreams = [
@@ -514,6 +608,7 @@ describe("Team settings view", () => {
         status: "blocked",
         ownerMemberId: "member-lead",
         reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+        finalVerificationGate: null,
         dependencyWorkstreamIds: [],
         mutableScope: { kind: "read_only" },
       },
@@ -523,6 +618,7 @@ describe("Team settings view", () => {
         status: "blocked",
         ownerMemberId: "member-lead",
         reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+        finalVerificationGate: null,
         dependencyWorkstreamIds: ["workstream-api"],
         mutableScope: { kind: "read_only" },
       },
@@ -532,6 +628,7 @@ describe("Team settings view", () => {
         status: "ready",
         ownerMemberId: "member-lead",
         reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+        finalVerificationGate: null,
         dependencyWorkstreamIds: [],
         mutableScope: { kind: "read_only" },
       },

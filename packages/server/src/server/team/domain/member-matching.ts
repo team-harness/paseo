@@ -1,4 +1,5 @@
 import type {
+  MissionFinalVerificationGateSelection,
   MissionMemberMatchExplanation,
   MissionMutableScope,
   MissionRosterMemberSnapshot,
@@ -28,6 +29,16 @@ export interface MatchWorkstreamReviewerInput {
   previousReviewerMemberId: string | null;
   ownerMemberId: string;
   ownerMutableScope: MissionMutableScope;
+}
+
+export interface MatchMissionFinalVerifierInput {
+  candidates: ReadonlyArray<WorkstreamMatchCandidate>;
+  requiredSkillIds: ReadonlyArray<string>;
+  preferredSkillIds: ReadonlyArray<string>;
+  requiredRuntimeCapabilityIds: ReadonlyArray<string>;
+  minimumLevel: TeamMemberLevel;
+  previousVerifierMemberId: string | null;
+  writableOwnerMemberIds: ReadonlySet<string>;
 }
 
 export type WorkstreamOwnerMatch =
@@ -148,4 +159,53 @@ export function matchWorkstreamReviewer(input: MatchWorkstreamReviewerInput): Wo
     previousMemberId: input.previousReviewerMemberId,
     excludedMemberIds: [input.ownerMemberId],
   });
+}
+
+export function matchMissionFinalVerifier(
+  input: MatchMissionFinalVerifierInput,
+): MissionFinalVerificationGateSelection {
+  const independent = matchWorkstreamMember({
+    ...input,
+    previousMemberId: input.previousVerifierMemberId,
+    excludedMemberIds: [...input.writableOwnerMemberIds],
+  });
+  if (independent.kind === "matched") {
+    return {
+      kind: "assigned",
+      verifierMemberId: independent.memberId,
+      matchExplanation: independent.explanation,
+      independenceExceptionReason: null,
+    };
+  }
+  const fallback = matchWorkstreamMember({
+    ...input,
+    previousMemberId: input.previousVerifierMemberId,
+    excludedMemberIds: [],
+  });
+  if (fallback.kind === "matched") {
+    return {
+      kind: "assigned",
+      verifierMemberId: fallback.memberId,
+      matchExplanation: fallback.explanation,
+      independenceExceptionReason:
+        "No independent Member satisfies the final verifier hard requirements",
+    };
+  }
+  const requiredSkills = new Set(input.requiredSkillIds);
+  const unknownCandidateMemberIds = input.candidates
+    .filter(
+      ({ profile }) =>
+        profile.level >= input.minimumLevel &&
+        [...requiredSkills].every((skillId) => profile.skillIds.includes(skillId)) &&
+        profile.capabilityFacts.kind === "unknown",
+    )
+    .map(({ profile }) => profile.memberId)
+    .toSorted();
+  if (unknownCandidateMemberIds.length > 0) {
+    return {
+      kind: "awaiting_capabilities",
+      candidateMemberIds: unknownCandidateMemberIds,
+    };
+  }
+  return { kind: "awaiting_verifier" };
 }
