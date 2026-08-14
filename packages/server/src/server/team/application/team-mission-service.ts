@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   MethodologyDescriptor,
   TeamExecutionProfileSelection,
@@ -10,6 +12,7 @@ import type {
   MissionAttentionItem,
   MissionAttentionResolution,
   MissionCapabilityFacts,
+  MissionCapabilityReplanRequest,
   MissionReviewWaiver,
   MissionRosterSnapshot,
   TeamMemberProfile,
@@ -210,6 +213,28 @@ export interface ResolveMissionAttentionInput {
   };
   resolution: TeamMissionAttentionResolutionInput;
 }
+
+export interface RefreshMissionCapabilitiesInput {
+  missionId: string;
+  attentionId: string;
+  expectedRevision: number;
+  idempotencyKey: string;
+}
+
+export type RefreshMissionCapabilitiesResult =
+  | {
+      disposition: "unchanged";
+      reason: "capability_declarations_unchanged";
+      missionRevision: number;
+      rosterSnapshotRevision: number;
+    }
+  | {
+      disposition: "replan_requested";
+      missionRevision: number;
+      rosterSnapshotRevision: number;
+      requestId: string;
+      sourceAttentionIds: string[];
+    };
 
 export interface RecordMissionRecoveryAttentionInput {
   missionId: string;
@@ -1057,6 +1082,161 @@ export class TeamMissionService {
     return this.serializeTeamLifecycle(stored.mission.teamId, () =>
       this.resolveAttentionWithinLifecycle(input),
     );
+  }
+
+  async refreshMissionCapabilities(
+    input: RefreshMissionCapabilitiesInput,
+  ): Promise<RefreshMissionCapabilitiesResult> {
+    const initial = await this.requireMission(input.missionId);
+    return this.serializeTeamLifecycle(initial.mission.teamId, async () => {
+      const current = await this.requireMission(input.missionId);
+      const requestFingerprint = fingerprint("team.mission.capability.refresh", {
+        missionId: input.missionId,
+        attentionId: input.attentionId,
+        expectedRevision: input.expectedRevision,
+      });
+      const replay = current.mission.capabilityReplanRequests.find(
+        (request) => request.idempotencyKey === input.idempotencyKey,
+      );
+      if (replay) {
+        if (replay.requestFingerprint !== requestFingerprint) {
+          throw new TeamApplicationError(
+            "team_mission_capability_refresh_idempotency_conflict",
+            `Capability refresh key ${input.idempotencyKey} has different input`,
+          );
+        }
+        return capabilityRefreshResult(current.mission.revision, replay);
+      }
+      const pending = current.mission.capabilityReplanRequests.find(
+        (request) => request.consumedAt === null,
+      );
+      if (pending) {
+        return capabilityRefreshResult(current.mission.revision, pending);
+      }
+      if (current.mission.revision !== input.expectedRevision) {
+        throw new TeamApplicationError(
+          "mission_revision_conflict",
+          `Mission ${input.missionId} revision is ${current.mission.revision}, expected ${input.expectedRevision}`,
+        );
+      }
+      const selected = requireAttention(current.mission, input.attentionId);
+      if (!isOpenStructuralCapabilityAttention(selected)) {
+        throw new TeamApplicationError(
+          "team_mission_capability_refresh_not_allowed",
+          `Attention ${input.attentionId} is not an open structural capability gate`,
+        );
+      }
+      const activeRoster = requireValue(
+        current.mission.rosterSnapshots.find(
+          (snapshot) => snapshot.revision === current.mission.activeRosterSnapshotRevision,
+        ),
+        `Mission ${input.missionId} active roster snapshot is missing`,
+      );
+      const refreshedMembers = await Promise.all(
+        activeRoster.members.map(async (member) => ({
+          ...structuredClone(member),
+          capabilityFacts: await this.capabilities.resolve(member.executionProfile),
+        })),
+      );
+      if (stableJson(refreshedMembers) === stableJson(activeRoster.members)) {
+        return {
+          disposition: "unchanged",
+          reason: "capability_declarations_unchanged",
+          missionRevision: current.mission.revision,
+          rosterSnapshotRevision: activeRoster.revision,
+        };
+      }
+
+      const sourceAttentionIds = current.mission.attentionItems
+        .filter(isOpenStructuralCapabilityAttention)
+        .map((attention) => attention.attentionId)
+        .filter((attentionId, index, values) => values.indexOf(attentionId) === index)
+        .toSorted();
+      const rosterSnapshotRevision =
+        Math.max(...current.mission.rosterSnapshots.map((snapshot) => snapshot.revision)) + 1;
+      const createdAt = this.clock.now();
+      const requestId = deterministicCapabilityRefreshId(
+        "request",
+        input.missionId,
+        input.idempotencyKey,
+      );
+      const deliveryId = deterministicCapabilityRefreshId("delivery", requestId, "lead");
+      const roomMessageId = deterministicCapabilityRefreshId("message", requestId, "room");
+      const leadMember = requireValue(
+        refreshedMembers.find((member) => member.memberId === activeRoster.leadMemberId),
+        `Mission ${input.missionId} active Lead is missing from its roster`,
+      );
+      const leadParticipant = requireValue(
+        current.mission.participants.find(
+          (participant) =>
+            participant.memberId === activeRoster.leadMemberId && participant.archivedAt === null,
+        ),
+        `Mission ${input.missionId} active Lead has no Participant binding`,
+      );
+      const request: MissionCapabilityReplanRequest = {
+        requestId,
+        idempotencyKey: input.idempotencyKey,
+        requestFingerprint,
+        sourceAttentionIds,
+        rosterSnapshotRevision,
+        deliveryId,
+        createdAt,
+        consumedAt: null,
+      };
+      const body = `@${leadMember.mentionHandle} Paseo capability refresh request ${requestId} created roster revision ${rosterSnapshotRevision}. Read mission_status, then submit a complete mission_plan. This request is not a plan commit and does not change the frozen roster, Skills, or Levels.`;
+      const updated = await this.missions.updateAggregate({
+        missionId: input.missionId,
+        expectedRevision: input.expectedRevision,
+        update: ({ mission, recovery }) => ({
+          mission: {
+            ...mission,
+            activeRosterSnapshotRevision: rosterSnapshotRevision,
+            rosterSnapshots: [
+              ...mission.rosterSnapshots,
+              {
+                ...structuredClone(activeRoster),
+                revision: rosterSnapshotRevision,
+                reason: "replan",
+                members: refreshedMembers,
+                createdAt,
+              },
+            ],
+            capabilityReplanRequests: [...mission.capabilityReplanRequests, request],
+          },
+          recovery: {
+            ...recovery,
+            recipientAttentionOutbox: [
+              ...recovery.recipientAttentionOutbox,
+              {
+                deliveryId,
+                idempotencyKey: input.idempotencyKey,
+                requestFingerprint,
+                roomMessageId,
+                senderMemberId: leadMember.memberId,
+                senderAgentId: leadParticipant.agentId,
+                recipientMemberId: leadMember.memberId,
+                bindingEpoch: leadParticipant.bindingEpoch,
+                mentionHandle: leadMember.mentionHandle,
+                body,
+                roomPostedAt: null,
+                roomCursor: null,
+                attempts: 0,
+                createdAt,
+                successorDeliveryId: null,
+                state: "pending",
+                lastAttemptAt: null,
+                nextEligibleAt: createdAt,
+                acknowledgedAt: null,
+                canceledAt: null,
+                cancelReason: null,
+              },
+            ],
+          },
+        }),
+      });
+      await this.events.publishMission(updated.mission);
+      return capabilityRefreshResult(updated.mission.revision, request);
+    });
   }
 
   private async beginAttentionCancelWithinLifecycle(
@@ -3242,6 +3422,46 @@ function assertValidTeamProfile(team: TeamV2): void {
 
 function fingerprint(operation: string, value: unknown): string {
   return `${operation}:${stableJson(value)}`;
+}
+
+const STRUCTURAL_CAPABILITY_ATTENTION_KINDS = new Set<MissionAttentionItem["kind"]>([
+  "review_gate_reviewer_unavailable",
+  "review_gate_capability_unknown",
+  "final_verifier_unavailable",
+  "final_verifier_capability_unknown",
+]);
+
+function isOpenStructuralCapabilityAttention(attention: MissionAttentionItem): boolean {
+  return (
+    attention.status === "open" &&
+    attention.scope.kind === "workstream" &&
+    STRUCTURAL_CAPABILITY_ATTENTION_KINDS.has(attention.kind)
+  );
+}
+
+function deterministicCapabilityRefreshId(
+  kind: "request" | "delivery" | "message",
+  owner: string,
+  key: string,
+): string {
+  const digest = createHash("sha256")
+    .update(`${kind}\0${owner}\0${key}`)
+    .digest("hex")
+    .slice(0, 32);
+  return `capability-refresh-${kind}-${digest}`;
+}
+
+function capabilityRefreshResult(
+  missionRevision: number,
+  request: MissionCapabilityReplanRequest,
+): RefreshMissionCapabilitiesResult {
+  return {
+    disposition: "replan_requested",
+    missionRevision,
+    rosterSnapshotRevision: request.rosterSnapshotRevision,
+    requestId: request.requestId,
+    sourceAttentionIds: [...request.sourceAttentionIds],
+  };
 }
 
 function stableJson(value: unknown): string {

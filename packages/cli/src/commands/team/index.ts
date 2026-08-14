@@ -5,6 +5,7 @@ import {
   runMissionCancelCommand,
   runMissionInspectCommand,
   runMissionListCommand,
+  runMissionRefreshCapabilitiesCommand,
   runMissionStartCommand,
   runMissionWaiveReviewCommand,
 } from "./mission.js";
@@ -249,6 +250,17 @@ export function createTeamCommand(): Command {
         .requiredOption("--reason <text>", "Immutable waiver reason"),
     ),
   ).action(withOutput(runMissionWaiveReviewCommand));
+
+  addJsonAndDaemonHostOptions(
+    addMutationKey(
+      mission
+        .command("refresh-capabilities")
+        .description("Refresh structural capability declarations and request Lead replanning")
+        .argument("<mission-id>", "Mission ID")
+        .requiredOption("--attention <id>", "Open structural gate Attention ID")
+        .requiredOption("--expected-revision <revision>", "Expected Mission revision"),
+    ),
+  ).action(withOutput(runMissionRefreshCapabilitiesCommand));
 
   return team;
 }

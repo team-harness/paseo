@@ -434,6 +434,17 @@ export const TeamMissionAttentionResolveRequestSchema = z.object({
   resolution: TeamMissionAttentionResolutionInputSchema,
 });
 
+export const TeamMissionCapabilityRefreshRequestSchema = z
+  .object({
+    type: z.literal("team.mission.capability.refresh.request"),
+    requestId: z.string().min(1),
+    missionId: z.string().min(1),
+    attentionId: z.string().min(1),
+    expectedRevision: z.number().int().nonnegative(),
+    idempotencyKey: z.string().min(1),
+  })
+  .strict();
+
 const missionResponseFields = {
   requestId: z.string().min(1),
   mission: TeamMissionSchema.nullable(),
@@ -503,6 +514,32 @@ export const TeamMissionRoomUnsubscribeResponseSchema = z.object({
 export const TeamMissionAttentionResolveResponseSchema = z.object({
   type: z.literal("team.mission.attention.resolve.response"),
   payload: z.object(missionResponseFields),
+});
+
+export const TeamMissionCapabilityRefreshResponseSchema = z.object({
+  type: z.literal("team.mission.capability.refresh.response"),
+  payload: z.object({
+    requestId: z.string().min(1),
+    result: z
+      .discriminatedUnion("disposition", [
+        z.object({
+          disposition: z.literal("unchanged"),
+          reason: z.literal("capability_declarations_unchanged"),
+          missionRevision: z.number().int().nonnegative(),
+          rosterSnapshotRevision: z.number().int().positive(),
+        }),
+        z.object({
+          disposition: z.literal("replan_requested"),
+          missionRevision: z.number().int().nonnegative(),
+          rosterSnapshotRevision: z.number().int().positive(),
+          requestId: z.string().min(1),
+          sourceAttentionIds: z.array(z.string().min(1)),
+        }),
+      ])
+      .nullable(),
+    error: z.string().nullable(),
+    errorCode: z.string().nullable(),
+  }),
 });
 
 // Authoritative replacement broadcasts carry the aggregate revision and no request id.

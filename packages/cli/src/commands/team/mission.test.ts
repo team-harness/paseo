@@ -4,6 +4,7 @@ import {
   runMissionCancelCommand,
   runMissionInspectCommand,
   runMissionListCommand,
+  runMissionRefreshCapabilitiesCommand,
   runMissionStartCommand,
   runMissionWaiveReviewCommand,
 } from "./mission.js";
@@ -28,6 +29,7 @@ const { connectToDaemon, client, serverFeatures } = vi.hoisted(() => ({
     inspectTeamMission: vi.fn(),
     cancelTeamMission: vi.fn(),
     resolveTeamMissionAttention: vi.fn(),
+    refreshTeamMissionCapabilities: vi.fn(),
     close: vi.fn(async () => {}),
   },
 }));
@@ -47,6 +49,8 @@ const mission = {
   status: "planning",
   revision: 2,
   planRevision: 0,
+  activeRosterSnapshotRevision: 1,
+  capabilityReplanRequests: [],
   participants: [],
   workstreams: [],
   assignments: [],
@@ -193,6 +197,42 @@ describe("Mission commands", () => {
         subjectFingerprint: `sha256:${"b".repeat(64)}`,
         reason: "No eligible reviewer remains.",
       },
+    });
+  });
+
+  it("reports a pending Lead replan after refreshing structural capabilities", async () => {
+    client.refreshTeamMissionCapabilities.mockResolvedValue({
+      result: {
+        disposition: "replan_requested",
+        missionRevision: 3,
+        rosterSnapshotRevision: 2,
+        requestId: "request-refresh",
+        sourceAttentionIds: ["attention-review"],
+      },
+      error: null,
+      errorCode: null,
+    });
+
+    const result = await runMissionRefreshCapabilitiesCommand(
+      "mission-1",
+      {
+        attention: "attention-review",
+        expectedRevision: "2",
+        idempotencyKey: "refresh-key",
+      },
+      null as never,
+    );
+
+    expect(result.data).toMatchObject({
+      disposition: "replan_requested",
+      rosterSnapshotRevision: 2,
+      requestState: "pending",
+    });
+    expect(client.refreshTeamMissionCapabilities).toHaveBeenCalledWith({
+      missionId: "mission-1",
+      attentionId: "attention-review",
+      expectedRevision: 2,
+      idempotencyKey: "refresh-key",
     });
   });
 });

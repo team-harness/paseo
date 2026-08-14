@@ -33,6 +33,7 @@ vi.mock("lucide-react-native", () => ({
   ClipboardList: () => null,
   ExternalLink: () => null,
   ListTree: () => null,
+  RefreshCw: () => null,
   Pencil: () => null,
   Play: () => null,
   Settings: () => null,
@@ -156,6 +157,7 @@ const MISSION: TeamMission = {
   suspendedStatus: "active",
   workstreams: [],
   activeRosterSnapshotRevision: 2,
+  capabilityReplanRequests: [],
   rosterSnapshots: [
     {
       revision: 2,

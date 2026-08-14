@@ -32,6 +32,7 @@ describe("the Team Missions command tree", () => {
       "inspect",
       "cancel",
       "waive-review",
+      "refresh-capabilities",
     ]);
     expect(childNames(team.commands[2]!)).toEqual(["list", "inspect"]);
   });

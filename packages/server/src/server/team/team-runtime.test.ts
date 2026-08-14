@@ -412,6 +412,46 @@ describe("TeamRuntime v2 façade", () => {
     ]);
   });
 
+  test("denies capability refresh without a physical Team V1 controller source", async () => {
+    const service = new FakeTeamRuntimeService(Promise.resolve());
+    const runtime = createTeamRuntime({ runtime: { enabled: true }, service });
+    await runtime.start();
+    const request = {
+      type: "team.mission.capability.refresh.request" as const,
+      requestId: "refresh-physical-source",
+      idempotencyKey: "refresh-physical-source",
+      missionId: "mission-refresh",
+      attentionId: "attention-refresh",
+      expectedRevision: 3,
+    };
+
+    await expect(
+      runtime.sessionDeps()?.handleRequest(request, { actorId: "agent-tool" }),
+    ).resolves.toMatchObject({
+      type: "team.mission.capability.refresh.response",
+      payload: { result: null, errorCode: "team_controller_capability_required" },
+    });
+    expect(service.refreshCapabilityInputs).toEqual([]);
+
+    await expect(
+      runtime.sessionDeps()?.handleRequest(request, {
+        actorId: "controller",
+        controller: true,
+        physicalSource: { connectionId: "connection-1", selfReportedClientLabel: "paseo-cli" },
+      }),
+    ).resolves.toMatchObject({
+      payload: { result: { disposition: "unchanged", rosterSnapshotRevision: 2 } },
+    });
+    expect(service.refreshCapabilityInputs).toEqual([
+      {
+        missionId: "mission-refresh",
+        attentionId: "attention-refresh",
+        expectedRevision: 3,
+        idempotencyKey: "refresh-physical-source",
+      },
+    ]);
+  });
+
   test("registers tools for internally recovered Agents while keeping the external facade gated", async () => {
     const service = new FakeTeamRuntimeService(Promise.resolve());
     const calls: string[] = [];
@@ -474,6 +514,9 @@ class FakeTeamRuntimeService implements TeamRuntimeService {
   readonly startInputs: Parameters<TeamRuntimeService["startMission"]>[0][] = [];
   readonly postMessageInputs: Parameters<TeamRuntimeService["postMissionMessage"]>[0][] = [];
   readonly resolveAttentionInputs: Parameters<TeamRuntimeService["resolveAttention"]>[0][] = [];
+  readonly refreshCapabilityInputs: Parameters<
+    TeamRuntimeService["refreshMissionCapabilities"]
+  >[0][] = [];
   private readonly roomMessageListeners = new Set<
     Parameters<TeamRuntimeService["onMissionRoomMessage"]>[0]
   >();
@@ -579,6 +622,18 @@ class FakeTeamRuntimeService implements TeamRuntimeService {
     const mission = this.missions.find((candidate) => candidate.id === input.missionId);
     if (!mission) throw new Error("Mission fixture is required");
     return mission;
+  }
+
+  async refreshMissionCapabilities(
+    input: Parameters<TeamRuntimeService["refreshMissionCapabilities"]>[0],
+  ): ReturnType<TeamRuntimeService["refreshMissionCapabilities"]> {
+    this.refreshCapabilityInputs.push(input);
+    return {
+      disposition: "unchanged",
+      reason: "capability_declarations_unchanged",
+      missionRevision: input.expectedRevision,
+      rosterSnapshotRevision: 2,
+    };
   }
 }
 

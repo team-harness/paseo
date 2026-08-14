@@ -180,6 +180,12 @@ export function toMissionRow(mission: TeamMission): MissionRow {
 }
 
 export interface MissionDetail extends MissionRow {
+  activeRosterRevision: number;
+  capabilityReplanRequests: Array<{
+    requestId: string;
+    rosterSnapshotRevision: number;
+    state: "pending" | "consumed";
+  }>;
   workspace: string;
   constraints: string[];
   acceptanceCriteria: string[];
@@ -262,6 +268,12 @@ export function toMissionDetail(mission: TeamMission): MissionDetail {
       : null;
   return {
     ...toMissionRow(mission),
+    activeRosterRevision: mission.activeRosterSnapshotRevision,
+    capabilityReplanRequests: mission.capabilityReplanRequests.map((request) => ({
+      requestId: request.requestId,
+      rosterSnapshotRevision: request.rosterSnapshotRevision,
+      state: request.consumedAt ? "consumed" : "pending",
+    })),
     workspace: mission.workspaceId,
     constraints: mission.constraints,
     acceptanceCriteria: mission.acceptanceCriteria,
@@ -376,6 +388,11 @@ function renderMissionBlock(mission: MissionDetail): string {
     `  workstreams: ${mission.workstreams}`,
     `  assignments: ${mission.assignments}`,
     `  attention items: ${mission.attentionItems}`,
+    `  active roster revision: ${mission.activeRosterRevision}`,
+    ...mission.capabilityReplanRequests.map(
+      (request) =>
+        `  capability replan ${request.requestId}: ${request.state} roster=${request.rosterSnapshotRevision}`,
+    ),
     ...mission.workstreamStates.map(
       (workstream) =>
         `  workstream ${workstream.title} [${workstream.workstreamId}]: ${workstream.status} blockers=${workstream.blockers.map((blocker) => `${blocker.attentionId}@${blocker.sourceWorkstreamId}:${blocker.direct ? "direct" : "dependency"}`).join(",") || "-"}`,

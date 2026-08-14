@@ -66,6 +66,7 @@ const mission = {
   workstreams: [],
   assignments: [],
   attentionItems: [],
+  capabilityReplanRequests: [],
   chatRoomId: "room-1",
   createdAt: timestamp,
   updatedAt: timestamp,
@@ -171,6 +172,7 @@ describe("Mission output", () => {
           createdAt: timestamp,
         },
       ],
+      capabilityReplanRequests: [],
     } as unknown as TeamMission;
 
     expect(toMissionDetail(waivedMission).reviewGates[0]).toMatchObject({
@@ -224,6 +226,7 @@ describe("Mission output", () => {
         },
       ],
       reviewWaivers: [],
+      capabilityReplanRequests: [],
     } as unknown as TeamMission;
     const detail = toMissionDetail(approvedMission);
 
@@ -277,6 +280,7 @@ describe("Mission output", () => {
           summary: "API capability facts are unknown",
         },
       ],
+      capabilityReplanRequests: [],
     } as unknown as TeamMission;
 
     const detail = toMissionDetail(scopedMission);

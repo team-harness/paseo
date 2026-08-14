@@ -10,6 +10,7 @@ import {
   type CancelMissionInput,
   type CreateTeamInput,
   type ResolveMissionAttentionInput,
+  type RefreshMissionCapabilitiesInput,
   type RefreshTeamMemberExecutionInput,
   type StartMissionInput,
   type TeamMissionService,
@@ -43,7 +44,8 @@ export type TeamRuntimeRequest = Extract<
       | "team.mission.message.post.request"
       | "team.mission.room.subscribe.request"
       | "team.mission.room.unsubscribe.request"
-      | "team.mission.attention.resolve.request";
+      | "team.mission.attention.resolve.request"
+      | "team.mission.capability.refresh.request";
   }
 >;
 
@@ -107,6 +109,9 @@ export interface TeamRuntimeService {
   resolveAttention(
     input: ResolveMissionAttentionInput,
   ): ReturnType<TeamMissionService["resolveAttention"]>;
+  refreshMissionCapabilities(
+    input: RefreshMissionCapabilitiesInput,
+  ): ReturnType<TeamMissionService["refreshMissionCapabilities"]>;
 }
 
 export interface TeamRuntimeSessionDeps {
@@ -413,6 +418,8 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
           );
         case "team.mission.attention.resolve.request":
           return await this.handleAttentionResolve(request, context, service);
+        case "team.mission.capability.refresh.request":
+          return await this.handleCapabilityRefresh(request, context, service);
       }
     } catch (error) {
       return errorResponse(request, error);
@@ -444,6 +451,33 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
           : {}),
       }),
     );
+  }
+
+  private async handleCapabilityRefresh(
+    request: Extract<TeamRuntimeRequest, { type: "team.mission.capability.refresh.request" }>,
+    context: TeamRuntimeRequestContext,
+    service: TeamRuntimeService,
+  ): Promise<SessionOutboundMessage> {
+    if (!context.controller || !context.physicalSource) {
+      throw new TeamApplicationError(
+        "team_controller_capability_required",
+        "Capability refresh requires a Team V1 controller physical source",
+      );
+    }
+    return {
+      type: "team.mission.capability.refresh.response",
+      payload: {
+        requestId: request.requestId,
+        result: await service.refreshMissionCapabilities({
+          missionId: request.missionId,
+          attentionId: request.attentionId,
+          expectedRevision: request.expectedRevision,
+          idempotencyKey: request.idempotencyKey,
+        }),
+        error: null,
+        errorCode: null,
+      },
+    };
   }
 
   private async handleMissionRoomRequest(
@@ -642,6 +676,8 @@ export function teamMissionsUnavailableResponse(
         reason,
         "unsupported",
       );
+    case "team.mission.capability.refresh.request":
+      return capabilityRefreshError(request.requestId, reason, "unsupported");
   }
 }
 
@@ -662,6 +698,7 @@ const TEAM_MISSIONS_REQUEST_TYPES = new Set<string>([
   "team.mission.room.subscribe.request",
   "team.mission.room.unsubscribe.request",
   "team.mission.attention.resolve.request",
+  "team.mission.capability.refresh.request",
 ]);
 
 function teamResponse(
@@ -710,6 +747,17 @@ function memberExecutionRefreshError(
       error,
       errorCode,
     },
+  };
+}
+
+function capabilityRefreshError(
+  requestId: string,
+  error: string,
+  errorCode: string,
+): SessionOutboundMessage {
+  return {
+    type: "team.mission.capability.refresh.response",
+    payload: { requestId, result: null, error, errorCode },
   };
 }
 
@@ -847,6 +895,8 @@ function errorResponse(request: TeamRuntimeRequest, error: unknown): SessionOutb
         message,
         errorCode,
       );
+    case "team.mission.capability.refresh.request":
+      return capabilityRefreshError(request.requestId, message, errorCode);
   }
 }
 

@@ -94,6 +94,7 @@ function mission(): Omit<TeamMission, "revision" | "createdAt" | "updatedAt" | "
     assignments: [],
     attentionItems: [],
     reviewWaivers: [],
+    capabilityReplanRequests: [],
     lifecycleRecoveryFailure: null,
   };
 }

@@ -2,7 +2,15 @@ import { useCallback, useMemo, type ReactElement, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Archive, ChevronRight, ExternalLink, Pencil, Play, X } from "lucide-react-native";
+import {
+  Archive,
+  ChevronRight,
+  ExternalLink,
+  Pencil,
+  Play,
+  RefreshCw,
+  X,
+} from "lucide-react-native";
 
 import type { MissionAttentionItem, TeamMission, TeamV2 } from "@getpaseo/protocol/team/v2-types";
 import type { TeamMissionAttentionResolutionInput } from "@getpaseo/protocol/team/v2-rpc-schemas";
@@ -59,6 +67,8 @@ export interface TeamSettingsPageActions {
     resolution: TeamSettingsAttentionResolution,
   ) => void;
   readonly onWaiveReview?: (attentionId: string) => void;
+  readonly onRefreshCapabilities?: (attentionId: string) => void;
+  readonly capabilityRefreshNotice?: string | null;
   readonly pendingActionKey?: string | null;
   readonly actionError?: string | null;
 }
@@ -477,6 +487,19 @@ export function TeamAttentionSettingsPage({
       ) : null}
 
       <SettingsSection title={t("teams.v2Settings.attention.title")}>
+        {mission?.capabilityReplanRequests.map((request) => (
+          <Text key={request.requestId} style={settingsStyles.rowHint}>
+            {t(
+              request.consumedAt
+                ? "teams.v2Settings.attention.capabilityRefreshConsumed"
+                : "teams.v2Settings.attention.capabilityRefreshPending",
+              { revision: request.rosterSnapshotRevision },
+            )}
+          </Text>
+        ))}
+        {actions.capabilityRefreshNotice ? (
+          <Text style={settingsStyles.rowHint}>{actions.capabilityRefreshNotice}</Text>
+        ) : null}
         {attentionRows.length === 0 ? (
           <View style={settingsStyles.card}>
             <DataRow label={t("teams.v2Settings.attention.none")} value="" />
@@ -528,6 +551,9 @@ export function TeamAttentionSettingsPage({
                   {replacementActions}
                   {row.kind === "review_gate_reviewer_unavailable" && actions.onWaiveReview ? (
                     <ReviewWaiverButton attentionId={row.attentionId} actions={actions} />
+                  ) : null}
+                  {isStructuralCapabilityAttention(row.kind) && actions.onRefreshCapabilities ? (
+                    <CapabilityRefreshButton attentionId={row.attentionId} actions={actions} />
                   ) : null}
                   {requiresLeadRecovery(row.kind) ? (
                     <LeadRecoveryAction
@@ -1034,6 +1060,42 @@ function requiresLeadRecovery(kind: MissionAttentionItem["kind"]): boolean {
     kind === "assignment_requires_replan" ||
     kind === "participant_unavailable" ||
     kind === "reviewer_unavailable"
+  );
+}
+
+function isStructuralCapabilityAttention(kind: MissionAttentionItem["kind"]): boolean {
+  return [
+    "review_gate_reviewer_unavailable",
+    "review_gate_capability_unknown",
+    "final_verifier_unavailable",
+    "final_verifier_capability_unknown",
+  ].includes(kind);
+}
+
+function CapabilityRefreshButton({
+  attentionId,
+  actions,
+}: {
+  attentionId: string;
+  actions: TeamSettingsPageActions;
+}): ReactElement {
+  const { t } = useTranslation();
+  const refresh = useCallback(
+    () => actions.onRefreshCapabilities?.(attentionId),
+    [actions, attentionId],
+  );
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      leftIcon={RefreshCw}
+      disabled={isAttentionActionPending(actions.pendingActionKey)}
+      loading={actions.pendingActionKey === `capability-refresh:${attentionId}`}
+      onPress={refresh}
+      testID={`team-attention-${attentionId}-refresh-capabilities`}
+    >
+      {t("teams.v2Settings.attention.refreshCapabilities")}
+    </Button>
   );
 }
 
