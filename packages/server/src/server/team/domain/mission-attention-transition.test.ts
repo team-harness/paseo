@@ -5,7 +5,10 @@ import type {
   TeamMission,
 } from "@getpaseo/protocol/team/v2-types";
 import { buildMissionReviewGate } from "./mission-review-gate.js";
-import { applyMissionAttentionTransition } from "./mission-attention-transition.js";
+import {
+  applyMissionAttentionTransition,
+  FinalVerificationWaiverRejectedError,
+} from "./mission-attention-transition.js";
 
 const NOW = "2026-08-14T00:00:00.000Z";
 
@@ -122,6 +125,37 @@ function workstreamItem(attentionId: string): MissionAttentionItem {
   };
 }
 
+function finalVerifierItem(attentionId: string): MissionAttentionItem {
+  return {
+    attentionId,
+    kind: "final_verifier_unavailable",
+    scope: { kind: "workstream", workstreamId: "blocked-root", blockDependents: true },
+    status: "open",
+    priorMissionStatus: null,
+    assignmentId: null,
+    summary: attentionId,
+    pathEvidence: [],
+    createdAt: NOW,
+    resolution: null,
+    finalVerificationGateDetails: {
+      gateKey: {
+        workstreamId: "blocked-root",
+        planRevision: 1,
+        methodologySnapshotRevision: 1,
+        subjectAssignmentIds: [],
+        reviewGateFingerprints: [],
+        requirements: {
+          requiredSkillIds: [],
+          preferredSkillIds: [],
+          requiredRuntimeCapabilityIds: [],
+          minimumLevel: 1,
+        },
+      },
+      gateFingerprint: `sha256:${"3".repeat(64)}`,
+    },
+  };
+}
+
 describe("applyMissionAttentionTransition", () => {
   test("suspends once for Mission scope and restores from the Mission suspended status", () => {
     const first = applyMissionAttentionTransition(mission(), {
@@ -217,6 +251,39 @@ describe("applyMissionAttentionTransition", () => {
       ["blocked-child", "planned"],
       ["independent", "ready"],
     ]);
+  });
+
+  test("rejects attempts to waive a final verifier Attention explicitly", () => {
+    const source = applyMissionAttentionTransition(mission(), {
+      kind: "raise",
+      item: finalVerifierItem("attention-final-verifier"),
+    });
+
+    let failure: unknown;
+    try {
+      applyMissionAttentionTransition(source, {
+        kind: "resolve",
+        attentionId: "attention-final-verifier",
+        resolution: {
+          kind: "waive_review",
+          actorId: "operator",
+          connectionId: "connection-1",
+          selfReportedClientLabel: "paseo-app",
+          reason: "Skip final verification",
+          resolvedAt: NOW,
+          ownerAssignmentId: null,
+          recoveryAssignmentId: null,
+        },
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(FinalVerificationWaiverRejectedError);
+    expect(failure).toMatchObject({
+      missionId: "mission-1",
+      attentionId: "attention-final-verifier",
+    });
   });
 
   test("resolving the final Mission item restores status while Workstream attention remains open", () => {

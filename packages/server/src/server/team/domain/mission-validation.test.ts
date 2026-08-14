@@ -9,6 +9,7 @@ import type {
 
 import type { AcceptedTurnFact } from "./assignment-contract-validation.js";
 import { testMissionMethodologySnapshot } from "../test-fixtures.js";
+import { buildMissionFinalVerificationGate } from "./mission-final-verification-gate.js";
 import {
   buildMissionReviewGate,
   missionReviewGateKeyFingerprint,
@@ -86,12 +87,13 @@ function workstream(workstreamId: string): MissionWorkstream {
     },
     ownerOverrideReason: null,
     reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+    finalVerificationGate: null,
     status: "planned",
   };
 }
 
 function finalVerificationWorkstream(): MissionWorkstream {
-  return {
+  const verification = {
     ...workstream("workstream-final-verification"),
     kind: "verification",
     title: "Final verification",
@@ -119,6 +121,28 @@ function finalVerificationWorkstream(): MissionWorkstream {
       rosterIndex: 1,
     },
   };
+  return {
+    ...verification,
+    finalVerificationGate: buildMissionFinalVerificationGate({
+      workstreamId: verification.workstreamId,
+      planRevision: verification.planRevision,
+      methodologySnapshotRevision: verification.methodologySnapshotRevision,
+      subjectAssignmentIds: ["assignment-api"],
+      reviewGateFingerprints: [],
+      requirements: {
+        requiredSkillIds: verification.requiredSkillIds,
+        preferredSkillIds: verification.preferredSkillIds,
+        requiredRuntimeCapabilityIds: verification.requiredRuntimeCapabilityIds,
+        minimumLevel: verification.minimumLevel,
+      },
+      selection: {
+        kind: "assigned",
+        verifierMemberId: "member-verifier",
+        matchExplanation: verification.ownerMatchExplanation,
+        independenceExceptionReason: null,
+      },
+    }),
+  };
 }
 
 function assignment(
@@ -133,6 +157,8 @@ function assignment(
     subjectAssignmentIds: [],
     reviewGateFingerprint: null,
     reviewSubjectFingerprint: null,
+    finalVerificationGateFingerprint: null,
+    reviewGateEvidence: [],
     missionId: "mission-sdk",
     workstreamId,
     assigneeMemberId: "member-engineer",
@@ -167,6 +193,7 @@ function completedReport(summary: string): NonNullable<MissionAssignmentContract
   return {
     status: "completed",
     verdict: null,
+    finalVerificationEvidence: null,
     summary,
     artifactPaths: [],
     tests: [{ command: "npm run typecheck", passed: true }],
@@ -230,6 +257,52 @@ function reviewGateAttentionItem(
       gateKeyFingerprint: gate.gateKeyFingerprint,
       subjectFingerprint: gate.subjectFingerprint,
     },
+  };
+}
+
+function finalVerifierAttentionItem(aggregate: TeamMission): MissionAttentionItem {
+  const verification = aggregate.workstreams.find(
+    (candidateWorkstream) => candidateWorkstream.kind === "verification",
+  );
+  if (!verification?.finalVerificationGate) {
+    throw new Error("final verification Workstream fixture is missing");
+  }
+  verification.requiredRuntimeCapabilityIds = ["final-audit"];
+  verification.status = "blocked";
+  verification.finalVerificationGate = buildMissionFinalVerificationGate({
+    workstreamId: verification.workstreamId,
+    planRevision: verification.planRevision,
+    methodologySnapshotRevision: verification.methodologySnapshotRevision,
+    subjectAssignmentIds: ["assignment-api"],
+    reviewGateFingerprints: [],
+    requirements: {
+      requiredSkillIds: verification.requiredSkillIds,
+      preferredSkillIds: verification.preferredSkillIds,
+      requiredRuntimeCapabilityIds: verification.requiredRuntimeCapabilityIds,
+      minimumLevel: verification.minimumLevel,
+    },
+    selection: { kind: "awaiting_verifier" },
+  });
+  const gate = verification.finalVerificationGate;
+  return {
+    attentionId: "attention-final-verifier-unavailable",
+    kind: "final_verifier_unavailable",
+    scope: {
+      kind: "workstream",
+      workstreamId: verification.workstreamId,
+      blockDependents: true,
+    },
+    finalVerificationGateDetails: {
+      gateKey: gate.key,
+      gateFingerprint: gate.fingerprint,
+    },
+    status: "open",
+    priorMissionStatus: null,
+    assignmentId: null,
+    summary: "No structurally eligible final verifier is available.",
+    pathEvidence: [],
+    createdAt: "2026-08-07T11:06:00.000Z",
+    resolution: null,
   };
 }
 
@@ -385,6 +458,7 @@ function completedMission(): TeamMission {
   });
   const verificationReport = aggregate.assignments.at(-1)?.report;
   if (verificationReport?.status === "completed") verificationReport.verdict = "approved";
+  bindCompletedFinalGate(aggregate);
   return aggregate;
 }
 
@@ -460,7 +534,74 @@ function completedMissionWithRequiredReview(): TeamMission {
   aggregate.assignments.splice(verificationIndex, 0, review);
   verification.subjectAssignmentIds = [delivery.assignmentId, review.assignmentId];
   verification.dependencyAssignmentIds = [delivery.assignmentId, review.assignmentId];
+  bindCompletedFinalGate(aggregate);
   return aggregate;
+}
+
+function bindCompletedFinalGate(aggregate: TeamMission): void {
+  const verificationWorkstream = aggregate.workstreams.find(
+    (candidate) => candidate.kind === "verification",
+  );
+  const verificationAssignment = aggregate.assignments.find(
+    (candidate) =>
+      candidate.kind === "verification" && candidate.planRevision === aggregate.planRevision,
+  );
+  if (!verificationWorkstream?.finalVerificationGate || !verificationAssignment) {
+    throw new Error("final verification fixture is incomplete");
+  }
+  const reviewGateEvidence = aggregate.workstreams.flatMap((candidateWorkstream) => {
+    const gate = candidateWorkstream.reviewGate;
+    if (gate.kind !== "required") return [];
+    if (gate.outcome.kind === "approved") {
+      return [
+        {
+          kind: "approved" as const,
+          gateKey: structuredClone(gate.gateKey),
+          gateKeyFingerprint: gate.gateKeyFingerprint,
+          subjectFingerprint: gate.subjectFingerprint,
+          reviewAssignmentId: gate.outcome.reviewAssignmentId,
+          reportFingerprint: gate.outcome.reportFingerprint,
+          inheritedFromGateFingerprint: gate.outcome.inheritedFromGateFingerprint,
+        },
+      ];
+    }
+    if (gate.outcome.kind === "waived") {
+      return [
+        {
+          kind: "waived" as const,
+          gateKey: structuredClone(gate.gateKey),
+          gateKeyFingerprint: gate.gateKeyFingerprint,
+          subjectFingerprint: gate.subjectFingerprint,
+          waiverId: gate.outcome.waiverId,
+        },
+      ];
+    }
+    return [];
+  });
+  const gate = buildMissionFinalVerificationGate({
+    workstreamId: verificationWorkstream.workstreamId,
+    planRevision: verificationWorkstream.planRevision,
+    methodologySnapshotRevision: verificationWorkstream.methodologySnapshotRevision,
+    subjectAssignmentIds: verificationAssignment.subjectAssignmentIds,
+    reviewGateFingerprints: reviewGateEvidence.map((evidence) => evidence.gateKeyFingerprint),
+    requirements: verificationWorkstream.finalVerificationGate.key.requirements,
+    selection: verificationWorkstream.finalVerificationGate.selection,
+  });
+  verificationWorkstream.finalVerificationGate = gate;
+  verificationAssignment.finalVerificationGateFingerprint = gate.fingerprint;
+  verificationAssignment.reviewGateEvidence = reviewGateEvidence;
+  if (verificationAssignment.report?.status === "completed") {
+    const verdict = verificationAssignment.report.verdict;
+    if (verdict !== "approved" && verdict !== "changes_requested") {
+      throw new Error("final verification fixture verdict is missing");
+    }
+    verificationAssignment.report.finalVerificationEvidence = {
+      kind: "final_verification",
+      finalGateFingerprint: gate.fingerprint,
+      verdict,
+      reviewGateEvidence: structuredClone(reviewGateEvidence),
+    };
+  }
 }
 
 function addAdditionalApprovedReview(aggregate: TeamMission): string {
@@ -506,6 +647,7 @@ function replanCompletedMission(): TeamMission {
       assignmentId: "assignment-final-verification-v2",
     },
   });
+  bindCompletedFinalGate(aggregate);
   return aggregate;
 }
 
@@ -667,6 +809,56 @@ describe("team mission validation", () => {
     );
   });
 
+  it("binds final verifier Attention to a waiting gate without an Assignment", () => {
+    const aggregate = mission();
+    aggregate.status = "active";
+    const item = finalVerifierAttentionItem(aggregate);
+    aggregate.attentionItems.push(item);
+
+    expect(validateTeamMission(aggregate).ok).toBe(true);
+
+    aggregate.assignments.push({
+      ...assignment("assignment-final-verification", "workstream-final-verification", [
+        "assignment-api",
+      ]),
+      kind: "verification",
+      subjectAssignmentIds: ["assignment-api"],
+      assigneeMemberId: "member-verifier",
+      finalVerificationGateFingerprint: item.finalVerificationGateDetails.gateFingerprint,
+    });
+    const result = validateTeamMission(aggregate);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "open_workstream_attention_gate_mismatch",
+      attentionId: item.attentionId,
+      workstreamId: "workstream-final-verification",
+    });
+  });
+
+  it("rejects every attempt to waive final verifier Attention", () => {
+    const aggregate = mission();
+    const item = finalVerifierAttentionItem(aggregate);
+
+    expect(
+      validateMissionAttentionResolution(aggregate, item, {
+        kind: "waive_review",
+        actorId: "user-owner",
+        connectionId: "connection-1",
+        selfReportedClientLabel: "paseo-app",
+        reason: "Skip final verification.",
+        ownerAssignmentId: null,
+        recoveryAssignmentId: null,
+        resolvedAt: "2026-08-07T11:07:00.000Z",
+      }),
+    ).toEqual([
+      {
+        kind: "invalid_attention_resolution_kind",
+        attentionId: item.attentionId,
+      },
+    ]);
+  });
+
   it("rejects open Workstream Attention on a terminal Mission", () => {
     const aggregate = mission();
     const item = reviewGateAttentionItem(aggregate, "review_gate_reviewer_unavailable");
@@ -777,10 +969,18 @@ describe("team mission validation", () => {
 
   it("rejects more than one final verification workstream", () => {
     const aggregate = mission();
-    aggregate.workstreams.push({
-      ...finalVerificationWorkstream(),
-      workstreamId: "workstream-extra-verification",
+    const extra = finalVerificationWorkstream();
+    extra.workstreamId = "workstream-extra-verification";
+    extra.finalVerificationGate = buildMissionFinalVerificationGate({
+      workstreamId: extra.workstreamId,
+      planRevision: extra.planRevision,
+      methodologySnapshotRevision: extra.methodologySnapshotRevision,
+      subjectAssignmentIds: ["assignment-api"],
+      reviewGateFingerprints: [],
+      requirements: extra.finalVerificationGate!.key.requirements,
+      selection: extra.finalVerificationGate!.selection,
     });
+    aggregate.workstreams.push(extra);
 
     expect(validateTeamMission(aggregate)).toEqual({
       ok: false,
@@ -818,6 +1018,99 @@ describe("team mission validation", () => {
       kind: "multiple_final_verification_assignments",
       workstreamId: "workstream-final-verification",
       assignmentIds: ["assignment-final-verification", "assignment-final-verification-duplicate"],
+    });
+  });
+
+  it("rejects a verification Assignment while the final gate is awaiting a verifier", () => {
+    const aggregate = completedMission();
+    const finalVerification = aggregate.workstreams.find(
+      (candidate) => candidate.kind === "verification",
+    );
+    if (!finalVerification?.finalVerificationGate) throw new Error("final gate fixture missing");
+    finalVerification.finalVerificationGate = {
+      ...finalVerification.finalVerificationGate,
+      selection: { kind: "awaiting_verifier" },
+    };
+
+    const result = validateTeamMission(aggregate);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "awaiting_final_verification_has_assignment",
+      workstreamId: finalVerification.workstreamId,
+    });
+  });
+
+  it("reports both waiting-gate materialization and duplicate current verification", () => {
+    const aggregate = completedMission();
+    const verificationWorkstream = aggregate.workstreams.find(
+      (candidate) => candidate.kind === "verification",
+    );
+    if (!verificationWorkstream?.finalVerificationGate) {
+      throw new Error("final gate fixture missing");
+    }
+    verificationWorkstream.finalVerificationGate = {
+      ...verificationWorkstream.finalVerificationGate,
+      selection: { kind: "awaiting_verifier" },
+    };
+    const verification = aggregate.assignments.find(
+      (candidate) => candidate.kind === "verification",
+    )!;
+    aggregate.assignments.push({
+      ...verification,
+      assignmentId: "assignment-final-verification-duplicate",
+    });
+
+    const result = validateTeamMission(aggregate);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        {
+          kind: "awaiting_final_verification_has_assignment",
+          workstreamId: verificationWorkstream.workstreamId,
+        },
+        {
+          kind: "multiple_final_verification_assignments",
+          workstreamId: verificationWorkstream.workstreamId,
+          assignmentIds: [
+            "assignment-final-verification",
+            "assignment-final-verification-duplicate",
+          ],
+        },
+      ]),
+    );
+  });
+
+  it("rejects an active final verification Assignment with fabricated gate coverage", () => {
+    const aggregate = mission();
+    const verificationWorkstream = aggregate.workstreams.find(
+      (candidate) => candidate.kind === "verification",
+    );
+    const gate = verificationWorkstream?.finalVerificationGate;
+    if (!gate) throw new Error("final gate fixture missing");
+    aggregate.assignments.push({
+      ...assignment("assignment-final-verification", verificationWorkstream.workstreamId, [
+        "assignment-api",
+      ]),
+      kind: "verification",
+      subjectAssignmentIds: [],
+      assigneeMemberId: "member-verifier",
+      finalVerificationGateFingerprint: gate.fingerprint,
+    });
+
+    const result = validateTeamMission(aggregate);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "invalid_final_verification_assignment_coverage",
+      verificationAssignmentId: "assignment-final-verification",
+      expectedAssignmentIds: ["assignment-api"],
+      subjectAssignmentIds: [],
+      dependencyAssignmentIds: ["assignment-api"],
     });
   });
 
@@ -872,7 +1165,7 @@ describe("team mission validation", () => {
     });
   });
 
-  it("rejects final verification by a writable owner when a qualified alternative exists", () => {
+  it("rejects a non-independent final verifier when a qualified alternative exists", () => {
     const aggregate = mission();
     aggregate.workstreams[0]!.mutableScope = {
       kind: "paths",
@@ -885,6 +1178,13 @@ describe("team mission validation", () => {
       recommendedMemberId: "member-engineer",
       eligibleMemberIds: ["member-engineer", "member-verifier"],
       rosterIndex: 0,
+    };
+    const gate = aggregate.workstreams[1]!.finalVerificationGate;
+    if (!gate || gate.selection.kind !== "assigned") throw new Error("assigned final gate missing");
+    gate.selection = {
+      ...gate.selection,
+      verifierMemberId: "member-engineer",
+      independenceExceptionReason: "Manual final verifier selection",
     };
     expect(validateTeamMission(aggregate)).toEqual({
       ok: false,
@@ -914,6 +1214,14 @@ describe("team mission validation", () => {
       recommendedMemberId: "member-engineer",
       eligibleMemberIds: ["member-engineer"],
       rosterIndex: 0,
+    };
+    const gate = aggregate.workstreams[1]!.finalVerificationGate;
+    if (!gate || gate.selection.kind !== "assigned") throw new Error("assigned final gate missing");
+    gate.selection = {
+      ...gate.selection,
+      verifierMemberId: "member-engineer",
+      matchExplanation: { ...aggregate.workstreams[1]!.ownerMatchExplanation },
+      independenceExceptionReason: null,
     };
     for (const candidate of aggregate.workstreams) {
       candidate.ownerMatchExplanation.candidateOpenAssignments = [
@@ -966,6 +1274,74 @@ describe("team mission validation", () => {
   it("accepts mission completion after the full final verification gate", () => {
     expect(validateTeamMission(completedMission())).toEqual({ ok: true });
   });
+
+  it("rejects a final verification Assignment bound to another gate fingerprint", () => {
+    const aggregate = completedMission();
+    const verification = aggregate.assignments.find(
+      (candidate) => candidate.kind === "verification",
+    )!;
+    verification.finalVerificationGateFingerprint = `sha256:${"f".repeat(64)}`;
+
+    const result = validateTeamMission(aggregate);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "final_verification_assignment_gate_mismatch",
+      assignmentId: verification.assignmentId,
+    });
+  });
+
+  it("rejects final verification without exact typed review gate evidence", () => {
+    const aggregate = completedMissionWithRequiredReview();
+    const verification = aggregate.assignments.find(
+      (candidate) => candidate.kind === "verification",
+    )!;
+    verification.reviewGateEvidence = [];
+    if (verification.report?.status === "completed") {
+      verification.report.finalVerificationEvidence!.reviewGateEvidence = [];
+    }
+
+    const result = validateTeamMission(aggregate);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      kind: "invalid_final_verification_review_evidence",
+      assignmentId: verification.assignmentId,
+    });
+  });
+
+  it.each(["blocked", "failed"] as const)(
+    "rejects a %s report from a final verification Assignment",
+    (status) => {
+      const aggregate = completedMission();
+      aggregate.status = "verifying";
+      aggregate.completedAt = null;
+      const verification = aggregate.assignments.find(
+        (candidate) => candidate.kind === "verification",
+      )!;
+      verification.semanticState = status;
+      verification.report = {
+        status,
+        summary: `Final verification ${status}`,
+        blockers: ["Final verification did not reach a verdict"],
+        artifactPaths: [],
+        tests: [],
+        decisions: [],
+        handoffs: [],
+      };
+
+      const result = validateTeamMission(aggregate);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues).toContainEqual({
+        kind: "invalid_final_verification_report_evidence",
+        assignmentId: verification.assignmentId,
+      });
+    },
+  );
 
   it("rejects final verification whose dependency coverage omits an approved required review", () => {
     const aggregate = completedMissionWithRequiredReview();
@@ -1161,6 +1537,18 @@ describe("team mission validation", () => {
     ];
     aggregate.planRevision = 2;
     for (const candidate of aggregate.workstreams) candidate.planRevision = 2;
+    const finalVerification = aggregate.workstreams.find(
+      (candidate) => candidate.kind === "verification",
+    )!;
+    finalVerification.finalVerificationGate = buildMissionFinalVerificationGate({
+      workstreamId: finalVerification.workstreamId,
+      planRevision: 2,
+      methodologySnapshotRevision: finalVerification.methodologySnapshotRevision,
+      subjectAssignmentIds: ["assignment-api"],
+      reviewGateFingerprints: [],
+      requirements: finalVerification.finalVerificationGate!.key.requirements,
+      selection: finalVerification.finalVerificationGate!.selection,
+    });
 
     expect(validateTeamMission(aggregate)).toEqual({
       ok: false,
@@ -1862,6 +2250,7 @@ describe("team mission validation", () => {
         resolvedAt: decidedAt,
       },
     });
+    bindCompletedFinalGate(aggregate);
 
     expect(validateTeamMission(aggregate)).toEqual({ ok: true });
 
@@ -2751,6 +3140,8 @@ describe("team mission validation", () => {
     aggregate.assignments[0]!.kind = "verification";
     aggregate.assignments[0]!.workstreamId = "workstream-final-verification";
     aggregate.assignments[0]!.assigneeMemberId = "member-verifier";
+    aggregate.assignments[0]!.finalVerificationGateFingerprint =
+      aggregate.workstreams[1]!.finalVerificationGate!.fingerprint;
     aggregate.assignments[0]!.subjectAssignmentIds = ["assignment-missing"];
 
     expect(validateTeamMission(aggregate)).toEqual({

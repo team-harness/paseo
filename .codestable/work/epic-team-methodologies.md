@@ -3,13 +3,8 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-13
-    state: dispatched
-    run: paseo:baf98f00-5feb-47ae-ba1b-cd1827b728dc
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-final-verification
-    base: 58051f382
-next_action: 等待 TM-ITEM-13 完成 final gate、定向 E2E 与独立审查
+active_items: []
+next_action: 派发 TM-ITEM-14：允许控制器豁免 known-empty review gate
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -30,13 +25,27 @@ remote_publish: final
 - [x] TM-ITEM-10
 - [x] TM-ITEM-11
 - [x] TM-ITEM-12
-- [ ] TM-ITEM-13
+- [x] TM-ITEM-13
 - [ ] TM-ITEM-14
 - [ ] TM-ITEM-15
 - [ ] TM-ITEM-16
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-13 完成。单父 checkpoint
+  `368322ca5f68b52b0fa0b9a5dec4126bcedd3cee`（parent `58051f382…`，tree
+  `6ad064aede44a74d87710ac7d7bb8a66a72dcd58`，diff
+  `a026182240569febef673ab0f492e1cc5a53f6b3021c06d9cfd53ed4b880a740`，26 files，
+  +3243/-253）实现 assignment-independent final gate、waiting 零 Assignment、assigned exactly-one、
+  typed review/final evidence、不可豁免 Attention、严格 completion 门禁及 App/CLI 五态展示。Paseo
+  Claude Opus 5 reviewer 从 Round 1 的 0 blocking / 2 important 收敛到 Round 2 的 0/0；两项
+  important（zod-aot 不可 waiver 校验、typed domain error 显式拒绝）均确认 resolved。worker 验证
+  12 个定向文件 318 tests、隔离 daemon E2E 3/3、build/server、lint、format 与 diff-check 全绿；
+  typecheck 仅命中改动外 `draggable-list.native.tsx:122` 的既有错误。主分支无冲突合入，staged diff
+  与受审 checkpoint 逐字一致；code-intel 精确范围审查的唯一 warning 是
+  `team-collaboration-service.ts` 大文件符号计数不一致，定点追踪 final gate 从计划、物化、报告到完成
+  判定的链路未发现具体失败路径。
 
 - 2026-08-14：TM-ITEM-13 已从里程碑 `58051f382` 派发到 Paseo 托管 worktree
   `wks_0ef3044007f090e6`（`team-methodology-final-verification`），实现 agent

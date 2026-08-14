@@ -214,6 +214,144 @@ describe("Team Missions real-daemon WebSocket contract", () => {
     );
   }, 30_000);
 
+  test("keeps a known-empty final verifier gate waiting with zero verification Assignments", async () => {
+    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-final-waiting-home-"));
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-final-waiting-workspace-"));
+    execFileSync("git", ["init", "-b", "main"], { cwd: workspaceRoot, stdio: "ignore" });
+    temporaryPaths.add(paseoHomeRoot);
+    temporaryPaths.add(workspaceRoot);
+    const provider = new TeamMissionsTestProvider();
+    const daemonErrors: string[] = [];
+    const daemon = await createTeamDaemon({ paseoHomeRoot, provider, errorLog: daemonErrors });
+    daemons.add(daemon);
+    temporaryPaths.add(daemon.staticDir);
+    const client = await connectTeamClient(daemon);
+    clients.add(client);
+    const workspace = await client.createWorkspace({
+      source: { kind: "directory", path: workspaceRoot },
+      title: "Final verifier waiting E2E",
+    });
+    if (!workspace.workspace) throw new Error(workspace.error ?? "Workspace creation failed");
+    const members = [
+      testCreateMember("technical-lead", member("Technical lead", 5, ["backend"])),
+      testCreateMember("backend-engineer", member("Backend engineer", 4, ["backend"])),
+    ];
+    const skills = [
+      { skillId: "backend", name: "Backend", description: null },
+      { skillId: "verification", name: "Verification", description: null },
+    ];
+    const created = await client.createTeamProfile({
+      idempotencyKey: "team-final-waiting-create",
+      name: "Final waiting team",
+      creationWorkspaceId: workspace.workspace.id,
+      skills,
+      leadClientMemberKey: "technical-lead",
+      members,
+      methodologyBinding: testCreateMethodologyBinding(
+        members.map((candidate) => candidate.clientMemberKey),
+        skills.map((skill) => skill.skillId),
+      ),
+    });
+    if (!created.team) throw new Error(created.error ?? "Team creation failed");
+    const started = await client.startTeamMission({
+      idempotencyKey: "team-final-waiting-start",
+      teamId: created.team.id,
+      expectedTeamRevision: created.team.revision,
+      expectedMethodologyRef: created.team.methodologyBinding.ref,
+      workspaceId: workspace.workspace.id,
+      objective: "Deliver backend work and require final verification",
+      constraints: [],
+      acceptanceCriteria: ["Final verifier remains mandatory"],
+    });
+    if (!started.mission) throw new Error(started.error ?? "Mission start failed");
+    await provider.waitForTurns(
+      (turns) => turns.length === 1 && turns[0]?.state === "running",
+      "Lead briefing acceptance",
+    );
+    await provider.completeTurn(provider.turns[0]!.turnId);
+    const leadMcp = await createMcpClient(
+      `http://127.0.0.1:${daemon.port}/mcp/agents?callerAgentId=${encodeURIComponent(started.mission.participants[0]!.agentId)}`,
+    );
+    mcpClients.add(leadMcp);
+    const drafts = [
+      workstreamDraft({
+        workstreamId: "backend",
+        kind: "delivery",
+        skillId: "backend",
+        scope: { kind: "paths", pathPrefixes: ["src/backend"] },
+        dependencies: [],
+        review: false,
+      }),
+      workstreamDraft({
+        workstreamId: "final-verification",
+        kind: "verification",
+        skillId: "verification",
+        scope: { kind: "read_only" },
+        dependencies: ["backend"],
+        review: false,
+      }),
+    ];
+    const planResult = await leadMcp.callTool({
+      name: "mission_plan",
+      args: {
+        missionId: started.mission.id,
+        expectedRevision: started.mission.revision,
+        expectedPlanRevision: 0,
+        workstreams: drafts,
+      },
+    });
+    if (planResult.isError) throw new Error(toolErrorText(planResult));
+    const planned = TeamMissionSchema.parse(requireToolSuccess(planResult));
+    expect(planned.workstreams.find((item) => item.kind === "verification")).toMatchObject({
+      finalVerificationGate: { selection: { kind: "awaiting_verifier" } },
+    });
+    const assignedResult = await leadMcp.callTool({
+      name: "assign_task",
+      args: {
+        missionId: planned.id,
+        expectedRevision: planned.revision,
+        expectedPlanRevision: planned.planRevision,
+        assignments: [deliveryDraft("backend")],
+      },
+    });
+    if (assignedResult.isError) throw new Error(toolErrorText(assignedResult));
+    const running = await waitForMission(
+      client,
+      planned.id,
+      (mission) => hasRunningAssignment(mission, "delivery"),
+      "backend dispatch",
+    );
+    const backend = requireAssignment(running, "backend");
+    const backendMcp = await createMcpClient(
+      `http://127.0.0.1:${daemon.port}/mcp/agents?callerAgentId=${encodeURIComponent(requireRuntimeAgentId(backend))}`,
+    );
+    mcpClients.add(backendMcp);
+    await reportAssignment({
+      client,
+      mcp: backendMcp,
+      errorLog: daemonErrors,
+      missionId: running.id,
+      assignmentId: backend.assignmentId,
+      report: completedReport({
+        summary: "Backend delivery completed",
+        artifactPaths: [],
+        verdict: null,
+      }),
+    });
+    await provider.completeTurn(requireAcceptedTurnId(backend));
+    const waiting = await waitForMission(
+      client,
+      running.id,
+      hasOpenFinalVerifierUnavailableAttention,
+      "final verifier unavailable Attention",
+    );
+    expect(waiting).toMatchObject({ status: "active", completedAt: null });
+    expect(currentVerificationAssignments(waiting)).toEqual([]);
+    expect(waiting.assignments.filter((assignment) => assignment.kind === "verification")).toEqual(
+      [],
+    );
+  }, 30_000);
+
   test("coordinates a lazy, parallel DAG through WebSocket and agent-scoped MCP", async () => {
     const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-flow-home-"));
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-flow-workspace-"));
@@ -523,35 +661,115 @@ describe("Team Missions real-daemon WebSocket contract", () => {
       "final verification dispatch",
     );
     const verification = requireKindAssignment(verifying, "verification");
+    const verificationWorkstream = verifying.workstreams.find(
+      (workstream) => workstream.kind === "verification",
+    );
+    expect(verificationWorkstream?.finalVerificationGate).toMatchObject({
+      selection: {
+        kind: "assigned",
+        verifierMemberId: verification.assigneeMemberId,
+      },
+      fingerprint: verification.finalVerificationGateFingerprint,
+    });
+    expect(currentVerificationAssignments(verifying)).toEqual([verification]);
+    expect(verifying).toMatchObject({ status: "verifying", completedAt: null });
+    const verificationMcp = await mcpFor(requireRuntimeAgentId(verification));
+    const untypedReport = await verificationMcp.callTool({
+      name: "assignment_report",
+      args: {
+        missionId: verifying.id,
+        assignmentId: verification.assignmentId,
+        expectedRevision: verifying.revision,
+        expectedAssignmentRevision: verification.revision,
+        report: completedReport({
+          summary: "Generic approval must not satisfy final verification",
+          artifactPaths: [],
+          verdict: "approved",
+        }),
+      },
+    });
+    expect(untypedReport.isError).toBe(true);
+    expect(toolErrorText(untypedReport)).toContain("invalid_assignment_report");
     await reportAssignment({
       client,
-      mcp: await mcpFor(requireRuntimeAgentId(verification)),
+      mcp: verificationMcp,
       errorLog: daemonErrors,
       missionId: verifying.id,
       assignmentId: verification.assignmentId,
-      report: completedReport({
-        summary: "Final verification approved every Mission criterion",
-        artifactPaths: [],
-        verdict: "approved",
-      }),
+      report: finalVerificationReport(
+        verification,
+        "changes_requested",
+        "Final verification requires a corrected integration proof",
+      ),
     });
     await provider.completeTurn(requireAcceptedTurnId(verification));
+
+    const changesRequested = await waitForMission(
+      client,
+      verifying.id,
+      (mission) => hasFailedFinalVerification(mission, verification.assignmentId),
+      "changes-requested final verification remains incomplete",
+    );
+    expect(changesRequested.completedAt).toBeNull();
+
+    const replanResult = await leadMcp.callTool({
+      name: "mission_plan",
+      args: {
+        missionId: changesRequested.id,
+        expectedRevision: changesRequested.revision,
+        expectedPlanRevision: changesRequested.planRevision,
+        workstreams: missionPlanDrafts(),
+      },
+    });
+    if (replanResult.isError) {
+      throw new Error(`${toolErrorText(replanResult)}\n${daemonErrors.slice(-5).join("\n")}`);
+    }
+    const replanned = TeamMissionSchema.parse(requireToolSuccess(replanResult));
+    const replacementVerifying = await waitForMission(
+      client,
+      replanned.id,
+      (mission) =>
+        currentVerificationAssignments(mission).length === 1 &&
+        currentVerificationAssignments(mission)[0]?.semanticState === "running" &&
+        currentVerificationAssignments(mission)[0]?.assignmentId !== verification.assignmentId,
+      "replacement final verification dispatch",
+    );
+    const replacementVerification = currentVerificationAssignments(replacementVerifying)[0]!;
+    expect(replacementVerification.mutableScope).toEqual({ kind: "read_only" });
+    await reportAssignment({
+      client,
+      mcp: await mcpFor(requireRuntimeAgentId(replacementVerification)),
+      errorLog: daemonErrors,
+      missionId: replacementVerifying.id,
+      assignmentId: replacementVerification.assignmentId,
+      report: finalVerificationReport(
+        replacementVerification,
+        "approved",
+        "Final verification approved every Mission criterion",
+      ),
+    });
+    await provider.completeTurn(requireAcceptedTurnId(replacementVerification));
 
     let completed: TeamMission;
     try {
       completed = await waitForMission(
         client,
-        verifying.id,
+        replacementVerifying.id,
         isCompletedAndArchived,
         "Mission completion and participant archival",
         30_000,
       );
     } catch (error) {
-      const stalled = await inspectMission(client, verifying.id);
+      const stalled = await inspectMission(client, replacementVerifying.id);
       const stored = StoredMissionSchema.parse(
         JSON.parse(
           await readFile(
-            path.join(daemon.paseoHome, "team-missions", "missions", `${verifying.id}.json`),
+            path.join(
+              daemon.paseoHome,
+              "team-missions",
+              "missions",
+              `${replacementVerifying.id}.json`,
+            ),
             "utf8",
           ),
         ),
@@ -561,24 +779,42 @@ describe("Team Missions real-daemon WebSocket contract", () => {
         { cause: error },
       );
     }
-    expect(completed.assignments.map((assignment) => assignment.kind).toSorted()).toEqual([
-      "delivery",
-      "delivery",
-      "delivery",
-      "review",
-      "verification",
-    ]);
+    expect(currentVerificationAssignments(completed)).toHaveLength(1);
     expect(
-      completed.assignments.every(
-        (assignment) =>
-          assignment.semanticState === "completed" &&
-          assignment.dispatchState === "settled" &&
-          assignment.report?.status === "completed" &&
-          assignment.acceptedTurnId !== null,
-      ),
+      currentVerificationAssignments(completed)[0]?.report?.finalVerificationEvidence?.verdict,
+    ).toBe("approved");
+    expect(
+      completed.assignments
+        .filter((assignment) => assignment.assignmentId !== verification.assignmentId)
+        .every(
+          (assignment) =>
+            assignment.semanticState === "completed" &&
+            assignment.dispatchState === "settled" &&
+            assignment.report?.status === "completed" &&
+            assignment.acceptedTurnId !== null,
+        ),
     ).toBe(true);
-    expect(completed.attentionItems).toEqual([]);
-    expect(provider.assignmentTurns()).toHaveLength(5);
+    expect(
+      completed.assignments.find(
+        (assignment) => assignment.assignmentId === verification.assignmentId,
+      ),
+    ).toMatchObject({
+      semanticState: "canceled",
+      supersededBy: replacementVerification.assignmentId,
+      terminationReason: "superseded",
+      report: {
+        finalVerificationEvidence: { verdict: "changes_requested" },
+      },
+    });
+    expect(completed.attentionItems.filter((item) => item.status === "open")).toEqual([]);
+    expect(completed.attentionItems).toContainEqual(
+      expect.objectContaining({
+        kind: "assignment_requires_replan",
+        status: "resolved",
+        resolution: expect.objectContaining({ kind: "replan" }),
+      }),
+    );
+    expect(provider.assignmentTurns()).toHaveLength(6);
     expect(
       provider
         .assignmentTurns()
@@ -1011,17 +1247,62 @@ function deliveryDraft(workstreamId: "backend" | "frontend" | "integration") {
 function completedReport(input: {
   summary: string;
   artifactPaths: string[];
-  verdict: "approved" | null;
+  verdict: "approved" | "changes_requested" | null;
 }): Record<string, unknown> {
   return {
     status: "completed",
     verdict: input.verdict,
+    finalVerificationEvidence: null,
     summary: input.summary,
     artifactPaths: input.artifactPaths,
     tests: [{ command: "team-e2e-check", passed: true }],
     decisions: [],
     handoffs: [],
   };
+}
+
+function finalVerificationReport(
+  assignment: MissionAssignmentContract,
+  verdict: "approved" | "changes_requested",
+  summary: string,
+): Record<string, unknown> {
+  if (!assignment.finalVerificationGateFingerprint) {
+    throw new Error(`Verification Assignment ${assignment.assignmentId} has no final gate`);
+  }
+  return {
+    ...completedReport({ summary, artifactPaths: [], verdict }),
+    finalVerificationEvidence: {
+      kind: "final_verification",
+      finalGateFingerprint: assignment.finalVerificationGateFingerprint,
+      verdict,
+      reviewGateEvidence: assignment.reviewGateEvidence,
+    },
+  };
+}
+
+function hasOpenFinalVerifierUnavailableAttention(mission: TeamMission): boolean {
+  return mission.attentionItems.some(
+    (item) => item.status === "open" && item.kind === "final_verifier_unavailable",
+  );
+}
+
+function hasFailedFinalVerification(mission: TeamMission, assignmentId: string): boolean {
+  if (mission.status === "completed") return false;
+  return mission.assignments.some(
+    (assignment) =>
+      assignment.assignmentId === assignmentId &&
+      assignment.report?.finalVerificationEvidence?.verdict === "changes_requested" &&
+      assignment.semanticState === "failed",
+  );
+}
+
+function currentVerificationAssignments(mission: TeamMission): MissionAssignmentContract[] {
+  return mission.assignments.filter(
+    (assignment) =>
+      assignment.kind === "verification" &&
+      assignment.planRevision === mission.planRevision &&
+      assignment.semanticState !== "canceled",
+  );
 }
 
 function requireAssignment(mission: TeamMission, workstreamId: string): MissionAssignmentContract {

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   MissionAssignmentContractSchema,
   MissionAttentionItemSchema,
+  MissionFinalVerificationEvidenceSchema,
+  MissionFinalVerificationGateSchema,
   MissionRosterSnapshotSchema,
   MissionReviewWaiverSchema,
   MissionScopeLeaseSchema,
@@ -43,6 +45,82 @@ const testMethodologySnapshot = {
 };
 
 describe("reusable team", () => {
+  it("persists an Assignment-independent final verification gate and typed evidence", () => {
+    const matchExplanation = {
+      recommendedMemberId: "member-verifier",
+      requiredSkillIds: ["verification"],
+      preferredSkillIds: ["protocol"],
+      matchedPreferredSkillIds: ["protocol"],
+      requiredRuntimeCapabilityIds: ["structured-tools"],
+      minimumLevel: 4,
+      selectedLevel: 4,
+      eligibleMemberIds: ["member-verifier"],
+      excludedMemberIds: [],
+      previousMemberId: null,
+      candidateOpenAssignments: [{ memberId: "member-verifier", openAssignments: 0 }],
+      continuedPreviousMember: false,
+      openAssignments: 0,
+      rosterIndex: 0,
+    };
+    const gate = {
+      key: {
+        workstreamId: "workstream-verification",
+        planRevision: 2,
+        methodologySnapshotRevision: 1,
+        subjectAssignmentIds: ["assignment-delivery", "assignment-review"],
+        reviewGateFingerprints: [testDigest],
+        requirements: {
+          requiredSkillIds: ["verification"],
+          preferredSkillIds: ["protocol"],
+          requiredRuntimeCapabilityIds: ["structured-tools"],
+          minimumLevel: 4,
+        },
+      },
+      fingerprint: testDigest,
+      selection: {
+        kind: "assigned" as const,
+        verifierMemberId: "member-verifier",
+        matchExplanation,
+        independenceExceptionReason: null,
+      },
+    };
+    const reviewGateEvidence = [
+      {
+        kind: "approved" as const,
+        gateKey: {
+          subject: {
+            workstreamId: "workstream-delivery",
+            subjectAssignmentIds: ["assignment-delivery"],
+          },
+          planRevision: 2,
+        },
+        gateKeyFingerprint: testDigest,
+        subjectFingerprint: testDigest,
+        reviewAssignmentId: "assignment-review",
+        reportFingerprint: testDigest,
+        inheritedFromGateFingerprint: null,
+      },
+    ];
+    const evidence = {
+      kind: "final_verification" as const,
+      finalGateFingerprint: testDigest,
+      verdict: "approved" as const,
+      reviewGateEvidence,
+    };
+
+    expect(MissionFinalVerificationGateSchema.parse(gate)).toEqual(gate);
+    expect(MissionFinalVerificationEvidenceSchema.parse(evidence)).toEqual(evidence);
+    expect(
+      MissionFinalVerificationGateSchema.safeParse({
+        ...gate,
+        selection: { kind: "awaiting_capabilities", candidateMemberIds: [] },
+      }).success,
+    ).toBe(false);
+    expect(
+      MissionFinalVerificationGateSchema.safeParse({ ...gate, fingerprint: undefined }).success,
+    ).toBe(false);
+  });
+
   it("rejects incomplete member profiles", () => {
     const member = {
       memberId: "member-engineer",
@@ -256,6 +334,67 @@ describe("team mission", () => {
         ...common,
         kind: "review_gate_capability_unknown",
         priorMissionStatus: "active",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("makes final verifier Attention Workstream-scoped and non-waivable", () => {
+    const common = {
+      attentionId: "attention-final-verification",
+      scope: {
+        kind: "workstream" as const,
+        workstreamId: "workstream-final-verification",
+        blockDependents: true as const,
+      },
+      finalVerificationGateDetails: {
+        gateKey: {
+          workstreamId: "workstream-final-verification",
+          planRevision: 2,
+          methodologySnapshotRevision: 1 as const,
+          subjectAssignmentIds: ["assignment-api"],
+          reviewGateFingerprints: [testDigest],
+          requirements: {
+            requiredSkillIds: ["verification"],
+            preferredSkillIds: [],
+            requiredRuntimeCapabilityIds: ["structured-tools"],
+            minimumLevel: 4,
+          },
+        },
+        gateFingerprint: testDigest,
+      },
+      status: "open" as const,
+      priorMissionStatus: null,
+      assignmentId: null,
+      summary: "Final verifier selection is blocked.",
+      pathEvidence: [],
+      createdAt: "2026-08-07T11:08:00.000Z",
+      resolution: null,
+    };
+
+    expect(
+      MissionAttentionItemSchema.parse({ ...common, kind: "final_verifier_unavailable" }).kind,
+    ).toBe("final_verifier_unavailable");
+    expect(
+      MissionAttentionItemSchema.parse({
+        ...common,
+        kind: "final_verifier_capability_unknown",
+      }).kind,
+    ).toBe("final_verifier_capability_unknown");
+    expect(
+      MissionAttentionItemSchema.safeParse({
+        ...common,
+        kind: "final_verifier_unavailable",
+        status: "resolved",
+        resolution: {
+          kind: "waive_review",
+          actorId: "controller",
+          connectionId: "connection-1",
+          selfReportedClientLabel: "paseo-app",
+          reason: "Skip final verification.",
+          ownerAssignmentId: null,
+          recoveryAssignmentId: null,
+          resolvedAt: "2026-08-07T11:09:00.000Z",
+        },
       }).success,
     ).toBe(false);
   });
@@ -495,6 +634,7 @@ describe("team mission", () => {
         },
         outcome: { kind: "pending" as const },
       },
+      finalVerificationGate: null,
       status: "planned" as const,
     };
 
@@ -517,6 +657,36 @@ describe("team mission", () => {
         createdAt: "2026-08-07T11:10:00.000Z",
       }).success,
     ).toBe(false);
+    expect(
+      MissionWorkstreamSchema.safeParse({
+        ...workstream,
+        finalVerificationGate: undefined,
+      }).success,
+    ).toBe(false);
+    expect(
+      MissionWorkstreamSchema.parse({
+        ...workstream,
+        kind: "verification",
+        mutableScope: { kind: "read_only" },
+        finalVerificationGate: {
+          key: {
+            workstreamId: workstream.workstreamId,
+            planRevision: workstream.planRevision,
+            methodologySnapshotRevision: 1,
+            subjectAssignmentIds: [],
+            reviewGateFingerprints: [],
+            requirements: {
+              requiredSkillIds: workstream.requiredSkillIds,
+              preferredSkillIds: workstream.preferredSkillIds,
+              requiredRuntimeCapabilityIds: workstream.requiredRuntimeCapabilityIds,
+              minimumLevel: workstream.minimumLevel,
+            },
+          },
+          fingerprint: testDigest,
+          selection: { kind: "awaiting_verifier" },
+        },
+      }).finalVerificationGate,
+    ).not.toBeNull();
   });
 
   it("stores dynamic ownership and a structured assignment outside member profiles", () => {
@@ -627,6 +797,7 @@ describe("team mission", () => {
           },
           ownerOverrideReason: null,
           reviewGate: { kind: "none" as const, outcome: { kind: "not_required" as const } },
+          finalVerificationGate: null,
           status: "active" as const,
         },
       ],
@@ -639,6 +810,8 @@ describe("team mission", () => {
           subjectAssignmentIds: [],
           reviewGateFingerprint: null,
           reviewSubjectFingerprint: null,
+          finalVerificationGateFingerprint: null,
+          reviewGateEvidence: [],
           missionId: "mission-sdk",
           workstreamId: "workstream-protocol",
           assigneeMemberId: "member-engineer",
@@ -703,6 +876,8 @@ describe("team mission", () => {
       subjectAssignmentIds: [],
       reviewGateFingerprint: null,
       reviewSubjectFingerprint: null,
+      finalVerificationGateFingerprint: null,
+      reviewGateEvidence: [],
       missionId: "mission-sdk",
       workstreamId: "workstream-protocol",
       assigneeMemberId: "member-engineer",
@@ -735,6 +910,7 @@ describe("team mission", () => {
       report: {
         status: "completed" as const,
         verdict: null,
+        finalVerificationEvidence: null,
         summary: "Added the additive v2 schemas.",
         artifactPaths: ["packages/protocol/src/team/v2-types.ts"],
         tests: [{ command: "npx vitest run v2-types.test.ts", passed: true }],
@@ -757,6 +933,12 @@ describe("team mission", () => {
     };
 
     expect(MissionAssignmentContractSchema.parse(assignment)).toEqual(assignment);
+    expect(
+      MissionAssignmentContractSchema.safeParse({
+        ...assignment,
+        finalVerificationGateFingerprint: undefined,
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps plan-change cancellation additive on the Assignment wire shape", () => {
@@ -767,6 +949,8 @@ describe("team mission", () => {
       subjectAssignmentIds: ["assignment-delivery"],
       reviewGateFingerprint: testDigest,
       reviewSubjectFingerprint: testDigest,
+      finalVerificationGateFingerprint: null,
+      reviewGateEvidence: [],
       missionId: "mission-sdk",
       workstreamId: "workstream-protocol",
       assigneeMemberId: "member-reviewer",
@@ -819,6 +1003,8 @@ describe("team mission", () => {
       subjectAssignmentIds: [],
       reviewGateFingerprint: null,
       reviewSubjectFingerprint: null,
+      finalVerificationGateFingerprint: null,
+      reviewGateEvidence: [],
       missionId: "mission-sdk",
       workstreamId: "workstream-integration",
       assigneeMemberId: "member-engineer",

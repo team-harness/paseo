@@ -1,7 +1,10 @@
 import type {
   MissionAttentionItem,
+  MissionAssignmentContract,
   MissionAssignmentReport,
+  MissionFinalVerificationEvidence,
   MissionMutableScope,
+  MissionWorkstream,
   TeamMission,
   TeamV2,
 } from "@getpaseo/protocol/team/v2-types";
@@ -55,6 +58,16 @@ export interface TeamPlanRow {
   readonly reviewOutcome: "not_required" | "pending" | "approved" | "waived";
   readonly reviewReport: MissionAssignmentReport | null;
   readonly reviewWaiver: { waiverId: string; actorId: string; reason: string } | null;
+  readonly finalVerificationStatus:
+    | "awaiting_capabilities"
+    | "awaiting_verifier"
+    | "assigned"
+    | "approved"
+    | "changes_requested"
+    | null;
+  readonly finalVerifier: TeamPlanMember | null;
+  readonly finalGateFingerprint: string | null;
+  readonly finalVerificationEvidence: MissionFinalVerificationEvidence | null;
   readonly dependencyWorkstreamIds: readonly string[];
   readonly scope: MissionMutableScope;
   readonly assignmentStates: readonly string[];
@@ -280,70 +293,140 @@ function memberForPlan(team: TeamV2, mission: TeamMission, memberId: string): Te
 export function selectTeamPlanRows(team: TeamV2, mission: TeamMission | null): TeamPlanRow[] {
   if (!mission) return [];
   const attentionAttributions = selectOpenWorkstreamAttentionAttributions(mission);
-  return mission.workstreams.map((workstream) => {
-    const assignments = mission.assignments.filter(
-      (assignment) => assignment.workstreamId === workstream.workstreamId,
-    );
-    const reports = assignments.flatMap((assignment) =>
-      assignment.report ? [assignment.report] : [],
-    );
-    const gate = workstream.reviewGate;
-    const reviewerMemberId =
-      gate.kind === "required" && gate.selection.kind === "assigned"
-        ? gate.selection.reviewerMemberId
-        : null;
-    const reviewAssignmentId =
-      gate.kind === "required" && gate.outcome.kind === "approved"
-        ? gate.outcome.reviewAssignmentId
-        : null;
-    const waiverId =
-      gate.kind === "required" && gate.outcome.kind === "waived" ? gate.outcome.waiverId : null;
-    const reviewWaiver =
-      waiverId === null
+  return mission.workstreams.map((workstream) =>
+    buildTeamPlanRow(team, mission, workstream, attentionAttributions),
+  );
+}
+
+function buildTeamPlanRow(
+  team: TeamV2,
+  mission: TeamMission,
+  workstream: MissionWorkstream,
+  attentionAttributions: ReturnType<typeof selectOpenWorkstreamAttentionAttributions>,
+): TeamPlanRow {
+  const assignments = mission.assignments.filter(
+    (assignment) => assignment.workstreamId === workstream.workstreamId,
+  );
+  const reports = assignments.flatMap((assignment) =>
+    assignment.report ? [assignment.report] : [],
+  );
+  return {
+    workstreamId: workstream.workstreamId,
+    kind: workstream.kind,
+    title: workstream.title,
+    objective: workstream.objective,
+    status: workstream.status,
+    owner: memberForPlan(team, mission, workstream.ownerMemberId),
+    ...selectReviewPlanFields(team, mission, workstream),
+    ...selectFinalVerificationPlanFields(team, mission, workstream, assignments),
+    dependencyWorkstreamIds: workstream.dependencyWorkstreamIds,
+    scope: workstream.mutableScope,
+    assignmentStates: assignments.map((assignment) => assignment.semanticState),
+    reports,
+    artifactPaths: Array.from(new Set(reports.flatMap((report) => report.artifactPaths))),
+    blockers: attentionAttributions
+      .filter((item) => item.targetWorkstreamId === workstream.workstreamId)
+      .map((item) => ({
+        attentionId: item.attentionId,
+        kind: item.kind,
+        summary: item.summary,
+        sourceWorkstreamId: item.sourceWorkstreamId,
+        direct: item.direct,
+      })),
+  };
+}
+
+function selectReviewPlanFields(
+  team: TeamV2,
+  mission: TeamMission,
+  workstream: MissionWorkstream,
+): Pick<
+  TeamPlanRow,
+  | "reviewer"
+  | "reviewSubjectAssignmentIds"
+  | "reviewSelection"
+  | "reviewOutcome"
+  | "reviewReport"
+  | "reviewWaiver"
+> {
+  const gate = workstream.reviewGate;
+  const reviewerMemberId =
+    gate.kind === "required" && gate.selection.kind === "assigned"
+      ? gate.selection.reviewerMemberId
+      : null;
+  const reviewAssignmentId =
+    gate.kind === "required" && gate.outcome.kind === "approved"
+      ? gate.outcome.reviewAssignmentId
+      : null;
+  const waiverId =
+    gate.kind === "required" && gate.outcome.kind === "waived" ? gate.outcome.waiverId : null;
+  const reviewWaiver = mission.reviewWaivers.find((waiver) => waiver.waiverId === waiverId) ?? null;
+  return {
+    reviewer: reviewerMemberId ? memberForPlan(team, mission, reviewerMemberId) : null,
+    reviewSubjectAssignmentIds:
+      gate.kind === "required" ? gate.gateKey.subject.subjectAssignmentIds : [],
+    reviewSelection: gate.kind === "required" ? gate.selection.kind : "not_required",
+    reviewOutcome: gate.outcome.kind,
+    reviewReport:
+      reviewAssignmentId === null
         ? null
-        : (mission.reviewWaivers.find((waiver) => waiver.waiverId === waiverId) ?? null);
+        : (mission.assignments.find((assignment) => assignment.assignmentId === reviewAssignmentId)
+            ?.report ?? null),
+    reviewWaiver:
+      reviewWaiver === null
+        ? null
+        : {
+            waiverId: reviewWaiver.waiverId,
+            actorId: reviewWaiver.actorId,
+            reason: reviewWaiver.reason,
+          },
+  };
+}
+
+function selectFinalVerificationPlanFields(
+  team: TeamV2,
+  mission: TeamMission,
+  workstream: MissionWorkstream,
+  assignments: MissionAssignmentContract[],
+): Pick<
+  TeamPlanRow,
+  "finalVerificationStatus" | "finalVerifier" | "finalGateFingerprint" | "finalVerificationEvidence"
+> {
+  const gate = workstream.finalVerificationGate;
+  if (gate === null) {
     return {
-      workstreamId: workstream.workstreamId,
-      kind: workstream.kind,
-      title: workstream.title,
-      objective: workstream.objective,
-      status: workstream.status,
-      owner: memberForPlan(team, mission, workstream.ownerMemberId),
-      reviewer: reviewerMemberId ? memberForPlan(team, mission, reviewerMemberId) : null,
-      reviewSubjectAssignmentIds:
-        gate.kind === "required" ? gate.gateKey.subject.subjectAssignmentIds : [],
-      reviewSelection: gate.kind === "required" ? gate.selection.kind : "not_required",
-      reviewOutcome: gate.outcome.kind,
-      reviewReport:
-        reviewAssignmentId === null
-          ? null
-          : (mission.assignments.find(
-              (assignment) => assignment.assignmentId === reviewAssignmentId,
-            )?.report ?? null),
-      reviewWaiver:
-        reviewWaiver === null
-          ? null
-          : {
-              waiverId: reviewWaiver.waiverId,
-              actorId: reviewWaiver.actorId,
-              reason: reviewWaiver.reason,
-            },
-      dependencyWorkstreamIds: workstream.dependencyWorkstreamIds,
-      scope: workstream.mutableScope,
-      assignmentStates: assignments.map((assignment) => assignment.semanticState),
-      reports,
-      artifactPaths: Array.from(new Set(reports.flatMap((report) => report.artifactPaths))),
-      blockers: attentionAttributions
-        .filter((item) => item.targetWorkstreamId === workstream.workstreamId)
-        .map((item) => ({
-          attentionId: item.attentionId,
-          kind: item.kind,
-          summary: item.summary,
-          sourceWorkstreamId: item.sourceWorkstreamId,
-          direct: item.direct,
-        })),
+      finalVerificationStatus: null,
+      finalVerifier: null,
+      finalGateFingerprint: null,
+      finalVerificationEvidence: null,
     };
-  });
+  }
+  if (gate.selection.kind !== "assigned") {
+    return {
+      finalVerificationStatus: gate.selection.kind,
+      finalVerifier: null,
+      finalGateFingerprint: gate.fingerprint,
+      finalVerificationEvidence: null,
+    };
+  }
+  const assignment = assignments.find(
+    (candidate) =>
+      candidate.kind === "verification" &&
+      candidate.planRevision === mission.planRevision &&
+      candidate.semanticState !== "canceled" &&
+      candidate.finalVerificationGateFingerprint === gate.fingerprint,
+  );
+  const evidence =
+    assignment?.report?.status === "completed" &&
+    assignment.report.finalVerificationEvidence?.finalGateFingerprint === gate.fingerprint
+      ? assignment.report.finalVerificationEvidence
+      : null;
+  return {
+    finalVerificationStatus: evidence?.verdict ?? "assigned",
+    finalVerifier: memberForPlan(team, mission, gate.selection.verifierMemberId),
+    finalGateFingerprint: gate.fingerprint,
+    finalVerificationEvidence: evidence,
+  };
 }
 
 export function selectTeamAttentionRows(mission: TeamMission | null): TeamAttentionRow[] {

@@ -7,6 +7,7 @@ import type { TestInlineTeamMemberInput } from "../test-fixtures.js";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import type { AcceptedTurnFact } from "../domain/assignment-contract-validation.js";
+import { buildMissionFinalVerificationGate } from "../domain/mission-final-verification-gate.js";
 import { MissionStore } from "../persistence/mission-store.js";
 import { TeamProfileStore } from "../persistence/profile-store.js";
 import { TeamPersistenceReconciler } from "../persistence/reconciliation.js";
@@ -549,7 +550,7 @@ describe("TeamCollaborationService queries", () => {
     });
   });
 
-  test("reranks independent final verifiers by skills, level, and load", async () => {
+  test("keeps the verification Workstream coordinator separate from the final verifier", async () => {
     const fixture = createFixture(rootDirectory);
     const clientMemberKeys = ["lead", "engineer", "quality"];
     const team = await fixture.lifecycle.createTeam({
@@ -611,11 +612,58 @@ describe("TeamCollaborationService queries", () => {
       { workstreamId: "api", ownerMemberId: team.members[1]?.memberId },
       {
         workstreamId: "final-verification",
-        ownerMemberId: team.members[2]?.memberId,
-        ownerMatchExplanation: { recommendedMemberId: team.members[1]?.memberId },
-        ownerOverrideReason: "System-selected the highest-ranked independent final verifier",
+        ownerMemberId: team.members[1]?.memberId,
+        finalVerificationGate: {
+          key: {
+            workstreamId: "final-verification",
+            planRevision: 1,
+            methodologySnapshotRevision: 1,
+            subjectAssignmentIds: [],
+            reviewGateFingerprints: [expect.stringMatching(/^sha256:[0-9a-f]{64}$/)],
+          },
+          selection: {
+            kind: "assigned",
+            verifierMemberId: team.members[2]?.memberId,
+            independenceExceptionReason: null,
+          },
+        },
       },
     ]);
+  });
+
+  test("plans an awaiting final gate when coordinator and verifier eligibility differ", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { mission } = await createMission(fixture.lifecycle);
+    const [delivery, verification] = missionPlan();
+    if (!delivery || !verification) throw new Error("Mission plan fixture is incomplete");
+
+    const planned = await fixture.collaboration.planMission({
+      callerAgentId: "agent-1",
+      missionId: mission.id,
+      expectedRevision: mission.revision,
+      expectedPlanRevision: 0,
+      workstreams: [
+        delivery,
+        {
+          ...verification,
+          requiredRuntimeCapabilityIds: ["final-audit"],
+        },
+      ],
+    });
+
+    expect(planned.workstreams[1]).toMatchObject({
+      kind: "verification",
+      ownerMemberId: expect.any(String),
+      ownerMatchExplanation: {
+        requiredSkillIds: [],
+        requiredRuntimeCapabilityIds: [],
+        minimumLevel: 1,
+      },
+      finalVerificationGate: {
+        key: { requirements: { requiredRuntimeCapabilityIds: ["final-audit"] } },
+        selection: { kind: "awaiting_verifier" },
+      },
+    });
   });
 
   test("rejects a plan from a non-Lead participant", async () => {
@@ -1348,6 +1396,7 @@ describe("TeamCollaborationService queries", () => {
           report: {
             status: "completed" as const,
             verdict: "approved" as const,
+            finalVerificationEvidence: null,
             summary: "The parser contract is approved",
             artifactPaths: [],
             tests: [{ command: "npm test parser", passed: true }],
@@ -3839,6 +3888,7 @@ describe("TeamCollaborationService queries", () => {
     const { blocked, failedVerificationId } = await createFailedDaemonOwnedVerification(
       fixture,
       running,
+      { withoutReview: true },
     );
     const needsReport = await fixture.missions.update({
       missionId: running.mission.id,
@@ -3884,6 +3934,12 @@ describe("TeamCollaborationService queries", () => {
       report: {
         status: "completed",
         verdict: "changes_requested",
+        finalVerificationEvidence: {
+          kind: "final_verification",
+          finalGateFingerprint: verification.finalVerificationGateFingerprint,
+          verdict: "changes_requested",
+          reviewGateEvidence: verification.reviewGateEvidence,
+        },
         summary: "The implementation needs another pass",
         artifactPaths: [],
         tests: [{ command: "npm test parser", passed: false }],
@@ -4421,6 +4477,7 @@ async function createRunningDelivery(fixture: ReturnType<typeof createFixture>) 
 async function createFailedDaemonOwnedVerification(
   fixture: ReturnType<typeof createFixture>,
   running: Awaited<ReturnType<typeof createRunningDelivery>>,
+  options: { withoutReview?: boolean } = {},
 ) {
   const failedVerificationId = "assignment-final-verification-failed";
   const blocked = await fixture.missions.update({
@@ -4433,15 +4490,37 @@ async function createFailedDaemonOwnedVerification(
       const verificationWorkstream = mission.workstreams.find(
         (workstream) => workstream.kind === "verification",
       );
-      if (!delivery || !verificationWorkstream) throw new Error("Mission plan is incomplete");
+      const currentFinalGate = verificationWorkstream?.finalVerificationGate;
+      if (!delivery || !verificationWorkstream || !currentFinalGate) {
+        throw new Error("Mission plan is incomplete");
+      }
+      const finalGate = options.withoutReview
+        ? buildMissionFinalVerificationGate({
+            workstreamId: verificationWorkstream.workstreamId,
+            planRevision: verificationWorkstream.planRevision,
+            methodologySnapshotRevision: verificationWorkstream.methodologySnapshotRevision,
+            subjectAssignmentIds: [delivery.assignmentId],
+            reviewGateFingerprints: [],
+            requirements: currentFinalGate.key.requirements,
+            selection: currentFinalGate.selection,
+          })
+        : currentFinalGate;
+      const workstreams = mission.workstreams.map((workstream) => {
+        if (workstream.kind === "verification") {
+          return { ...workstream, status: "blocked" as const, finalVerificationGate: finalGate };
+        }
+        if (!options.withoutReview) return { ...workstream, status: "accepted" as const };
+        return {
+          ...workstream,
+          status: "accepted" as const,
+          reviewGate: { kind: "none" as const, outcome: { kind: "not_required" as const } },
+        };
+      });
       return {
         ...mission,
         status: "needs_attention" as const,
         suspendedStatus: "verifying" as const,
-        workstreams: mission.workstreams.map((workstream) => ({
-          ...workstream,
-          status: workstream.kind === "verification" ? ("blocked" as const) : ("accepted" as const),
-        })),
+        workstreams,
         assignments: [
           {
             ...delivery,
@@ -4456,6 +4535,8 @@ async function createFailedDaemonOwnedVerification(
             assignmentId: failedVerificationId,
             kind: "verification" as const,
             subjectAssignmentIds: [delivery.assignmentId],
+            finalVerificationGateFingerprint: finalGate.fingerprint,
+            reviewGateEvidence: [],
             workstreamId: verificationWorkstream.workstreamId,
             assigneeMemberId: mission.rosterSnapshots[0]!.leadMemberId,
             runtimeAgentId: "agent-1",
@@ -4473,6 +4554,12 @@ async function createFailedDaemonOwnedVerification(
             report: {
               status: "completed" as const,
               verdict: "changes_requested" as const,
+              finalVerificationEvidence: {
+                kind: "final_verification" as const,
+                finalGateFingerprint: finalGate.fingerprint,
+                verdict: "changes_requested" as const,
+                reviewGateEvidence: [],
+              },
               summary: "The implementation needs another pass",
               artifactPaths: [],
               tests: [{ command: "npm test parser", passed: false }],
@@ -4633,6 +4720,7 @@ function completedDeliveryReport() {
   return {
     status: "completed" as const,
     verdict: null,
+    finalVerificationEvidence: null,
     summary: "Implemented the parser API",
     artifactPaths: ["packages/server/src/parser.ts"],
     tests: [{ command: "npm test parser", passed: true }],

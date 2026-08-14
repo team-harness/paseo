@@ -340,6 +340,7 @@ describe("TeamAttentionSettingsPage", () => {
           status: "blocked",
           ownerMemberId: "member-lead",
           reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+          finalVerificationGate: null,
           dependencyWorkstreamIds: [],
           mutableScope: { kind: "read_only" },
         },
@@ -350,6 +351,7 @@ describe("TeamAttentionSettingsPage", () => {
           status: "blocked",
           ownerMemberId: "member-lead",
           reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+          finalVerificationGate: null,
           dependencyWorkstreamIds: ["workstream-api"],
           mutableScope: { kind: "read_only" },
         },
@@ -360,6 +362,7 @@ describe("TeamAttentionSettingsPage", () => {
           status: "ready",
           ownerMemberId: "member-lead",
           reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+          finalVerificationGate: null,
           dependencyWorkstreamIds: [],
           mutableScope: { kind: "read_only" },
         },
@@ -405,6 +408,82 @@ describe("TeamAttentionSettingsPage", () => {
     cleanup();
     renderAttention(scopedMission, NO_ACTIONS);
     expect(screen.getByTestId("team-attention-attention-api-scope").textContent).toContain("API");
+  });
+
+  it("shows the final verifier and typed final evidence separately from the coordinator", () => {
+    const fingerprint = `sha256:${"a".repeat(64)}`;
+    const finalMission = createMission({
+      status: "verifying",
+      suspendedStatus: null,
+      workstreams: [
+        {
+          workstreamId: "workstream-final-verification",
+          kind: "verification",
+          title: "Final verification",
+          objective: "Verify the Mission",
+          ownerMemberId: "member-lead",
+          reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+          finalVerificationGate: {
+            key: {
+              workstreamId: "workstream-final-verification",
+              planRevision: 1,
+              methodologySnapshotRevision: 1,
+              subjectAssignmentIds: ["assignment-api"],
+              reviewGateFingerprints: [],
+              requirements: {
+                requiredSkillIds: ["typescript"],
+                preferredSkillIds: [],
+                requiredRuntimeCapabilityIds: [],
+                minimumLevel: 3,
+              },
+            },
+            fingerprint,
+            selection: {
+              kind: "assigned",
+              verifierMemberId: "member-reviewer",
+              matchExplanation: {} as never,
+              independenceExceptionReason: null,
+            },
+          },
+          dependencyWorkstreamIds: [],
+          mutableScope: { kind: "read_only" },
+          status: "active",
+        } as unknown as TeamMission["workstreams"][number],
+      ],
+      assignments: [
+        {
+          assignmentId: "assignment-final-verification",
+          kind: "verification",
+          workstreamId: "workstream-final-verification",
+          planRevision: 1,
+          semanticState: "completed",
+          finalVerificationGateFingerprint: fingerprint,
+          reviewGateEvidence: [],
+          report: {
+            status: "completed",
+            verdict: "approved",
+            finalVerificationEvidence: {
+              kind: "final_verification",
+              finalGateFingerprint: fingerprint,
+              verdict: "approved",
+              reviewGateEvidence: [],
+            },
+            summary: "Approved",
+            artifactPaths: [],
+            tests: [],
+            decisions: [],
+            handoffs: [],
+          },
+        } as unknown as TeamMission["assignments"][number],
+      ],
+    });
+
+    render(<TeamPlanSettingsPage team={TEAM} mission={finalMission} actions={NO_ACTIONS} />);
+    const card = screen.getByTestId("team-workstream-workstream-final-verification");
+    expect(card.textContent).toContain("teams.v2Settings.plan.finalVerificationStatus.approved");
+    expect(card.textContent).toContain("Reviewer · @reviewer");
+    expect(card.textContent).toContain(fingerprint);
+    expect(card.textContent).toContain("approved · 0");
   });
 
   it("shows a localized empty state when no eligible replacement Lead exists", () => {
