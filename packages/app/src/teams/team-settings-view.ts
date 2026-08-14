@@ -5,6 +5,7 @@ import type {
   TeamMission,
   TeamV2,
 } from "@getpaseo/protocol/team/v2-types";
+import { selectOpenWorkstreamAttentionAttributions } from "@getpaseo/protocol/team/attention-blocking";
 import type {
   AgentProfileExecutionFacts,
   TeamMemberExecutionSourceStatus,
@@ -59,6 +60,15 @@ export interface TeamPlanRow {
   readonly assignmentStates: readonly string[];
   readonly reports: readonly MissionAssignmentReport[];
   readonly artifactPaths: readonly string[];
+  readonly blockers: readonly TeamWorkstreamBlocker[];
+}
+
+export interface TeamWorkstreamBlocker {
+  readonly attentionId: string;
+  readonly kind: MissionAttentionItem["kind"];
+  readonly summary: string;
+  readonly sourceWorkstreamId: string;
+  readonly direct: boolean;
 }
 
 export interface TeamAttentionRow {
@@ -68,6 +78,9 @@ export interface TeamAttentionRow {
   readonly summary: string;
   readonly pathEvidence: MissionAttentionItem["pathEvidence"];
   readonly createdAt: string;
+  readonly scope: "mission" | "workstream";
+  readonly workstreamId: string | null;
+  readonly workstreamTitle: string | null;
 }
 
 export interface TeamAttentionRecoveryView {
@@ -266,6 +279,7 @@ function memberForPlan(team: TeamV2, mission: TeamMission, memberId: string): Te
 
 export function selectTeamPlanRows(team: TeamV2, mission: TeamMission | null): TeamPlanRow[] {
   if (!mission) return [];
+  const attentionAttributions = selectOpenWorkstreamAttentionAttributions(mission);
   return mission.workstreams.map((workstream) => {
     const assignments = mission.assignments.filter(
       (assignment) => assignment.workstreamId === workstream.workstreamId,
@@ -319,6 +333,15 @@ export function selectTeamPlanRows(team: TeamV2, mission: TeamMission | null): T
       assignmentStates: assignments.map((assignment) => assignment.semanticState),
       reports,
       artifactPaths: Array.from(new Set(reports.flatMap((report) => report.artifactPaths))),
+      blockers: attentionAttributions
+        .filter((item) => item.targetWorkstreamId === workstream.workstreamId)
+        .map((item) => ({
+          attentionId: item.attentionId,
+          kind: item.kind,
+          summary: item.summary,
+          sourceWorkstreamId: item.sourceWorkstreamId,
+          direct: item.direct,
+        })),
     };
   });
 }
@@ -327,14 +350,24 @@ export function selectTeamAttentionRows(mission: TeamMission | null): TeamAttent
   if (!mission) return [];
   return mission.attentionItems
     .filter((item) => item.status === "open")
-    .map((item) => ({
-      attentionId: item.attentionId,
-      kind: item.kind,
-      assignmentId: item.assignmentId,
-      summary: item.summary,
-      pathEvidence: item.pathEvidence,
-      createdAt: item.createdAt,
-    }));
+    .map((item) => {
+      const workstreamId = item.scope.kind === "workstream" ? item.scope.workstreamId : null;
+      return {
+        attentionId: item.attentionId,
+        kind: item.kind,
+        assignmentId: item.assignmentId,
+        summary: item.summary,
+        pathEvidence: item.pathEvidence,
+        createdAt: item.createdAt,
+        scope: item.scope.kind,
+        workstreamId,
+        workstreamTitle:
+          workstreamId === null
+            ? null
+            : (mission.workstreams.find((workstream) => workstream.workstreamId === workstreamId)
+                ?.title ?? workstreamId),
+      };
+    });
 }
 
 export function selectTeamAttentionRecovery(

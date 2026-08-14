@@ -28,7 +28,10 @@ import {
   type TeamOperationPermit,
 } from "./team-operation-coordinator.js";
 import { buildLeadReplanDeliveries } from "./assignment-replan.js";
-import { missionReviewReportFingerprint } from "../domain/mission-review-gate.js";
+import {
+  buildMissionReviewGate,
+  missionReviewReportFingerprint,
+} from "../domain/mission-review-gate.js";
 import {
   testCreateMember,
   testCreateMethodologyBinding,
@@ -419,6 +422,83 @@ describe("TeamCollaborationService queries", () => {
           scope: { kind: "mission" as const },
           status: "resolved",
           resolution: { kind: "replan", actorId: "agent-2" },
+        },
+      ],
+    });
+  });
+
+  test.each([
+    ["review_gate_reviewer_unavailable", "awaiting_reviewer"],
+    ["review_gate_capability_unknown", "awaiting_capabilities"],
+  ] as const)("lets a replacement plan resolve %s Attention", async (kind, selectionKind) => {
+    const fixture = createFixture(rootDirectory);
+    const { team, mission } = await createMission(fixture.lifecycle);
+    const gate = buildMissionReviewGate({
+      workstreamId: "api",
+      planRevision: 1,
+      subjectAssignmentIds: ["assignment-api"],
+      requirements: {
+        requiredSkillIds: ["typescript"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 4,
+      },
+      selection:
+        selectionKind === "awaiting_reviewer"
+          ? { kind: selectionKind }
+          : {
+              kind: selectionKind,
+              candidateMemberIds: [team.members[1]?.memberId ?? "missing"],
+            },
+      outcome: { kind: "pending" },
+    });
+    if (gate.kind !== "required") throw new Error("Required review gate expected");
+    const pending = await fixture.missions.update({
+      missionId: mission.id,
+      expectedRevision: mission.revision,
+      update: (current) => ({
+        ...current,
+        attentionItems: [
+          {
+            attentionId: `attention-${kind}`,
+            kind,
+            scope: { kind: "workstream", workstreamId: "api", blockDependents: true },
+            status: "open",
+            priorMissionStatus: null,
+            assignmentId: null,
+            summary: "The API review gate is structurally blocked.",
+            pathEvidence: [],
+            createdAt: NOW,
+            resolution: null,
+            reviewGateDetails: {
+              gateKey: gate.gateKey,
+              gateKeyFingerprint: gate.gateKeyFingerprint,
+              subjectFingerprint: gate.subjectFingerprint,
+            },
+          },
+        ],
+      }),
+    });
+
+    const planned = await fixture.collaboration.planMission({
+      callerAgentId: "agent-1",
+      missionId: mission.id,
+      expectedRevision: pending.mission.revision,
+      expectedPlanRevision: 0,
+      workstreams: missionPlanWithoutRequiredReview(),
+    });
+
+    expect(planned).toMatchObject({
+      status: "planning",
+      suspendedStatus: null,
+      planRevision: 1,
+      attentionItems: [
+        {
+          kind,
+          scope: { kind: "workstream", workstreamId: "api" },
+          status: "resolved",
+          priorMissionStatus: null,
+          resolution: { kind: "replan", actorId: "agent-1" },
         },
       ],
     });

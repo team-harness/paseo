@@ -199,6 +199,7 @@ export const teamV2En = {
       artifacts: "Artifacts",
       readOnly: "Read only",
       workspaceScope: "Entire Workspace",
+      workstreamBlocker: "Workstream blocker",
     },
     attention: {
       title: "Open Attention",
@@ -209,6 +210,8 @@ export const teamV2En = {
       noReplacementLead: "No eligible replacement Members are available",
       replaceLeadReason: "Replaced Lead with {{member}} from Team settings",
       resolutionReason: "Resolved from Team settings: {{resolution}}",
+      scopeMission: "Mission scope",
+      scopeWorkstream: "Workstream: {{workstream}}",
       kind: {
         ownership_violation: "Workspace ownership conflict",
         missing_report: "Missing Assignment report",
@@ -219,6 +222,8 @@ export const teamV2En = {
         reviewer_unavailable: "Reviewer unavailable",
         lead_unavailable: "Lead unavailable",
         notification_unacknowledged: "Notification not acknowledged",
+        review_gate_reviewer_unavailable: "No eligible independent reviewer",
+        review_gate_capability_unknown: "Reviewer capability facts unknown",
       },
       resolution: {
         external_change: "Mark as external change",
@@ -552,6 +557,7 @@ export const teamV2ZhCN: TeamV2Resources = {
       artifacts: "产物",
       readOnly: "只读",
       workspaceScope: "整个 Workspace",
+      workstreamBlocker: "Workstream 阻塞项",
     },
     attention: {
       title: "待处理 Attention",
@@ -562,6 +568,8 @@ export const teamV2ZhCN: TeamV2Resources = {
       noReplacementLead: "没有符合条件的替代 Member",
       replaceLeadReason: "已在 Team 设置中将 Lead 更换为 {{member}}",
       resolutionReason: "从 Team 设置处理：{{resolution}}",
+      scopeMission: "Mission 范围",
+      scopeWorkstream: "Workstream：{{workstream}}",
       kind: {
         ownership_violation: "Workspace 所有权冲突",
         missing_report: "缺少 Assignment 报告",
@@ -572,6 +580,8 @@ export const teamV2ZhCN: TeamV2Resources = {
         reviewer_unavailable: "Reviewer 不可用",
         lead_unavailable: "Lead 不可用",
         notification_unacknowledged: "通知未确认",
+        review_gate_reviewer_unavailable: "没有符合条件的独立 Reviewer",
+        review_gate_capability_unknown: "Reviewer 能力事实未知",
       },
       resolution: {
         external_change: "标记为外部变更",

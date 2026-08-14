@@ -585,19 +585,12 @@ function missionScopedAttentionItemSchema<
   });
 }
 
-export const MissionAttentionItemSchema = z.discriminatedUnion("kind", [
-  missionScopedAttentionItemSchema("ownership_violation"),
-  missionScopedAttentionItemSchema("missing_report"),
-  missionScopedAttentionItemSchema("assignment_requires_replan"),
-  missionScopedAttentionItemSchema("provider_unavailable"),
-  missionScopedAttentionItemSchema("dispatch_acceptance_unknown"),
-  missionScopedAttentionItemSchema("participant_unavailable"),
-  missionScopedAttentionItemSchema("reviewer_unavailable"),
-  missionScopedAttentionItemSchema("lead_unavailable"),
-  missionScopedAttentionItemSchema("notification_unacknowledged"),
-  z.object({
+function reviewGateAttentionItemSchema<
+  const Kind extends "review_gate_reviewer_unavailable" | "review_gate_capability_unknown",
+>(kind: Kind) {
+  return z.object({
     ...missionAttentionItemCommon,
-    kind: z.literal("review_gate_reviewer_unavailable"),
+    kind: z.literal(kind),
     scope: z.object({
       kind: z.literal("workstream"),
       workstreamId: z.string().min(1),
@@ -609,7 +602,21 @@ export const MissionAttentionItemSchema = z.discriminatedUnion("kind", [
       subjectFingerprint: MissionReviewFingerprintSchema,
     }),
     priorMissionStatus: z.null(),
-  }),
+  });
+}
+
+export const MissionAttentionItemSchema = z.discriminatedUnion("kind", [
+  missionScopedAttentionItemSchema("ownership_violation"),
+  missionScopedAttentionItemSchema("missing_report"),
+  missionScopedAttentionItemSchema("assignment_requires_replan"),
+  missionScopedAttentionItemSchema("provider_unavailable"),
+  missionScopedAttentionItemSchema("dispatch_acceptance_unknown"),
+  missionScopedAttentionItemSchema("participant_unavailable"),
+  missionScopedAttentionItemSchema("reviewer_unavailable"),
+  missionScopedAttentionItemSchema("lead_unavailable"),
+  missionScopedAttentionItemSchema("notification_unacknowledged"),
+  reviewGateAttentionItemSchema("review_gate_reviewer_unavailable"),
+  reviewGateAttentionItemSchema("review_gate_capability_unknown"),
 ]);
 export type MissionAttentionItem = z.infer<typeof MissionAttentionItemSchema>;
 

@@ -183,7 +183,7 @@ describe("TeamMissionScheduler", () => {
     expect(releasedLeases).toEqual([]);
   });
 
-  test("does not dispatch an old plan while Mission-wide replanning Attention is open", async () => {
+  test("does not dispatch any Workstream while Mission-scoped Attention is open", async () => {
     const missions = new MissionStore({
       directory: join(rootDirectory, "missions"),
       logger: createTestLogger(),
@@ -194,13 +194,13 @@ describe("TeamMissionScheduler", () => {
     mission.suspendedStatus = "active";
     mission.attentionItems = [
       {
-        attentionId: "lead-replacement:attention-lead:replan",
-        kind: "assignment_requires_replan",
+        attentionId: "attention-provider-api",
+        kind: "provider_unavailable",
         scope: { kind: "mission" as const },
         status: "open",
         priorMissionStatus: "active",
-        assignmentId: null,
-        summary: "The replacement Lead must submit a new Mission plan.",
+        assignmentId: "assignment-api",
+        summary: "The API provider is unavailable.",
         pathEvidence: [],
         createdAt: NOW,
         resolution: null,
@@ -219,7 +219,7 @@ describe("TeamMissionScheduler", () => {
       participants: { ensureParticipant: async () => undefined },
       leases: {
         acquire: async () => {
-          throw new Error("Mission-wide replan must block lease acquisition");
+          throw new Error("Mission-scoped Attention must block lease acquisition");
         },
         transitionToReportHold,
         release: async () => undefined,
@@ -228,7 +228,7 @@ describe("TeamMissionScheduler", () => {
       },
       workspace: {
         captureBaseline: async () => {
-          throw new Error("Mission-wide replan must block baseline capture");
+          throw new Error("Mission-scoped Attention must block baseline capture");
         },
       },
       dispatch: {
@@ -250,6 +250,134 @@ describe("TeamMissionScheduler", () => {
       mission.attentionItems,
     );
   });
+
+  test.each([
+    ["awaiting_reviewer", "review_gate_reviewer_unavailable"],
+    ["awaiting_capabilities", "review_gate_capability_unknown"],
+  ] as const)(
+    "blocks only a %s review-gated Workstream dependency closure while an independent fork dispatches",
+    async (selectionKind, attentionKind) => {
+      const missions = new MissionStore({
+        directory: join(rootDirectory, "missions"),
+        logger: createTestLogger(),
+        now: () => NOW,
+      });
+      const mission = activeMission();
+      const apiAssignment = mission.assignments.find(
+        (candidate) => candidate.assignmentId === "assignment-api",
+      )!;
+      const gate = buildMissionReviewGate({
+        workstreamId: "workstream-api",
+        planRevision: mission.planRevision,
+        subjectAssignmentIds: [apiAssignment.assignmentId],
+        requirements: {
+          requiredSkillIds: ["typescript"],
+          preferredSkillIds: [],
+          requiredRuntimeCapabilityIds: ["isolated-review"],
+          minimumLevel: 5,
+        },
+        selection:
+          selectionKind === "awaiting_reviewer"
+            ? { kind: selectionKind }
+            : { kind: selectionKind, candidateMemberIds: ["member-app"] },
+        outcome: { kind: "pending" },
+      });
+      if (gate.kind !== "required") throw new Error("required review gate expected");
+      mission.workstreams = mission.workstreams.map((candidate) => {
+        if (candidate.workstreamId === "workstream-api") {
+          return { ...candidate, status: "review", reviewGate: gate };
+        }
+        if (candidate.workstreamId === "workstream-app") {
+          return { ...candidate, mutableScope: { kind: "read_only" } };
+        }
+        return candidate;
+      });
+      mission.assignments = mission.assignments.map((candidate) => {
+        if (candidate.assignmentId === apiAssignment.assignmentId) {
+          return {
+            ...candidate,
+            runtimeAgentId: "agent-lead",
+            bindingEpoch: 1,
+            workspaceBaseline: {
+              baselineId: "baseline-assignment-api",
+              workspaceId: mission.workspaceId,
+              assignmentId: apiAssignment.assignmentId,
+              policyRevision: mission.workspaceAuditPolicy.revision,
+              capturedAt: NOW,
+              entries: [],
+            },
+            report: completedReport(),
+            dispatchState: "settled",
+            semanticState: "completed",
+            acceptedTurnId: "turn-assignment-api",
+            dispatchedAt: NOW,
+            settledAt: NOW,
+          };
+        }
+        if (candidate.assignmentId === "assignment-app") {
+          return { ...candidate, mutableScope: { kind: "read_only" } };
+        }
+        return candidate;
+      });
+      await missions.createIfAbsent({
+        mission,
+        idempotencyKey: "start-scoped-review-gate",
+        requestFingerprint: "start-scoped-review-gate-fingerprint",
+      });
+      await missions.recordAcceptedTurnFacts({
+        missionId: mission.id,
+        facts: [
+          {
+            assignmentId: apiAssignment.assignmentId,
+            turnId: "turn-assignment-api",
+            runtimeAgentId: "agent-lead",
+            outcome: "completed",
+            recordedAt: NOW,
+          },
+        ],
+      });
+      const dispatches: string[] = [];
+      const scheduler = reviewRecoveryScheduler(missions, dispatches);
+
+      await scheduler.reconcileMission(mission.id);
+      const updated = await missions.get(mission.id);
+
+      expect(dispatches).toEqual(["assignment-app"]);
+      expect(updated?.mission).toMatchObject({
+        status: "active",
+        suspendedStatus: null,
+        workstreams: [
+          expect.objectContaining({ workstreamId: "workstream-api", status: "blocked" }),
+          expect.objectContaining({ workstreamId: "workstream-app", status: "active" }),
+          expect.objectContaining({ workstreamId: "workstream-integration", status: "blocked" }),
+        ],
+        attentionItems: [
+          expect.objectContaining({
+            kind: attentionKind,
+            scope: {
+              kind: "workstream",
+              workstreamId: "workstream-api",
+              blockDependents: true,
+            },
+            status: "open",
+            priorMissionStatus: null,
+            reviewGateDetails: {
+              gateKey: gate.gateKey,
+              gateKeyFingerprint: gate.gateKeyFingerprint,
+              subjectFingerprint: gate.subjectFingerprint,
+            },
+          }),
+        ],
+        assignments: expect.arrayContaining([
+          expect.objectContaining({ assignmentId: "assignment-app", semanticState: "running" }),
+          expect.objectContaining({
+            assignmentId: "assignment-integration",
+            semanticState: "planned",
+          }),
+        ]),
+      });
+    },
+  );
 
   test("reuses the prepared baseline when provider acceptance races a Mission revision", async () => {
     const missions = new MissionStore({

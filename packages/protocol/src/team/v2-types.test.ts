@@ -207,6 +207,59 @@ describe("team mission", () => {
     ).toBe(false);
   });
 
+  it("separates known-empty and capability-unknown Workstream Attention kinds", () => {
+    const common = {
+      attentionId: "attention-review-api",
+      scope: {
+        kind: "workstream" as const,
+        workstreamId: "workstream-api",
+        blockDependents: true as const,
+      },
+      reviewGateDetails: {
+        gateKey: {
+          subject: { workstreamId: "workstream-api", subjectAssignmentIds: ["assignment-api"] },
+          planRevision: 1,
+        },
+        gateKeyFingerprint: testDigest,
+        subjectFingerprint: testDigest,
+      },
+      status: "open" as const,
+      priorMissionStatus: null,
+      assignmentId: null,
+      summary: "Review gate is structurally blocked.",
+      pathEvidence: [],
+      createdAt: "2026-08-07T11:08:00.000Z",
+      resolution: null,
+    };
+
+    expect(
+      MissionAttentionItemSchema.parse({
+        ...common,
+        kind: "review_gate_reviewer_unavailable",
+      }).kind,
+    ).toBe("review_gate_reviewer_unavailable");
+    expect(
+      MissionAttentionItemSchema.parse({
+        ...common,
+        kind: "review_gate_capability_unknown",
+      }).kind,
+    ).toBe("review_gate_capability_unknown");
+    expect(
+      MissionAttentionItemSchema.safeParse({
+        ...common,
+        kind: "review_gate_capability_unknown",
+        scope: { kind: "mission" },
+      }).success,
+    ).toBe(false);
+    expect(
+      MissionAttentionItemSchema.safeParse({
+        ...common,
+        kind: "review_gate_capability_unknown",
+        priorMissionStatus: "active",
+      }).success,
+    ).toBe(false);
+  });
+
   it("requires the unshipped V1 Mission waiver collection", () => {
     expect(TeamMissionSchema.shape.reviewWaivers.safeParse(undefined).success).toBe(false);
   });

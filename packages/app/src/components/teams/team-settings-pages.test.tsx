@@ -14,8 +14,11 @@ vi.stubGlobal("React", React);
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, values?: { member?: string }) =>
-      values?.member ? `${key}:${values.member}` : key,
+    t: (key: string, values?: { member?: string; workstream?: string }) => {
+      if (values?.member) return `${key}:${values.member}`;
+      if (values?.workstream) return `${key}:${values.workstream}`;
+      return key;
+    },
   }),
 }));
 
@@ -33,7 +36,12 @@ vi.mock("lucide-react-native", () => ({
   X: () => null,
 }));
 
-vi.mock("@/components/ui/status-badge", () => ({ StatusBadge: () => null }));
+vi.mock("@/components/ui/status-badge", async () => {
+  const ReactModule = await import("react");
+  return {
+    StatusBadge: ({ label }: { label: string }) => ReactModule.createElement("span", null, label),
+  };
+});
 
 vi.mock("@/components/ui/button", async () => {
   const ReactModule = await import("react");
@@ -78,6 +86,7 @@ import {
   TeamMembersSettingsPage,
   TeamMethodologySettingsPage,
   TeamOverviewSettingsPage,
+  TeamPlanSettingsPage,
   type TeamSettingsPageActions,
 } from "./team-settings-pages";
 
@@ -317,6 +326,85 @@ describe("TeamAttentionSettingsPage", () => {
       replacementMemberId: "member-server-2",
       reason: "teams.v2Settings.attention.replaceLeadReason:@server-2",
     });
+  });
+
+  it("shows a scoped blocker on its Workstream while an independent Workstream stays ready", () => {
+    const scopedMission = createMission({
+      status: "active",
+      suspendedStatus: null,
+      workstreams: [
+        {
+          workstreamId: "workstream-api",
+          title: "API",
+          objective: "Ship API",
+          status: "blocked",
+          ownerMemberId: "member-lead",
+          reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+          dependencyWorkstreamIds: [],
+          mutableScope: { kind: "read_only" },
+        },
+        {
+          workstreamId: "workstream-integration",
+          title: "Integration",
+          objective: "Integrate API",
+          status: "blocked",
+          ownerMemberId: "member-lead",
+          reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+          dependencyWorkstreamIds: ["workstream-api"],
+          mutableScope: { kind: "read_only" },
+        },
+        {
+          workstreamId: "workstream-ui",
+          title: "UI",
+          objective: "Ship UI",
+          status: "ready",
+          ownerMemberId: "member-lead",
+          reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+          dependencyWorkstreamIds: [],
+          mutableScope: { kind: "read_only" },
+        },
+      ] as unknown as TeamMission["workstreams"],
+      attentionItems: [
+        {
+          attentionId: "attention-api",
+          kind: "review_gate_capability_unknown",
+          scope: {
+            kind: "workstream",
+            workstreamId: "workstream-api",
+            blockDependents: true,
+          },
+          status: "open",
+          priorMissionStatus: null,
+          assignmentId: null,
+          summary: "API capability facts are unknown",
+          pathEvidence: [],
+          createdAt: "2026-08-10T00:00:00.000Z",
+          resolution: null,
+          reviewGateDetails: {} as never,
+        },
+      ],
+    });
+
+    render(<TeamPlanSettingsPage team={TEAM} mission={scopedMission} actions={NO_ACTIONS} />);
+    expect(screen.getByTestId("team-workstream-workstream-api").textContent).toContain(
+      "API capability facts are unknown",
+    );
+    expect(screen.getByTestId("team-workstream-workstream-api").textContent).toContain(
+      "teams.v2Settings.status.blocked",
+    );
+    expect(screen.getByTestId("team-workstream-workstream-integration").textContent).toContain(
+      "API capability facts are unknown",
+    );
+    expect(screen.getByTestId("team-workstream-workstream-integration").textContent).toContain(
+      "workstream-api",
+    );
+    expect(screen.getByTestId("team-workstream-workstream-ui").textContent).toContain(
+      "teams.v2Settings.status.ready",
+    );
+
+    cleanup();
+    renderAttention(scopedMission, NO_ACTIONS);
+    expect(screen.getByTestId("team-attention-attention-api-scope").textContent).toContain("API");
   });
 
   it("shows a localized empty state when no eligible replacement Lead exists", () => {
