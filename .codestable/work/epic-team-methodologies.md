@@ -4,7 +4,7 @@ phase: acceptance
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
 active_items: []
-next_action: owner 裁决 Native iOS/Android 与真实 Electron 执行证据缺口
+next_action: 按 remote_publish=final 发布分支并请求 owner final acceptance
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +32,14 @@ remote_publish: final
 - [x] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：owner 选择 A，明示接受 final acceptance IMP-1 的平台执行证据例外。Native
+  iOS/Android 与真实 Electron 的 Team Hub/Mission 表单验证转为**首次公开前硬门槛**，不阻塞
+  本 Epic 合并；browser desktop/compact、隔离 daemon 与真实 provider 证据仍按原记录成立。
+  该裁决不把未执行的平台标记为通过，也不允许用 JSDOM/mock 替代真实平台。IMP-2 已由
+  TM-ITEM-6 current-state 三轮独立审查和 `82330b86c…` 修复关闭，因此当前 acceptance 状态为
+  `0 blocking / 0 unaccepted important`。永久 Epic 的遗留风险和稳定交付索引只在 final owner
+  acceptance 收尾时由主流程一次写入，执行期不提前双写。
 
 - 2026-08-14：TM-ITEM-6 current-state closure review 已以 `0 blocking / 0 important / ACCEPT`
   收口。同一 reviewer `c0ba0668-6667-4a0a-a6aa-a788d80f3351` 的 Round 2 在当前产品发现
