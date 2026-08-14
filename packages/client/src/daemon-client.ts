@@ -5473,6 +5473,7 @@ export class DaemonClient {
   async refreshTeamMemberExecution(
     options: RefreshTeamMemberExecutionOptions,
   ): Promise<TeamProfileMemberExecutionRefreshPayload> {
+    this.requireTeamMissionsSupport();
     this.requireTeamProfileUpgradesSupport();
     const { requestId, ...params } = options;
     return this.sendNamespacedCorrelatedSessionRequest({

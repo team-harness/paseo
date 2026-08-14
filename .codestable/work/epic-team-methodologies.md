@@ -4,7 +4,7 @@ phase: acceptance
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
 active_items: []
-next_action: 等待 TM-ITEM-6 current-state closure review；随后由 owner 裁决 Native/Electron 证据缺口
+next_action: owner 裁决 Native iOS/Android 与真实 Electron 执行证据缺口
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +32,18 @@ remote_publish: final
 - [x] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-6 current-state closure review 已以 `0 blocking / 0 important / ACCEPT`
+  收口。同一 reviewer `c0ba0668-6667-4a0a-a6aa-a788d80f3351` 的 Round 2 在当前产品发现
+  `refreshTeamMemberExecution()` 只检查 `teamProfileUpgrades`、未检查 Team V1 三项基础能力；
+  主流程用公开 client API 建立 RED（RPC 被实际发送并等待到 5 秒超时），随后让该 mutation 先经过
+  `requireTeamMissionsSupport()` 再检查扩展能力，并新增三种逐项缺失基础 capability、升级能力为 true
+  的负向测试，断言 Team V1 本地错误与零消息发送。GREEN 为目标文件 12/12；`build:client`、lint、
+  format、diff-check 通过，typecheck 仅命中改动外既有 `draggable-list.native.tsx:122`。Round 3
+  冻结 staged diff `8f1b34d74d143d6e8c9508076b190336cdca90d43d2ef6c93629eb03864fd6ac`
+  （2 files，+20/-0），确认 server physical-source、所有 client Team mutation、投影/授权一致性和
+  mixed/incomplete capability 回归测试均 PASS，无新 finding。final acceptance 的 IMP-2 已关闭；
+  当前只剩 Native iOS/Android 与真实 Electron 执行证据这一项 owner 门槛。
 
 - 2026-08-14：TM-ITEM-6 frozen final review Round 1 返回 `1 blocking / 0 important / REJECT`。
   `f4235cc5…` 当时的 Team RPC 只检查 runtime 或单一 `teamMissions` capability，同 Session 的
