@@ -3,8 +3,13 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 派发 TM-ITEM-17：完成双宿主产物与 Paseo 端到端最终验收
+active_items:
+  - item: TM-ITEM-17
+    state: dispatched
+    run: paseo:25b17133-64e4-4621-bf7f-2765cca7215c
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-final-conformance
+    base: 2836bd1d1
+next_action: 等待 TM-ITEM-17 完成 V1 conformance、双宿主证据、跨 workspace/real-provider 验收与独立审查
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +37,18 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-17 已从里程碑 `2836bd1d1` 派发到 Paseo 托管 worktree
+  `wks_4cdb50abb0a8a85d`（`team-methodology-final-conformance`），实现 agent
+  `25b17133-64e4-4621-bf7f-2765cca7215c` 使用 Agent Profile `GPT-5.6-Sol` 的
+  `codex/gpt-5.6-sol`、full-access。任务包冻结 Team V1 必需 schema 与无兼容代码审计、
+  physical-source 四象限、跨 workspace browser、Agent Profile source 全生命周期及 catalog-throw
+  零读取、archive/start crash、review/waiver/final gate、capability refresh 经 acknowledged
+  delivery、Lead replacement/restart 到 replan/final verification，以及只消费 TM-ITEM-4/5 冻结证据的
+  Codex/Claude exporter/install conformance。要求 desktop/compact/native、隔离 daemon、真实 provider
+  与异构 Claude Opus 5 独立审查证据。禁止跨仓修改 portable 实现、兼容层、迁移、
+  fallback、dual-write、push/publish 或触碰 6767；Team capsule 保持独立，upstream 热文件只做窄
+  façade/wiring。异步执行期间主流程不轮询，等待 Paseo finish/permission 通知。
 
 - 2026-08-14：TM-ITEM-16 完成。单父 checkpoint
   `13c90798c9d1130bdadb7696797da4fd460b9cd2`（parent `4d4c8c88b…`，tree
