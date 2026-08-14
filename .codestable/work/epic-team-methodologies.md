@@ -3,8 +3,13 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items: []
-next_action: 派发 TM-ITEM-12：Review Gate 调度与依赖闭包阻塞
+active_items:
+  - item: TM-ITEM-12
+    state: dispatched
+    run: paseo:ffa30f56-35a3-4486-a7a4-4329e0276cd6
+    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-scoped-attention
+    base: fa8ae741d
+next_action: 等待 TM-ITEM-12 完成 scope-aware Attention、forked-DAG E2E 与独立审查
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +37,15 @@ remote_publish: final
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-12 已从里程碑 `fa8ae741d` 派发到 Paseo 托管 worktree
+  `wks_45f2cecf8a2415aa`（`team-methodology-scoped-attention`），实现 agent
+  `ffa30f56-35a3-4486-a7a4-4329e0276cd6` 使用 Agent Profile `GPT-5.6-Sol` 的
+  `codex/gpt-5.6-sol`、full-access/xhigh。任务包冻结 scope-aware Attention helper、Mission 与
+  Workstream scope 状态转换、依赖闭包过滤、known-empty/capability-unknown kind 分离、App/CLI
+  blocker 归属和 forked-DAG 隔离 daemon E2E；禁止提前实现 TM-ITEM-13、兼容层、迁移、fallback 或
+  dual-write，并要求 Team capsule 独立、upstream 热文件仅做窄 façade/wiring。异步执行期间主流程不
+  轮询或重启 agent，等待 Paseo finish/permission 通知。
 
 - 2026-08-14：TM-ITEM-11 完成并通过最终 recovery 窄复审。单父 checkpoint
   `526b8c0f6241a720e4e26a385a9df934eb3d74ed`（parent `1206406b9…`，tree
