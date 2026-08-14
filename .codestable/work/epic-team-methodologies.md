@@ -3,13 +3,8 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-16
-    state: dispatched
-    run: paseo:8545d68b-479d-4483-9ad2-c3407c25c049
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-capability-recovery
-    base: 4d4c8c88b
-next_action: 等待 TM-ITEM-16 完成 recovery、fault injection、真实 provider smoke 与独立审查
+active_items: []
+next_action: 派发 TM-ITEM-17：完成双宿主产物与 Paseo 端到端最终验收
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -33,10 +28,27 @@ remote_publish: final
 - [x] TM-ITEM-13
 - [x] TM-ITEM-14
 - [x] TM-ITEM-15
-- [ ] TM-ITEM-16
+- [x] TM-ITEM-16
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-16 完成。单父 checkpoint
+  `13c90798c9d1130bdadb7696797da4fd460b9cd2`（parent `4d4c8c88b…`，tree
+  `25a0ed59bd600ad4f4ee29b0e3a0407168baf88b`，diff
+  `99534fb7b29feaa86e6b0bad9dc8e0809335a81333e619535093395ddef7234d`，14 files，
+  +1160/-68）实现 startup/periodic reconcile 与 Lead replacement 的 capability replan delivery
+  重放不变量、acknowledged chain re-arm、重复 reconcile 零 churn、`mission_plan` 在单 aggregate
+  CAS 内消费 request/解决 source Attention/取消 pending-notified delivery chain，以及 App/CLI
+  inspect 的稳定 request/binding 证据。Paseo Claude Opus 5/high reviewer 三轮从 1 blocking /
+  2 important 收敛到 0/0；worker 验证 helper/scheduler 56、collaboration 72、refresh/inspect
+  4、较宽 owning 集合 271，并通过 build/server、typecheck、lint、format 与 diff-check。隔离
+  real-provider smoke 确认 Lead delivery 启动 provider turn 并提交 `planRevision=1`；最终等待因
+  既有 `ownership_violation` 超时，不是 capability recovery 链路失败。主分支无冲突合入，
+  staged diff 与受审 checkpoint 逐字节一致；code-deep 覆盖 14/14 文件，定点追踪后未发现
+  可达的重复 delivery、late wake、部分写入或 catalog 调用失败路径。组合树
+  build/server 与 lint 通过；typecheck 仅命中改动外 `draggable-list.native.tsx:122` 既有错误，
+  全仓 format-check 仅命中未跟踪 `dogfood-output` 证据文件。
 
 - 2026-08-14：TM-ITEM-16 已从里程碑 `4d4c8c88b` 派发到 Paseo 托管 worktree
   `wks_550e32851a33ff2c`（`team-methodology-capability-recovery`），实现 agent

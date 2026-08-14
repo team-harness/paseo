@@ -17,6 +17,7 @@ import type {
   MissionRosterSnapshot,
   TeamMemberProfile,
   TeamMission,
+  TeamMissionInspect,
   TeamMethodologyBinding,
   TeamSkill,
   TeamV2,
@@ -68,6 +69,7 @@ import type {
   MaterializedTeamMemberExecution,
   TeamAgentProfileMaterializer,
 } from "./team-agent-profile-materializer.js";
+import { capabilityReplanDeliveryBody } from "./assignment-replan.js";
 import { TeamApplicationError } from "./errors.js";
 export { TeamApplicationError } from "./errors.js";
 import { TeamOperationCoordinator } from "./team-operation-coordinator.js";
@@ -824,8 +826,42 @@ export class TeamMissionService {
       .filter((mission) => includeTerminal || !isTerminalMission(mission));
   }
 
-  async inspectMission(missionId: string): Promise<TeamMission | null> {
-    return (await this.missions.get(missionId))?.mission ?? null;
+  async inspectMission(missionId: string): Promise<TeamMissionInspect | null> {
+    const stored = await this.missions.get(missionId);
+    if (!stored) return null;
+    const roster = requireActiveRoster(stored.mission);
+    const leadBinding = latestActiveParticipant(stored.mission, roster.leadMemberId);
+    return {
+      ...stored.mission,
+      capabilityReplanRequests: stored.mission.capabilityReplanRequests.map((request) => {
+        const currentDelivery = leadBinding
+          ? (stored.recipientAttentionOutbox.find(
+              (delivery) =>
+                delivery.recipientMemberId === roster.leadMemberId &&
+                delivery.bindingEpoch === leadBinding.bindingEpoch &&
+                (delivery.deliveryId === request.deliveryId ||
+                  delivery.deliveryId.startsWith(`${request.deliveryId}:binding:`)) &&
+                delivery.state !== "canceled",
+            ) ??
+            stored.recipientAttentionOutbox.find(
+              (delivery) =>
+                delivery.recipientMemberId === roster.leadMemberId &&
+                delivery.bindingEpoch === leadBinding.bindingEpoch &&
+                (delivery.deliveryId === request.deliveryId ||
+                  delivery.deliveryId.startsWith(`${request.deliveryId}:binding:`)),
+            ))
+          : null;
+        return Object.assign({}, request, {
+          currentBindingDelivery: currentDelivery
+            ? {
+                deliveryId: currentDelivery.deliveryId,
+                bindingEpoch: currentDelivery.bindingEpoch,
+                state: currentDelivery.state,
+              }
+            : null,
+        });
+      }),
+    };
   }
 
   async cancelMission(input: CancelMissionInput): Promise<TeamMission> {
@@ -1183,7 +1219,11 @@ export class TeamMissionService {
         createdAt,
         consumedAt: null,
       };
-      const body = `@${leadMember.mentionHandle} Paseo capability refresh request ${requestId} created roster revision ${rosterSnapshotRevision}. Read mission_status, then submit a complete mission_plan. This request is not a plan commit and does not change the frozen roster, Skills, or Levels.`;
+      const body = capabilityReplanDeliveryBody({
+        mentionHandle: leadMember.mentionHandle,
+        requestId,
+        rosterSnapshotRevision,
+      });
       const updated = await this.missions.updateAggregate({
         missionId: input.missionId,
         expectedRevision: input.expectedRevision,
@@ -3597,6 +3637,22 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function requireActiveRoster(mission: TeamMission) {
+  const roster = mission.rosterSnapshots.find(
+    (snapshot) => snapshot.revision === mission.activeRosterSnapshotRevision,
+  );
+  if (!roster) throw new Error(`Mission ${mission.id} has no active roster snapshot`);
+  return roster;
+}
+
+function latestActiveParticipant(mission: TeamMission, memberId: string) {
+  return (
+    mission.participants
+      .filter((participant) => participant.memberId === memberId && participant.archivedAt === null)
+      .toSorted((left, right) => right.bindingEpoch - left.bindingEpoch)[0] ?? null
+  );
+}
+
 function recoveryErrorCode(error: unknown): string {
   return error instanceof TeamApplicationError ? error.code : "lifecycle_recovery_failed";
 }
@@ -3655,6 +3711,15 @@ function toAttentionResolution(
       ...(input.resolution.replacementMemberId
         ? { replacementMemberId: input.resolution.replacementMemberId }
         : {}),
+    };
+  }
+  if (input.resolution.kind === "replan") {
+    return {
+      kind: input.resolution.kind,
+      ...common,
+      ownerAssignmentId: null,
+      recoveryAssignmentId: null,
+      rosterSnapshotRevision: null,
     };
   }
   return {

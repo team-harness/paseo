@@ -2,6 +2,7 @@ import type {
   MissionAssignmentContract,
   MissionFinalVerificationEvidence,
   TeamMission,
+  TeamMissionInspect,
   TeamSkill,
   TeamV2,
 } from "@getpaseo/protocol/team/v2-types";
@@ -183,8 +184,14 @@ export interface MissionDetail extends MissionRow {
   activeRosterRevision: number;
   capabilityReplanRequests: Array<{
     requestId: string;
+    sourceAttentionIds: string[];
     rosterSnapshotRevision: number;
     state: "pending" | "consumed";
+    currentBindingDelivery: {
+      deliveryId: string;
+      bindingEpoch: number;
+      state: "pending" | "notified" | "acknowledged" | "canceled";
+    } | null;
   }>;
   workspace: string;
   constraints: string[];
@@ -243,7 +250,7 @@ export interface MissionDetail extends MissionRow {
   } | null;
 }
 
-export function toMissionDetail(mission: TeamMission): MissionDetail {
+export function toMissionDetail(mission: TeamMission | TeamMissionInspect): MissionDetail {
   const attentionAttributions = selectOpenWorkstreamAttentionAttributions(mission);
   const verificationWorkstream = mission.workstreams.find(
     (workstream) => workstream.kind === "verification",
@@ -271,8 +278,11 @@ export function toMissionDetail(mission: TeamMission): MissionDetail {
     activeRosterRevision: mission.activeRosterSnapshotRevision,
     capabilityReplanRequests: mission.capabilityReplanRequests.map((request) => ({
       requestId: request.requestId,
+      sourceAttentionIds: request.sourceAttentionIds,
       rosterSnapshotRevision: request.rosterSnapshotRevision,
       state: request.consumedAt ? "consumed" : "pending",
+      currentBindingDelivery:
+        "currentBindingDelivery" in request ? request.currentBindingDelivery : null,
     })),
     workspace: mission.workspaceId,
     constraints: mission.constraints,
@@ -391,7 +401,7 @@ function renderMissionBlock(mission: MissionDetail): string {
     `  active roster revision: ${mission.activeRosterRevision}`,
     ...mission.capabilityReplanRequests.map(
       (request) =>
-        `  capability replan ${request.requestId}: ${request.state} roster=${request.rosterSnapshotRevision}`,
+        `  capability replan ${request.requestId}: ${request.state} roster=${request.rosterSnapshotRevision} sources=${request.sourceAttentionIds.join(",")} delivery=${request.currentBindingDelivery ? `${request.currentBindingDelivery.state}@${request.currentBindingDelivery.bindingEpoch}:${request.currentBindingDelivery.deliveryId}` : "none"}`,
     ),
     ...mission.workstreamStates.map(
       (workstream) =>

@@ -178,6 +178,20 @@ export const MissionCapabilityReplanRequestSchema = z.object({
 });
 export type MissionCapabilityReplanRequest = z.infer<typeof MissionCapabilityReplanRequestSchema>;
 
+export const MissionCapabilityReplanInspectRequestSchema =
+  MissionCapabilityReplanRequestSchema.extend({
+    currentBindingDelivery: z
+      .object({
+        deliveryId: z.string().min(1),
+        bindingEpoch: z.number().int().positive(),
+        state: z.enum(["pending", "notified", "acknowledged", "canceled"]),
+      })
+      .nullable(),
+  });
+export type MissionCapabilityReplanInspectRequest = z.infer<
+  typeof MissionCapabilityReplanInspectRequestSchema
+>;
+
 export const MissionMutableScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("read_only") }),
   z.object({ kind: z.literal("paths"), pathPrefixes: z.array(z.string().min(1)).min(1) }),
@@ -619,14 +633,15 @@ export const MissionAttentionResolutionSchema = z.discriminatedUnion("kind", [
     ownerAssignmentId: z.null(),
     recoveryAssignmentId: z.null(),
   }),
+  z.object({
+    kind: z.literal("replan"),
+    ...attentionResolutionCommon,
+    ownerAssignmentId: z.null(),
+    recoveryAssignmentId: z.null(),
+    rosterSnapshotRevision: z.number().int().positive().nullable(),
+  }),
   ...(
-    [
-      "report_received",
-      "resume_provider",
-      "replan",
-      "restore_notification",
-      "cancel_mission",
-    ] as const
+    ["report_received", "resume_provider", "restore_notification", "cancel_mission"] as const
   ).map((kind) =>
     z.object({
       kind: z.literal(kind),
@@ -644,6 +659,7 @@ const MissionFinalVerificationAttentionResolutionSchema = z.discriminatedUnion("
     ...attentionResolutionCommon,
     ownerAssignmentId: z.null(),
     recoveryAssignmentId: z.null(),
+    rosterSnapshotRevision: z.number().int().positive(),
   }),
   z.object({
     kind: z.literal("cancel_mission"),
@@ -848,3 +864,8 @@ export const TeamMissionSchema = z.object({
   completedAt: TimestampSchema.nullable(),
 });
 export type TeamMission = z.infer<typeof TeamMissionSchema>;
+
+export const TeamMissionInspectSchema = TeamMissionSchema.extend({
+  capabilityReplanRequests: z.array(MissionCapabilityReplanInspectRequestSchema),
+});
+export type TeamMissionInspect = z.infer<typeof TeamMissionInspectSchema>;
