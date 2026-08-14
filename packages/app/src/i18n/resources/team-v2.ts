@@ -182,6 +182,17 @@ export const teamV2En = {
       reviewGate: "Review gate",
       reviewSubject: "Review subject",
       reviewEvidence: "Review evidence",
+      finalVerificationGate: "Final verification",
+      finalVerifier: "Final verifier",
+      finalVerificationFingerprint: "Final gate fingerprint",
+      finalVerificationEvidence: "Final verification evidence",
+      finalVerificationStatus: {
+        awaiting_capabilities: "Awaiting capability facts",
+        awaiting_verifier: "Awaiting final verifier",
+        assigned: "Verifier assigned",
+        approved: "Approved",
+        changes_requested: "Changes requested",
+      },
       reviewSelection: {
         not_required: "Not required",
         assigned: "Reviewer assigned",
@@ -224,6 +235,8 @@ export const teamV2En = {
         notification_unacknowledged: "Notification not acknowledged",
         review_gate_reviewer_unavailable: "No eligible independent reviewer",
         review_gate_capability_unknown: "Reviewer capability facts unknown",
+        final_verifier_unavailable: "No eligible final verifier",
+        final_verifier_capability_unknown: "Final verifier capability facts unknown",
       },
       resolution: {
         external_change: "Mark as external change",
@@ -295,6 +308,10 @@ function teamV2PlanLocale(
     reviewOutcome: {
       ...teamV2En.v2Settings.plan.reviewOutcome,
       ...overrides?.reviewOutcome,
+    },
+    finalVerificationStatus: {
+      ...teamV2En.v2Settings.plan.finalVerificationStatus,
+      ...overrides?.finalVerificationStatus,
     },
   };
 }
@@ -540,6 +557,17 @@ export const teamV2ZhCN: TeamV2Resources = {
       reviewGate: "审查门禁",
       reviewSubject: "审查对象",
       reviewEvidence: "审查证据",
+      finalVerificationGate: "最终验证",
+      finalVerifier: "最终验证者",
+      finalVerificationFingerprint: "最终门禁 fingerprint",
+      finalVerificationEvidence: "最终验证证据",
+      finalVerificationStatus: {
+        awaiting_capabilities: "等待能力事实",
+        awaiting_verifier: "等待最终验证者",
+        assigned: "已分配验证者",
+        approved: "已批准",
+        changes_requested: "要求修改",
+      },
       reviewSelection: {
         not_required: "无需分配",
         assigned: "已分配 Reviewer",
@@ -582,6 +610,8 @@ export const teamV2ZhCN: TeamV2Resources = {
         notification_unacknowledged: "通知未确认",
         review_gate_reviewer_unavailable: "没有符合条件的独立 Reviewer",
         review_gate_capability_unknown: "Reviewer 能力事实未知",
+        final_verifier_unavailable: "没有符合条件的最终验证者",
+        final_verifier_capability_unknown: "最终验证者能力事实未知",
       },
       resolution: {
         external_change: "标记为外部变更",

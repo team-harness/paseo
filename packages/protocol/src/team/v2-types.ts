@@ -315,6 +315,70 @@ export const MissionReviewGateSchema = z.discriminatedUnion("kind", [
 ]);
 export type MissionReviewGate = z.infer<typeof MissionReviewGateSchema>;
 
+export const MissionFinalVerificationGateKeySchema = z.object({
+  workstreamId: z.string().min(1),
+  planRevision: z.number().int().positive(),
+  methodologySnapshotRevision: z.literal(1),
+  subjectAssignmentIds: z.array(z.string().min(1)),
+  reviewGateFingerprints: z.array(MissionReviewFingerprintSchema),
+  requirements: MissionMemberRequirementsSchema,
+});
+export type MissionFinalVerificationGateKey = z.infer<typeof MissionFinalVerificationGateKeySchema>;
+
+export const MissionFinalVerificationGateSelectionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("assigned"),
+    verifierMemberId: z.string().min(1),
+    matchExplanation: MissionMemberMatchExplanationSchema,
+    independenceExceptionReason: z.string().min(1).nullable(),
+  }),
+  z.object({ kind: z.literal("awaiting_verifier") }),
+  z.object({
+    kind: z.literal("awaiting_capabilities"),
+    candidateMemberIds: z.array(z.string().min(1)).min(1),
+  }),
+]);
+export type MissionFinalVerificationGateSelection = z.infer<
+  typeof MissionFinalVerificationGateSelectionSchema
+>;
+
+export const MissionFinalVerificationGateSchema = z.object({
+  key: MissionFinalVerificationGateKeySchema,
+  fingerprint: MissionReviewFingerprintSchema,
+  selection: MissionFinalVerificationGateSelectionSchema,
+});
+export type MissionFinalVerificationGate = z.infer<typeof MissionFinalVerificationGateSchema>;
+
+export const MissionReviewGateEvidenceSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("approved"),
+    gateKey: MissionReviewGateKeySchema,
+    gateKeyFingerprint: MissionReviewFingerprintSchema,
+    subjectFingerprint: MissionReviewFingerprintSchema,
+    reviewAssignmentId: z.string().min(1),
+    reportFingerprint: MissionReviewFingerprintSchema,
+    inheritedFromGateFingerprint: MissionReviewFingerprintSchema.nullable(),
+  }),
+  z.object({
+    kind: z.literal("waived"),
+    gateKey: MissionReviewGateKeySchema,
+    gateKeyFingerprint: MissionReviewFingerprintSchema,
+    subjectFingerprint: MissionReviewFingerprintSchema,
+    waiverId: z.string().min(1),
+  }),
+]);
+export type MissionReviewGateEvidence = z.infer<typeof MissionReviewGateEvidenceSchema>;
+
+export const MissionFinalVerificationEvidenceSchema = z.object({
+  kind: z.literal("final_verification"),
+  finalGateFingerprint: MissionReviewFingerprintSchema,
+  verdict: z.enum(["approved", "changes_requested"]),
+  reviewGateEvidence: z.array(MissionReviewGateEvidenceSchema),
+});
+export type MissionFinalVerificationEvidence = z.infer<
+  typeof MissionFinalVerificationEvidenceSchema
+>;
+
 export const MissionReviewWaiverSchema = z.object({
   waiverId: z.string().min(1),
   attentionId: z.string().min(1),
@@ -349,6 +413,7 @@ export const MissionWorkstreamSchema = z.object({
   ownerMatchExplanation: MissionMemberMatchExplanationSchema,
   ownerOverrideReason: z.string().min(1).nullable(),
   reviewGate: MissionReviewGateSchema,
+  finalVerificationGate: MissionFinalVerificationGateSchema.nullable(),
   status: z.enum(["planned", "ready", "active", "blocked", "review", "accepted", "canceled"]),
 });
 export type MissionWorkstream = z.infer<typeof MissionWorkstreamSchema>;
@@ -370,6 +435,7 @@ const MissionAssignmentTestResultSchema = z.object({
 export const MissionAssignmentCompletionReportSchema = z.object({
   status: z.literal("completed"),
   verdict: z.enum(["approved", "changes_requested"]).nullable(),
+  finalVerificationEvidence: MissionFinalVerificationEvidenceSchema.nullable(),
   summary: z.string().min(1),
   artifactPaths: z.array(z.string().min(1)),
   tests: z.array(MissionAssignmentTestResultSchema),
@@ -550,6 +616,21 @@ export const MissionAttentionResolutionSchema = z.discriminatedUnion("kind", [
 ]);
 export type MissionAttentionResolution = z.infer<typeof MissionAttentionResolutionSchema>;
 
+const MissionFinalVerificationAttentionResolutionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("replan"),
+    ...attentionResolutionCommon,
+    ownerAssignmentId: z.null(),
+    recoveryAssignmentId: z.null(),
+  }),
+  z.object({
+    kind: z.literal("cancel_mission"),
+    ...attentionResolutionCommon,
+    ownerAssignmentId: z.null(),
+    recoveryAssignmentId: z.null(),
+  }),
+]);
+
 const missionAttentionItemCommon = {
   attentionId: z.string().min(1),
   status: z.enum(["open", "resolved"]),
@@ -605,6 +686,26 @@ function reviewGateAttentionItemSchema<
   });
 }
 
+function finalVerifierAttentionItemSchema<
+  const Kind extends "final_verifier_unavailable" | "final_verifier_capability_unknown",
+>(kind: Kind) {
+  return z.object({
+    ...missionAttentionItemCommon,
+    kind: z.literal(kind),
+    scope: z.object({
+      kind: z.literal("workstream"),
+      workstreamId: z.string().min(1),
+      blockDependents: z.literal(true),
+    }),
+    finalVerificationGateDetails: z.object({
+      gateKey: MissionFinalVerificationGateKeySchema,
+      gateFingerprint: MissionReviewFingerprintSchema,
+    }),
+    priorMissionStatus: z.null(),
+    resolution: MissionFinalVerificationAttentionResolutionSchema.nullable(),
+  });
+}
+
 export const MissionAttentionItemSchema = z.discriminatedUnion("kind", [
   missionScopedAttentionItemSchema("ownership_violation"),
   missionScopedAttentionItemSchema("missing_report"),
@@ -617,6 +718,8 @@ export const MissionAttentionItemSchema = z.discriminatedUnion("kind", [
   missionScopedAttentionItemSchema("notification_unacknowledged"),
   reviewGateAttentionItemSchema("review_gate_reviewer_unavailable"),
   reviewGateAttentionItemSchema("review_gate_capability_unknown"),
+  finalVerifierAttentionItemSchema("final_verifier_unavailable"),
+  finalVerifierAttentionItemSchema("final_verifier_capability_unknown"),
 ]);
 export type MissionAttentionItem = z.infer<typeof MissionAttentionItemSchema>;
 
@@ -627,6 +730,8 @@ export const MissionAssignmentContractSchema = z.object({
   subjectAssignmentIds: z.array(z.string().min(1)),
   reviewGateFingerprint: MissionReviewFingerprintSchema.nullable(),
   reviewSubjectFingerprint: MissionReviewFingerprintSchema.nullable(),
+  finalVerificationGateFingerprint: MissionReviewFingerprintSchema.nullable(),
+  reviewGateEvidence: z.array(MissionReviewGateEvidenceSchema),
   missionId: z.string().min(1),
   workstreamId: z.string().min(1),
   assigneeMemberId: z.string().min(1),

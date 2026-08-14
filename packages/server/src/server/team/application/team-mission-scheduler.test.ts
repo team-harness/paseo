@@ -20,6 +20,7 @@ import {
   buildMissionReviewGate,
   missionReviewReportFingerprint,
 } from "../domain/mission-review-gate.js";
+import { buildMissionFinalVerificationGate } from "../domain/mission-final-verification-gate.js";
 import { TeamOperationCoordinator } from "./team-operation-coordinator.js";
 import {
   TeamMissionScheduler,
@@ -376,6 +377,115 @@ describe("TeamMissionScheduler", () => {
           }),
         ]),
       });
+    },
+  );
+
+  test.each([
+    ["awaiting_verifier", "final_verifier_unavailable"],
+    ["awaiting_capabilities", "final_verifier_capability_unknown"],
+  ] as const)(
+    "raises one non-waivable %s final gate Attention and materializes no verification Assignment",
+    async (selectionKind, attentionKind) => {
+      const missions = new MissionStore({
+        directory: join(rootDirectory, "missions"),
+        logger: createTestLogger(),
+        now: () => NOW,
+      });
+      const mission = activeMission();
+      const apiWorkstream = { ...mission.workstreams[0]!, status: "accepted" as const };
+      const apiAssignment: MissionAssignmentContract = {
+        ...mission.assignments[0]!,
+        runtimeAgentId: "agent-lead",
+        bindingEpoch: 1,
+        report: completedReport(),
+        dispatchState: "settled",
+        semanticState: "completed",
+        acceptedTurnId: "turn-assignment-api",
+        dispatchedAt: NOW,
+        settledAt: NOW,
+      };
+      const verificationWorkstream = {
+        ...workstream({
+          workstreamId: "workstream-final-verification",
+          ownerMemberId: "member-app",
+          dependencyWorkstreamIds: [apiWorkstream.workstreamId],
+          mutableScope: { kind: "read_only" },
+        }),
+        kind: "verification" as const,
+        status: "planned" as const,
+      };
+      verificationWorkstream.finalVerificationGate = buildMissionFinalVerificationGate({
+        workstreamId: verificationWorkstream.workstreamId,
+        planRevision: mission.planRevision,
+        methodologySnapshotRevision: verificationWorkstream.methodologySnapshotRevision,
+        subjectAssignmentIds: [apiAssignment.assignmentId],
+        reviewGateFingerprints: [],
+        requirements: verificationWorkstream.finalVerificationGate!.key.requirements,
+        selection:
+          selectionKind === "awaiting_verifier"
+            ? { kind: selectionKind }
+            : { kind: selectionKind, candidateMemberIds: ["member-app"] },
+      });
+      mission.workstreams = [apiWorkstream, verificationWorkstream];
+      mission.assignments = [apiAssignment];
+      await missions.createIfAbsent({
+        mission,
+        idempotencyKey: `start-${attentionKind}`,
+        requestFingerprint: `start-${attentionKind}-fingerprint`,
+      });
+      await missions.recordAcceptedTurnFacts({
+        missionId: mission.id,
+        facts: [
+          {
+            assignmentId: apiAssignment.assignmentId,
+            turnId: apiAssignment.acceptedTurnId!,
+            runtimeAgentId: apiAssignment.runtimeAgentId!,
+            outcome: "completed",
+            recordedAt: NOW,
+          },
+        ],
+      });
+      const dispatches: string[] = [];
+      const scheduler = reviewRecoveryScheduler(missions, dispatches);
+
+      await scheduler.reconcileMission(mission.id);
+      const first = await missions.get(mission.id);
+
+      expect(dispatches).toEqual([]);
+      expect(first?.mission).toMatchObject({
+        status: "active",
+        suspendedStatus: null,
+        workstreams: [
+          expect.objectContaining({ workstreamId: apiWorkstream.workstreamId, status: "accepted" }),
+          expect.objectContaining({
+            workstreamId: verificationWorkstream.workstreamId,
+            status: "blocked",
+          }),
+        ],
+        attentionItems: [
+          expect.objectContaining({
+            kind: attentionKind,
+            scope: {
+              kind: "workstream",
+              workstreamId: verificationWorkstream.workstreamId,
+              blockDependents: true,
+            },
+            finalVerificationGateDetails: {
+              gateKey: verificationWorkstream.finalVerificationGate.key,
+              gateFingerprint: verificationWorkstream.finalVerificationGate.fingerprint,
+            },
+          }),
+        ],
+      });
+      expect(
+        first?.mission.assignments.filter(
+          (candidateAssignment) => candidateAssignment.kind === "verification",
+        ),
+      ).toHaveLength(0);
+      const firstRevision = first?.mission.revision;
+
+      await scheduler.reconcileMission(mission.id);
+      expect((await missions.get(mission.id))?.mission.revision).toBe(firstRevision);
     },
   );
 
@@ -3463,6 +3573,10 @@ describe("TeamMissionScheduler", () => {
       planRevision: 2,
     };
     const priorApiAssignment = mission.assignments[0]!;
+    currentVerificationWorkstream.finalVerificationGate = bindFinalVerificationGateForTest(
+      currentVerificationWorkstream,
+      [priorApiAssignment.assignmentId],
+    );
     mission.planRevision = 2;
     mission.workstreams = [currentApiWorkstream, currentVerificationWorkstream];
     mission.workstreamPlanSnapshots = [
@@ -3628,6 +3742,13 @@ describe("TeamMissionScheduler", () => {
       subjectAssignmentIds: ["assignment-app", "assignment-api"],
       mutableScope: { kind: "read_only" },
     };
+    verificationWorkstream.finalVerificationGate = buildMissionFinalVerificationGate({
+      ...verificationWorkstream.finalVerificationGate!.key,
+      subjectAssignmentIds: verification.subjectAssignmentIds,
+      selection: verificationWorkstream.finalVerificationGate!.selection,
+    });
+    verification.finalVerificationGateFingerprint =
+      verificationWorkstream.finalVerificationGate.fingerprint;
     mission.workstreams = [api, app, verificationWorkstream];
     mission.assignments = [...completedAssignments, verification];
     await missions.createIfAbsent({
@@ -3727,6 +3848,10 @@ describe("TeamMissionScheduler", () => {
       status: "planned",
     };
     const priorApiAssignment = mission.assignments[0]!;
+    currentVerificationWorkstream.finalVerificationGate = bindFinalVerificationGateForTest(
+      currentVerificationWorkstream,
+      [priorApiAssignment.assignmentId],
+    );
     const replacementVerificationId = "assignment-verification-replacement";
     const canceledVerification: MissionAssignmentContract = {
       ...assignment("assignment-verification-failed", priorVerificationWorkstream, "member-app", [
@@ -3748,6 +3873,8 @@ describe("TeamMissionScheduler", () => {
       subjectAssignmentIds: [priorApiAssignment.assignmentId],
       mutableScope: { kind: "read_only" },
       planRevision: 2,
+      finalVerificationGateFingerprint:
+        currentVerificationWorkstream.finalVerificationGate.fingerprint,
     };
     mission.planRevision = 2;
     mission.workstreams = [currentApiWorkstream, currentVerificationWorkstream];
@@ -3931,6 +4058,7 @@ describe("TeamMissionScheduler", () => {
                   ...completedReport(),
                   verdict: "approved" as const,
                   summary: "Replacement verification approved",
+                  finalVerificationEvidence: finalVerificationEvidenceFor(candidate, "approved"),
                 },
               }
             : candidate,
@@ -4015,6 +4143,9 @@ describe("TeamMissionScheduler", () => {
       kind: "verification",
       subjectAssignmentIds: [api.assignmentId],
       mutableScope: { kind: "read_only" },
+      finalVerificationGateFingerprint: bindFinalVerificationGateForTest(verificationWorkstream, [
+        api.assignmentId,
+      ]).fingerprint,
       runtimeAgentId: "agent-member",
       bindingEpoch: 1,
       workspaceBaseline: {
@@ -4025,11 +4156,21 @@ describe("TeamMissionScheduler", () => {
         capturedAt: NOW,
         entries: [],
       },
-      report: { ...completedReport(), verdict: "approved", summary: "Quality gate passed" },
+      report: null,
       dispatchState: "dispatched",
       semanticState: "running",
       acceptedTurnId: "turn-final-verification",
       dispatchedAt: NOW,
+    };
+    verificationWorkstream.finalVerificationGate = bindFinalVerificationGateForTest(
+      verificationWorkstream,
+      [api.assignmentId],
+    );
+    verification.report = {
+      ...completedReport(),
+      verdict: "approved",
+      summary: "Quality gate passed",
+      finalVerificationEvidence: finalVerificationEvidenceFor(verification, "approved"),
     };
     mission.status = "verifying";
     mission.workstreams = [apiWorkstream, verificationWorkstream];
@@ -4223,6 +4364,9 @@ describe("TeamMissionScheduler", () => {
       kind: "verification",
       subjectAssignmentIds: [api.assignmentId],
       mutableScope: { kind: "read_only" },
+      finalVerificationGateFingerprint: bindFinalVerificationGateForTest(verificationWorkstream, [
+        api.assignmentId,
+      ]).fingerprint,
       runtimeAgentId: "agent-member",
       bindingEpoch: 1,
       scopeLease: {
@@ -4247,6 +4391,7 @@ describe("TeamMissionScheduler", () => {
       report: {
         status: "completed",
         verdict: "changes_requested",
+        finalVerificationEvidence: null,
         summary: "Integration contract still needs an error-path test",
         artifactPaths: [],
         tests: [{ command: "npm test", passed: false }],
@@ -4257,6 +4402,14 @@ describe("TeamMissionScheduler", () => {
       semanticState: "running",
       acceptedTurnId: "turn-final-verification",
       dispatchedAt: NOW,
+    };
+    verificationWorkstream.finalVerificationGate = bindFinalVerificationGateForTest(
+      verificationWorkstream,
+      [api.assignmentId],
+    );
+    verification.report = {
+      ...verification.report!,
+      finalVerificationEvidence: finalVerificationEvidenceFor(verification, "changes_requested"),
     };
     mission.status = "verifying";
     mission.workstreams = [apiWorkstream, verificationWorkstream];
@@ -5865,7 +6018,7 @@ function workstream(input: {
   mutableScope: MissionMutableScope;
   dependencyWorkstreamIds?: string[];
 }): MissionWorkstream {
-  return {
+  const stream: MissionWorkstream = {
     workstreamId: input.workstreamId,
     kind: "delivery",
     title: input.workstreamId,
@@ -5885,8 +6038,33 @@ function workstream(input: {
     ownerMatchExplanation: matchExplanation(input.ownerMemberId),
     ownerOverrideReason: null,
     reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+    finalVerificationGate: null,
     status: "ready",
   };
+  if (!input.workstreamId.includes("final-verification")) return stream;
+  stream.finalVerificationGate = buildMissionFinalVerificationGate({
+    workstreamId: stream.workstreamId,
+    planRevision: stream.planRevision,
+    methodologySnapshotRevision: stream.methodologySnapshotRevision,
+    subjectAssignmentIds: [],
+    reviewGateFingerprints: [],
+    requirements: {
+      requiredSkillIds: stream.requiredSkillIds,
+      preferredSkillIds: stream.preferredSkillIds,
+      requiredRuntimeCapabilityIds: stream.requiredRuntimeCapabilityIds,
+      minimumLevel: stream.minimumLevel,
+    },
+    selection: {
+      kind: "assigned",
+      verifierMemberId: input.ownerMemberId,
+      matchExplanation: stream.ownerMatchExplanation,
+      independenceExceptionReason:
+        input.ownerMemberId === "member-lead"
+          ? "No independent Member satisfies the final verifier hard requirements"
+          : null,
+    },
+  });
+  return stream;
 }
 
 function assignment(
@@ -5902,6 +6080,8 @@ function assignment(
     subjectAssignmentIds: [],
     reviewGateFingerprint: null,
     reviewSubjectFingerprint: null,
+    finalVerificationGateFingerprint: null,
+    reviewGateEvidence: [],
     missionId: "mission-1",
     workstreamId: stream.workstreamId,
     assigneeMemberId,
@@ -6208,6 +6388,10 @@ async function reportRunningQualityGate(
                 ...completedReport(),
                 verdict: "approved" as const,
                 summary: `Approved repaired ${kind} lineage.`,
+                finalVerificationEvidence:
+                  kind === "verification"
+                    ? finalVerificationEvidenceFor(qualityGateAssignment, "approved")
+                    : null,
               },
             }
           : candidate,
@@ -6252,11 +6436,45 @@ function completedReport() {
   return {
     status: "completed" as const,
     verdict: null,
+    finalVerificationEvidence: null,
     summary: "Implemented the API",
     artifactPaths: ["packages/server/src/parser.ts"],
     tests: [{ command: "npm test parser", passed: true }],
     decisions: [],
     handoffs: [],
+  };
+}
+
+function bindFinalVerificationGateForTest(
+  stream: MissionWorkstream,
+  subjectAssignmentIds: string[],
+) {
+  if (stream.finalVerificationGate === null) {
+    throw new Error("verification Workstream fixture requires a final gate");
+  }
+  return buildMissionFinalVerificationGate({
+    workstreamId: stream.workstreamId,
+    planRevision: stream.planRevision,
+    methodologySnapshotRevision: stream.methodologySnapshotRevision,
+    subjectAssignmentIds,
+    reviewGateFingerprints: [],
+    requirements: stream.finalVerificationGate.key.requirements,
+    selection: stream.finalVerificationGate.selection,
+  });
+}
+
+function finalVerificationEvidenceFor(
+  qualityGateAssignment: MissionAssignmentContract,
+  verdict: "approved" | "changes_requested",
+) {
+  if (qualityGateAssignment.finalVerificationGateFingerprint === null) {
+    throw new Error("verification Assignment fixture requires a final gate fingerprint");
+  }
+  return {
+    kind: "final_verification" as const,
+    finalGateFingerprint: qualityGateAssignment.finalVerificationGateFingerprint,
+    verdict,
+    reviewGateEvidence: qualityGateAssignment.reviewGateEvidence,
   };
 }
 

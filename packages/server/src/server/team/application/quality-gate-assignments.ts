@@ -1,11 +1,15 @@
 import type {
   MissionAssignmentContract,
+  MissionFinalVerificationGate,
+  MissionReviewGateEvidence,
   MissionWorkstream,
   TeamMission,
 } from "@getpaseo/protocol/team/v2-types";
 
 import type { MissionAssignmentCoverage } from "../domain/mission-validation.js";
 import { reviewGateReviewerMemberId } from "../domain/mission-review-gate.js";
+import { buildMissionFinalVerificationGate } from "../domain/mission-final-verification-gate.js";
+import { sameCanonicalValue } from "../domain/mission-review-gate.js";
 import {
   type AcceptedTurnFact,
   validateAssignmentContract,
@@ -18,16 +22,30 @@ export interface MissionQualityGatePlan {
   currentVerificationAssignments: MissionAssignmentContract[];
   obsoleteVerificationAssignments: MissionAssignmentContract[];
   expectedVerificationSubjectIds: string[];
+  expectedFinalVerificationGate: MissionFinalVerificationGate | null;
 }
 
-export function planMissionQualityGates(input: {
+interface MissionQualityGatePlanInput {
   mission: TeamMission;
   coverage: MissionAssignmentCoverage;
   createdAt: string;
   settledReviewGateWorkstreamIds: ReadonlySet<string>;
   acceptedTurnsById: ReadonlyMap<string, AcceptedTurnFact>;
   materializePending?: boolean;
-}): MissionQualityGatePlan {
+}
+
+interface FinalVerificationPlan {
+  additions: MissionAssignmentContract[];
+  selectedAssignments: MissionAssignmentContract[];
+  currentAssignments: MissionAssignmentContract[];
+  obsoleteAssignments: MissionAssignmentContract[];
+  expectedSubjectIds: string[];
+  expectedGate: MissionFinalVerificationGate | null;
+}
+
+export function planMissionQualityGates(
+  input: MissionQualityGatePlanInput,
+): MissionQualityGatePlan {
   const assignmentsById = new Map(
     input.mission.assignments.map((assignment) => [assignment.assignmentId, assignment]),
   );
@@ -74,24 +92,70 @@ export function planMissionQualityGates(input: {
     verificationSubjects.push(review.assignment);
   }
 
-  const finalVerification = input.mission.workstreams.find(
+  const finalVerificationPlan = planFinalVerification({
+    input,
+    verificationSubjects,
+    hasCompleteLineage,
+  });
+  additions.push(...finalVerificationPlan.additions);
+  selectedAssignments.push(...finalVerificationPlan.selectedAssignments);
+
+  return {
+    additions,
+    selectedAssignments,
+    obsoleteReviewAssignments,
+    currentVerificationAssignments: finalVerificationPlan.currentAssignments,
+    obsoleteVerificationAssignments: finalVerificationPlan.obsoleteAssignments,
+    expectedVerificationSubjectIds: finalVerificationPlan.expectedSubjectIds,
+    expectedFinalVerificationGate: finalVerificationPlan.expectedGate,
+  };
+}
+
+function planFinalVerification(input: {
+  input: MissionQualityGatePlanInput;
+  verificationSubjects: MissionAssignmentContract[];
+  hasCompleteLineage: boolean;
+}): FinalVerificationPlan {
+  const finalVerification = input.input.mission.workstreams.find(
     (workstream) => workstream.kind === "verification",
   );
+  const finalGate = finalVerification?.finalVerificationGate ?? null;
   const verificationAssignments = finalVerification
-    ? input.mission.assignments.filter(
+    ? input.input.mission.assignments.filter(
         (assignment) =>
           assignment.kind === "verification" &&
           assignment.workstreamId === finalVerification.workstreamId &&
-          assignment.planRevision === input.mission.planRevision &&
+          assignment.planRevision === input.input.mission.planRevision &&
           assignment.semanticState !== "canceled",
       )
     : [];
   const expectedVerificationSubjectIds = canonicalAssignmentIds(
-    verificationSubjects.map((assignment) => assignment.assignmentId),
+    input.verificationSubjects.map((assignment) => assignment.assignmentId),
   );
+  const reviewGateEvidence = finalVerificationReviewGateEvidence(input.input.mission);
+  const expectedFinalVerificationGate =
+    finalVerification && finalGate
+      ? buildMissionFinalVerificationGate({
+          workstreamId: finalVerification.workstreamId,
+          planRevision: input.input.mission.planRevision,
+          methodologySnapshotRevision: finalVerification.methodologySnapshotRevision,
+          subjectAssignmentIds: expectedVerificationSubjectIds,
+          reviewGateFingerprints: input.input.mission.workstreams.flatMap((workstream) =>
+            workstream.reviewGate.kind === "required"
+              ? [workstream.reviewGate.gateKeyFingerprint]
+              : [],
+          ),
+          requirements: finalGate.key.requirements,
+          selection: finalGate.selection,
+        })
+      : null;
 
   const matchingVerificationAssignments = verificationAssignments.filter(
     (assignment) =>
+      expectedFinalVerificationGate?.selection.kind === "assigned" &&
+      assignment.assigneeMemberId === expectedFinalVerificationGate.selection.verifierMemberId &&
+      assignment.finalVerificationGateFingerprint === expectedFinalVerificationGate.fingerprint &&
+      sameCanonicalValue(assignment.reviewGateEvidence, reviewGateEvidence) &&
       sameAssignmentIdSet(assignment.subjectAssignmentIds, expectedVerificationSubjectIds) &&
       sameAssignmentIdSet(assignment.dependencyAssignmentIds, expectedVerificationSubjectIds),
   );
@@ -106,33 +170,43 @@ export function planMissionQualityGates(input: {
 
   if (
     finalVerification &&
-    hasCompleteLineage &&
+    expectedFinalVerificationGate?.selection.kind === "assigned" &&
+    input.hasCompleteLineage &&
     expectedVerificationSubjectIds.length > 0 &&
     currentVerificationAssignments.length === 0
   ) {
     const verification = buildQualityGateAssignment({
-      mission: input.mission,
-      workstream: finalVerification,
+      mission: input.input.mission,
+      workstream: {
+        ...finalVerification,
+        finalVerificationGate: expectedFinalVerificationGate,
+      },
       kind: "verification",
-      assigneeMemberId: finalVerification.ownerMemberId,
-      subjects: verificationSubjects,
-      createdAt: input.createdAt,
+      assigneeMemberId: expectedFinalVerificationGate.selection.verifierMemberId,
+      subjects: input.verificationSubjects,
+      reviewGateEvidence,
+      createdAt: input.input.createdAt,
     });
-    additions.push(verification);
+    const additions = [verification];
     currentVerificationAssignments.push(verification);
-  }
-
-  if (currentVerificationAssignments.length === 1) {
-    selectedAssignments.push(currentVerificationAssignments[0]!);
+    return {
+      additions,
+      selectedAssignments: [verification],
+      currentAssignments: currentVerificationAssignments,
+      obsoleteAssignments: obsoleteVerificationAssignments,
+      expectedSubjectIds: expectedVerificationSubjectIds,
+      expectedGate: expectedFinalVerificationGate,
+    };
   }
 
   return {
-    additions,
-    selectedAssignments,
-    obsoleteReviewAssignments,
-    currentVerificationAssignments,
-    obsoleteVerificationAssignments,
-    expectedVerificationSubjectIds,
+    additions: [],
+    selectedAssignments:
+      currentVerificationAssignments.length === 1 ? [currentVerificationAssignments[0]!] : [],
+    currentAssignments: currentVerificationAssignments,
+    obsoleteAssignments: obsoleteVerificationAssignments,
+    expectedSubjectIds: expectedVerificationSubjectIds,
+    expectedGate: expectedFinalVerificationGate,
   };
 }
 
@@ -294,6 +368,7 @@ function buildQualityGateAssignment(input: {
   kind: "review" | "verification";
   assigneeMemberId: string;
   subjects: MissionAssignmentContract[];
+  reviewGateEvidence?: MissionReviewGateEvidence[];
   createdAt: string;
 }): MissionAssignmentContract {
   const subjectAssignmentIds = canonicalAssignmentIds(
@@ -312,6 +387,14 @@ function buildQualityGateAssignment(input: {
       input.kind === "review" && input.workstream.reviewGate.kind === "required"
         ? input.workstream.reviewGate.subjectFingerprint
         : null,
+    finalVerificationGateFingerprint:
+      input.kind === "verification"
+        ? (input.workstream.finalVerificationGate?.fingerprint ?? null)
+        : null,
+    reviewGateEvidence:
+      input.kind === "verification"
+        ? (structuredClone(input.reviewGateEvidence ?? []) as MissionReviewGateEvidence[])
+        : [],
     missionId: input.mission.id,
     workstreamId: input.workstream.workstreamId,
     assigneeMemberId: input.assigneeMemberId,
@@ -321,7 +404,7 @@ function buildQualityGateAssignment(input: {
     inputRefs: subjectAssignmentIds.map((assignmentId) => `assignment-report:${assignmentId}`),
     deliverables: structuredClone(input.workstream.deliverables),
     acceptanceCriteria: structuredClone(input.workstream.acceptanceCriteria),
-    mutableScope: input.kind === "review" ? { kind: "read_only" } : input.workstream.mutableScope,
+    mutableScope: { kind: "read_only" },
     dependencyAssignmentIds: subjectAssignmentIds,
     priority: Math.max(0, ...input.subjects.map((assignment) => assignment.priority)),
     planRevision: input.mission.planRevision,
@@ -340,6 +423,38 @@ function buildQualityGateAssignment(input: {
     dispatchedAt: null,
     settledAt: null,
   };
+}
+
+function finalVerificationReviewGateEvidence(mission: TeamMission): MissionReviewGateEvidence[] {
+  return mission.workstreams.flatMap<MissionReviewGateEvidence>((workstream) => {
+    const gate = workstream.reviewGate;
+    if (gate.kind !== "required") return [];
+    if (gate.outcome.kind === "approved") {
+      return [
+        {
+          kind: "approved" as const,
+          gateKey: structuredClone(gate.gateKey),
+          gateKeyFingerprint: gate.gateKeyFingerprint,
+          subjectFingerprint: gate.subjectFingerprint,
+          reviewAssignmentId: gate.outcome.reviewAssignmentId,
+          reportFingerprint: gate.outcome.reportFingerprint,
+          inheritedFromGateFingerprint: gate.outcome.inheritedFromGateFingerprint,
+        },
+      ];
+    }
+    if (gate.outcome.kind === "waived") {
+      return [
+        {
+          kind: "waived" as const,
+          gateKey: structuredClone(gate.gateKey),
+          gateKeyFingerprint: gate.gateKeyFingerprint,
+          subjectFingerprint: gate.subjectFingerprint,
+          waiverId: gate.outcome.waiverId,
+        },
+      ];
+    }
+    return [];
+  });
 }
 
 function nextQualityGateAssignmentId(input: {

@@ -166,6 +166,26 @@ const SourceSchema = z.object({
     ).toBe(true);
   });
 
+  it("preserves the non-waivable final verifier resolution union", async () => {
+    const generated = await readFile(generatedWSOutboundPath, "utf8");
+    for (const kind of [
+      "final_verifier_unavailable",
+      "final_verifier_capability_unknown",
+    ] as const) {
+      const branchStart = generated.indexOf(`case "${kind}"`);
+      const resolutionStart = generated.indexOf('["resolution"]!==null', branchStart);
+      const gateDetailsStart = generated.indexOf(
+        '["finalVerificationGateDetails"]',
+        resolutionStart,
+      );
+      const resolutionValidator = generated.slice(resolutionStart, gateDetailsStart);
+
+      expect(branchStart).toBeGreaterThanOrEqual(0);
+      expect(resolutionValidator).toContain('options:["replan","cancel_mission"]');
+      expect(resolutionValidator).not.toContain("waive_review");
+    }
+  });
+
   it("accepts a compact provider snapshot envelope", () => {
     const envelope = {
       type: "session",
