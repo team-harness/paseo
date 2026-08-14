@@ -33,6 +33,7 @@ vi.mock("lucide-react-native", () => ({
   ExternalLink: () => null,
   Pencil: () => null,
   Play: () => null,
+  RefreshCw: () => null,
   X: () => null,
 }));
 
@@ -238,6 +239,7 @@ function createMission(overrides: Partial<TeamMission> = {}): TeamMission {
     updatedAt: "2026-08-10T00:00:00.000Z",
     completedAt: null,
     ...overrides,
+    capabilityReplanRequests: overrides.capabilityReplanRequests ?? [],
   };
 }
 
@@ -295,6 +297,65 @@ function renderAttention(currentMission: TeamMission, actions: TeamSettingsPageA
 }
 
 describe("TeamAttentionSettingsPage", () => {
+  it("offers refresh for structural gates and shows pending or consumed replan state", () => {
+    const onRefreshCapabilities = vi.fn();
+    const structuralAttention = {
+      attentionId: "attention-0",
+      kind: "review_gate_capability_unknown",
+      scope: { kind: "workstream", workstreamId: "workstream-1", blockDependents: true },
+      reviewGateDetails: {
+        gateKey: {
+          subject: { workstreamId: "workstream-1", subjectAssignmentIds: [] },
+          planRevision: 1,
+        },
+        gateKeyFingerprint: `sha256:${"1".repeat(64)}`,
+        subjectFingerprint: `sha256:${"2".repeat(64)}`,
+      },
+      status: "open",
+      priorMissionStatus: null,
+      assignmentId: null,
+      summary: "Reviewer capabilities are unknown.",
+      pathEvidence: [],
+      createdAt: "2026-08-10T00:00:00.000Z",
+      resolution: null,
+    } as const satisfies MissionAttentionItem;
+    const mission = createMission({
+      attentionItems: [structuralAttention],
+      capabilityReplanRequests: [
+        {
+          requestId: "request-pending",
+          idempotencyKey: "refresh-key",
+          requestFingerprint: "refresh-fingerprint",
+          sourceAttentionIds: ["attention-0"],
+          rosterSnapshotRevision: 3,
+          deliveryId: "delivery-pending",
+          createdAt: "2026-08-10T00:00:00.000Z",
+          consumedAt: null,
+        },
+      ],
+    });
+    renderAttention(mission, { onRefreshCapabilities });
+
+    screen.getByTestId("team-attention-attention-0-refresh-capabilities").click();
+    expect(onRefreshCapabilities).toHaveBeenCalledWith("attention-0");
+    expect(screen.getByTestId("team-settings-page-attention").textContent).toContain(
+      "teams.v2Settings.attention.capabilityRefreshPending",
+    );
+
+    cleanup();
+    renderAttention(
+      createMission({
+        attentionItems: [structuralAttention],
+        capabilityReplanRequests: [
+          { ...mission.capabilityReplanRequests[0]!, consumedAt: "2026-08-10T00:01:00.000Z" },
+        ],
+      }),
+      { onRefreshCapabilities },
+    );
+    expect(screen.getByTestId("team-settings-page-attention").textContent).toContain(
+      "teams.v2Settings.attention.capabilityRefreshConsumed",
+    );
+  });
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();

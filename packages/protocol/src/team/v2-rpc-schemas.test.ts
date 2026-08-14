@@ -5,6 +5,8 @@ import {
   TeamMissionAttentionResolveResponseSchema,
   TeamMissionCancelRequestSchema,
   TeamMissionCancelResponseSchema,
+  TeamMissionCapabilityRefreshRequestSchema,
+  TeamMissionCapabilityRefreshResponseSchema,
   TeamMissionInspectRequestSchema,
   TeamMissionInspectResponseSchema,
   TeamMissionListRequestSchema,
@@ -172,6 +174,7 @@ const mission = {
   workstreamPlanSnapshots: [],
   assignments: [],
   attentionItems: [],
+  capabilityReplanRequests: [],
   reviewWaivers: [],
   lifecycleRecoveryFailure: null,
   createdAt: timestamp,
@@ -528,6 +531,39 @@ describe("Team profile v2 RPC schemas", () => {
 });
 
 describe("Team Mission v2 RPC schemas", () => {
+  it("accepts only controller-owned capability refresh inputs", () => {
+    const request = {
+      type: "team.mission.capability.refresh.request" as const,
+      requestId: "refresh-request",
+      missionId: "mission-sdk",
+      attentionId: "attention-review",
+      expectedRevision: 4,
+      idempotencyKey: "refresh-key",
+    };
+    expect(TeamMissionCapabilityRefreshRequestSchema.parse(request)).toEqual(request);
+    expect(
+      TeamMissionCapabilityRefreshRequestSchema.safeParse({
+        ...request,
+        rosterSnapshots: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      TeamMissionCapabilityRefreshResponseSchema.safeParse({
+        type: "team.mission.capability.refresh.response",
+        payload: {
+          requestId: request.requestId,
+          result: {
+            disposition: "unchanged",
+            reason: "capability_declarations_unchanged",
+            missionRevision: 4,
+            rosterSnapshotRevision: 2,
+          },
+          error: null,
+          errorCode: null,
+        },
+      }).success,
+    ).toBe(true);
+  });
   it("requires the exact Team Methodology binding and target workspace for Mission start", () => {
     const request = {
       type: "team.mission.start.request" as const,

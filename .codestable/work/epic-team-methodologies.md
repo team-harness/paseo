@@ -3,13 +3,8 @@ epic: ../epics/team-methodologies.md
 phase: executing
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
-active_items:
-  - item: TM-ITEM-15
-    state: dispatched
-    run: paseo:42236590-bfff-4bbc-a609-04ff438dec37
-    workspace: /Users/wyattfang/.paseo/worktrees/3rvhzvvc/team-methodology-capability-refresh
-    base: cb08760fe
-next_action: 等待 TM-ITEM-15 完成 capability refresh、零写入验证与独立审查
+active_items: []
+next_action: 派发 TM-ITEM-16：让 capability replan 经受重启与 Lead 替换
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,11 +27,26 @@ remote_publish: final
 - [x] TM-ITEM-12
 - [x] TM-ITEM-13
 - [x] TM-ITEM-14
-- [ ] TM-ITEM-15
+- [x] TM-ITEM-15
 - [ ] TM-ITEM-16
 - [ ] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-15 完成。单父 checkpoint
+  `6ebd7d554c57874c091a8fc4a65b593961cfde65`（parent `cb08760fe…`，tree
+  `2ad201773625e7e3bc3e494acf2a1a752014a3be`，diff
+  `4c825e09c233eee03b7c1bd4b265aeb0aabf38f84052d198528e28daa1868f14`，29 files，
+  +1143/-3）实现 controller capability refresh、四种 structural gate 授权、provider declaration-only
+  解析、unchanged 零写、changed 单 CAS、唯一未消费 replan request、现有 Lead self-delivery、
+  replay/conflict/pending short-circuit、physical-source 隔离及 App/CLI 状态。Paseo Claude Opus 5
+  reviewer `cb54bcf5-54ec-4bd3-b478-602f3746be86` 从 Round 1 的 6 blocking / 0 important，经
+  Round 2 的 0/2 收敛到 Round 3 的 0/0。worker 验证隔离 daemon E2E 3/3、protocol 61/61、CLI
+  45/45、client 7/7、App 29/29、server runtime/scheduler 63/63、build/server、lint、format 与
+  diff-check 全绿；typecheck 仅命中改动外 `draggable-list.native.tsx:122` 基线错误。主分支无冲突
+  合入且 staged diff 与受审 checkpoint 逐字一致；code-deep 覆盖 29/29 文件，定点确认 pending/replay
+  在 declaration resolver 前短路、unchanged 不调用 aggregate update、changed 以单次
+  `updateAggregate` 写入 roster/request/outbox，未发现具体失败路径。
 
 - 2026-08-14：TM-ITEM-15 已从里程碑 `cb08760fe` 派发到 Paseo 托管 worktree
   `wks_e1e61ff03447297e`（`team-methodology-capability-refresh`），实现 agent

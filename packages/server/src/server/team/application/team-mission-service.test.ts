@@ -295,6 +295,195 @@ describe("TeamMissionService lifecycle", () => {
     });
   });
 
+  test.each([
+    "review_gate_reviewer_unavailable",
+    "review_gate_capability_unknown",
+    "final_verifier_unavailable",
+    "final_verifier_capability_unknown",
+  ] as const)(
+    "refreshes an open structural %s Attention with one aggregate write",
+    async (kind) => {
+      const fixture = createFixture(rootDirectory);
+      const team = await createTeam(fixture.service);
+      const started = await fixture.service.startMission({
+        idempotencyKey: `start-refresh-${kind}`,
+        teamId: team.id,
+        expectedTeamRevision: team.revision,
+        expectedMethodologyRef: team.methodologyBinding.ref,
+        workspaceId: team.creationWorkspaceId,
+        objective: "Refresh frozen capabilities",
+        constraints: [],
+        acceptanceCriteria: ["Lead receives one replan request"],
+      });
+      const blocked = await addStructuralCapabilityAttention(fixture.missions, started, kind);
+      fixture.providerState.capabilityIds.push("review");
+      fixture.materializerState.throwOnRead = true;
+
+      const result = await fixture.service.refreshMissionCapabilities({
+        missionId: started.id,
+        attentionId: `attention-${kind}`,
+        expectedRevision: blocked.mission.revision,
+        idempotencyKey: `refresh-${kind}`,
+      });
+      const stored = await fixture.missions.get(started.id);
+
+      expect(result).toMatchObject({
+        disposition: "replan_requested",
+        missionRevision: blocked.mission.revision + 1,
+        rosterSnapshotRevision: 2,
+        sourceAttentionIds: [`attention-${kind}`],
+      });
+      expect(stored).toMatchObject({
+        storageRevision: blocked.storageRevision + 1,
+        mission: {
+          activeRosterSnapshotRevision: 2,
+          rosterSnapshots: [{ revision: 1 }, { revision: 2, reason: "replan" }],
+          attentionItems: [{ attentionId: `attention-${kind}`, status: "open" }],
+          capabilityReplanRequests: [{ consumedAt: null, rosterSnapshotRevision: 2 }],
+        },
+        recipientAttentionOutbox: [{ state: "pending", bindingEpoch: 1 }],
+      });
+      expect(fixture.materializerState.reads).toBe(0);
+    },
+  );
+
+  test("returns unchanged with byte-for-byte zero aggregate writes", async () => {
+    const fixture = createFixture(rootDirectory);
+    const team = await createTeam(fixture.service);
+    const started = await fixture.service.startMission({
+      idempotencyKey: "start-refresh-unchanged",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
+      objective: "Keep unchanged capabilities stable",
+      constraints: [],
+      acceptanceCriteria: ["No aggregate byte changes"],
+    });
+    const blocked = await addStructuralCapabilityAttention(
+      fixture.missions,
+      started,
+      "review_gate_capability_unknown",
+    );
+    const before = JSON.stringify(await fixture.missions.get(started.id));
+
+    await expect(
+      fixture.service.refreshMissionCapabilities({
+        missionId: started.id,
+        attentionId: "attention-review_gate_capability_unknown",
+        expectedRevision: blocked.mission.revision,
+        idempotencyKey: "refresh-unchanged",
+      }),
+    ).resolves.toEqual({
+      disposition: "unchanged",
+      reason: "capability_declarations_unchanged",
+      missionRevision: blocked.mission.revision,
+      rosterSnapshotRevision: 1,
+    });
+    expect(JSON.stringify(await fixture.missions.get(started.id))).toBe(before);
+  });
+
+  test("rejects runtime reviewer unavailability with zero aggregate writes", async () => {
+    const fixture = createFixture(rootDirectory);
+    const team = await createTeam(fixture.service);
+    const started = await fixture.service.startMission({
+      idempotencyKey: "start-refresh-runtime-rejection",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
+      objective: "Reject runtime availability failures",
+      constraints: [],
+      acceptanceCriteria: ["Runtime gates cannot refresh structural capabilities"],
+    });
+    const runtimeBlocked = await fixture.missions.update({
+      missionId: started.id,
+      expectedRevision: started.revision,
+      update: (mission) => ({
+        ...mission,
+        attentionItems: [
+          ...mission.attentionItems,
+          {
+            attentionId: "attention-runtime-reviewer",
+            kind: "reviewer_unavailable",
+            scope: { kind: "mission" },
+            status: "open",
+            priorMissionStatus: "planning",
+            assignmentId: "assignment-review",
+            summary: "The assigned reviewer runtime is unavailable.",
+            pathEvidence: [],
+            createdAt: NOW,
+            resolution: null,
+          },
+        ],
+      }),
+    });
+    const before = JSON.stringify(await fixture.missions.get(started.id));
+
+    await expect(
+      fixture.service.refreshMissionCapabilities({
+        missionId: started.id,
+        attentionId: "attention-runtime-reviewer",
+        expectedRevision: runtimeBlocked.mission.revision,
+        idempotencyKey: "refresh-runtime-rejection",
+      }),
+    ).rejects.toMatchObject({ code: "team_mission_capability_refresh_not_allowed" });
+    expect(JSON.stringify(await fixture.missions.get(started.id))).toBe(before);
+  });
+
+  test("replays one unconsumed request, rejects a reused key, and skips declaration reads", async () => {
+    let capabilityReads = 0;
+    const fixture = createFixture(rootDirectory, {
+      beforeCapabilityResolve: async () => {
+        capabilityReads += 1;
+      },
+    });
+    const team = await createTeam(fixture.service);
+    const started = await fixture.service.startMission({
+      idempotencyKey: "start-refresh-replay",
+      teamId: team.id,
+      expectedTeamRevision: team.revision,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: team.creationWorkspaceId,
+      objective: "Keep one capability request",
+      constraints: [],
+      acceptanceCriteria: ["Retries do not create duplicate requests"],
+    });
+    const blocked = await addStructuralCapabilityAttention(
+      fixture.missions,
+      started,
+      "review_gate_reviewer_unavailable",
+    );
+    fixture.providerState.capabilityIds.push("review");
+    const request = {
+      missionId: started.id,
+      attentionId: "attention-review_gate_reviewer_unavailable",
+      expectedRevision: blocked.mission.revision,
+      idempotencyKey: "refresh-replay",
+    };
+    const first = await fixture.service.refreshMissionCapabilities(request);
+    const readsAfterFirst = capabilityReads;
+    const bytesAfterFirst = JSON.stringify(await fixture.missions.get(started.id));
+
+    await expect(fixture.service.refreshMissionCapabilities(request)).resolves.toEqual(first);
+    await expect(
+      fixture.service.refreshMissionCapabilities({
+        ...request,
+        idempotencyKey: "refresh-other-key",
+        attentionId: "attention-not-current",
+      }),
+    ).resolves.toEqual(first);
+    expect(capabilityReads).toBe(readsAfterFirst);
+    expect(JSON.stringify(await fixture.missions.get(started.id))).toBe(bytesAfterFirst);
+
+    await expect(
+      fixture.service.refreshMissionCapabilities({ ...request, expectedRevision: 999 }),
+    ).rejects.toMatchObject({
+      code: "team_mission_capability_refresh_idempotency_conflict",
+    });
+    expect(JSON.stringify(await fixture.missions.get(started.id))).toBe(bytesAfterFirst);
+  });
+
   test("replays and recovers from frozen start facts without catalog reads or compilation", async () => {
     const first = createFixture(rootDirectory, { failRoomOnce: true });
     const team = await createTeam(first.service);
@@ -4700,6 +4889,72 @@ function addLeadUnavailableAttention(missions: MissionStore, mission: TeamMissio
     missionId: mission.id,
     expectedRevision: mission.revision,
     update: leadUnavailableMission,
+  });
+}
+
+function addStructuralCapabilityAttention(
+  missions: MissionStore,
+  mission: TeamMission,
+  kind:
+    | "review_gate_reviewer_unavailable"
+    | "review_gate_capability_unknown"
+    | "final_verifier_unavailable"
+    | "final_verifier_capability_unknown",
+) {
+  const fingerprint = `sha256:${"1".repeat(64)}`;
+  const common = {
+    attentionId: `attention-${kind}`,
+    kind,
+    scope: {
+      kind: "workstream" as const,
+      workstreamId: "workstream-refresh",
+      blockDependents: true as const,
+    },
+    status: "open" as const,
+    priorMissionStatus: null,
+    assignmentId: null,
+    summary: "Structural capability facts require refresh.",
+    pathEvidence: [],
+    createdAt: NOW,
+    resolution: null,
+  };
+  const attention: MissionAttentionItem = kind.startsWith("review_gate_")
+    ? ({
+        ...common,
+        kind: kind as "review_gate_reviewer_unavailable" | "review_gate_capability_unknown",
+        reviewGateDetails: {
+          gateKey: {
+            subject: { workstreamId: "workstream-refresh", subjectAssignmentIds: [] },
+            planRevision: 1,
+          },
+          gateKeyFingerprint: fingerprint,
+          subjectFingerprint: fingerprint,
+        },
+      } as MissionAttentionItem)
+    : ({
+        ...common,
+        kind: kind as "final_verifier_unavailable" | "final_verifier_capability_unknown",
+        finalVerificationGateDetails: {
+          gateKey: {
+            workstreamId: "workstream-refresh",
+            planRevision: 1,
+            methodologySnapshotRevision: 1,
+            subjectAssignmentIds: [],
+            reviewGateFingerprints: [],
+            requirements: {
+              requiredSkillIds: [],
+              preferredSkillIds: [],
+              requiredRuntimeCapabilityIds: [],
+              minimumLevel: 1,
+            },
+          },
+          gateFingerprint: fingerprint,
+        },
+      } as MissionAttentionItem);
+  return missions.update({
+    missionId: mission.id,
+    expectedRevision: mission.revision,
+    update: (current) => ({ ...current, attentionItems: [...current.attentionItems, attention] }),
   });
 }
 

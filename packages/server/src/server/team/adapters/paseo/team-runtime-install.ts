@@ -336,6 +336,13 @@ export async function installPaseoTeamRuntimeAdapter(
       }
       return mission;
     },
+    refreshMissionCapabilities: async (input) => {
+      const result = await service.refreshMissionCapabilities(input);
+      if (result.disposition === "replan_requested") {
+        await scheduler.reconcileMission(input.missionId);
+      }
+      return result;
+    },
   };
   return createRuntime({
     runtime: options.runtime,

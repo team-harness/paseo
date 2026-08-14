@@ -862,6 +862,7 @@ describe("team mission", () => {
       ],
       attentionItems: [],
       reviewWaivers: [],
+      capabilityReplanRequests: [],
       lifecycleRecoveryFailure: null,
       createdAt: "2026-08-07T11:00:00.000Z",
       updatedAt: "2026-08-07T11:02:00.000Z",

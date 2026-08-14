@@ -90,6 +90,7 @@ function OpenTeamSettingsSheet({
   const [page, setPage] = useState<TeamSettingsPage>("root");
   const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [capabilityRefreshNotice, setCapabilityRefreshNotice] = useState<string | null>(null);
   const [waiverAttentionId, setWaiverAttentionId] = useState<string | null>(null);
   const [waiverReason, setWaiverReason] = useState("");
   const actionGeneration = useRef(0);
@@ -215,6 +216,32 @@ function OpenTeamSettingsSheet({
     },
     [client, mission, run],
   );
+  const refreshCapabilities = useCallback(
+    (attentionId: string) => {
+      if (!client || !mission) return;
+      void run(`capability-refresh:${attentionId}`, async () => {
+        const response = await client.refreshTeamMissionCapabilities({
+          missionId: mission.id,
+          attentionId,
+          expectedRevision: mission.revision,
+          idempotencyKey: actionId("capability-refresh", attentionId, mission.revision),
+        });
+        if (response.result) {
+          setCapabilityRefreshNotice(
+            response.result.disposition === "unchanged"
+              ? t("teams.v2Settings.attention.capabilityRefreshUnchanged", {
+                  revision: response.result.rosterSnapshotRevision,
+                })
+              : t("teams.v2Settings.attention.capabilityRefreshRequested", {
+                  revision: response.result.rosterSnapshotRevision,
+                }),
+          );
+        }
+        return response;
+      });
+    },
+    [client, mission, run, t],
+  );
   const submitReviewWaiver = useCallback(() => {
     if (!mission || !waiverAttentionId || !waiverReason.trim()) return;
     const attention = mission.attentionItems.find(
@@ -308,6 +335,8 @@ function OpenTeamSettingsSheet({
       onCancelMission: client && mission ? cancelMission : undefined,
       onArchiveTeam: client ? archiveTeam : undefined,
       onResolveAttention: client && mission ? resolveAttention : undefined,
+      onRefreshCapabilities: client && mission ? refreshCapabilities : undefined,
+      capabilityRefreshNotice,
       onWaiveReview:
         client && mission
           ? (attentionId) => {
@@ -323,7 +352,9 @@ function OpenTeamSettingsSheet({
       archiveTeam,
       cancelMission,
       client,
+      capabilityRefreshNotice,
       mission,
+      refreshCapabilities,
       onEditProfile,
       onOpenAgent,
       onSelectMission,
