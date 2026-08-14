@@ -19,6 +19,7 @@ import type {
 import { assignTeamMentionHandles } from "@getpaseo/protocol/team/mention-handles";
 
 import type { AcceptedTurnFact } from "../domain/assignment-contract-validation.js";
+import { applyMissionAttentionTransition } from "../domain/mission-attention-transition.js";
 import {
   validateMissionAttentionResolution,
   validateTeamMission,
@@ -1873,35 +1874,21 @@ export class TeamMissionService {
         ) {
           return mission;
         }
-        const priorMissionStatus =
-          mission.status === "needs_attention" ? mission.suspendedStatus : mission.status;
-        if (
-          priorMissionStatus !== "planning" &&
-          priorMissionStatus !== "active" &&
-          priorMissionStatus !== "verifying"
-        ) {
-          return mission;
-        }
-        return {
-          ...mission,
-          status: "needs_attention",
-          suspendedStatus: priorMissionStatus,
-          attentionItems: [
-            ...mission.attentionItems,
-            {
-              attentionId,
-              kind: "lead_unavailable",
-              scope: { kind: "mission" },
-              status: "open",
-              priorMissionStatus,
-              assignmentId: null,
-              summary: `Mission start recovery failed: ${errorMessage(error)}`,
-              pathEvidence: [],
-              createdAt: this.clock.now(),
-              resolution: null,
-            },
-          ],
-        };
+        return applyMissionAttentionTransition(mission, {
+          kind: "raise",
+          item: {
+            attentionId,
+            kind: "lead_unavailable",
+            scope: { kind: "mission" },
+            status: "open",
+            priorMissionStatus: recoverableMissionStatus(mission),
+            assignmentId: null,
+            summary: `Mission start recovery failed: ${errorMessage(error)}`,
+            pathEvidence: [],
+            createdAt: this.clock.now(),
+            resolution: null,
+          },
+        });
       },
     });
     await this.events.publishMission(updated.mission);
@@ -2502,21 +2489,11 @@ function resolveMissionAttention(
         .join(", ")}`,
     );
   }
-  const attentionItems = mission.attentionItems.map((item) =>
-    item.attentionId === attention.attentionId
-      ? { ...item, status: "resolved" as const, resolution }
-      : item,
-  );
-  const hasOpenAttention = attentionItems.some((item) => item.status === "open");
-  return {
-    ...mission,
-    attentionItems,
-    ...(mission.status === "needs_attention" &&
-    !hasOpenAttention &&
-    attention.priorMissionStatus !== null
-      ? { status: attention.priorMissionStatus, suspendedStatus: null }
-      : {}),
-  };
+  return applyMissionAttentionTransition(mission, {
+    kind: "resolve",
+    attentionId: attention.attentionId,
+    resolution,
+  });
 }
 
 function applyLeadReplacement(input: {
@@ -2566,10 +2543,8 @@ function applyLeadReplacement(input: {
     ),
     createdAt: input.replacedAt,
   };
-  return {
+  const replaced = {
     ...resolved,
-    status: "needs_attention",
-    suspendedStatus: replanAttention.priorMissionStatus,
     activeRosterSnapshotRevision: nextRoster.revision,
     rosterSnapshots: [...resolved.rosterSnapshots, nextRoster],
     participants: [
@@ -2577,7 +2552,7 @@ function applyLeadReplacement(input: {
         participant.archivedAt === null &&
         (participant.memberId === input.intent.previousLeadMemberId ||
           participant.memberId === input.intent.replacementMemberId)
-          ? { ...participant, archivedAt: input.replacedAt }
+          ? Object.assign({}, participant, { archivedAt: input.replacedAt })
           : participant,
       ),
       {
@@ -2588,10 +2563,10 @@ function applyLeadReplacement(input: {
         archivedAt: null,
       },
     ],
-    attentionItems: hasOpenReplanAttention
-      ? resolved.attentionItems
-      : [...resolved.attentionItems, replanAttention],
   };
+  return hasOpenReplanAttention
+    ? replaced
+    : applyMissionAttentionTransition(replaced, { kind: "raise", item: replanAttention });
 }
 
 function recoverableMissionStatus(mission: TeamMission): "planning" | "active" | "verifying" {
@@ -3143,13 +3118,13 @@ function addRecoveryAttention(
     matching.length === 0
       ? input.attentionId
       : `${generationPrefix}${Math.max(1, maxGeneration + 1)}`;
-  const attentionItems = [
-    ...mission.attentionItems,
-    {
+  return applyMissionAttentionTransition(mission, {
+    kind: "raise",
+    item: {
       attentionId,
       kind: input.kind,
-      scope: { kind: "mission" as const },
-      status: "open" as const,
+      scope: { kind: "mission" },
+      status: "open",
       priorMissionStatus,
       assignmentId: null,
       summary: input.summary,
@@ -3157,13 +3132,7 @@ function addRecoveryAttention(
       createdAt,
       resolution: null,
     },
-  ];
-  return {
-    ...mission,
-    status: "needs_attention",
-    suspendedStatus: priorMissionStatus,
-    attentionItems,
-  };
+  });
 }
 
 function lifecycleAttentionId(intentId: string): string {

@@ -236,4 +236,91 @@ describe("Mission output", () => {
       `report=${reportFingerprint} assignment=assignment-review-api status=completed verdict=approved summary=Review evidence is complete.`,
     );
   });
+
+  it("attributes scoped blockers without pausing independent Workstreams", () => {
+    const scopedMission = {
+      ...mission,
+      status: "active",
+      workstreams: [
+        {
+          workstreamId: "workstream-api",
+          title: "API",
+          status: "blocked",
+          dependencyWorkstreamIds: [],
+          reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+        },
+        {
+          workstreamId: "workstream-integration",
+          title: "Integration",
+          status: "blocked",
+          dependencyWorkstreamIds: ["workstream-api"],
+          reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+        },
+        {
+          workstreamId: "workstream-ui",
+          title: "UI",
+          status: "ready",
+          dependencyWorkstreamIds: [],
+          reviewGate: { kind: "none", outcome: { kind: "not_required" } },
+        },
+      ],
+      attentionItems: [
+        {
+          attentionId: "attention-api",
+          kind: "review_gate_capability_unknown",
+          scope: {
+            kind: "workstream",
+            workstreamId: "workstream-api",
+            blockDependents: true,
+          },
+          status: "open",
+          summary: "API capability facts are unknown",
+        },
+      ],
+    } as unknown as TeamMission;
+
+    const detail = toMissionDetail(scopedMission);
+    expect(detail).toMatchObject({
+      status: "active",
+      workstreamStates: [
+        {
+          workstreamId: "workstream-api",
+          status: "blocked",
+          blockers: [
+            { attentionId: "attention-api", sourceWorkstreamId: "workstream-api", direct: true },
+          ],
+        },
+        {
+          workstreamId: "workstream-integration",
+          status: "blocked",
+          blockers: [
+            { attentionId: "attention-api", sourceWorkstreamId: "workstream-api", direct: false },
+          ],
+        },
+        { workstreamId: "workstream-ui", status: "ready", blockers: [] },
+      ],
+      attentions: [
+        {
+          attentionId: "attention-api",
+          scope: "workstream",
+          workstreamId: "workstream-api",
+        },
+      ],
+    });
+    const output = missionDetailSchema.renderHuman?.(
+      { type: "single", data: detail, schema: missionDetailSchema },
+      { format: "table", quiet: false, noHeaders: false, noColor: true },
+    );
+    expect(output).toContain(
+      "workstream API [workstream-api]: blocked blockers=attention-api@workstream-api:direct",
+    );
+    expect(output).toContain(
+      "workstream Integration [workstream-integration]: blocked blockers=attention-api@workstream-api:dependency",
+    );
+    expect(output).toContain("workstream UI [workstream-ui]: ready blockers=-");
+    expect(output).toContain(
+      "attention attention-api: review_gate_capability_unknown scope=workstream:workstream-api",
+    );
+    expect(output).not.toContain("paused");
+  });
 });

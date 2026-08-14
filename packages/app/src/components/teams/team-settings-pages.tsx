@@ -511,6 +511,16 @@ export function TeamAttentionSettingsPage({
                     <Text style={settingsStyles.rowHint}>
                       {t(`teams.v2Settings.attention.kind.${row.kind}`)}
                     </Text>
+                    <Text
+                      style={settingsStyles.rowHint}
+                      testID={`team-attention-${row.attentionId}-scope`}
+                    >
+                      {row.scope === "workstream"
+                        ? t("teams.v2Settings.attention.scopeWorkstream", {
+                            workstream: row.workstreamTitle ?? row.workstreamId ?? "",
+                          })
+                        : t("teams.v2Settings.attention.scopeMission")}
+                    </Text>
                   </View>
                 </View>
                 <View style={[settingsStyles.row, settingsStyles.rowBorder, styles.actionWrap]}>
@@ -613,6 +623,24 @@ function WorkstreamCard({ row }: { row: TeamPlanRow }): ReactElement {
           value={row.reviewReport.summary}
         />
       ) : null}
+      {row.blockers.map((blocker) => (
+        <View
+          key={blocker.attentionId}
+          style={[settingsStyles.row, settingsStyles.rowBorder]}
+          testID={`team-workstream-${row.workstreamId}-blocker-${blocker.attentionId}`}
+        >
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>
+              {t("teams.v2Settings.plan.workstreamBlocker")}
+            </Text>
+            <Text style={settingsStyles.rowHint}>
+              {blocker.direct
+                ? blocker.summary
+                : `${blocker.sourceWorkstreamId} · ${blocker.summary}`}
+            </Text>
+          </View>
+        </View>
+      ))}
       {row.reviewWaiver ? (
         <DataRow
           bordered
@@ -921,6 +949,7 @@ function resolutionKindsFor(kind: MissionAttentionItem["kind"]): TeamAttentionRe
     case "participant_unavailable":
     case "reviewer_unavailable":
     case "review_gate_reviewer_unavailable":
+    case "review_gate_capability_unknown":
       return ["cancel_mission"];
   }
 }

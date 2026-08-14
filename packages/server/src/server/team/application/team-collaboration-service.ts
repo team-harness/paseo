@@ -23,6 +23,7 @@ import {
   type AcceptedTurnFact,
   validateAssignmentContract,
 } from "../domain/assignment-contract-validation.js";
+import { applyMissionAttentionTransition } from "../domain/mission-attention-transition.js";
 import {
   matchWorkstreamOwner,
   matchWorkstreamReviewer,
@@ -99,6 +100,8 @@ const REPLAN_ATTENTION_KINDS = new Set<TeamMission["attentionItems"][number]["ki
   "provider_unavailable",
   "participant_unavailable",
   "reviewer_unavailable",
+  "review_gate_reviewer_unavailable",
+  "review_gate_capability_unknown",
 ]);
 
 export interface TeamMemberLoad {
@@ -466,7 +469,7 @@ export class TeamCollaborationService {
     }
     const nextPlanRevision = context.mission.planRevision + 1;
     const now = this.options.clock.now();
-    const attentionItems = resolveReplanAttentionItems(context.mission, input.callerAgentId, now);
+    const attentionProjection = resolveReplanAttention(context.mission, input.callerAgentId, now);
     const resolvedAttentionDeliveryIds = new Set(
       context.mission.attentionItems
         .filter((item) => item.status === "open")
@@ -513,13 +516,12 @@ export class TeamCollaborationService {
         .map((assignment) => assignment.assignmentId),
     );
     const planProjection: TeamMission = {
-      ...context.mission,
+      ...attentionProjection,
       status: "active",
       suspendedStatus: null,
       planRevision: nextPlanRevision,
       workstreams,
       workstreamPlanSnapshots,
-      attentionItems,
     };
     const replacements = replacementDrafts.map((draft) => {
       const handoffRef = assignmentHandoffRef(draft.supersedesAssignmentId);
@@ -648,7 +650,7 @@ export class TeamCollaborationService {
             workstreams: reviewBoundWorkstreams,
             workstreamPlanSnapshots,
             assignments: normalizedAssignments,
-            attentionItems,
+            attentionItems: attentionProjection.attentionItems,
           },
           recovery: {
             ...recovery,
@@ -1977,41 +1979,25 @@ export class TeamCollaborationService {
     ) {
       return;
     }
-    const priorMissionStatus =
-      stored.mission.status === "needs_attention"
-        ? stored.mission.suspendedStatus
-        : stored.mission.status;
-    if (
-      priorMissionStatus !== "planning" &&
-      priorMissionStatus !== "active" &&
-      priorMissionStatus !== "verifying"
-    ) {
-      return;
-    }
     const updated = await this.options.missions.updateAggregate({
       missionId: stored.mission.id,
       expectedRevision: stored.mission.revision,
       update: ({ mission, recovery }) => ({
-        mission: {
-          ...mission,
-          status: "needs_attention",
-          suspendedStatus: priorMissionStatus,
-          attentionItems: [
-            ...mission.attentionItems,
-            {
-              attentionId,
-              kind: "notification_unacknowledged",
-              scope: { kind: "mission" },
-              status: "open",
-              priorMissionStatus,
-              assignmentId: null,
-              summary: `Team message ${delivery.roomMessageId} was not acknowledged after three notifications`,
-              pathEvidence: [],
-              createdAt: this.options.clock.now(),
-              resolution: null,
-            },
-          ],
-        },
+        mission: applyMissionAttentionTransition(mission, {
+          kind: "raise",
+          item: {
+            attentionId,
+            kind: "notification_unacknowledged",
+            scope: { kind: "mission" },
+            status: "open",
+            priorMissionStatus: suspendableMissionStatus(mission) ?? "active",
+            assignmentId: null,
+            summary: `Team message ${delivery.roomMessageId} was not acknowledged after three notifications`,
+            pathEvidence: [],
+            createdAt: this.options.clock.now(),
+            resolution: null,
+          },
+        }),
         recovery,
       }),
     });
@@ -2031,41 +2017,25 @@ export class TeamCollaborationService {
     ) {
       return;
     }
-    const priorMissionStatus =
-      stored.mission.status === "needs_attention"
-        ? stored.mission.suspendedStatus
-        : stored.mission.status;
-    if (
-      priorMissionStatus !== "planning" &&
-      priorMissionStatus !== "active" &&
-      priorMissionStatus !== "verifying"
-    ) {
-      return;
-    }
     const updated = await this.options.missions.updateAggregate({
       missionId: stored.mission.id,
       expectedRevision: stored.mission.revision,
       update: ({ mission, recovery }) => ({
-        mission: {
-          ...mission,
-          status: "needs_attention",
-          suspendedStatus: priorMissionStatus,
-          attentionItems: [
-            ...mission.attentionItems,
-            {
-              attentionId,
-              kind: "participant_unavailable",
-              scope: { kind: "mission" },
-              status: "open",
-              priorMissionStatus,
-              assignmentId: null,
-              summary: `Recipient ${participant.agentId} is unavailable for Team message ${delivery.roomMessageId}`,
-              pathEvidence: [],
-              createdAt: this.options.clock.now(),
-              resolution: null,
-            },
-          ],
-        },
+        mission: applyMissionAttentionTransition(mission, {
+          kind: "raise",
+          item: {
+            attentionId,
+            kind: "participant_unavailable",
+            scope: { kind: "mission" },
+            status: "open",
+            priorMissionStatus: suspendableMissionStatus(mission) ?? "active",
+            assignmentId: null,
+            summary: `Recipient ${participant.agentId} is unavailable for Team message ${delivery.roomMessageId}`,
+            pathEvidence: [],
+            createdAt: this.options.clock.now(),
+            resolution: null,
+          },
+        }),
         recovery,
       }),
     });
@@ -2753,11 +2723,11 @@ function assertValidPlanProjection(
   );
 }
 
-function resolveReplanAttentionItems(
+function resolveReplanAttention(
   mission: TeamMission,
   actorId: string,
   resolvedAt: string,
-): TeamMission["attentionItems"] {
+): TeamMission {
   const unsupported = mission.attentionItems.find(
     (item) => item.status === "open" && !REPLAN_ATTENTION_KINDS.has(item.kind),
   );
@@ -2767,8 +2737,8 @@ function resolveReplanAttentionItems(
       `Attention ${unsupported.attentionId} must be resolved before Mission replanning`,
     );
   }
-  return mission.attentionItems.map((item) => {
-    if (item.status !== "open") return item;
+  return mission.attentionItems.reduce((current, item) => {
+    if (item.status !== "open") return current;
     const resolution = {
       kind: "replan" as const,
       actorId,
@@ -2784,8 +2754,12 @@ function resolveReplanAttentionItems(
         `Attention ${item.attentionId} cannot be resolved by replanning`,
       );
     }
-    return { ...item, status: "resolved" as const, resolution };
-  });
+    return applyMissionAttentionTransition(current, {
+      kind: "resolve",
+      attentionId: item.attentionId,
+      resolution,
+    });
+  }, mission);
 }
 
 function resolveMissingReportAttention(
@@ -2802,9 +2776,7 @@ function resolveMissingReportAttention(
   );
   if (matchingAttention.length === 0) return mission;
 
-  const matchingAttentionIds = new Set(matchingAttention.map((item) => item.attentionId));
-  const attentionItems = mission.attentionItems.map((item) => {
-    if (!matchingAttentionIds.has(item.attentionId)) return item;
+  return matchingAttention.reduce((current, item) => {
     const resolution = {
       kind: "report_received" as const,
       actorId,
@@ -2820,16 +2792,12 @@ function resolveMissingReportAttention(
         `Attention ${item.attentionId} cannot be resolved by an Assignment report`,
       );
     }
-    return { ...item, status: "resolved" as const, resolution };
-  });
-  const hasOpenAttention = attentionItems.some((item) => item.status === "open");
-  return {
-    ...mission,
-    attentionItems,
-    ...(mission.status === "needs_attention" && !hasOpenAttention
-      ? { status: matchingAttention[0]?.priorMissionStatus ?? "active", suspendedStatus: null }
-      : {}),
-  };
+    return applyMissionAttentionTransition(current, {
+      kind: "resolve",
+      attentionId: item.attentionId,
+      resolution,
+    });
+  }, mission);
 }
 
 function assertReplacementCoverage(
@@ -3547,15 +3515,15 @@ function projectAssignmentReplanAttention(input: {
   const hasAttention = input.mission.attentionItems.some(
     (attention) => attention.attentionId === attentionId,
   );
-  const attentionItems = hasAttention
-    ? input.mission.attentionItems
-    : [
-        ...input.mission.attentionItems,
-        {
+  const mission = hasAttention
+    ? input.mission
+    : applyMissionAttentionTransition(input.mission, {
+        kind: "raise",
+        item: {
           attentionId,
-          kind: "assignment_requires_replan" as const,
-          scope: { kind: "mission" as const },
-          status: "open" as const,
+          kind: "assignment_requires_replan",
+          scope: { kind: "mission" },
+          status: "open",
           priorMissionStatus,
           assignmentId: input.assignment.assignmentId,
           summary: assignmentReplanSummary(input.assignment, input.acceptedTurn),
@@ -3563,7 +3531,7 @@ function projectAssignmentReplanAttention(input: {
           createdAt: input.createdAt,
           resolution: null,
         },
-      ];
+      });
   const deliveries = buildLeadReplanDeliveries({
     mission: input.mission,
     existing: input.recovery.recipientAttentionOutbox,
@@ -3571,12 +3539,7 @@ function projectAssignmentReplanAttention(input: {
     now: input.createdAt,
   });
   return {
-    mission: {
-      ...input.mission,
-      status: "needs_attention",
-      suspendedStatus: priorMissionStatus,
-      attentionItems,
-    },
+    mission,
     recovery:
       deliveries.length > 0
         ? {
@@ -3585,6 +3548,13 @@ function projectAssignmentReplanAttention(input: {
           }
         : input.recovery,
   };
+}
+
+function suspendableMissionStatus(
+  mission: TeamMission,
+): "planning" | "active" | "verifying" | null {
+  const status = mission.status === "needs_attention" ? mission.suspendedStatus : mission.status;
+  return status === "planning" || status === "active" || status === "verifying" ? status : null;
 }
 
 function addMilliseconds(timestamp: string, milliseconds: number): string {

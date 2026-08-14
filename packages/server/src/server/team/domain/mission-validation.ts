@@ -83,6 +83,17 @@ export type TeamMissionIssue =
   | { kind: "invalid_attention_resolution_kind"; attentionId: string }
   | { kind: "invalid_attention_path"; attentionId: string; path: string }
   | { kind: "unknown_attention_assignment"; attentionId: string; assignmentId: string }
+  | { kind: "invalid_workstream_attention_history"; attentionId: string }
+  | {
+      kind: "open_workstream_attention_not_blocked";
+      attentionId: string;
+      workstreamId: string;
+    }
+  | {
+      kind: "open_workstream_attention_gate_mismatch";
+      attentionId: string;
+      workstreamId: string;
+    }
   | { kind: "invalid_audit_excluded_path_prefix"; pathPrefix: string }
   | { kind: "invalid_workspace_audit_policy" }
   | {
@@ -364,6 +375,7 @@ const allowedAttentionResolutionKinds: Record<
   participant_unavailable: new Set(["replan", "cancel_mission"]),
   reviewer_unavailable: new Set(["replan", "cancel_mission"]),
   review_gate_reviewer_unavailable: new Set(["replan", "waive_review", "cancel_mission"]),
+  review_gate_capability_unknown: new Set(["replan", "cancel_mission"]),
   lead_unavailable: new Set(["replace_lead", "cancel_mission"]),
   notification_unacknowledged: new Set(["restore_notification", "cancel_mission"]),
 };
@@ -425,14 +437,15 @@ function validateAttentionMissionState(
   openItems: TeamMission["attentionItems"],
 ): TeamMissionIssue[] {
   const issues: TeamMissionIssue[] = [];
-  if (mission.status === "needs_attention" && openItems.length === 0) {
+  const openMissionItems = openItems.filter((item) => item.scope.kind === "mission");
+  if (mission.status === "needs_attention" && openMissionItems.length === 0) {
     issues.push({ kind: "needs_attention_without_open_item" });
   }
   if (mission.status === "needs_attention") {
     if (mission.suspendedStatus === null) {
       issues.push({ kind: "attention_suspended_status_mismatch" });
     } else {
-      for (const item of openItems) {
+      for (const item of openMissionItems) {
         if (item.priorMissionStatus === mission.suspendedStatus) continue;
         issues.push({ kind: "attention_suspended_status_mismatch", attentionId: item.attentionId });
       }
@@ -441,7 +454,7 @@ function validateAttentionMissionState(
     issues.push({ kind: "attention_suspended_status_mismatch" });
   }
   if (mission.status !== "needs_attention") {
-    for (const item of openItems) {
+    for (const item of openMissionItems) {
       issues.push({
         kind: "open_attention_status_mismatch",
         attentionId: item.attentionId,
@@ -450,6 +463,90 @@ function validateAttentionMissionState(
     }
   }
   return issues;
+}
+
+function validateWorkstreamAttentionState(mission: TeamMission): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  for (const item of mission.attentionItems) {
+    if (
+      item.kind !== "review_gate_reviewer_unavailable" &&
+      item.kind !== "review_gate_capability_unknown"
+    ) {
+      continue;
+    }
+    const hasValidHistory = hasValidWorkstreamAttentionHistory(item);
+    if (!hasValidHistory) {
+      issues.push({ kind: "invalid_workstream_attention_history", attentionId: item.attentionId });
+    }
+    if (item.status !== "open") continue;
+    const workstream = mission.workstreams.find(
+      (candidate) => candidate.workstreamId === item.scope.workstreamId,
+    );
+    if (!workstream || workstream.status !== "blocked") {
+      issues.push({
+        kind: "open_workstream_attention_not_blocked",
+        attentionId: item.attentionId,
+        workstreamId: item.scope.workstreamId,
+      });
+    }
+    if (!matchesCurrentWorkstreamAttention(mission, item, hasValidHistory)) {
+      issues.push({
+        kind: "open_workstream_attention_gate_mismatch",
+        attentionId: item.attentionId,
+        workstreamId: item.scope.workstreamId,
+      });
+    }
+  }
+  return issues;
+}
+
+type WorkstreamAttentionItem = Extract<
+  MissionAttentionItem,
+  {
+    kind: "review_gate_reviewer_unavailable" | "review_gate_capability_unknown";
+  }
+>;
+
+function hasValidWorkstreamAttentionHistory(item: WorkstreamAttentionItem): boolean {
+  const details = item.reviewGateDetails;
+  return (
+    item.priorMissionStatus === null &&
+    details.gateKey.subject.workstreamId === item.scope.workstreamId &&
+    details.gateKeyFingerprint === missionReviewGateKeyFingerprint(details.gateKey) &&
+    details.subjectFingerprint === missionReviewSubjectFingerprint(details.gateKey.subject)
+  );
+}
+
+function matchesCurrentWorkstreamAttention(
+  mission: TeamMission,
+  item: WorkstreamAttentionItem,
+  hasValidHistory: boolean,
+): boolean {
+  if (!hasValidHistory || ["completed", "failed", "canceled"].includes(mission.status)) {
+    return false;
+  }
+  const workstream = mission.workstreams.find(
+    (candidate) => candidate.workstreamId === item.scope.workstreamId,
+  );
+  if (
+    workstream?.planRevision !== mission.planRevision ||
+    workstream.reviewGate.kind !== "required"
+  ) {
+    return false;
+  }
+  const gate = workstream.reviewGate;
+  const expectedSelectionKind =
+    item.kind === "review_gate_reviewer_unavailable"
+      ? "awaiting_reviewer"
+      : "awaiting_capabilities";
+  const details = item.reviewGateDetails;
+  return (
+    gate.outcome.kind === "pending" &&
+    gate.selection.kind === expectedSelectionKind &&
+    sameCanonicalValue(gate.gateKey, details.gateKey) &&
+    gate.gateKeyFingerprint === details.gateKeyFingerprint &&
+    gate.subjectFingerprint === details.subjectFingerprint
+  );
 }
 
 function validateAttentionState(mission: TeamMission): TeamMissionIssue[] {
@@ -2339,6 +2436,7 @@ export function validateTeamMission(
     issues.push({ kind: "invalid_workspace_audit_policy" });
   }
   issues.push(...validateAttentionState(mission));
+  issues.push(...validateWorkstreamAttentionState(mission));
   issues.push(...validateFinalVerificationPlan(mission.workstreams, finalVerifications));
   issues.push(...validateFinalVerificationAssignments(mission, finalVerifications));
   const snapshotByRevision = new Map(

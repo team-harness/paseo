@@ -4,6 +4,7 @@ import type {
   TeamSkill,
   TeamV2,
 } from "@getpaseo/protocol/team/v2-types";
+import { selectOpenWorkstreamAttentionAttributions } from "@getpaseo/protocol/team/attention-blocking";
 import type { MethodologyDescriptor } from "@getpaseo/protocol/team/v2-rpc-schemas";
 import type { AgentProfileExecutionFacts } from "@getpaseo/protocol/team/execution-source-status";
 import { selectTeamMemberExecutionSourceStatus } from "@getpaseo/protocol/team/execution-source-status";
@@ -184,6 +185,24 @@ export interface MissionDetail extends MissionRow {
   room: string;
   assignments: number;
   attentionItems: number;
+  workstreamStates: Array<{
+    workstreamId: string;
+    title: string;
+    status: string;
+    blockers: Array<{
+      attentionId: string;
+      sourceWorkstreamId: string;
+      direct: boolean;
+    }>;
+  }>;
+  attentions: Array<{
+    attentionId: string;
+    kind: string;
+    status: string;
+    scope: "mission" | "workstream";
+    workstreamId: string | null;
+    summary: string;
+  }>;
   completedAt: string | null;
   reviewGates: Array<{
     workstreamId: string;
@@ -201,6 +220,7 @@ export interface MissionDetail extends MissionRow {
 }
 
 export function toMissionDetail(mission: TeamMission): MissionDetail {
+  const attentionAttributions = selectOpenWorkstreamAttentionAttributions(mission);
   return {
     ...toMissionRow(mission),
     workspace: mission.workspaceId,
@@ -209,6 +229,26 @@ export function toMissionDetail(mission: TeamMission): MissionDetail {
     room: mission.chatRoomId,
     assignments: mission.assignments.length,
     attentionItems: mission.attentionItems.length,
+    workstreamStates: mission.workstreams.map((workstream) => ({
+      workstreamId: workstream.workstreamId,
+      title: workstream.title,
+      status: workstream.status,
+      blockers: attentionAttributions
+        .filter((item) => item.targetWorkstreamId === workstream.workstreamId)
+        .map((item) => ({
+          attentionId: item.attentionId,
+          sourceWorkstreamId: item.sourceWorkstreamId,
+          direct: item.direct,
+        })),
+    })),
+    attentions: mission.attentionItems.map((item) => ({
+      attentionId: item.attentionId,
+      kind: item.kind,
+      status: item.status,
+      scope: item.scope.kind,
+      workstreamId: item.scope.kind === "workstream" ? item.scope.workstreamId : null,
+      summary: item.summary,
+    })),
     completedAt: mission.completedAt,
     reviewGates: mission.workstreams.flatMap((workstream) => {
       const gate = workstream.reviewGate;
@@ -278,6 +318,14 @@ function renderMissionBlock(mission: MissionDetail): string {
     `  workstreams: ${mission.workstreams}`,
     `  assignments: ${mission.assignments}`,
     `  attention items: ${mission.attentionItems}`,
+    ...mission.workstreamStates.map(
+      (workstream) =>
+        `  workstream ${workstream.title} [${workstream.workstreamId}]: ${workstream.status} blockers=${workstream.blockers.map((blocker) => `${blocker.attentionId}@${blocker.sourceWorkstreamId}:${blocker.direct ? "direct" : "dependency"}`).join(",") || "-"}`,
+    ),
+    ...mission.attentions.map(
+      (attention) =>
+        `  attention ${attention.attentionId}: ${attention.kind} scope=${attention.scope}${attention.workstreamId ? `:${attention.workstreamId}` : ""} status=${attention.status} summary=${attention.summary}`,
+    ),
     ...mission.reviewGates.flatMap((gate) => [
       `  review gate ${gate.workstreamId}: ${gate.outcome} (${gate.selection}) subjects=${gate.subjectAssignmentIds.join(",") || "-"}`,
       ...renderReviewGateEvidence(gate),
