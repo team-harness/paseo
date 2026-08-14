@@ -4,7 +4,7 @@ phase: acceptance
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
 active_items: []
-next_action: 按 remote_publish=final 发布分支并请求 owner final acceptance
+next_action: 等待 owner final acceptance
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +32,14 @@ remote_publish: final
 - [x] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：`remote_publish: final` 已执行。首次普通 push 因远端旧 Agent Teams 历史与本地
+  upstream replay 分叉而 non-fast-forward；主流程未 force push。`git range-diff` 证明远端 5 个
+  提交中 3 个与本地重放补丁完全等价，2 个只因本地先同步 Agent Profile/Session 等 upstream
+  接口而调整上下文。本地以 `ours` strategy 创建合并提交
+  `5e3e7e5db093a5583b51310fdc7fe0ae797f3e7b`（parents `6acb245af…`、`f39b79354…`），
+  tree `3ceee9e037112511cd495a96dbe450175cb3588e` 与第一父逐字节相同，再以 fast-forward
+  正常推送 `origin/feat/agent-teams` 成功。未覆盖远端历史、未 force、未发布 Paseo release。
 
 - 2026-08-14：owner 选择 A，明示接受 final acceptance IMP-1 的平台执行证据例外。Native
   iOS/Android 与真实 Electron 的 Team Hub/Mission 表单验证转为**首次公开前硬门槛**，不阻塞
