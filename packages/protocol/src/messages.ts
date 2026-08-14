@@ -3412,15 +3412,9 @@ export const ServerInfoStatusPayloadSchema = z
         agentProfiles: z.boolean().optional(),
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: z.boolean().optional(),
-        // COMPAT(teamMissions): added in v0.3.0-beta.3, remove after 2027-02-08
-        // once every supported daemon exposes the Team Missions runtime.
         teamMissions: z.boolean().optional(),
-        // COMPAT(globalTeamProfiles): added in v0.3.1, remove after 2027-02-11
-        // once every supported daemon separates Team identity from Mission workspace placement.
         globalTeamProfiles: z.boolean().optional(),
         teamMethodologies: z.boolean().optional(),
-        // COMPAT(teamProfileUpgrades): added in v0.3.2, remove after 2027-02-13
-        // once every supported daemon implements execution-source and Methodology upgrades.
         teamProfileUpgrades: z.boolean().optional(),
       })
       .optional(),

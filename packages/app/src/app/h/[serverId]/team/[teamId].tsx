@@ -30,12 +30,14 @@ function HostTeamRouteContent() {
   const hostName = hosts.find((host) => host.serverId === serverId)?.label ?? serverId;
   const runtimeSnapshot = useHostRuntimeSnapshot(serverId);
   const connectionStatus = runtimeSnapshot?.connectionStatus ?? "connecting";
-  const supported = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.teamMissions === true,
-  );
-  const globalTeamProfilesSupported = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.globalTeamProfiles === true,
-  );
+  const supported = useSessionStore((state) => {
+    const features = state.sessions[serverId]?.serverInfo?.features;
+    return (
+      features?.teamMissions === true &&
+      features.globalTeamProfiles === true &&
+      features.teamMethodologies === true
+    );
+  });
   const hydrated = useSessionStore(
     (state) => state.sessions[serverId]?.teamMissionsReplica.status === "ready",
   );
@@ -53,7 +55,6 @@ function HostTeamRouteContent() {
     serverId,
     teamId,
     supported,
-    globalTeamProfilesSupported,
     connectionStatus,
     hydrated,
     activeMissionId: profile?.activeMissionId,
