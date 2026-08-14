@@ -4,7 +4,7 @@ phase: acceptance
 approved_revision: 9274f5e4d6bebd60b1da004b78c13af0a3b69db45cf6bde9182737a54f91cef1
 current_item: null
 active_items: []
-next_action: 等待 TM-ITEM-6 frozen final review；随后由 owner 裁决 Native/Electron 证据缺口
+next_action: 等待 TM-ITEM-6 current-state closure review；随后由 owner 裁决 Native/Electron 证据缺口
 blocked_by: null
 item_progression: parallel
 milestone_commit: authorized
@@ -32,6 +32,14 @@ remote_publish: final
 - [x] TM-ITEM-17
 
 ## 临时决策与证据
+
+- 2026-08-14：TM-ITEM-6 frozen final review Round 1 返回 `1 blocking / 0 important / REJECT`。
+  `f4235cc5…` 当时的 Team RPC 只检查 runtime 或单一 `teamMissions` capability，同 Session 的
+  不支持 physical socket 可读取/调用 Team RPC，client mutation 也未要求完整三能力。reviewer
+  同时确认该授权边界后来由 `cb08760fe…` 的逐 source 守卫和 `dde472576…` 的 client 三能力门
+  闭合。主流程已向同一 reviewer 发起 Round 2，冻结当前产品 `dde472576…`，只核验 mixed-source
+  拒绝、全部 Team mutation 三能力门、投影/授权一致性及回归测试；历史 finding 保留，但当前
+  Epic 是否 0/0 以本轮 closure verdict 为准。
 
 - 2026-08-14：TM-ITEM-6 frozen final review 已启动。fresh Paseo reviewer
   `c0ba0668-6667-4a0a-a6aa-a788d80f3351` 使用 `codex/gpt-5.6-sol` 的 planning-only
