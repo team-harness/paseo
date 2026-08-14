@@ -219,8 +219,10 @@ export const teamV2En = {
         "Capability declarations are unchanged. Active roster revision {{revision}}. The frozen roster, Skills, Levels, and plan did not change.",
       capabilityRefreshRequested:
         "Lead replan requested at active roster revision {{revision}}. Refresh is not a plan commit and cannot change the frozen roster, Skills, or Levels.",
-      capabilityRefreshPending: "Lead replan request pending · roster revision {{revision}}",
-      capabilityRefreshConsumed: "Lead replan request consumed · roster revision {{revision}}",
+      capabilityRefreshPending:
+        "Lead replan request {{requestId}} pending · roster revision {{revision}} · sources {{sources}} · delivery {{delivery}}",
+      capabilityRefreshConsumed:
+        "Lead replan request {{requestId}} consumed · roster revision {{revision}} · sources {{sources}} · delivery {{delivery}}",
       title: "Open Attention",
       permissions: "Pending permissions",
       none: "Nothing needs attention",
@@ -605,8 +607,10 @@ export const teamV2ZhCN: TeamV2Resources = {
         "Capability declaration 未变化。Active roster revision {{revision}}；冻结 roster、Skill、Level 和计划均未改变。",
       capabilityRefreshRequested:
         "已请求 Lead 重新规划，active roster revision {{revision}}。刷新不是 plan commit，也不能改变冻结 roster、Skill 或 Level。",
-      capabilityRefreshPending: "等待 Lead 重新规划 · roster revision {{revision}}",
-      capabilityRefreshConsumed: "Lead 重新规划 request 已消费 · roster revision {{revision}}",
+      capabilityRefreshPending:
+        "Lead 重新规划 request {{requestId}} 等待中 · roster revision {{revision}} · 来源 {{sources}} · delivery {{delivery}}",
+      capabilityRefreshConsumed:
+        "Lead 重新规划 request {{requestId}} 已消费 · roster revision {{revision}} · 来源 {{sources}} · delivery {{delivery}}",
       title: "待处理 Attention",
       permissions: "待处理权限",
       none: "没有需要处理的事项",

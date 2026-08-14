@@ -3,12 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import type { TeamMission } from "@getpaseo/protocol/team/v2-types";
+
 import type { TestInlineTeamMemberInput } from "../test-fixtures.js";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import type { AcceptedTurnFact } from "../domain/assignment-contract-validation.js";
 import { buildMissionFinalVerificationGate } from "../domain/mission-final-verification-gate.js";
 import { MissionStore } from "../persistence/mission-store.js";
+import type { MissionRecipientAttentionDelivery } from "../persistence/schemas.js";
 import { TeamProfileStore } from "../persistence/profile-store.js";
 import { TeamPersistenceReconciler } from "../persistence/reconciliation.js";
 import type {
@@ -459,6 +462,10 @@ describe("TeamCollaborationService queries", () => {
       expectedRevision: mission.revision,
       update: (current) => ({
         ...current,
+        rosterSnapshots:
+          kind === "review_gate_capability_unknown"
+            ? withUnknownNonLeadCapabilities(current.rosterSnapshots)
+            : current.rosterSnapshots,
         attentionItems: [
           {
             attentionId: `attention-${kind}`,
@@ -486,23 +493,172 @@ describe("TeamCollaborationService queries", () => {
       missionId: mission.id,
       expectedRevision: pending.mission.revision,
       expectedPlanRevision: 0,
-      workstreams: missionPlanWithoutRequiredReview(),
+      workstreams:
+        kind === "review_gate_capability_unknown"
+          ? missionPlanWithKnownOwnersAndUnknownReviewers()
+          : missionPlanWithoutRequiredReview(),
     });
 
-    expect(planned).toMatchObject({
-      status: "planning",
-      suspendedStatus: null,
-      planRevision: 1,
-      attentionItems: [
-        {
+    expect(planned).toMatchObject({ status: "planning", suspendedStatus: null, planRevision: 1 });
+    expect(planned.attentionItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
           kind,
-          scope: { kind: "workstream", workstreamId: "api" },
+          scope: expect.objectContaining({ kind: "workstream", workstreamId: "api" }),
           status: "resolved",
           priorMissionStatus: null,
-          resolution: { kind: "replan", actorId: "agent-1" },
-        },
-      ],
+          resolution: expect.objectContaining({ kind: "replan", actorId: "agent-1" }),
+        }),
+      ]),
+    );
+    if (kind === "review_gate_capability_unknown") {
+      expect(planned.attentionItems).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: expect.stringMatching(/^review_gate_/),
+            scope: expect.objectContaining({ kind: "workstream", workstreamId: "api" }),
+            status: "open",
+            reviewGateDetails: expect.objectContaining({
+              gateKey: expect.objectContaining({ planRevision: 1 }),
+            }),
+          }),
+        ]),
+      );
+    }
+  });
+
+  test("recovers cleanly from capability plan crashes before and after the aggregate CAS", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { team, mission } = await createMission(fixture.lifecycle);
+    const gate = buildMissionReviewGate({
+      workstreamId: "api",
+      planRevision: 1,
+      subjectAssignmentIds: ["assignment-api"],
+      requirements: {
+        requiredSkillIds: ["typescript"],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: ["structured-tools"],
+        minimumLevel: 4,
+      },
+      selection: { kind: "awaiting_capabilities", candidateMemberIds: [team.leadMemberId] },
+      outcome: { kind: "pending" },
     });
+    if (gate.kind !== "required") throw new Error("Required review gate expected");
+    const attentionId = "attention-capability-request";
+    const deliveryId = "capability-request:delivery";
+    const pending = await fixture.missions.updateAggregate({
+      missionId: mission.id,
+      expectedRevision: mission.revision,
+      update: ({ mission: current, recovery }) => ({
+        mission: {
+          ...current,
+          attentionItems: [
+            {
+              attentionId,
+              kind: "review_gate_capability_unknown",
+              scope: { kind: "workstream", workstreamId: "api", blockDependents: true },
+              status: "open",
+              priorMissionStatus: null,
+              assignmentId: null,
+              summary: "The API review gate needs refreshed capabilities.",
+              pathEvidence: [],
+              createdAt: NOW,
+              resolution: null,
+              reviewGateDetails: {
+                gateKey: gate.gateKey,
+                gateKeyFingerprint: gate.gateKeyFingerprint,
+                subjectFingerprint: gate.subjectFingerprint,
+              },
+            },
+          ],
+          capabilityReplanRequests: [
+            {
+              requestId: "capability-request",
+              idempotencyKey: "capability-refresh",
+              requestFingerprint: "capability-fingerprint",
+              sourceAttentionIds: [attentionId],
+              rosterSnapshotRevision: current.activeRosterSnapshotRevision,
+              deliveryId,
+              createdAt: NOW,
+              consumedAt: null,
+            },
+          ],
+        },
+        recovery: {
+          ...recovery,
+          recipientAttentionOutbox: [
+            pendingCapabilityDelivery({ deliveryId, state: "pending" }),
+            pendingCapabilityDelivery({
+              deliveryId: `${deliveryId}:binding:2`,
+              bindingEpoch: 2,
+              state: "notified",
+            }),
+          ],
+        },
+      }),
+    });
+
+    const planInput = {
+      callerAgentId: "agent-1",
+      missionId: mission.id,
+      expectedRevision: pending.mission.revision,
+      expectedPlanRevision: 0,
+      workstreams: missionPlanWithoutRequiredReview(),
+    };
+    const originalUpdateAggregate = fixture.missions.updateAggregate.bind(fixture.missions);
+    fixture.missions.updateAggregate = async () => {
+      throw new Error("simulated crash before capability plan CAS");
+    };
+    await expect(fixture.collaboration.planMission(planInput)).rejects.toThrow(
+      "simulated crash before capability plan CAS",
+    );
+    expect(await fixture.missions.get(mission.id)).toMatchObject({
+      mission: {
+        capabilityReplanRequests: [{ consumedAt: null }],
+        attentionItems: [{ attentionId, status: "open" }],
+      },
+      recipientAttentionOutbox: expect.arrayContaining([
+        expect.objectContaining({ deliveryId, state: "pending" }),
+      ]),
+    });
+
+    fixture.missions.updateAggregate = async (input) => {
+      await originalUpdateAggregate(input);
+      throw new Error("simulated response loss after capability plan CAS");
+    };
+    await expect(fixture.collaboration.planMission(planInput)).rejects.toThrow(
+      "simulated response loss after capability plan CAS",
+    );
+    fixture.missions.updateAggregate = originalUpdateAggregate;
+
+    expect(await fixture.missions.get(mission.id)).toMatchObject({
+      mission: {
+        capabilityReplanRequests: [{ requestId: "capability-request", consumedAt: NOW }],
+        attentionItems: [
+          {
+            attentionId,
+            status: "resolved",
+            resolution: { kind: "replan", rosterSnapshotRevision: 1 },
+          },
+        ],
+      },
+      recipientAttentionOutbox: expect.arrayContaining([
+        expect.objectContaining({
+          deliveryId,
+          state: "canceled",
+          cancelReason: "attention_resolved",
+        }),
+        expect.objectContaining({
+          deliveryId: `${deliveryId}:binding:2`,
+          state: "canceled",
+          cancelReason: "attention_resolved",
+        }),
+      ]),
+    });
+    await fixture.collaboration.reconcilePendingMessages();
+    expect(
+      fixture.attentionAttempts.filter((attempt) => attempt.deliveryId.startsWith(deliveryId)),
+    ).toEqual([]);
   });
 
   test("derives reviewer requirements when frozen methodology forces independent review", async () => {
@@ -4374,6 +4530,32 @@ function missionPlanWithoutRequiredReview() {
   ];
 }
 
+function missionPlanWithKnownOwnersAndUnknownReviewers() {
+  return missionPlan().map((workstream) =>
+    Object.assign({}, workstream, { requiredRuntimeCapabilityIds: [] }),
+  );
+}
+
+function withUnknownNonLeadCapabilities(
+  snapshots: TeamMission["rosterSnapshots"],
+): TeamMission["rosterSnapshots"] {
+  return snapshots.map((snapshot) =>
+    Object.assign({}, snapshot, {
+      members: snapshot.members.map((member) =>
+        member.memberId === snapshot.leadMemberId
+          ? member
+          : Object.assign({}, member, {
+              capabilityFacts: {
+                kind: "unknown" as const,
+                providerId: member.executionProfile.provider,
+                reason: "provider_declaration_unavailable" as const,
+              },
+            }),
+      ),
+    }),
+  );
+}
+
 function missionPlanReplacingApi() {
   const [delivery, verification] = missionPlan();
   if (!delivery || !verification) throw new Error("Mission plan fixture is incomplete");
@@ -4755,4 +4937,34 @@ function replacementDeliveryDraft() {
     acceptanceCriteria: ["Parser documentation is complete"],
     mutableScope: { kind: "paths" as const, pathPrefixes: ["docs"] },
   };
+}
+
+function pendingCapabilityDelivery(input: {
+  deliveryId: string;
+  bindingEpoch?: number;
+  state: "pending" | "notified";
+}): MissionRecipientAttentionDelivery {
+  const common = {
+    deliveryId: input.deliveryId,
+    idempotencyKey: "capability-refresh",
+    requestFingerprint: "capability-fingerprint",
+    roomMessageId: "capability-request:message",
+    senderMemberId: "member-1",
+    senderAgentId: "agent-1",
+    recipientMemberId: "member-1",
+    bindingEpoch: input.bindingEpoch ?? 1,
+    mentionHandle: "technical-lead",
+    body: "@technical-lead submit a replacement plan",
+    roomPostedAt: NOW,
+    roomCursor: 1,
+    attempts: input.state === "pending" ? 0 : 1,
+    createdAt: NOW,
+    successorDeliveryId: null,
+    acknowledgedAt: null,
+    canceledAt: null,
+    cancelReason: null,
+  };
+  return input.state === "pending"
+    ? { ...common, state: "pending", lastAttemptAt: null, nextEligibleAt: NOW }
+    : { ...common, state: "notified", lastAttemptAt: NOW, nextEligibleAt: NOW };
 }

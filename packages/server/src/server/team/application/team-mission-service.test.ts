@@ -343,7 +343,93 @@ describe("TeamMissionService lifecycle", () => {
         },
         recipientAttentionOutbox: [{ state: "pending", bindingEpoch: 1 }],
       });
+      expect(await fixture.service.inspectMission(started.id)).toMatchObject({
+        capabilityReplanRequests: [
+          {
+            requestId: result.requestId,
+            sourceAttentionIds: [`attention-${kind}`],
+            rosterSnapshotRevision: 2,
+            consumedAt: null,
+            currentBindingDelivery: {
+              bindingEpoch: 1,
+              state: "pending",
+            },
+          },
+        ],
+      });
       expect(fixture.materializerState.reads).toBe(0);
+
+      if (kind === "review_gate_reviewer_unavailable") {
+        if (!stored) throw new Error("Mission expected");
+        const replacementLead = stored.mission.rosterSnapshots.at(-1)?.members[1];
+        const rootDelivery = stored.recipientAttentionOutbox[0];
+        if (!replacementLead || !rootDelivery) throw new Error("Replacement facts expected");
+        await fixture.missions.updateAggregate({
+          missionId: started.id,
+          expectedRevision: stored.mission.revision,
+          update: ({ mission, recovery }) => ({
+            mission: {
+              ...mission,
+              activeRosterSnapshotRevision: 3,
+              participants: [
+                ...mission.participants.map((participant) => ({
+                  ...participant,
+                  archivedAt: participant.memberId === replacementLead.memberId ? null : NOW,
+                })),
+                {
+                  memberId: replacementLead.memberId,
+                  agentId: "agent-replacement-lead",
+                  bindingEpoch: 1,
+                  joinedAt: NOW,
+                  archivedAt: null,
+                },
+              ],
+              rosterSnapshots: [
+                ...mission.rosterSnapshots,
+                {
+                  ...structuredClone(mission.rosterSnapshots.at(-1)!),
+                  revision: 3,
+                  leadMemberId: replacementLead.memberId,
+                  createdAt: NOW,
+                },
+              ],
+            },
+            recovery: {
+              ...recovery,
+              recipientAttentionOutbox: [
+                {
+                  ...rootDelivery,
+                  attempts: 1,
+                  state: "acknowledged",
+                  lastAttemptAt: NOW,
+                  acknowledgedAt: NOW,
+                  nextEligibleAt: null,
+                },
+                {
+                  ...rootDelivery,
+                  deliveryId: `${rootDelivery.deliveryId}:binding:1`,
+                  recipientMemberId: replacementLead.memberId,
+                  mentionHandle: replacementLead.mentionHandle,
+                  state: "pending",
+                },
+              ],
+            },
+          }),
+        });
+
+        expect(await fixture.service.inspectMission(started.id)).toMatchObject({
+          capabilityReplanRequests: [
+            {
+              requestId: result.requestId,
+              currentBindingDelivery: {
+                deliveryId: `${rootDelivery.deliveryId}:binding:1`,
+                bindingEpoch: 1,
+                state: "pending",
+              },
+            },
+          ],
+        });
+      }
     },
   );
 

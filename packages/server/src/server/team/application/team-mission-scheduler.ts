@@ -37,6 +37,10 @@ import {
   resolveMissionSettledReviewGateWorkstreamIds,
 } from "../domain/mission-validation.js";
 import {
+  finalVerifierAttentionId,
+  reviewGateAttentionId,
+} from "../domain/structural-gate-attention.js";
+import {
   missionReviewReportFingerprint,
   sameCanonicalValue,
 } from "../domain/mission-review-gate.js";
@@ -44,6 +48,7 @@ import {
   assignmentReplanAttentionId,
   assignmentReplanSummary,
   assignmentRequiresReplan,
+  buildCapabilityReplanBindingDeliveries,
   buildLeadReplanDeliveries,
 } from "./assignment-replan.js";
 import { planMissionQualityGates, sameAssignmentIdSet } from "./quality-gate-assignments.js";
@@ -415,6 +420,7 @@ export class TeamMissionScheduler {
     if (!stored) throw new Error(`Mission ${missionId} does not exist`);
     const stopped = await this.reconcileStoppedMission(stored);
     if (stopped) return stopped;
+    stored = await this.reconcileCapabilityReplanBindings(stored);
     stored = await this.reconcileFinishedDispatchIntents(stored);
     const durableTurns = await this.reconcileDurableTurnFacts(stored);
     stored = durableTurns.stored;
@@ -770,6 +776,29 @@ export class TeamMissionScheduler {
         )
         .map((assignment) => assignment.assignmentId),
     };
+  }
+
+  private async reconcileCapabilityReplanBindings(
+    stored: NonNullable<Awaited<ReturnType<MissionStore["get"]>>>,
+  ): Promise<NonNullable<Awaited<ReturnType<MissionStore["get"]>>>> {
+    const additions = buildCapabilityReplanBindingDeliveries({
+      mission: stored.mission,
+      existing: stored.recipientAttentionOutbox,
+      now: this.options.clock.now(),
+    });
+    if (additions.length === 0) return stored;
+    return this.options.missions.updateRecoveryState({
+      missionId: stored.mission.id,
+      expectedStorageRevision: stored.storageRevision,
+      update: (recovery) => {
+        const recipientAttentionOutbox = [...recovery.recipientAttentionOutbox, ...additions];
+        const deliveryIds = recipientAttentionOutbox.map((delivery) => delivery.deliveryId);
+        if (new Set(deliveryIds).size !== deliveryIds.length) {
+          throw new Error("capability_replan_delivery_id_conflict");
+        }
+        return { ...recovery, recipientAttentionOutbox };
+      },
+    });
   }
 
   private async reconcileDurableTurnFacts(
@@ -2561,26 +2590,6 @@ function suspendableMissionStatus(
 ): "planning" | "active" | "verifying" | null {
   const status = mission.status === "needs_attention" ? mission.suspendedStatus : mission.status;
   return status === "planning" || status === "active" || status === "verifying" ? status : null;
-}
-
-function reviewGateAttentionId(
-  missionId: string,
-  gateKeyFingerprint: string,
-  kind: "review_gate_reviewer_unavailable" | "review_gate_capability_unknown",
-): string {
-  return `review-gate:${createHash("sha256")
-    .update(`${missionId}\0${gateKeyFingerprint}\0${kind}`)
-    .digest("hex")}`;
-}
-
-function finalVerifierAttentionId(
-  missionId: string,
-  gateFingerprint: string,
-  kind: "final_verifier_unavailable" | "final_verifier_capability_unknown",
-): string {
-  return `final-verifier:${createHash("sha256")
-    .update(`${missionId}\0${gateFingerprint}\0${kind}`)
-    .digest("hex")}`;
 }
 
 function selectReadyAssignments(
