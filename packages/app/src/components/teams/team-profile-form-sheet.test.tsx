@@ -228,7 +228,7 @@ function editTeam(): TeamV2 {
 describe("TeamProfileFormSheet", () => {
   afterEach(cleanup);
 
-  it("reveals the editable Team only after the user confirms a template", () => {
+  it("uses the selected template for roles and skills and only asks for execution", () => {
     render(
       <TeamProfileFormSheet
         serverId="server-a"
@@ -251,16 +251,20 @@ describe("TeamProfileFormSheet", () => {
     fireEvent.click(screen.getByTestId("team-profile-preset"));
 
     expect(screen.queryByTestId("team-profile-template-guide")).toBeNull();
-    expect(screen.getByTestId("team-profile-skill-0-name")).toBeTruthy();
-    expect(screen.getByTestId("team-profile-member-0-role")).toBeTruthy();
-    expect((screen.getByTestId("team-profile-member-0-role") as HTMLInputElement).value).toBe(
-      "Independent implementer",
-    );
+    expect(screen.queryByTestId("team-profile-skill-0-name")).toBeNull();
+    expect(screen.queryByTestId("team-profile-member-0-role")).toBeNull();
+    expect(screen.queryByTestId("team-profile-member-0-level")).toBeNull();
+    expect(screen.queryByTestId("team-profile-lead")).toBeNull();
+    expect(screen.queryByTestId("team-profile-add-member")).toBeNull();
+    expect(screen.queryByTestId("team-profile-add-skill")).toBeNull();
     expect(screen.getByTestId("team-profile-preset").getAttribute("data-value")).toContain(
       '"strict"',
     );
-    expect(screen.getByTestId("team-profile-member-0-heading")).toBeTruthy();
-    expect(screen.getByTestId("team-profile-member-0-level")).toBeTruthy();
+    expect(screen.getByTestId("team-profile-member-0-heading").textContent).toBe(
+      "Independent implementer",
+    );
+    expect(screen.getByTestId("team-profile-member-0-skills").textContent).toContain("TypeScript");
+    expect(screen.getByTestId("team-profile-member-setup-hint")).toBeTruthy();
     expect(screen.getByTestId("team-profile-member-0-model-trigger")).toBeTruthy();
     expect(screen.queryByTestId("team-profile-task")).toBeNull();
     expect(screen.queryByTestId("team-profile-member-0-responsibility")).toBeNull();
@@ -361,17 +365,10 @@ describe("TeamProfileFormSheet", () => {
       target: { value: "Durable Team" },
     });
     fireEvent.click(screen.getByTestId("team-profile-preset"));
-    fireEvent.change(screen.getByTestId("team-profile-member-0-role"), {
-      target: { value: "Review lead" },
-    });
     fireEvent.click(screen.getByTestId("team-profile-member-0-execution-source"));
 
-    expect((screen.getByTestId("team-profile-skill-0-name") as HTMLInputElement).value).toBe(
-      "TypeScript",
-    );
-    expect((screen.getByTestId("team-profile-member-0-role") as HTMLInputElement).value).toBe(
-      "Review lead",
-    );
+    expect(screen.getByTestId("team-profile-member-0-heading").textContent).toBe("Engineer");
+    expect(screen.getByTestId("team-profile-member-0-skills").textContent).toContain("TypeScript");
     expect(
       screen.getByTestId("team-profile-member-0-execution-source").getAttribute("data-value"),
     ).toBe("profile:profile-reviewer");
@@ -380,12 +377,8 @@ describe("TeamProfileFormSheet", () => {
     expect((screen.getByTestId("team-profile-name") as HTMLInputElement).value).toBe(
       "Durable Team",
     );
-    expect((screen.getByTestId("team-profile-skill-0-name") as HTMLInputElement).value).toBe(
-      "TypeScript",
-    );
-    expect((screen.getByTestId("team-profile-member-0-role") as HTMLInputElement).value).toBe(
-      "Review lead",
-    );
+    expect(screen.getByTestId("team-profile-member-0-heading").textContent).toBe("Engineer");
+    expect(screen.getByTestId("team-profile-member-0-skills").textContent).toContain("TypeScript");
 
     rerender(
       <TeamProfileFormSheet
