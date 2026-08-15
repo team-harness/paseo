@@ -1,8 +1,7 @@
 ---
-status: active
+status: accepted
 created: 2026-08-11
 depends_on: agent-teams
-work: ../work/epic-team-methodologies.md
 ---
 
 # Team Methodology 方法体系
@@ -1747,9 +1746,37 @@ Mission，以及一个到达审查者 Attention、获得操作者豁免、
 
 ## 最终交付索引
 
-proposed 阶段为空。执行期间的活动进度、证据与 commit 指针只写 work 游标；owner 最终接受时将每个
-`TM-ITEM-*` 的稳定交付指针汇总到此处。该汇总只由 `cs-epic` 主流程在 final owner acceptance gate
-执行，并与永久 Epic 终态更新、work 游标清理属于同一个收尾动作；执行期不得提前双写。
+Owner 于 2026-08-15 接受本 Epic。Paseo 最终验收候选为
+`83d4e638bbf6f77b8e38d31c5646260c9188d0b8`；TM-ITEM-6 的验收边界补丁为
+`82330b86c816a9cea2535f908aa62d69a7cbbbaa`。
+
+| 子项       | 仓库                  | 稳定交付指针                               |
+| ---------- | --------------------- | ------------------------------------------ |
+| TM-ITEM-1  | `portable-agent-team` | `9b35151ff372f3b5717d0258835bcb094b5c95b6` |
+| TM-ITEM-2  | `portable-agent-team` | `6ce16c29b125742badb5e67206c0b9018bd2a46f` |
+| TM-ITEM-3  | `portable-agent-team` | `134f2c15c24c6baf752e642647804ce79ba7c5c8` |
+| TM-ITEM-4  | `portable-agent-team` | `b4c5f38c8e5423575450337f43012031d9fd4bc1` |
+| TM-ITEM-5  | `portable-agent-team` | `ef5dd37f0e42a3442d42a0d43a1eec573de188c5` |
+| TM-ITEM-6  | Paseo                 | `f4235cc5148aab2e77f865fee79e22ff44a3c708` |
+| TM-ITEM-7  | Paseo                 | `8a374cfbb4ac4878743fa676c8ee7d99c657a1bd` |
+| TM-ITEM-8  | Paseo                 | `606836df2c3feba29e16f051521c4607346623bd` |
+| TM-ITEM-9  | Paseo                 | `6d92583b881296f08d6eb1396463b464ba3dad15` |
+| TM-ITEM-10 | Paseo                 | `d1a671abfa935679cd3b91de32b6ddc72c0c0a43` |
+| TM-ITEM-11 | Paseo                 | `fa8ae741d5e8bea1b89f98239a0892441944889d` |
+| TM-ITEM-12 | Paseo                 | `58051f3828710b5c2318a362bf4495d6ef4b0ad9` |
+| TM-ITEM-13 | Paseo                 | `c475a26c975dfd64e06c7f1d1fb8cefe61d62eb0` |
+| TM-ITEM-14 | Paseo                 | `cb08760fe992b30f5095c0d5d6f35532b9a0f4e0` |
+| TM-ITEM-15 | Paseo                 | `4d4c8c88b79e35f995cb424b682eb253fa95316e` |
+| TM-ITEM-16 | Paseo                 | `2836bd1d16c7fe6e94905593de14a1fa4fdcdced` |
+| TM-ITEM-17 | Paseo                 | `dde4725763456c9f9197ee870bd6e51a4e2047ee` |
+
+## 毕业清单
+
+- `@team-harness/methodologies@0.2.0` 已发布，Paseo 通过 lockfile、allowlist、摘要与内嵌 catalog 固定消费。
+- Team Methodology 的稳定产品契约保留在本 Epic；路由规则归 `docs/expo-router.md`，fork 自有代码与
+  upstream 同步边界归 `docs/changes-by-me.md`。
+- 17 个子项、集成验证、final acceptance review、TM-ITEM-6 补审和远端发布均已完成。
+- 临时 work 游标随本次终态更新删除；后续不得从 `accepted` 恢复执行。
 
 ## 整体验收
 
@@ -1836,10 +1863,10 @@ proposed 阶段为空。执行期间的活动进度、证据与 commit 指针只
 
 ## 遗留风险
 
-- `agent-teams:V2-ITEM-11` 已因 Agent Profile/Methodology 契约同步重新打开；TM-ITEM-6 必须等待其新契约
-  重新批准、实现同步并通过 change review，不能消费旧勾选状态或复制未冻结的中间实现。
-- `@team-harness/methodologies` 跨仓库发布需要可重放的 package/version/digest 证据；Paseo 运行时只消费
-  lockfile 固定且已同步的内嵌产物，不在 Mission 路径访问 registry。
+- Owner 接受 Native iOS/Android 与真实 Electron 执行证据例外，但三端 Team Hub 与 Mission 表单验证是
+  **首次公开前硬门槛**。未执行的平台不得标记为通过，也不得用 JSDOM 或 mock 替代真实平台。
+- `validateMissionStatusTransition` 当前没有生产调用者；真实完成门禁由 `validateTeamMission` 执行。两处
+  当前语义一致，后续修改 Mission 终态规则时应删除死路径或建立单一调用链，避免规则漂移。
 - waiver 审计中的 connection id 与 client label 只用于相关性，不提供加密级操作者归属证明。
 - 真实 provider 验收存在模型波动；确定性状态机、fault injection 与首版 schema 测试仍是发布硬门槛，真实
   provider 连续通过只补充行为证据。
