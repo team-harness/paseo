@@ -1972,13 +1972,22 @@ export class Session {
       this.dispatchProviderMessage(msg) ??
       this.dispatchStatusSummaryMessage(msg) ??
       this.promptLibrarySession.dispatch(msg) ??
-      this.dispatchPluginDirectoryMessage(msg) ??
-      this.dispatchPluginMessage(msg) ??
-      this.dispatchTeamMessage(msg, source) ??
+      this.dispatchOptionalRuntimeMessage(msg, source) ??
       this.dispatchTerminalMessage(msg) ??
       this.dispatchScheduleMessage(msg) ??
       this.dispatchMiscMessage(msg);
     if (promise) await promise;
+  }
+
+  private dispatchOptionalRuntimeMessage(
+    msg: SessionInboundMessage,
+    source?: object,
+  ): Promise<void> | undefined {
+    return (
+      this.dispatchPluginDirectoryMessage(msg) ??
+      this.dispatchPluginMessage(msg) ??
+      this.dispatchTeamMessage(msg, source)
+    );
   }
 
   private dispatchPluginMessage(msg: SessionInboundMessage): Promise<void> | undefined {

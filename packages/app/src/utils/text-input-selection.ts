@@ -2,10 +2,18 @@ import type { TextInput } from "react-native";
 
 import { isWeb } from "@/constants/platform";
 
-type WebTextInput = TextInput & { getNativeRef?: () => unknown };
+type TextInputHandle = TextInput | { getNativeRef?: () => unknown };
 type SelectableElement = HTMLElement & {
   setSelectionRange?: (start: number, end: number) => void;
 };
+interface NativeSelectableInput {
+  setNativeProps?: (props: { selection: { start: number; end: number } }) => void;
+}
+
+function getNativeInputRef(current: TextInputHandle): unknown {
+  const handle = current as { getNativeRef?: () => unknown };
+  return typeof handle.getNativeRef === "function" ? handle.getNativeRef() : current;
+}
 
 /**
  * The DOM node behind a `TextInput`, on web.
@@ -13,10 +21,9 @@ type SelectableElement = HTMLElement & {
  * React Native Web hands back either the element itself or a wrapper with
  * `getNativeRef`, depending on which version of the input is rendered.
  */
-export function getTextInputNativeElement(current: TextInput | null): HTMLElement | null {
+export function getTextInputNativeElement(current: TextInputHandle | null): HTMLElement | null {
   if (!current) return null;
-  const handle = current as WebTextInput;
-  const native = typeof handle.getNativeRef === "function" ? handle.getNativeRef() : current;
+  const native = getNativeInputRef(current);
   return native instanceof HTMLElement ? native : null;
 }
 
@@ -29,7 +36,7 @@ export function getTextInputNativeElement(current: TextInput | null): HTMLElemen
  * inside the word that was just replaced.
  */
 export function setTextInputSelection(
-  input: TextInput | null,
+  input: TextInputHandle | null,
   selection: { start: number; end: number },
 ): void {
   if (!input) return;
@@ -38,5 +45,6 @@ export function setTextInputSelection(
     element?.setSelectionRange?.(selection.start, selection.end);
     return;
   }
-  input.setNativeProps({ selection });
+  const nativeInput = getNativeInputRef(input) as NativeSelectableInput;
+  nativeInput.setNativeProps?.({ selection });
 }
