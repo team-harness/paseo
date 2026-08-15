@@ -262,7 +262,11 @@ function OpenTeamProfileFormSheet({
 
       {teamConfigurationVisible ? (
         <>
-          <FormSection title={t("teams.v2.profile.members")}>
+          <FormSection
+            title={t("teams.v2.profile.members")}
+            hint={state.mode === "create" ? t("teams.v2.profile.memberSetupHint") : undefined}
+            hintTestID={state.mode === "create" ? "team-profile-member-setup-hint" : undefined}
+          >
             {state.members.map((member, index) => (
               <MemberFields
                 key={member.key}
@@ -274,40 +278,45 @@ function OpenTeamProfileFormSheet({
                 size={size}
                 providerLoading={providers.isLoading || providers.isFetching}
                 agentProfiles={agentProfiles}
+                templateManaged={state.mode === "create"}
               />
             ))}
-            <Button
-              variant="outline"
-              size="sm"
-              onPress={model.addMember}
-              testID="team-profile-add-member"
-            >
-              {t("teams.v2.profile.addMember")}
-            </Button>
+            {state.mode === "edit" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onPress={model.addMember}
+                testID="team-profile-add-member"
+              >
+                {t("teams.v2.profile.addMember")}
+              </Button>
+            ) : null}
           </FormSection>
 
-          <LeadField model={model} state={state} size={size} />
+          {state.mode === "edit" ? <LeadField model={model} state={state} size={size} /> : null}
 
-          <FormSection title={t("teams.v2.profile.skills")}>
-            {state.skills.map((skill, index) => (
-              <SkillFields
-                key={skill.key}
-                model={model}
-                state={state}
-                skill={skill}
-                index={index}
-                size={size}
-              />
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              onPress={model.addSkill}
-              testID="team-profile-add-skill"
-            >
-              {t("teams.v2.profile.addSkill")}
-            </Button>
-          </FormSection>
+          {state.mode === "edit" ? (
+            <FormSection title={t("teams.v2.profile.skills")}>
+              {state.skills.map((skill, index) => (
+                <SkillFields
+                  key={skill.key}
+                  model={model}
+                  state={state}
+                  skill={skill}
+                  index={index}
+                  size={size}
+                />
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                onPress={model.addSkill}
+                testID="team-profile-add-skill"
+              >
+                {t("teams.v2.profile.addSkill")}
+              </Button>
+            </FormSection>
+          ) : null}
         </>
       ) : (
         <View style={styles.templateGuide} testID="team-profile-template-guide">
@@ -467,10 +476,25 @@ function toSkillId(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function FormSection({ title, children }: { title: string; children: ReactNode }): ReactElement {
+function FormSection({
+  title,
+  hint,
+  hintTestID,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  hintTestID?: string;
+  children: ReactNode;
+}): ReactElement {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
+      {hint ? (
+        <Text style={styles.sectionHint} testID={hintTestID}>
+          {hint}
+        </Text>
+      ) : null}
       {children}
     </View>
   );
@@ -541,7 +565,7 @@ function SkillFields({
           onPress={remove}
           testID={`team-profile-skill-${index}-remove`}
         >
-          {t("common.actions.remove")}
+          {t("teams.v2.profile.removeSkill")}
         </Button>
       ) : null}
     </View>
@@ -557,6 +581,7 @@ function MemberFields({
   size,
   providerLoading,
   agentProfiles,
+  templateManaged,
 }: {
   serverId: string;
   model: TeamProfileFormModel;
@@ -566,17 +591,9 @@ function MemberFields({
   size: FieldControlSize;
   providerLoading: boolean;
   agentProfiles: readonly AgentProfile[];
+  templateManaged: boolean;
 }): ReactElement {
   const { t } = useTranslation();
-  const levelOptions = useMemo<SelectFieldOption<number>[]>(
-    () =>
-      [1, 2, 3, 4, 5].map((level) => ({
-        id: String(level),
-        value: level,
-        label: t("teams.v2.profile.levelValue", { level }),
-      })),
-    [t],
-  );
   const modeOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
       member.modeOptions.map((mode) => ({
@@ -627,14 +644,6 @@ function MemberFields({
       model.setMemberModel(member.key, provider, modelId),
     [member.key, model],
   );
-  const changeRole = useCallback(
-    (value: string) => model.setMemberRole(member.key, value),
-    [member.key, model],
-  );
-  const changeLevel = useCallback(
-    (value: number) => model.setMemberLevel(member.key, value),
-    [member.key, model],
-  );
   const changeThinking = useCallback(
     (value: string) => model.setMemberThinking(member.key, value),
     [member.key, model],
@@ -643,7 +652,6 @@ function MemberFields({
     (value: string) => model.setMemberMode(member.key, value),
     [member.key, model],
   );
-  const remove = useCallback(() => model.removeMember(member.key), [member.key, model]);
   const executionSourceOptions = useMemo<SelectFieldOption<string>[]>(
     () => [
       { id: "inline", value: "inline", label: t("teams.v2.profile.inlineExecution") },
@@ -673,10 +681,6 @@ function MemberFields({
     },
     [member.key, model],
   );
-  const levelDisplay = useMemo(
-    () => ({ label: t("teams.v2.profile.levelValue", { level: member.level }) }),
-    [member.level, t],
-  );
   const thinkingDisplay = useMemo(
     () =>
       member.executionProfileDisplay.thinking
@@ -689,9 +693,6 @@ function MemberFields({
       member.executionProfileDisplay.mode ? { label: member.executionProfileDisplay.mode } : null,
     [member.executionProfileDisplay.mode],
   );
-  const memberSkillRequired = state.validationIssues.some(
-    (issue) => issue.kind === "member_skill_required" && issue.rowKey === member.key,
-  );
   const memberExecutionRequired = state.validationIssues.some(
     (issue) => issue.kind === "member_execution_profile_required" && issue.rowKey === member.key,
   );
@@ -701,77 +702,31 @@ function MemberFields({
 
   return (
     <View style={styles.member} testID={`team-profile-member-${index}`}>
-      <View style={styles.memberHeader}>
-        <Text style={styles.memberHeading} testID={`team-profile-member-${index}-heading`}>
-          {t("teams.v2.profile.memberNumber", { number: index + 1 })}
-        </Text>
-        {state.members.length > 1 ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onPress={remove}
-            testID={`team-profile-member-${index}-remove`}
-          >
-            {t("teams.v2.profile.removeMember")}
-          </Button>
-        ) : null}
-      </View>
-      <View style={styles.twoColumn}>
-        <View style={styles.flexField}>
-          <Field label={t("teams.v2.profile.role")}>
-            <FormTextInput
-              value={member.role}
-              onChangeText={changeRole}
-              placeholder={t("teams.v2.profile.rolePlaceholder")}
-              size={size}
-              testID={`team-profile-member-${index}-role`}
-            />
-          </Field>
-        </View>
-        <View style={styles.levelField}>
-          <SelectField
-            label={t("teams.v2.profile.level")}
-            value={member.level}
-            selectedDisplay={levelDisplay}
-            options={levelOptions}
-            onChange={changeLevel}
-            placeholder={t("teams.v2.profile.level")}
-            emptyText={t("teams.v2.profile.noLevels")}
-            size={size}
-            testID={`team-profile-member-${index}-level`}
-          />
-        </View>
-      </View>
-
-      <Field
-        label={t("teams.v2.profile.memberSkills")}
-        error={memberSkillRequired ? t("teams.v2.profile.memberSkillRequired") : null}
-      >
-        <View style={styles.skillToggles}>
-          {state.skills.map((skill) => (
-            <MemberSkillToggle
-              key={skill.key}
-              model={model}
-              member={member}
-              skill={skill}
-              memberIndex={index}
-            />
-          ))}
-        </View>
-      </Field>
-
-      <SelectField
-        label={t("teams.v2.profile.executionSource")}
-        value={executionSourceValue}
-        selectedDisplay={selectedExecutionSourceDisplay}
-        options={executionSourceOptions}
-        onChange={changeExecutionSource}
-        placeholder={t("teams.v2.profile.selectExecutionSource")}
-        emptyText={t("teams.v2.profile.noExecutionSources")}
-        error={memberExecutionUnavailable ? t("teams.v2.profile.memberExecutionUnavailable") : null}
+      <MemberDefinitionFields
+        model={model}
+        state={state}
+        member={member}
+        index={index}
         size={size}
-        testID={`team-profile-member-${index}-execution-source`}
+        templateManaged={templateManaged}
       />
+
+      {!templateManaged || agentProfiles.length > 0 ? (
+        <SelectField
+          label={t("teams.v2.profile.executionSource")}
+          value={executionSourceValue}
+          selectedDisplay={selectedExecutionSourceDisplay}
+          options={executionSourceOptions}
+          onChange={changeExecutionSource}
+          placeholder={t("teams.v2.profile.selectExecutionSource")}
+          emptyText={t("teams.v2.profile.noExecutionSources")}
+          error={
+            memberExecutionUnavailable ? t("teams.v2.profile.memberExecutionUnavailable") : null
+          }
+          size={size}
+          testID={`team-profile-member-${index}-execution-source`}
+        />
+      ) : null}
 
       {member.executionSelection.kind === "inline" ? (
         <Field
@@ -795,7 +750,9 @@ function MemberFields({
         </Field>
       ) : null}
 
-      {member.executionSelection.kind === "inline" && thinkingOptions.length > 0 ? (
+      {!templateManaged &&
+      member.executionSelection.kind === "inline" &&
+      thinkingOptions.length > 0 ? (
         <SelectField
           label={t("teams.v2.profile.thinking")}
           value={member.executionProfile.thinkingOptionId}
@@ -809,7 +766,7 @@ function MemberFields({
         />
       ) : null}
 
-      {member.executionSelection.kind === "inline" && modeOptions.length > 0 ? (
+      {!templateManaged && member.executionSelection.kind === "inline" && modeOptions.length > 0 ? (
         <SelectField
           label={t("teams.v2.profile.mode")}
           value={member.executionProfile.modeId}
@@ -823,6 +780,138 @@ function MemberFields({
         />
       ) : null}
     </View>
+  );
+}
+
+function MemberDefinitionFields({
+  model,
+  state,
+  member,
+  index,
+  size,
+  templateManaged,
+}: {
+  model: TeamProfileFormModel;
+  state: TeamProfileFormState;
+  member: TeamProfileMemberRow;
+  index: number;
+  size: FieldControlSize;
+  templateManaged: boolean;
+}): ReactElement {
+  const { t } = useTranslation();
+  const levelOptions = useMemo<SelectFieldOption<number>[]>(
+    () =>
+      [1, 2, 3, 4, 5].map((level) => ({
+        id: String(level),
+        value: level,
+        label: t("teams.v2.profile.levelValue", { level }),
+      })),
+    [t],
+  );
+  const levelDisplay = useMemo(
+    () => ({ label: t("teams.v2.profile.levelValue", { level: member.level }) }),
+    [member.level, t],
+  );
+  const changeRole = useCallback(
+    (value: string) => model.setMemberRole(member.key, value),
+    [member.key, model],
+  );
+  const changeLevel = useCallback(
+    (value: number) => model.setMemberLevel(member.key, value),
+    [member.key, model],
+  );
+  const remove = useCallback(() => model.removeMember(member.key), [member.key, model]);
+  const memberSkillRequired = state.validationIssues.some(
+    (issue) => issue.kind === "member_skill_required" && issue.rowKey === member.key,
+  );
+  const memberSkills = state.skills
+    .filter((skill) => member.skillIds.includes(skill.skillId))
+    .map((skill) => skill.name || skill.skillId)
+    .join(t("teams.v2.profile.skillListSeparator"));
+  const heading = templateManaged
+    ? member.role.trim() || t("teams.v2.profile.memberNumber", { number: index + 1 })
+    : t("teams.v2.profile.memberNumber", { number: index + 1 });
+  let headerAction: ReactNode = null;
+  if (templateManaged) {
+    headerAction = (
+      <Text style={styles.memberMeta}>
+        {state.leadRowKey === member.key
+          ? t("teams.v2.profile.memberLeadWithLevel", { level: member.level })
+          : t("teams.v2.profile.levelValue", { level: member.level })}
+      </Text>
+    );
+  } else if (state.members.length > 1) {
+    headerAction = (
+      <Button
+        variant="ghost"
+        size="sm"
+        onPress={remove}
+        testID={`team-profile-member-${index}-remove`}
+      >
+        {t("teams.v2.profile.removeMember")}
+      </Button>
+    );
+  }
+
+  return (
+    <>
+      <View style={styles.memberHeader}>
+        <Text style={styles.memberHeading} testID={`team-profile-member-${index}-heading`}>
+          {heading}
+        </Text>
+        {headerAction}
+      </View>
+      {templateManaged ? (
+        <Text style={styles.memberSkills} testID={`team-profile-member-${index}-skills`}>
+          {t("teams.v2.profile.memberSkillsSummary", { skills: memberSkills })}
+        </Text>
+      ) : (
+        <>
+          <View style={styles.twoColumn}>
+            <View style={styles.flexField}>
+              <Field label={t("teams.v2.profile.role")}>
+                <FormTextInput
+                  value={member.role}
+                  onChangeText={changeRole}
+                  placeholder={t("teams.v2.profile.rolePlaceholder")}
+                  size={size}
+                  testID={`team-profile-member-${index}-role`}
+                />
+              </Field>
+            </View>
+            <View style={styles.levelField}>
+              <SelectField
+                label={t("teams.v2.profile.level")}
+                value={member.level}
+                selectedDisplay={levelDisplay}
+                options={levelOptions}
+                onChange={changeLevel}
+                placeholder={t("teams.v2.profile.level")}
+                emptyText={t("teams.v2.profile.noLevels")}
+                size={size}
+                testID={`team-profile-member-${index}-level`}
+              />
+            </View>
+          </View>
+          <Field
+            label={t("teams.v2.profile.memberSkills")}
+            error={memberSkillRequired ? t("teams.v2.profile.memberSkillRequired") : null}
+          >
+            <View style={styles.skillToggles}>
+              {state.skills.map((skill) => (
+                <MemberSkillToggle
+                  key={skill.key}
+                  model={model}
+                  member={member}
+                  skill={skill}
+                  memberIndex={index}
+                />
+              ))}
+            </View>
+          </Field>
+        </>
+      )}
+    </>
   );
 }
 
@@ -916,6 +1005,10 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
+  sectionHint: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
   repeatRow: {
     gap: theme.spacing[3],
     paddingBottom: theme.spacing[4],
@@ -941,6 +1034,14 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
+  },
+  memberMeta: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  memberSkills: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
   twoColumn: {
     flexDirection: "row",

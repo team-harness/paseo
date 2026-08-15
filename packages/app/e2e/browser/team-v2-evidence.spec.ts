@@ -492,13 +492,8 @@ async function shoot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: path.join(EVIDENCE_DIR, `${name}.png`), fullPage: false });
 }
 
-async function configureMember(page: Page, index: number, role: string): Promise<void> {
+async function configureMemberModel(page: Page, index: number): Promise<void> {
   const member = page.getByTestId(`team-profile-member-${index}`);
-  await member.getByTestId(`team-profile-member-${index}-role`).fill(role);
-  await member
-    .getByTestId(/team-profile-member-\d+-skill-/)
-    .first()
-    .click();
   await member.getByTestId("combined-model-selector").click();
   const modelSearch = page.getByRole("textbox", { name: /search all models/i });
   await modelSearch.fill("Five minute stream");
@@ -600,12 +595,10 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     await page.getByText("精简交付", { exact: true }).click();
     await expect(page.getByTestId("team-profile-member-1")).toBeVisible();
     await page.getByTestId("team-profile-name").fill("Release engineering");
-    await page.getByTestId("team-profile-skill-0-name").fill("TypeScript delivery");
-    await page
-      .getByTestId("team-profile-skill-0-description")
-      .fill("Implement and review production TypeScript changes");
-    await configureMember(page, 0, "Senior software engineer");
-    await configureMember(page, 1, "Senior software engineer");
+    await expect(page.getByTestId("team-profile-member-0-role")).toHaveCount(0);
+    await expect(page.getByTestId("team-profile-skill-0-name")).toHaveCount(0);
+    await configureMemberModel(page, 0);
+    await configureMemberModel(page, 1);
     await expect(page.getByTestId("team-profile-submit")).toBeEnabled();
     await page.getByTestId("team-profile-name").scrollIntoViewIfNeeded();
     await shoot(page, "01-desktop-create-team");
@@ -617,10 +610,7 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     expect(profiles.error).toBeNull();
     const team = profiles.teams.find((candidate) => candidate.name === "Release engineering");
     expect(team).toBeDefined();
-    expect(team?.members.map((member) => member.role)).toEqual([
-      "Senior software engineer",
-      "Senior software engineer",
-    ]);
+    expect(team?.members.map((member) => member.role)).toEqual(["交付成员", "负责人"]);
     expect(new Set(team?.members.map((member) => member.mentionHandle)).size).toBe(2);
     expect((await client.fetchAgents({ scope: "active" })).entries).toHaveLength(
       activeAgentsBefore,
