@@ -3,11 +3,42 @@ import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentProfile } from "@getpaseo/protocol/messages";
+import type { MethodologyDescriptor } from "@getpaseo/protocol/team/v2-rpc-schemas";
 import type { TeamV2 } from "@getpaseo/protocol/team/v2-types";
 
 import { TEST_METHODOLOGY, testTeamMethodologyBinding } from "@/teams/test-fixtures";
 
 const noop = () => {};
+
+const STRICT_METHODOLOGY: MethodologyDescriptor = {
+  ...TEST_METHODOLOGY,
+  ref: {
+    bundleId: "portable/software-delivery",
+    version: "1",
+    digest: `sha256:${"1".repeat(64)}`,
+  },
+  name: "Software delivery",
+  presets: [
+    {
+      ...TEST_METHODOLOGY.presets[0]!,
+      presetId: "strict",
+      name: "Strict delivery",
+      slots: [
+        {
+          ...TEST_METHODOLOGY.presets[0]!.slots[0]!,
+          suggestedRole: "Independent implementer",
+        },
+      ],
+    },
+  ],
+  policySummary: {
+    ...TEST_METHODOLOGY.policySummary,
+    review: {
+      ...TEST_METHODOLOGY.policySummary.review,
+      writableWorkstreams: "independent_required",
+    },
+  },
+};
 
 vi.mock("react-native-unistyles", () => ({
   StyleSheet: { create: () => new Proxy({}, { get: () => ({}) }) },
@@ -197,20 +228,38 @@ function editTeam(): TeamV2 {
 describe("TeamProfileFormSheet", () => {
   afterEach(cleanup);
 
-  it("creates a Team from skills, member level, role and execution profile only", () => {
+  it("reveals the editable Team only after the user confirms a template", () => {
     render(
       <TeamProfileFormSheet
         serverId="server-a"
         workspaceId="workspace-a"
         cwd="/work/a"
+        methodologies={[TEST_METHODOLOGY, STRICT_METHODOLOGY]}
+        catalogStatus="ready"
         visible
         onClose={noop}
       />,
     );
 
     expect(screen.getByTestId("team-profile-name")).toBeTruthy();
+    expect(screen.getByTestId("team-profile-template-guide")).toBeTruthy();
+    expect(screen.queryByTestId("team-profile-methodology")).toBeNull();
+    expect(screen.queryByTestId("team-profile-skill-0-name")).toBeNull();
+    expect(screen.queryByTestId("team-profile-member-0-role")).toBeNull();
+    expect(screen.queryByText(/lead_discretion/)).toBeNull();
+
+    fireEvent.click(screen.getByTestId("team-profile-preset"));
+
+    expect(screen.queryByTestId("team-profile-template-guide")).toBeNull();
     expect(screen.getByTestId("team-profile-skill-0-name")).toBeTruthy();
     expect(screen.getByTestId("team-profile-member-0-role")).toBeTruthy();
+    expect((screen.getByTestId("team-profile-member-0-role") as HTMLInputElement).value).toBe(
+      "Independent implementer",
+    );
+    expect(screen.getByTestId("team-profile-preset").getAttribute("data-value")).toContain(
+      '"strict"',
+    );
+    expect(screen.getByTestId("team-profile-member-0-heading")).toBeTruthy();
     expect(screen.getByTestId("team-profile-member-0-level")).toBeTruthy();
     expect(screen.getByTestId("team-profile-member-0-model-trigger")).toBeTruthy();
     expect(screen.queryByTestId("team-profile-task")).toBeNull();
@@ -356,7 +405,9 @@ describe("TeamProfileFormSheet", () => {
     expect((screen.getByTestId("team-profile-name") as HTMLInputElement).value).toBe(
       "Durable Team",
     );
-    expect(screen.getByTestId("team-profile-preset").getAttribute("data-value")).toBe("standard");
+    expect(screen.getByTestId("team-profile-preset").getAttribute("data-value")).toContain(
+      '"standard"',
+    );
     expect(
       screen.getByTestId("team-profile-member-0-execution-source").getAttribute("data-value"),
     ).toBe("profile:profile-reviewer");

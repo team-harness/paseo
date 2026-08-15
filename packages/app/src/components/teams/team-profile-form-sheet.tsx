@@ -176,6 +176,7 @@ function OpenTeamProfileFormSheet({
   const model = useTeamProfileFormModel(snapshot);
   const state = useSyncExternalStore(model.subscribe, model.getState, model.getState);
   const providers = useTeamProfileFormProviderSnapshot(model, state);
+  const teamConfigurationVisible = state.mode === "edit" || state.selectedPresetId !== null;
 
   const submit = useCallback(() => {
     if (!client) {
@@ -233,6 +234,7 @@ function OpenTeamProfileFormSheet({
       footer={footer}
       desktopMaxWidth={640}
       snapPoints={["80%", "94%"]}
+      sizeContentToCurrentSnapPoint
       contentStyle={styles.body}
       testID="team-profile-form-sheet"
     >
@@ -258,52 +260,60 @@ function OpenTeamProfileFormSheet({
         <MethodologyFields model={model} state={state} size={size} />
       ) : null}
 
-      <FormSection title={t("teams.v2.profile.skills")}>
-        {state.skills.map((skill, index) => (
-          <SkillFields
-            key={skill.key}
-            model={model}
-            state={state}
-            skill={skill}
-            index={index}
-            size={size}
-          />
-        ))}
-        <Button
-          variant="outline"
-          size="sm"
-          onPress={model.addSkill}
-          testID="team-profile-add-skill"
-        >
-          {t("teams.v2.profile.addSkill")}
-        </Button>
-      </FormSection>
+      {teamConfigurationVisible ? (
+        <>
+          <FormSection title={t("teams.v2.profile.members")}>
+            {state.members.map((member, index) => (
+              <MemberFields
+                key={member.key}
+                serverId={serverId}
+                model={model}
+                state={state}
+                member={member}
+                index={index}
+                size={size}
+                providerLoading={providers.isLoading || providers.isFetching}
+                agentProfiles={agentProfiles}
+              />
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              onPress={model.addMember}
+              testID="team-profile-add-member"
+            >
+              {t("teams.v2.profile.addMember")}
+            </Button>
+          </FormSection>
 
-      <FormSection title={t("teams.v2.profile.members")}>
-        {state.members.map((member, index) => (
-          <MemberFields
-            key={member.key}
-            serverId={serverId}
-            model={model}
-            state={state}
-            member={member}
-            index={index}
-            size={size}
-            providerLoading={providers.isLoading || providers.isFetching}
-            agentProfiles={agentProfiles}
-          />
-        ))}
-        <Button
-          variant="outline"
-          size="sm"
-          onPress={model.addMember}
-          testID="team-profile-add-member"
-        >
-          {t("teams.v2.profile.addMember")}
-        </Button>
-      </FormSection>
+          <LeadField model={model} state={state} size={size} />
 
-      <LeadField model={model} state={state} size={size} />
+          <FormSection title={t("teams.v2.profile.skills")}>
+            {state.skills.map((skill, index) => (
+              <SkillFields
+                key={skill.key}
+                model={model}
+                state={state}
+                skill={skill}
+                index={index}
+                size={size}
+              />
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              onPress={model.addSkill}
+              testID="team-profile-add-skill"
+            >
+              {t("teams.v2.profile.addSkill")}
+            </Button>
+          </FormSection>
+        </>
+      ) : (
+        <View style={styles.templateGuide} testID="team-profile-template-guide">
+          <Text style={styles.templateGuideText}>{t("teams.v2.profile.templateHint")}</Text>
+        </View>
+      )}
 
       {state.submission.status === "failure" ? (
         <Text style={styles.error} testID="team-profile-error">
@@ -348,6 +358,10 @@ function TeamProfileCatalogNotice({
   );
 }
 
+function teamTemplateSelectionKey(methodologyDigest: string, presetId: string): string {
+  return JSON.stringify([methodologyDigest, presetId]);
+}
+
 function MethodologyFields({
   model,
   state,
@@ -358,79 +372,86 @@ function MethodologyFields({
   size: FieldControlSize;
 }): ReactElement {
   const { t } = useTranslation();
-  const methodologyOptions = useMemo<SelectFieldOption<string>[]>(
+  const templateOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
-      state.methodologies.map((methodology) => ({
-        id: methodology.ref.digest,
-        value: methodology.ref.digest,
-        label: methodology.name,
-      })),
-    [state.methodologies],
-  );
-  const presetOptions = useMemo<SelectFieldOption<string>[]>(
-    () =>
-      (state.selectedMethodology?.presets ?? []).map((preset) => ({
-        id: preset.presetId,
-        value: preset.presetId,
-        label: preset.name,
-      })),
-    [state.selectedMethodology],
+      state.methodologies.flatMap((methodology) =>
+        methodology.presets.map((preset) => {
+          const value = teamTemplateSelectionKey(methodology.ref.digest, preset.presetId);
+          const reviewDescription = t(
+            methodology.policySummary.review.writableWorkstreams === "independent_required"
+              ? "teams.v2.profile.reviewIndependentRequired"
+              : "teams.v2.profile.reviewLeadDiscretion",
+          );
+          return {
+            id: value,
+            value,
+            label: preset.name,
+            description: `${preset.description} ${reviewDescription}`,
+          };
+        }),
+      ),
+    [state.methodologies, t],
   );
   const preset = state.selectedMethodology?.presets.find(
     (candidate) => candidate.presetId === state.selectedPresetId,
   );
-  const methodologyDisplay = useMemo(
-    () => (state.selectedMethodology ? { label: state.selectedMethodology.name } : null),
-    [state.selectedMethodology],
+  const selectedTemplate = useMemo<string | null>(
+    () =>
+      state.selectedMethodology && state.selectedPresetId
+        ? teamTemplateSelectionKey(state.selectedMethodology.ref.digest, state.selectedPresetId)
+        : null,
+    [state.selectedMethodology, state.selectedPresetId],
   );
   const presetDisplay = useMemo(() => (preset ? { label: preset.name } : null), [preset]);
-  const changeMethodology = useCallback(
-    (digest: string) => {
-      const methodology = state.methodologies.find((candidate) => candidate.ref.digest === digest);
-      if (methodology) model.setMethodology(methodology.ref);
+  const reviewPolicy = state.selectedMethodology?.policySummary.review.writableWorkstreams;
+  const changeTemplate = useCallback(
+    (selectionKey: string) => {
+      for (const methodology of state.methodologies) {
+        const selectedPreset = methodology.presets.find(
+          (candidate) =>
+            teamTemplateSelectionKey(methodology.ref.digest, candidate.presetId) === selectionKey,
+        );
+        if (!selectedPreset) continue;
+        model.setMethodology(methodology.ref);
+        model.applyPreset(selectedPreset.presetId);
+        return;
+      }
     },
     [model, state.methodologies],
   );
 
   return (
-    <FormSection title={t("teams.v2.profile.methodology")}>
-      <SelectField
-        label={t("teams.v2.profile.methodology")}
-        value={state.selectedMethodology?.ref.digest ?? null}
-        selectedDisplay={methodologyDisplay}
-        options={methodologyOptions}
-        onChange={changeMethodology}
-        placeholder={t("teams.v2.profile.selectMethodology")}
-        emptyText={t("teams.v2.profile.noMethodologies")}
-        size={size}
-        testID="team-profile-methodology"
-      />
+    <FormSection title={t("teams.v2.profile.setup")}>
       <SelectField
         label={t("teams.v2.profile.preset")}
-        value={state.selectedPresetId}
+        value={selectedTemplate}
         selectedDisplay={presetDisplay}
-        options={presetOptions}
-        onChange={model.applyPreset}
+        options={templateOptions}
+        onChange={changeTemplate}
         placeholder={t("teams.v2.profile.selectPreset")}
         emptyText={t("teams.v2.profile.noPresets")}
         size={size}
         testID="team-profile-preset"
       />
-      {state.selectedMethodology ? (
+      {preset && state.selectedMethodology ? (
         <View style={styles.methodologyFacts}>
+          <Text style={styles.templateDescription}>{preset.description}</Text>
           <Text style={styles.methodologyFact}>
-            {t("teams.v2.profile.reviewPolicy", {
-              policy: state.selectedMethodology.policySummary.review.writableWorkstreams,
+            {t("teams.v2.profile.templateSummary", {
+              members: preset.slots.length,
+              skills: preset.skillIds.length,
             })}
+          </Text>
+          <Text style={styles.methodologyFact}>
+            {t(
+              reviewPolicy === "independent_required"
+                ? "teams.v2.profile.reviewIndependentRequired"
+                : "teams.v2.profile.reviewLeadDiscretion",
+            )}
           </Text>
           <Text style={styles.methodologyFact}>
             {t("teams.v2.profile.finalVerificationRequired")}
           </Text>
-          {state.selectedMethodology.playbooks.map((playbook) => (
-            <Text key={playbook.playbookId} style={styles.methodologyFact}>
-              {playbook.name}
-            </Text>
-          ))}
         </View>
       ) : null}
     </FormSection>
@@ -668,9 +689,33 @@ function MemberFields({
       member.executionProfileDisplay.mode ? { label: member.executionProfileDisplay.mode } : null,
     [member.executionProfileDisplay.mode],
   );
+  const memberSkillRequired = state.validationIssues.some(
+    (issue) => issue.kind === "member_skill_required" && issue.rowKey === member.key,
+  );
+  const memberExecutionRequired = state.validationIssues.some(
+    (issue) => issue.kind === "member_execution_profile_required" && issue.rowKey === member.key,
+  );
+  const memberExecutionUnavailable = state.validationIssues.some(
+    (issue) => issue.kind === "member_execution_profile_unavailable" && issue.rowKey === member.key,
+  );
 
   return (
     <View style={styles.member} testID={`team-profile-member-${index}`}>
+      <View style={styles.memberHeader}>
+        <Text style={styles.memberHeading} testID={`team-profile-member-${index}-heading`}>
+          {t("teams.v2.profile.memberNumber", { number: index + 1 })}
+        </Text>
+        {state.members.length > 1 ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={remove}
+            testID={`team-profile-member-${index}-remove`}
+          >
+            {t("teams.v2.profile.removeMember")}
+          </Button>
+        ) : null}
+      </View>
       <View style={styles.twoColumn}>
         <View style={styles.flexField}>
           <Field label={t("teams.v2.profile.role")}>
@@ -698,7 +743,10 @@ function MemberFields({
         </View>
       </View>
 
-      <Field label={t("teams.v2.profile.memberSkills")}>
+      <Field
+        label={t("teams.v2.profile.memberSkills")}
+        error={memberSkillRequired ? t("teams.v2.profile.memberSkillRequired") : null}
+      >
         <View style={styles.skillToggles}>
           {state.skills.map((skill) => (
             <MemberSkillToggle
@@ -720,12 +768,20 @@ function MemberFields({
         onChange={changeExecutionSource}
         placeholder={t("teams.v2.profile.selectExecutionSource")}
         emptyText={t("teams.v2.profile.noExecutionSources")}
+        error={memberExecutionUnavailable ? t("teams.v2.profile.memberExecutionUnavailable") : null}
         size={size}
         testID={`team-profile-member-${index}-execution-source`}
       />
 
       {member.executionSelection.kind === "inline" ? (
-        <Field label={t("teams.v2.profile.model")}>
+        <Field
+          label={t("teams.v2.profile.model")}
+          error={
+            memberExecutionRequired && state.providerResolution === "complete"
+              ? t("teams.v2.profile.memberExecutionRequired")
+              : null
+          }
+        >
           <CombinedModelSelector
             providers={state.modelSelectorProviders}
             selectedProvider={member.executionProfile.provider ?? ""}
@@ -765,17 +821,6 @@ function MemberFields({
           size={size}
           testID={`team-profile-member-${index}-mode`}
         />
-      ) : null}
-
-      {state.members.length > 1 ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          onPress={remove}
-          testID={`team-profile-member-${index}-remove`}
-        >
-          {t("teams.v2.profile.removeMember")}
-        </Button>
       ) : null}
     </View>
   );
@@ -879,9 +924,23 @@ const styles = StyleSheet.create((theme) => ({
   },
   member: {
     gap: theme.spacing[4],
-    paddingBottom: theme.spacing[6],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.surface2,
+    padding: theme.spacing[4],
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+  },
+  memberHeader: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
+  memberHeading: {
+    flex: 1,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
   },
   twoColumn: {
     flexDirection: "row",
@@ -911,11 +970,28 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   methodologyFacts: {
-    gap: theme.spacing[1],
+    gap: theme.spacing[2],
+    paddingLeft: theme.spacing[3],
+    borderLeftWidth: theme.borderWidth[2],
+    borderLeftColor: theme.colors.borderAccent,
+  },
+  templateDescription: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
   },
   methodologyFact: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
+  },
+  templateGuide: {
+    padding: theme.spacing[4],
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+  },
+  templateGuideText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
   catalogState: {
     flex: 1,

@@ -559,10 +559,37 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
       { seededHost: host, preferences: buildCreateAgentPreferences() },
     );
 
-    await page.setViewportSize(DESKTOP_VIEWPORT);
+    await page.setViewportSize(COMPACT_VIEWPORT);
     await gotoAppShell(page);
-    await page.goto(`/h/${serverId}/workspace/${workspace.workspaceId}`);
+    await page.goto(`/h/${serverId}/teams`);
+    await expect(page.getByTestId("team-hub-supported")).toBeVisible();
+    await page.getByTestId("team-hub-create").click();
+    await expect(page.getByTestId("team-profile-form-sheet")).toBeVisible();
+    await expect(page.getByTestId("team-profile-template-guide")).toBeInViewport({ ratio: 0.5 });
+    await expect
+      .poll(async () => (await page.getByTestId("team-profile-form-sheet").boundingBox())?.y ?? 900)
+      .toBeLessThan(250);
+    const compactSubmit = page.getByTestId("team-profile-submit");
+    await expect(compactSubmit).toBeVisible();
+    await expect
+      .poll(async () => {
+        const compactSubmitBox = await compactSubmit.boundingBox();
+        return compactSubmitBox
+          ? compactSubmitBox.y + compactSubmitBox.height
+          : Number.POSITIVE_INFINITY;
+      })
+      .toBeLessThanOrEqual(COMPACT_VIEWPORT.height);
+    await shoot(page, "00-compact-create-team");
+    await page.getByTestId("team-profile-preset").getByRole("button").click();
+    await expect(page.getByText("精简交付", { exact: true })).toBeVisible();
+    await expect(page.getByText("完整交付", { exact: true })).toBeVisible();
+    await shoot(page, "00a-compact-team-templates");
+    await page.getByText("精简交付", { exact: true }).click();
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByTestId("team-profile-form-sheet")).toBeHidden();
 
+    await page.setViewportSize(DESKTOP_VIEWPORT);
+    await page.goto(`/h/${serverId}/workspace/${workspace.workspaceId}`);
     const inlineAdd = page.getByTestId("workspace-new-agent-tab-inline");
     await inlineAdd.click();
     await expect(page.getByTestId("workspace-new-tab-inline-team")).toBeVisible();

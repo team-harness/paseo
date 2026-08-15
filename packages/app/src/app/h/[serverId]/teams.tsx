@@ -199,7 +199,13 @@ function SupportedHub({
       ) : null}
       {rows.length === 0 ? (
         <View style={styles.emptyActions} testID="team-hub-empty-actions">
-          <Button size="sm" leftIcon={Plus} onPress={openCreate} disabled={!createEnabled}>
+          <Button
+            size="sm"
+            leftIcon={Plus}
+            onPress={openCreate}
+            disabled={!createEnabled}
+            testID="team-hub-create"
+          >
             {t("teams.host.hub.create")}
           </Button>
           <Button
