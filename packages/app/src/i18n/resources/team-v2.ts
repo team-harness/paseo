@@ -36,17 +36,42 @@ export const teamV2En = {
   workroom: {
     attention: "Needs attention",
     attentionCount: "{{count}} need attention",
+    dependencies: "{{count}} dependencies",
+    dependency: "Depends on {{title}}",
+    dependencyBlocker: "Blocked by dependency: {{summary}}",
     details: "Task details",
+    directBlocker: "Blocked here: {{summary}}",
+    failed: "Failed",
     inspector: "Task room details",
     lead: "Lead",
     members: "Members",
     missionScope: "Whole task",
+    needsInput: "Needs input",
     noAttention: "Nothing needs attention",
+    noCurrentWork: "No current Assignment",
+    noEvidence: "No evidence yet",
     noPlan: "The plan has not been created yet",
     noResults: "No results yet",
+    openAttention: "Open",
+    pendingPermissions: "{{count}} pending permissions",
     openAgent: "Open {{role}}",
+    owner: "Owner: {{role}}",
+    passed: "Passed",
     plan: "Task plan",
+    participantState: {
+      not_started: "Not started",
+      active: "Active",
+      archived: "Inactive",
+    },
     results: "Results",
+    reviewVerdict: "Review verdict: {{verdict}}",
+    finalVerificationEvidence:
+      "Final verification: {{verdict}} · {{count}} review gate evidence records",
+    verdict: {
+      approved: "Approved",
+      changes_requested: "Changes requested",
+    },
+    work: "Work",
   },
   v2: {
     actions: {
@@ -391,6 +416,23 @@ function teamV2PlanLocale(
   };
 }
 
+function teamV2WorkroomLocale(
+  overrides: DeepPartial<TeamV2Resources["workroom"]> | undefined,
+): TeamV2Resources["workroom"] {
+  return {
+    ...teamV2En.workroom,
+    ...overrides,
+    participantState: {
+      ...teamV2En.workroom.participantState,
+      ...overrides?.participantState,
+    },
+    verdict: {
+      ...teamV2En.workroom.verdict,
+      ...overrides?.verdict,
+    },
+  };
+}
+
 function teamV2Locale(overrides: DeepPartial<TeamV2Resources>): TeamV2Resources {
   return {
     host: {
@@ -400,7 +442,7 @@ function teamV2Locale(overrides: DeepPartial<TeamV2Resources>): TeamV2Resources 
     },
     mission: { ...teamV2En.mission, ...overrides.mission },
     panel: { ...teamV2En.panel, ...overrides.panel },
-    workroom: { ...teamV2En.workroom, ...overrides.workroom },
+    workroom: teamV2WorkroomLocale(overrides.workroom),
     v2: {
       actions: { ...teamV2En.v2.actions, ...overrides.v2?.actions },
       profile: { ...teamV2En.v2.profile, ...overrides.v2?.profile },
@@ -488,17 +530,41 @@ export const teamV2ZhCN: TeamV2Resources = {
   workroom: {
     attention: "待处理",
     attentionCount: "{{count}} 项待处理",
+    dependencies: "{{count}} 项依赖",
+    dependency: "依赖 {{title}}",
+    dependencyBlocker: "被依赖项阻塞：{{summary}}",
     details: "任务详情",
+    directBlocker: "当前工作阻塞：{{summary}}",
+    failed: "未通过",
     inspector: "任务室详情",
     lead: "负责人",
     members: "成员",
     missionScope: "整个任务",
+    needsInput: "需要处理",
     noAttention: "当前没有待处理事项",
+    noCurrentWork: "当前没有 Assignment",
+    noEvidence: "暂时没有证据",
     noPlan: "任务计划尚未生成",
     noResults: "暂时没有结果",
+    openAttention: "打开",
+    pendingPermissions: "{{count}} 个权限等待处理",
     openAgent: "打开 {{role}}",
+    owner: "负责人：{{role}}",
+    passed: "通过",
     plan: "任务计划",
+    participantState: {
+      not_started: "未开始",
+      active: "进行中",
+      archived: "已离开",
+    },
     results: "结果",
+    reviewVerdict: "审查结论：{{verdict}}",
+    finalVerificationEvidence: "最终验证：{{verdict}} · {{count}} 条审查门禁证据",
+    verdict: {
+      approved: "已批准",
+      changes_requested: "要求修改",
+    },
+    work: "工作",
   },
   v2: {
     actions: {

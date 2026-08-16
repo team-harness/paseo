@@ -287,6 +287,22 @@ describe("TeamSettingsSheet Attention actions", () => {
     mocked.clientAvailable = true;
   });
 
+  it("can open directly on the Attention controller page", () => {
+    render(
+      <TeamSettingsSheet
+        serverId="server-1"
+        team={TEAM}
+        mission={MISSION}
+        visible
+        initialPage="attention"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("team-settings-page-attention")).toBeTruthy();
+    expect(screen.queryByTestId("team-settings-nav-attention")).toBeNull();
+  });
+
   it("sends the selected replacement Member and keeps that action pending", async () => {
     const pending = deferredResult();
     mocked.resolveAttention.mockReturnValueOnce(pending.promise);

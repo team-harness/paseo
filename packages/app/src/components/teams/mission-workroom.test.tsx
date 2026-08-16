@@ -28,7 +28,12 @@ vi.mock("react-native-unistyles", () => ({
   StyleSheet: { create: () => new Proxy({}, { get: () => ({}) }) },
 }));
 
-vi.mock("lucide-react-native", () => ({ ListTree: () => null }));
+vi.mock("lucide-react-native", () => ({
+  FileCheck2: () => null,
+  ListChecks: () => null,
+  ListTree: () => null,
+  Users: () => null,
+}));
 
 vi.mock("@/constants/layout", () => ({
   useIsCompactFormFactor: () => compact,
@@ -79,6 +84,36 @@ vi.mock("@/components/ui/status-badge", () => ({
   StatusBadge: ({ label }: { label: string }) => React.createElement("span", null, label),
 }));
 
+vi.mock("@/components/ui/segmented-control", () => ({
+  SegmentedControl: ({
+    options,
+    value,
+    onValueChange,
+    testID,
+  }: {
+    options: { value: string; label: string; testID?: string }[];
+    value: string;
+    onValueChange: (value: string) => void;
+    testID?: string;
+  }) =>
+    React.createElement(
+      "div",
+      { "data-testid": testID, "data-value": value },
+      options.map((option) =>
+        React.createElement(
+          "button",
+          {
+            key: option.value,
+            type: "button",
+            "data-testid": option.testID,
+            onClick: () => onValueChange(option.value),
+          },
+          option.label,
+        ),
+      ),
+    ),
+}));
+
 vi.mock("@/components/teams/member-avatar", () => ({
   MemberAvatar: ({ onPress, testID }: { onPress?: () => void; testID?: string }) =>
     React.createElement("button", { type: "button", onClick: onPress, "data-testid": testID }),
@@ -117,6 +152,12 @@ const VIEW = {
       participantAgentId: "agent-lead",
       participantState: "active",
       executionSourceStatus: { kind: "inline" },
+      agentLifecycleStatus: "running",
+      requiresAttention: true,
+      attentionReason: "permission",
+      pendingPermissionCount: 1,
+      currentAssignments: [],
+      needsInput: true,
     },
   ],
   workstreams: [],
@@ -152,17 +193,71 @@ const FAILED_VIEW: MissionWorkroomView = {
   ...VIEW,
   results: [
     {
-      id: "workstream-1:0",
       workstreamId: "workstream-1",
       workstreamTitle: "Verify release",
-      status: "failed",
-      summary: "Tests failed",
-      artifactPaths: [],
+      reviewOutcome: "waived",
+      reviewReport: null,
+      reviewWaiver: {
+        waiverId: "waiver-1",
+        connectionId: "connection-1",
+        selfReportedClientLabel: "Desktop",
+        reason: "No reviewer available",
+      },
+      finalVerificationStatus: "changes_requested",
+      finalVerificationEvidence: {
+        kind: "final_verification",
+        finalGateFingerprint: "sha256:final",
+        verdict: "changes_requested",
+        reviewGateEvidence: [],
+      },
+      reports: [
+        {
+          assignmentId: "assignment-1",
+          assignmentKind: "verification",
+          assigneeRole: "Verifier",
+          status: "failed",
+          summary: "Tests failed",
+          artifactPaths: ["artifacts/report.json"],
+          tests: [{ command: "npm test", passed: false }],
+          verdict: "changes_requested",
+        },
+      ],
     },
   ],
 };
 const UPDATED_VIEW: MissionWorkroomView = { ...VIEW, objective: "Updated objective" };
 const OTHER_MISSION_VIEW: MissionWorkroomView = { ...VIEW, missionId: "mission-2" };
+const DEPENDENCY_VIEW = {
+  ...VIEW,
+  workstreams: [
+    {
+      workstreamId: "workstream-main",
+      title: "Main delivery",
+      objective: "Integrate everything",
+      status: "blocked",
+      owner: { memberId: "member-lead", role: "Lead", mentionHandle: "lead" },
+      dependencyWorkstreamIds: ["workstream-api"],
+      dependencies: [{ workstreamId: "workstream-api", title: "Build API", status: "active" }],
+      blockers: [],
+      reviewSelection: "not_required",
+      reviewOutcome: "not_required",
+      finalVerificationStatus: null,
+    },
+  ],
+  members: [
+    {
+      ...VIEW.members[0],
+      currentAssignments: [
+        {
+          assignmentId: "assignment-long",
+          kind: "delivery",
+          objective: "A very long Assignment objective that must wrap within the inspector",
+          state: "running",
+        },
+      ],
+    },
+  ],
+} as unknown as MissionWorkroomView;
 
 describe("MissionWorkroom", () => {
   afterEach(() => {
@@ -172,13 +267,16 @@ describe("MissionWorkroom", () => {
   });
 
   it("keeps chat and the inspector visible together on desktop", () => {
+    const onOpenSettings = vi.fn();
+    const onOpenAttention = vi.fn();
     render(
       <MissionWorkroom
         serverId="server-1"
         view={VIEW}
         roster={ROSTER}
         readOnly={false}
-        onOpenSettings={vi.fn()}
+        onOpenAttention={onOpenAttention}
+        onOpenSettings={onOpenSettings}
       />,
     );
 
@@ -187,6 +285,12 @@ describe("MissionWorkroom", () => {
     expect(screen.getByTestId("team-room")).toBeTruthy();
     expect(screen.getByTestId("team-room").getAttribute("data-read-only")).toBe("false");
     expect(screen.getByTestId("mission-workroom-inspector")).toBeTruthy();
+    expect(screen.getByTestId("mission-workroom-inspector-tabs").getAttribute("data-value")).toBe(
+      "work",
+    );
+    fireEvent.click(screen.getByTestId("mission-workroom-attention-attention-1-open"));
+    expect(onOpenAttention).toHaveBeenCalledTimes(1);
+    expect(onOpenSettings).not.toHaveBeenCalled();
     expect(screen.queryByTestId("mission-workroom-inspector-sheet")).toBeNull();
   });
 
@@ -214,11 +318,12 @@ describe("MissionWorkroom", () => {
         .getAttribute("data-size-to-current-snap"),
     ).toBe("true");
     expect(screen.getByTestId("mission-workroom-inspector-sheet-content")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("mission-workroom-inspector-tab-people"));
     fireEvent.click(screen.getByTestId("mission-workroom-member-agent-lead"));
     expect(onOpenAgent).toHaveBeenCalledWith("agent-lead");
   });
 
-  it("distinguishes failed reports from successful results", () => {
+  it("switches between the people and result evidence views", () => {
     render(
       <MissionWorkroom
         serverId="server-1"
@@ -229,7 +334,37 @@ describe("MissionWorkroom", () => {
       />,
     );
 
+    fireEvent.click(screen.getByTestId("mission-workroom-inspector-tab-people"));
+    expect(screen.getByTestId("mission-workroom-member-agent-lead")).toBeTruthy();
+    expect(screen.getByText(/agentList\.status\.running/)).toBeTruthy();
+    expect(screen.getByText("teams.workroom.pendingPermissions")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("mission-workroom-inspector-tab-results"));
     expect(screen.getByText("teams.v2Settings.status.failed")).toBeTruthy();
+    expect(screen.getByText("artifacts/report.json")).toBeTruthy();
+    expect(screen.getByText(/npm test/)).toBeTruthy();
+    expect(screen.getByText("No reviewer available")).toBeTruthy();
+    expect(screen.getByText("teams.v2Settings.plan.reviewOutcome.waived")).toBeTruthy();
+    expect(
+      screen.getByText("teams.v2Settings.plan.finalVerificationStatus.changes_requested"),
+    ).toBeTruthy();
+    expect(screen.getByText("teams.workroom.reviewVerdict")).toBeTruthy();
+    expect(screen.getByText("teams.workroom.finalVerificationEvidence")).toBeTruthy();
+  });
+
+  it("shows dependency identities and keeps a long Assignment objective inside the row", () => {
+    render(
+      <MissionWorkroom
+        serverId="server-1"
+        view={DEPENDENCY_VIEW}
+        roster={ROSTER}
+        readOnly={false}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("mission-workroom-dependency-workstream-api")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("mission-workroom-inspector-tab-people"));
+    expect(screen.getByTestId("mission-workroom-assignment-assignment-long-copy")).toBeTruthy();
   });
 
   it("remounts the Room session only when the Mission identity changes", () => {

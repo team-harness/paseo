@@ -9,7 +9,7 @@ import { MissionStartSheet } from "@/components/teams/mission-start-sheet";
 import { MissionWorkroom } from "@/components/teams/mission-workroom";
 import { TeamIdleOverview } from "@/components/teams/team-idle-overview";
 import { TeamProfileFormSheet } from "@/components/teams/team-profile-form-sheet";
-import { TeamSettingsSheet } from "@/components/teams/team-settings-sheet";
+import { TeamSettingsSheet, type TeamSettingsPage } from "@/components/teams/team-settings-sheet";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
@@ -47,6 +47,7 @@ export function TeamPanel({
   onOpenAgent,
 }: TeamPanelProps): ReactElement {
   const [settingsOpen, setSettingsOpen] = useState(initialSettingsOpen);
+  const [settingsPage, setSettingsPage] = useState<TeamSettingsPage>("root");
   const [missionStartOpen, setMissionStartOpen] = useState(false);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [localMissionId, setLocalMissionId] = useState<string | null>(selectedMissionId);
@@ -75,12 +76,20 @@ export function TeamPanel({
         workspace?.workspaceDirectory ||
         view.mission.workspaceId,
       agentProfiles: agentProfiles ?? [],
+      runtimeMembers: view.members,
     });
   }, [agentProfiles, view, workspaces]);
   const retry = useCallback(() => {
     void getHostRuntimeStore().refreshTeamMissions(serverId);
   }, [serverId]);
-  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const openSettings = useCallback(() => {
+    setSettingsPage("root");
+    setSettingsOpen(true);
+  }, []);
+  const openAttention = useCallback(() => {
+    setSettingsPage("attention");
+    setSettingsOpen(true);
+  }, []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const openMissionStart = useCallback(() => {
     setSettingsOpen(false);
@@ -145,6 +154,7 @@ export function TeamPanel({
           roster={view.members}
           readOnly={view.readOnly}
           onOpenAgent={onOpenAgent}
+          onOpenAttention={openAttention}
           onOpenSettings={openSettings}
           onStartMission={canStartMission ? openMissionStart : undefined}
           onExitReplay={localMissionId ? exitReplay : undefined}
@@ -169,6 +179,7 @@ export function TeamPanel({
         team={view.team}
         mission={view.mission}
         visible={settingsOpen}
+        initialPage={settingsPage}
         onClose={closeSettings}
         onEditProfile={editProfile}
         onStartMission={canStartMission ? openMissionStart : undefined}

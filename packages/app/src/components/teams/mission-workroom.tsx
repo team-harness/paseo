@@ -2,12 +2,13 @@ import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { ListTree } from "lucide-react-native";
+import { FileCheck2, ListChecks, ListTree, Users } from "lucide-react-native";
 
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { MemberAvatar } from "@/components/teams/member-avatar";
 import { TeamRoom } from "@/components/teams/team-room";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import type { MissionWorkroomView } from "@/teams/mission-workroom-view";
@@ -19,6 +20,7 @@ export interface MissionWorkroomProps {
   roster: readonly TeamPanelMember[];
   readOnly: boolean;
   onOpenAgent?: (agentId: string) => void;
+  onOpenAttention?: () => void;
   onOpenSettings: () => void;
   onStartMission?: () => void;
   onExitReplay?: () => void;
@@ -31,6 +33,7 @@ export function MissionWorkroom({
   roster,
   readOnly,
   onOpenAgent,
+  onOpenAttention,
   onOpenSettings,
   onStartMission,
   onExitReplay,
@@ -45,7 +48,12 @@ export function MissionWorkroom({
   const closeInspector = useCallback(() => setInspectorOpen(false), []);
 
   const inspector = (
-    <MissionWorkroomInspector view={view} onOpenAgent={onOpenAgent} compact={compact} />
+    <MissionWorkroomInspector
+      view={view}
+      onOpenAgent={onOpenAgent}
+      onOpenAttention={onOpenAttention ?? onOpenSettings}
+      compact={compact}
+    />
   );
 
   return (
@@ -120,79 +128,283 @@ export function MissionWorkroom({
 function MissionWorkroomInspector({
   view,
   onOpenAgent,
+  onOpenAttention,
   compact,
 }: {
   view: MissionWorkroomView;
   onOpenAgent?: (agentId: string) => void;
+  onOpenAttention: () => void;
   compact: boolean;
 }): ReactElement {
   const { t } = useTranslation();
+  const [tab, setTab] = useState<InspectorTab>("work");
+  const tabs = useMemo(
+    () => [
+      {
+        value: "work" as const,
+        label: t("teams.workroom.work"),
+        icon: ListChecks,
+        testID: "mission-workroom-inspector-tab-work",
+      },
+      {
+        value: "people" as const,
+        label: t("teams.workroom.members"),
+        icon: Users,
+        testID: "mission-workroom-inspector-tab-people",
+      },
+      {
+        value: "results" as const,
+        label: t("teams.workroom.results"),
+        icon: FileCheck2,
+        testID: "mission-workroom-inspector-tab-results",
+      },
+    ],
+    [t],
+  );
   return (
     <ScrollView
       style={compact ? styles.sheetInspector : styles.inspector}
       contentContainerStyle={styles.inspectorContent}
       testID={compact ? "mission-workroom-inspector-sheet-content" : "mission-workroom-inspector"}
     >
-      <InspectorSection title={t("teams.workroom.members")}>
-        {view.members.map((member) => (
-          <MissionMemberRow key={member.memberId} member={member} onOpenAgent={onOpenAgent} />
-        ))}
-      </InspectorSection>
+      <SegmentedControl
+        options={tabs}
+        value={tab}
+        onValueChange={setTab}
+        size="sm"
+        testID="mission-workroom-inspector-tabs"
+      />
+      {tab === "work" ? (
+        <MissionWorkInspector view={view} onOpenAttention={onOpenAttention} />
+      ) : null}
+      {tab === "people" ? <MissionPeopleInspector view={view} onOpenAgent={onOpenAgent} /> : null}
+      {tab === "results" ? <MissionResultsInspector view={view} /> : null}
+    </ScrollView>
+  );
+}
 
-      <InspectorSection title={t("teams.workroom.plan")}>
-        {view.workstreams.length === 0 ? (
-          <EmptyRow>{t("teams.workroom.noPlan")}</EmptyRow>
-        ) : (
-          view.workstreams.map((workstream) => (
-            <View key={workstream.workstreamId} style={styles.itemRow}>
-              <View style={styles.rowCopy}>
-                <Text style={styles.rowTitle} numberOfLines={2}>
-                  {workstream.title}
-                </Text>
-                <Text style={styles.rowMeta} numberOfLines={2}>
-                  {workstream.owner.role} · {workstream.objective}
-                </Text>
-              </View>
-              <StatusBadge label={t(`teams.v2Settings.status.${workstream.status}`)} />
-            </View>
-          ))
-        )}
-      </InspectorSection>
+type InspectorTab = "work" | "people" | "results";
 
+function MissionWorkInspector({
+  view,
+  onOpenAttention,
+}: {
+  view: MissionWorkroomView;
+  onOpenAttention: () => void;
+}): ReactElement {
+  const { t } = useTranslation();
+  return (
+    <>
       <InspectorSection title={t("teams.workroom.attention")}>
         {view.attention.length === 0 ? (
           <EmptyRow>{t("teams.workroom.noAttention")}</EmptyRow>
         ) : (
           view.attention.map((item) => (
-            <View key={item.attentionId} style={styles.textRow}>
-              <Text style={styles.rowTitle}>{item.summary}</Text>
-              <Text style={styles.rowMeta} numberOfLines={1}>
-                {item.workstreamTitle ?? t("teams.workroom.missionScope")}
-              </Text>
-            </View>
-          ))
-        )}
-      </InspectorSection>
-
-      <InspectorSection title={t("teams.workroom.results")}>
-        {view.results.length === 0 ? (
-          <EmptyRow>{t("teams.workroom.noResults")}</EmptyRow>
-        ) : (
-          view.results.map((result) => (
-            <View key={result.id} style={styles.itemRow}>
+            <View key={item.attentionId} style={styles.actionRow}>
               <View style={styles.rowCopy}>
-                <Text style={styles.rowTitle}>{result.workstreamTitle}</Text>
-                <Text style={styles.rowMeta}>{result.summary}</Text>
+                <Text style={styles.rowTitle}>{item.summary}</Text>
+                <Text style={styles.rowMeta} numberOfLines={1}>
+                  {item.workstreamTitle ?? t("teams.workroom.missionScope")}
+                </Text>
               </View>
-              <StatusBadge
-                label={t(`teams.v2Settings.status.${result.status}`)}
-                variant={reportStatusVariant(result.status)}
-              />
+              <Button
+                variant="outline"
+                size="xs"
+                onPress={onOpenAttention}
+                testID={`mission-workroom-attention-${item.attentionId}-open`}
+              >
+                {t("teams.workroom.openAttention")}
+              </Button>
             </View>
           ))
         )}
       </InspectorSection>
-    </ScrollView>
+      <InspectorSection title={t("teams.workroom.plan")}>
+        {view.workstreams.length === 0 ? (
+          <EmptyRow>{t("teams.workroom.noPlan")}</EmptyRow>
+        ) : (
+          view.workstreams.map((workstream) => (
+            <View key={workstream.workstreamId} style={styles.detailRow}>
+              <View style={styles.itemRow}>
+                <View style={styles.rowCopy}>
+                  <Text style={styles.rowTitle} numberOfLines={2}>
+                    {workstream.title}
+                  </Text>
+                  <Text style={styles.rowMeta} numberOfLines={2}>
+                    {t("teams.workroom.owner", { role: workstream.owner.role })} ·{" "}
+                    {workstream.objective}
+                  </Text>
+                </View>
+                <StatusBadge label={t(`teams.v2Settings.status.${workstream.status}`)} />
+              </View>
+              {workstream.dependencies.map((dependency) => (
+                <View
+                  key={dependency.workstreamId}
+                  style={styles.assignmentRow}
+                  testID={`mission-workroom-dependency-${dependency.workstreamId}`}
+                >
+                  <Text style={styles.assignmentCopy} numberOfLines={2}>
+                    {t("teams.workroom.dependency", { title: dependency.title })}
+                  </Text>
+                  <StatusBadge label={t(`teams.v2Settings.status.${dependency.status}`)} />
+                </View>
+              ))}
+              {workstream.blockers.map((blocker) => (
+                <Text key={blocker.attentionId} style={styles.blockerText}>
+                  {t(
+                    blocker.direct
+                      ? "teams.workroom.directBlocker"
+                      : "teams.workroom.dependencyBlocker",
+                    { summary: blocker.summary },
+                  )}
+                </Text>
+              ))}
+              {workstream.reviewSelection !== "not_required" ? (
+                <Text style={styles.rowMeta}>
+                  {t(`teams.v2Settings.plan.reviewSelection.${workstream.reviewSelection}`)} ·{" "}
+                  {t(`teams.v2Settings.plan.reviewOutcome.${workstream.reviewOutcome}`)}
+                </Text>
+              ) : null}
+              {workstream.finalVerificationStatus ? (
+                <Text style={styles.rowMeta}>
+                  {t(
+                    `teams.v2Settings.plan.finalVerificationStatus.${workstream.finalVerificationStatus}`,
+                  )}
+                </Text>
+              ) : null}
+            </View>
+          ))
+        )}
+      </InspectorSection>
+    </>
+  );
+}
+
+function MissionPeopleInspector({
+  view,
+  onOpenAgent,
+}: {
+  view: MissionWorkroomView;
+  onOpenAgent?: (agentId: string) => void;
+}): ReactElement {
+  const { t } = useTranslation();
+  return (
+    <InspectorSection title={t("teams.workroom.members")}>
+      {view.members.map((member) => (
+        <View key={member.memberId} style={styles.detailRow}>
+          <MissionMemberRow member={member} onOpenAgent={onOpenAgent} />
+          <Text style={styles.rowMeta}>
+            {member.agentLifecycleStatus
+              ? t(`agentList.status.${member.agentLifecycleStatus}`)
+              : t(`teams.workroom.participantState.${member.participantState}`)}
+            {member.needsInput ? ` · ${t("teams.workroom.needsInput")}` : ""}
+          </Text>
+          {member.pendingPermissionCount > 0 ? (
+            <Text style={styles.blockerText}>
+              {t("teams.workroom.pendingPermissions", {
+                count: member.pendingPermissionCount,
+              })}
+            </Text>
+          ) : null}
+          {member.currentAssignments.length === 0 ? (
+            <Text style={styles.rowMeta}>{t("teams.workroom.noCurrentWork")}</Text>
+          ) : (
+            member.currentAssignments.map((assignment) => (
+              <View key={assignment.assignmentId} style={styles.assignmentRow}>
+                <View
+                  style={styles.assignmentCopy}
+                  testID={`mission-workroom-assignment-${assignment.assignmentId}-copy`}
+                >
+                  <Text style={styles.rowMeta}>{assignment.objective}</Text>
+                </View>
+                <StatusBadge label={t(`teams.v2Settings.status.${assignment.state}`)} />
+              </View>
+            ))
+          )}
+        </View>
+      ))}
+    </InspectorSection>
+  );
+}
+
+function MissionResultsInspector({ view }: { view: MissionWorkroomView }): ReactElement {
+  const { t } = useTranslation();
+  return (
+    <InspectorSection title={t("teams.workroom.results")}>
+      {view.results.length === 0 ? (
+        <EmptyRow>{t("teams.workroom.noResults")}</EmptyRow>
+      ) : (
+        view.results.map((result) => (
+          <View key={result.workstreamId} style={styles.detailRow}>
+            <Text style={styles.rowTitle}>{result.workstreamTitle}</Text>
+            {result.reports.map((report) => (
+              <View key={report.assignmentId} style={styles.evidenceBlock}>
+                <View style={styles.itemRow}>
+                  <View style={styles.rowCopy}>
+                    <Text style={styles.rowMeta}>{report.assigneeRole}</Text>
+                    <Text style={styles.rowTitle}>{report.summary}</Text>
+                  </View>
+                  <StatusBadge
+                    label={t(`teams.v2Settings.status.${report.status}`)}
+                    variant={reportStatusVariant(report.status)}
+                  />
+                </View>
+                {report.artifactPaths.map((path) => (
+                  <Text key={path} style={styles.evidenceText}>
+                    {path}
+                  </Text>
+                ))}
+                {report.tests.map((test) => (
+                  <Text key={test.command} style={styles.evidenceText}>
+                    {test.command} ·{" "}
+                    {t(test.passed ? "teams.workroom.passed" : "teams.workroom.failed")}
+                  </Text>
+                ))}
+                {report.verdict ? (
+                  <Text style={styles.evidenceText}>
+                    {t("teams.workroom.reviewVerdict", {
+                      verdict: t(`teams.workroom.verdict.${report.verdict}`),
+                    })}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+            {result.reviewWaiver ? (
+              <Text style={styles.evidenceText}>{result.reviewWaiver.reason}</Text>
+            ) : null}
+            {result.reviewOutcome !== "not_required" ? (
+              <Text style={styles.evidenceText}>
+                {t(`teams.v2Settings.plan.reviewOutcome.${result.reviewOutcome}`)}
+              </Text>
+            ) : null}
+            {result.reviewReport ? (
+              <Text style={styles.evidenceText}>{result.reviewReport.summary}</Text>
+            ) : null}
+            {result.finalVerificationStatus ? (
+              <Text style={styles.evidenceText}>
+                {t(
+                  `teams.v2Settings.plan.finalVerificationStatus.${result.finalVerificationStatus}`,
+                )}
+              </Text>
+            ) : null}
+            {result.finalVerificationEvidence ? (
+              <Text style={styles.evidenceText}>
+                {t("teams.workroom.finalVerificationEvidence", {
+                  verdict: t(`teams.workroom.verdict.${result.finalVerificationEvidence.verdict}`),
+                  count: result.finalVerificationEvidence.reviewGateEvidence.length,
+                })}
+              </Text>
+            ) : null}
+            {result.reports.length === 0 &&
+            !result.reviewWaiver &&
+            !result.reviewReport &&
+            !result.finalVerificationStatus ? (
+              <Text style={styles.rowMeta}>{t("teams.workroom.noEvidence")}</Text>
+            ) : null}
+          </View>
+        ))
+      )}
+    </InspectorSection>
   );
 }
 
@@ -214,6 +426,10 @@ function MissionMemberRow({
       <MemberAvatar
         agentId={agentId}
         label={member.role}
+        status={member.agentLifecycleStatus}
+        requiresAttention={member.requiresAttention}
+        attentionReason={member.attentionReason}
+        pendingPermissionCount={member.pendingPermissionCount}
         onPress={canOpenAgent ? openAgent : undefined}
         accessibilityLabel={
           canOpenAgent ? t("teams.workroom.openAgent", { role: member.role }) : member.role
@@ -243,7 +459,7 @@ function missionStatusVariant(
 }
 
 function reportStatusVariant(
-  status: MissionWorkroomView["results"][number]["status"],
+  status: MissionWorkroomView["results"][number]["reports"][number]["status"],
 ): "success" | "error" | "muted" {
   if (status === "completed") return "success";
   if (status === "failed") return "error";
@@ -332,7 +548,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   inspectorContent: {
     padding: theme.spacing[4],
-    gap: theme.spacing[6],
+    gap: theme.spacing[4],
   },
   section: {
     gap: theme.spacing[2],
@@ -358,6 +574,30 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingVertical: theme.spacing[1],
   },
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+  },
+  detailRow: {
+    gap: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  assignmentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  assignmentCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  evidenceBlock: {
+    gap: theme.spacing[1],
+  },
   textRow: {
     gap: theme.spacing[1],
     paddingVertical: theme.spacing[1],
@@ -372,6 +612,14 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   rowMeta: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  blockerText: {
+    color: theme.colors.statusWarning,
+    fontSize: theme.fontSize.xs,
+  },
+  evidenceText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
   },
