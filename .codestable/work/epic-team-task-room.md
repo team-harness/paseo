@@ -2,8 +2,8 @@
 epic: ../epics/team-task-room.md
 phase: executing
 approved_revision: eb9b1d212874d0213e8b5bdea203223e78b6215c781cef04e6a172d48852b353
-current_item: TTR-ITEM-3
-next_action: 执行 TTR-ITEM-3，简化 Team 创建与协作方式文案
+current_item: TTR-ITEM-4
+next_action: 执行 TTR-ITEM-4，建立 MissionWorkroom 主布局
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -14,7 +14,7 @@ remote_publish: final
 
 - [x] TTR-ITEM-1 · 固化三层事件边界并隔离 physical Room subscription
 - [x] TTR-ITEM-2 · 把 Team Hub 升级为 host-global 工作入口
-- [ ] TTR-ITEM-3 · 简化 Team 创建与协作方式文案
+- [x] TTR-ITEM-3 · 简化 Team 创建与协作方式文案
 - [ ] TTR-ITEM-4 · 建立 MissionWorkroom 主布局
 - [ ] TTR-ITEM-5 · 固化 Room 发帖幂等性与 recipient routing
 - [ ] TTR-ITEM-6 · 闭合回复界面与 Room 历史
@@ -113,3 +113,14 @@ review lineage、checkpoint、测试和残余风险只写本游标；永久 Epic
   主操作与 compact 布局后，Round 2 在 staged diff
   `d1fe494c836d65219b8b2df58fff2fb4d10da785c89eb530e89072fcbae8d78c` 上为
   `0 blocking / 0 important / 0 minor`、可合。里程碑主题为 `feat(team): make Team Hub the work entry`。
+- 2026-08-16：TTR-ITEM-3 完成。Team 创建主路径收敛为模板、建议成员与 Agent Profile、创建摘要；Skill、Level、
+  inline model、成员增删与完整 Methodology 信息仅在高级设置显示。协作方式使用“负责人把关”与“独立成员审查”，
+  Team capability 明确用于自动分配工作；编辑态继续默认显示完整配置，Team wire、server 与 form model 零改动。
+- 2026-08-16：TTR-ITEM-3 TDD 先复现成员责任缺失和高级设置只能添加不能删除；最终 3 个定点 test 文件 `30/30`
+  通过，隔离 browser E2E `1/1`，420px compact 断言无横向溢出并保留 setup 截图。lint、format 与 diff-check 通过；
+  全仓 typecheck 只命中未修改的既有基线 `packages/app/src/components/draggable-list.native.tsx:122`。
+- 2026-08-16：TTR-ITEM-3 code-deep 对 caller-supplied diff 覆盖 4/4 文件、15/15 symbols、0 omitted；独立
+  change review 使用 Paseo agent-scoped reviewer `/root/ttr_item3_review`：Round 1 为 `1 blocking / 0 important`，
+  补齐“可提交 → 添加空成员后禁用 → 删除后恢复可提交”的双向测试与创建态删除操作后，Round 2 在 staged diff
+  `303612bb686d39e504e78f964fc396cb53a0d43fe97f4c50adaf020fde49039d` 上为
+  `0 blocking / 0 important / 0 minor`、可合。里程碑主题为 `feat(team): simplify Team creation`。

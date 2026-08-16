@@ -40,9 +40,28 @@ const STRICT_METHODOLOGY: MethodologyDescriptor = {
   },
 };
 
+const TWO_MEMBER_METHODOLOGY: MethodologyDescriptor = {
+  ...TEST_METHODOLOGY,
+  presets: [
+    {
+      ...TEST_METHODOLOGY.presets[0]!,
+      slots: [
+        TEST_METHODOLOGY.presets[0]!.slots[0]!,
+        {
+          ...TEST_METHODOLOGY.presets[0]!.slots[0]!,
+          slotId: "reviewer",
+          suggestedRole: "Reviewer",
+        },
+      ],
+    },
+  ],
+};
+
 vi.mock("react-native-unistyles", () => ({
   StyleSheet: { create: () => new Proxy({}, { get: () => ({}) }) },
 }));
+
+vi.mock("lucide-react-native", () => ({ Settings2: () => null }));
 
 vi.mock("@/constants/layout", () => ({
   useIsCompactFormFactor: () => false,
@@ -115,6 +134,7 @@ vi.mock("@/components/ui/select-field", async () => {
       ReactModule.createElement("button", {
         "data-testid": testID,
         "data-value": value ?? "",
+        "data-options": JSON.stringify(options),
         type: "button",
         disabled,
         onClick: () => {
@@ -134,14 +154,16 @@ vi.mock("@/components/ui/button", async () => {
       children,
       testID,
       onPress,
+      disabled,
     }: {
       children: React.ReactNode;
       testID?: string;
       onPress?: () => void;
+      disabled?: boolean;
     }) =>
       ReactModule.createElement(
         "button",
-        { "data-testid": testID, type: "button", onClick: onPress },
+        { "data-testid": testID, type: "button", disabled, onClick: onPress },
         children,
       ),
   };
@@ -228,13 +250,14 @@ function editTeam(): TeamV2 {
 describe("TeamProfileFormSheet", () => {
   afterEach(cleanup);
 
-  it("uses the selected template for roles and skills and only asks for execution", () => {
+  it("uses a template-first path that only asks for Agent Profiles", () => {
     render(
       <TeamProfileFormSheet
         serverId="server-a"
         workspaceId="workspace-a"
         cwd="/work/a"
         methodologies={[TEST_METHODOLOGY, STRICT_METHODOLOGY]}
+        agentProfiles={[TEST_AGENT_PROFILE]}
         catalogStatus="ready"
         visible
         onClose={noop}
@@ -263,11 +286,96 @@ describe("TeamProfileFormSheet", () => {
     expect(screen.getByTestId("team-profile-member-0-heading").textContent).toBe(
       "Independent implementer",
     );
-    expect(screen.getByTestId("team-profile-member-0-skills").textContent).toContain("TypeScript");
+    expect(screen.getByTestId("team-profile-member-0-responsibility").textContent).toBe("Engineer");
     expect(screen.getByTestId("team-profile-member-setup-hint")).toBeTruthy();
-    expect(screen.getByTestId("team-profile-member-0-model-trigger")).toBeTruthy();
+    const profileSelection = screen.getByTestId("team-profile-member-0-execution-source");
+    expect(profileSelection).toBeTruthy();
+    expect(profileSelection.getAttribute("data-options")).not.toContain("inline");
+    expect(screen.queryByTestId("team-profile-member-0-model-trigger")).toBeNull();
+    expect(screen.queryByTestId("team-profile-member-0-skills")).toBeNull();
     expect(screen.queryByTestId("team-profile-task")).toBeNull();
-    expect(screen.queryByTestId("team-profile-member-0-responsibility")).toBeNull();
+    expect(screen.getByTestId("team-profile-collaboration-mode").textContent).toContain(
+      "Independent member review",
+    );
+    expect(screen.getByTestId("team-profile-team-capabilities").textContent).toContain(
+      "TypeScript",
+    );
+    expect(screen.getByTestId("team-profile-capabilities-hint")).toBeTruthy();
+    expect(screen.getByTestId("team-profile-advanced-toggle")).toBeTruthy();
+    const submit = screen.getByTestId("team-profile-submit");
+    expect(submit.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.change(screen.getByTestId("team-profile-name"), {
+      target: { value: "Review Team" },
+    });
+    expect(submit.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(profileSelection);
+    expect(submit.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("keeps inline models, levels, and skills behind advanced settings", () => {
+    render(
+      <TeamProfileFormSheet
+        serverId="server-a"
+        workspaceId="workspace-a"
+        cwd="/work/a"
+        methodologies={[TEST_METHODOLOGY]}
+        agentProfiles={[TEST_AGENT_PROFILE]}
+        catalogStatus="ready"
+        visible
+        onClose={noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("team-profile-preset"));
+    expect(screen.queryByTestId("team-profile-member-0-level")).toBeNull();
+    expect(screen.queryByTestId("team-profile-skill-0-name")).toBeNull();
+    expect(screen.queryByTestId("team-profile-member-0-model-trigger")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("team-profile-advanced-toggle"));
+    expect(screen.getByTestId("team-profile-member-0-level")).toBeTruthy();
+    expect(screen.getByTestId("team-profile-skill-0-name")).toBeTruthy();
+    expect(screen.getByTestId("team-profile-methodology-facts")).toBeTruthy();
+    expect(screen.getByTestId("team-profile-member-0-model-trigger")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("team-profile-member-0-execution-source"));
+    expect(screen.queryByTestId("team-profile-member-0-model-trigger")).toBeNull();
+
+    fireEvent.change(screen.getByTestId("team-profile-name"), {
+      target: { value: "Advanced Team" },
+    });
+    expect(screen.getByTestId("team-profile-submit").hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(screen.getByTestId("team-profile-add-member"));
+    expect(screen.getByTestId("team-profile-member-1")).toBeTruthy();
+    expect(screen.getByTestId("team-profile-submit").hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByTestId("team-profile-member-1-remove"));
+    expect(screen.queryByTestId("team-profile-member-1")).toBeNull();
+    expect(screen.getByTestId("team-profile-submit").hasAttribute("disabled")).toBe(false);
+  });
+
+  it("allows one Agent Profile to run multiple template members", () => {
+    render(
+      <TeamProfileFormSheet
+        serverId="server-a"
+        workspaceId="workspace-a"
+        cwd="/work/a"
+        methodologies={[TWO_MEMBER_METHODOLOGY]}
+        agentProfiles={[TEST_AGENT_PROFILE]}
+        catalogStatus="ready"
+        visible
+        onClose={noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("team-profile-preset"));
+    const first = screen.getByTestId("team-profile-member-0-execution-source");
+    const second = screen.getByTestId("team-profile-member-1-execution-source");
+    fireEvent.click(first);
+    fireEvent.click(second);
+
+    expect(first.getAttribute("data-value")).toBe("profile:profile-reviewer");
+    expect(second.getAttribute("data-value")).toBe("profile:profile-reviewer");
   });
 
   it("detaches a sourced Member without a live creation workspace", () => {
@@ -368,7 +476,9 @@ describe("TeamProfileFormSheet", () => {
     fireEvent.click(screen.getByTestId("team-profile-member-0-execution-source"));
 
     expect(screen.getByTestId("team-profile-member-0-heading").textContent).toBe("Engineer");
-    expect(screen.getByTestId("team-profile-member-0-skills").textContent).toContain("TypeScript");
+    expect(screen.getByTestId("team-profile-team-capabilities").textContent).toContain(
+      "TypeScript",
+    );
     expect(
       screen.getByTestId("team-profile-member-0-execution-source").getAttribute("data-value"),
     ).toBe("profile:profile-reviewer");
@@ -378,7 +488,9 @@ describe("TeamProfileFormSheet", () => {
       "Durable Team",
     );
     expect(screen.getByTestId("team-profile-member-0-heading").textContent).toBe("Engineer");
-    expect(screen.getByTestId("team-profile-member-0-skills").textContent).toContain("TypeScript");
+    expect(screen.getByTestId("team-profile-team-capabilities").textContent).toContain(
+      "TypeScript",
+    );
 
     rerender(
       <TeamProfileFormSheet
