@@ -720,6 +720,21 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     await expect(page.getByTestId(`team-room-message-${posted.message!.id}-author`)).toHaveText(
       "You",
     );
+    await expect(page.getByTestId("mission-workroom-objective")).toHaveText(
+      "Add duplicate service-port validation with focused tests and review",
+    );
+    await expect(page.getByTestId("mission-workroom-workspace")).toContainText(
+      workspace.workspaceName,
+    );
+    await expect(page.getByTestId("mission-workroom-inspector")).toBeVisible();
+    await expect(page.getByTestId("mission-workroom-inspector-trigger")).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        ),
+      )
+      .toBe(true);
     await shoot(page, "05-desktop-mission-chat");
 
     await openSettingsPage(page, "plan");
@@ -728,6 +743,20 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     await page.keyboard.press("Escape");
 
     await page.setViewportSize(COMPACT_VIEWPORT);
+    await expect(page.getByTestId("mission-workroom-inspector")).toHaveCount(0);
+    await page.getByTestId("mission-workroom-inspector-trigger").click();
+    await expect(page.getByTestId("mission-workroom-inspector-sheet")).toBeVisible();
+    await expect(page.getByTestId("mission-workroom-inspector-sheet-content")).toContainText(
+      "交付成员",
+    );
+    const compactResults = page
+      .getByTestId("mission-workroom-inspector-sheet-content")
+      .getByText("Results", { exact: true });
+    await compactResults.scrollIntoViewIfNeeded();
+    await expect(compactResults).toBeInViewport();
+    await shoot(page, "06a-compact-mission-workroom");
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByTestId("mission-workroom-inspector-sheet")).toBeHidden();
     await page.getByTestId("team-room-settings").click();
     await expect(page.getByTestId("team-settings-navigation")).toBeVisible();
     await shoot(page, "07-compact-settings-navigation");

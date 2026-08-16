@@ -128,8 +128,15 @@ export function selectTeamMemberSettingsRows(
   mission: TeamMission | null,
   agentProfiles: readonly AgentProfileExecutionFacts[] = [],
 ): TeamMemberSettingsRow[] {
-  const skillNames = new Map(team.skills.map((skill) => [skill.skillId, skill.name]));
-  return team.members.map((member) => {
+  const rosterSnapshot = mission?.rosterSnapshots.find(
+    (snapshot) => snapshot.revision === mission.activeRosterSnapshotRevision,
+  );
+  const skillNames = new Map(
+    (rosterSnapshot?.skills ?? team.skills).map((skill) => [skill.skillId, skill.name]),
+  );
+  const members = rosterSnapshot?.members ?? team.members;
+  const leadMemberId = rosterSnapshot?.leadMemberId ?? team.leadMemberId;
+  return members.map((member) => {
     const participant = participantForMember(mission, member.memberId);
     let participantState: TeamParticipantState = "not_started";
     if (participant) participantState = participant.archivedAt ? "archived" : "active";
@@ -141,7 +148,7 @@ export function selectTeamMemberSettingsRows(
       skillNames: member.skillIds.map((skillId) => skillNames.get(skillId) ?? skillId),
       provider: member.executionProfile.provider,
       model: member.executionProfile.model,
-      isLead: member.memberId === team.leadMemberId,
+      isLead: member.memberId === leadMemberId,
       participantAgentId: participant?.agentId ?? null,
       participantState,
       executionSourceStatus: selectTeamMemberExecutionSourceStatus(member, agentProfiles),

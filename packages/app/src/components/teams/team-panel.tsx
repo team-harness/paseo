@@ -6,15 +6,16 @@ import { RotateCw } from "lucide-react-native";
 
 import { useAgentProfiles } from "@/agent-profiles/internal/use-agent-profiles";
 import { MissionStartSheet } from "@/components/teams/mission-start-sheet";
+import { MissionWorkroom } from "@/components/teams/mission-workroom";
 import { TeamIdleOverview } from "@/components/teams/team-idle-overview";
 import { TeamProfileFormSheet } from "@/components/teams/team-profile-form-sheet";
-import { TeamRoom } from "@/components/teams/team-room";
 import { TeamSettingsSheet } from "@/components/teams/team-settings-sheet";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { createTeamMissionsReplica } from "@/runtime/team-missions-sync/replica";
 import { useSessionStore, type Agent } from "@/stores/session-store";
+import { selectMissionWorkroomView } from "@/teams/mission-workroom-view";
 import { selectTeamPanelView } from "@/teams/team-panel-view";
 import type { Theme } from "@/styles/theme";
 
@@ -62,6 +63,20 @@ export function TeamPanel({
     () => selectTeamPanelView(replica, teamId, agents, localMissionId),
     [agents, localMissionId, replica, teamId],
   );
+  const workroomView = useMemo(() => {
+    if (view.state !== "ready" || !view.team || !view.mission) return null;
+    const workspace = workspaces?.get(view.mission.workspaceId);
+    return selectMissionWorkroomView({
+      team: view.team,
+      mission: view.mission,
+      workspaceLabel:
+        workspace?.title?.trim() ||
+        workspace?.name ||
+        workspace?.workspaceDirectory ||
+        view.mission.workspaceId,
+      agentProfiles: agentProfiles ?? [],
+    });
+  }, [agentProfiles, view, workspaces]);
   const retry = useCallback(() => {
     void getHostRuntimeStore().refreshTeamMissions(serverId);
   }, [serverId]);
@@ -123,10 +138,10 @@ export function TeamPanel({
   const canStartMission = workspaceId !== null && view.canStartMission;
   return (
     <View style={styles.body} testID="team-panel">
-      {view.mission ? (
-        <TeamRoom
+      {view.mission && workroomView ? (
+        <MissionWorkroom
           serverId={serverId}
-          missionId={view.mission.id}
+          view={workroomView}
           roster={view.members}
           readOnly={view.readOnly}
           onOpenAgent={onOpenAgent}

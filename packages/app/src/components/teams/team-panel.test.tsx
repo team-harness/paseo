@@ -34,6 +34,9 @@ const HISTORY_MISSION = {
   attentionItems: [],
   rosterSnapshots: [],
   participants: [],
+  workstreams: [],
+  assignments: [],
+  reviewWaivers: [],
   updatedAt: "2026-08-12T00:00:00.000Z",
 } as unknown as TeamMission;
 
@@ -89,8 +92,8 @@ vi.mock("@/stores/session-store", () => ({
     }),
 }));
 
-vi.mock("@/components/teams/team-room", () => ({
-  TeamRoom: ({
+vi.mock("@/components/teams/mission-workroom", () => ({
+  MissionWorkroom: ({
     onOpenSettings,
     onStartMission,
     onExitReplay,

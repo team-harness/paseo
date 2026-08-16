@@ -9,7 +9,7 @@ import { useHostRuntimeSnapshot, useHosts, getHostRuntimeStore } from "@/runtime
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useLiveWorkspaceIds } from "@/stores/session-store-hooks";
-import { buildHostRootRoute } from "@/utils/host-routes";
+import { buildHostAgentDetailRoute, buildHostRootRoute } from "@/utils/host-routes";
 
 export default function HostTeamRoute() {
   return (
@@ -100,6 +100,10 @@ function HostTeamRouteContent() {
     }
     router.replace(serverId ? buildHostRootRoute(serverId) : ("/" as Href));
   }, [router, serverId]);
+  const handleOpenAgent = useCallback(
+    (agentId: string) => router.push(buildHostAgentDetailRoute(serverId, agentId)),
+    [router, serverId],
+  );
 
   if (
     resolution.kind === "waitingForHost" ||
@@ -124,6 +128,7 @@ function HostTeamRouteContent() {
         workspaceId={resolution.kind === "resolved" ? resolution.workspaceId : null}
         teamId={teamId}
         initialSettingsOpen={settingsRequested}
+        onOpenAgent={handleOpenAgent}
       />
     );
   }
