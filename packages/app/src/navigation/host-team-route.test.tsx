@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.stubGlobal("React", React);
 
@@ -9,10 +9,13 @@ const mocked = vi.hoisted(() => ({
   navigateToWorkspace: vi.fn(),
   replace: vi.fn(),
   back: vi.fn(),
+  params: { serverId: "host-1", teamId: "team-1", settings: undefined as string | undefined },
+  activeMissionId: null as string | null,
+  liveWorkspaceIds: [] as string[],
 }));
 
 vi.mock("expo-router", () => ({
-  useLocalSearchParams: () => ({ serverId: "host-1", teamId: "team-1" }),
+  useLocalSearchParams: () => mocked.params,
   useRouter: () => ({
     replace: mocked.replace,
     back: mocked.back,
@@ -29,16 +32,19 @@ vi.mock("@/components/teams/team-panel", () => ({
     serverId,
     workspaceId,
     teamId,
+    initialSettingsOpen,
   }: {
     serverId: string;
     workspaceId: string | null;
     teamId: string;
+    initialSettingsOpen?: boolean;
   }) =>
     React.createElement("div", {
       "data-testid": "host-level-team-panel",
       "data-server-id": serverId,
       "data-workspace-id": workspaceId ?? "null",
       "data-team-id": teamId,
+      "data-settings-open": initialSettingsOpen ? "true" : "false",
     }),
 }));
 
@@ -57,7 +63,7 @@ vi.mock("@/stores/navigation-active-workspace-store", () => ({
 }));
 
 vi.mock("@/stores/session-store-hooks", () => ({
-  useLiveWorkspaceIds: () => [],
+  useLiveWorkspaceIds: () => mocked.liveWorkspaceIds,
 }));
 
 vi.mock("@/stores/session-store", () => ({
@@ -65,7 +71,13 @@ vi.mock("@/stores/session-store", () => ({
     selector({
       sessions: {
         "host-1": {
-          serverInfo: { features: { teamMissions: true, globalTeamProfiles: true } },
+          serverInfo: {
+            features: {
+              teamMissions: true,
+              globalTeamProfiles: true,
+              teamMethodologies: true,
+            },
+          },
           workspaces: new Map(),
           teamMissionsReplica: {
             status: "ready",
@@ -74,12 +86,19 @@ vi.mock("@/stores/session-store", () => ({
                 "team-1",
                 {
                   id: "team-1",
-                  workspaceId: "workspace-removed",
-                  activeMissionId: null,
+                  creationWorkspaceId: "workspace-removed",
+                  activeMissionId: mocked.activeMissionId,
                 },
               ],
             ]),
-            missions: new Map(),
+            missions: mocked.activeMissionId
+              ? new Map([
+                  [
+                    mocked.activeMissionId,
+                    { id: mocked.activeMissionId, workspaceId: "workspace-live" },
+                  ],
+                ])
+              : new Map(),
           },
         },
       },
@@ -92,7 +111,11 @@ describe("host-level Team deep links", () => {
   beforeEach(() => {
     mocked.navigateToWorkspace.mockClear();
     mocked.replace.mockClear();
+    mocked.params.settings = undefined;
+    mocked.activeMissionId = null;
+    mocked.liveWorkspaceIds = [];
   });
+  afterEach(cleanup);
 
   it("renders an idle Team without inventing a workspace", () => {
     render(<HostTeamRoute />);
@@ -103,5 +126,18 @@ describe("host-level Team deep links", () => {
     expect(panel.getAttribute("data-workspace-id")).toBe("null");
     expect(mocked.navigateToWorkspace).not.toHaveBeenCalled();
     expect(mocked.replace).not.toHaveBeenCalled();
+  });
+
+  it("keeps a settings intent on the host-owned surface for an active Team", () => {
+    mocked.params.settings = "1";
+    mocked.activeMissionId = "mission-active";
+    mocked.liveWorkspaceIds = ["workspace-live"];
+
+    render(<HostTeamRoute />);
+
+    const panel = screen.getByTestId("host-level-team-panel");
+    expect(panel.getAttribute("data-workspace-id")).toBe("workspace-live");
+    expect(panel.getAttribute("data-settings-open")).toBe("true");
+    expect(mocked.navigateToWorkspace).not.toHaveBeenCalled();
   });
 });

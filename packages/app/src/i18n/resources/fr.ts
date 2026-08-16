@@ -1213,6 +1213,7 @@ export const fr: TranslationResources = {
         "{{hostName}} est trop ancien pour les équipes. Mettez-le à jour pour ouvrir ce lien.",
     },
     panel: {
+      ...teamV2Fr.panel,
       archiveRefused: "L’équipe n’a pas pu être archivée.",
       removeRefused: "Ce membre n’a pas pu être retiré.",
       leadTabClosed:

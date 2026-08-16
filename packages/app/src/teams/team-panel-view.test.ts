@@ -217,4 +217,36 @@ describe("selecting the Team panel view", () => {
     });
     expect(profile.activeMissionId).toBe("mission-1");
   });
+
+  it("projects terminal Mission history separately from the active placement", () => {
+    const profile = team({ activeMissionId: null });
+    const older = mission({
+      id: "mission-older",
+      status: "failed",
+      updatedAt: "2026-08-15T08:00:00.000Z",
+    });
+    const latest = mission({
+      id: "mission-latest",
+      status: "completed",
+      updatedAt: "2026-08-16T08:00:00.000Z",
+    });
+    const replica = createTeamMissionsReplica({
+      status: "ready",
+      profiles: new Map([[profile.id, profile]]),
+      missions: new Map([
+        [older.id, older],
+        [latest.id, latest],
+      ]),
+      historyReads: new Map([
+        [profile.id, { status: "ready", missionIds: [older.id, latest.id], error: null }],
+      ]),
+    });
+
+    expect(selectTeamPanelView(replica, profile.id, new Map())).toMatchObject({
+      mission: null,
+      historyStatus: "ready",
+      history: [{ id: "mission-latest" }, { id: "mission-older" }],
+    });
+    expect(profile.activeMissionId).toBeNull();
+  });
 });

@@ -484,7 +484,9 @@ async function reloadTeamPanel(page: Page, serverId: string, teamId: string): Pr
   );
   await page.goto(teamUrl.toString(), { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("team-panel")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("team-room-settings")).toBeVisible();
+  await expect(
+    page.getByTestId("team-room-settings").or(page.getByTestId("team-overview-settings")),
+  ).toBeVisible();
 }
 
 async function shoot(page: Page, name: string): Promise<void> {
@@ -504,7 +506,10 @@ async function openSettingsPage(
   page: Page,
   target: "members" | "mission" | "plan" | "attention",
 ): Promise<void> {
-  await page.getByTestId("team-room-settings").click();
+  await page
+    .getByTestId("team-room-settings")
+    .or(page.getByTestId("team-overview-settings"))
+    .click();
   await expect(page.getByTestId("team-settings-navigation")).toBeVisible();
   await page.getByTestId(`team-settings-nav-${target}`).click();
 }
@@ -605,7 +610,7 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     await page.getByTestId("team-profile-submit").click();
 
     await expect(page.getByTestId("team-panel")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("team-room-no-mission")).toBeVisible();
+    await expect(page.getByTestId("team-idle-overview")).toBeVisible();
     const profiles = await client.listTeamProfiles();
     expect(profiles.error).toBeNull();
     const team = profiles.teams.find((candidate) => candidate.name === "Release engineering");
@@ -616,6 +621,32 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
       activeAgentsBefore,
     );
     await shoot(page, "02-desktop-empty-team");
+
+    await page.goto(`/h/${serverId}/teams`);
+    await expect(page.getByTestId("team-hub-create")).toBeVisible();
+    const teamRow = page.getByTestId(`host-team-row-${team!.id}`);
+    await expect(teamRow).toContainText("Release engineering");
+    await shoot(page, "02a-desktop-team-hub");
+
+    await page.setViewportSize(COMPACT_VIEWPORT);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        ),
+      )
+      .toBe(true);
+    await shoot(page, "02b-compact-team-hub");
+    await page.setViewportSize(DESKTOP_VIEWPORT);
+
+    await page.getByTestId(`host-team-menu-${team!.id}`).click();
+    await page.getByTestId(`host-team-settings-${team!.id}`).click();
+    await expect(page).toHaveURL(/settings=1/);
+    await expect(page.getByTestId("team-settings-sheet")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.goto(`/h/${serverId}/teams`);
+    await teamRow.click();
+    await expect(page.getByTestId("team-idle-overview")).toBeVisible();
 
     await openSettingsPage(page, "members");
     for (const member of team?.members ?? []) {
@@ -628,7 +659,7 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
 
     await seedStructuredToolsProfiles(daemon.paseoHome, team!.id);
 
-    await page.getByTestId("team-room-start-mission").click();
+    await page.getByTestId("team-overview-start-mission").click();
     await expect(page.getByTestId("mission-start-sheet")).toBeVisible();
     await page
       .getByTestId("mission-start-objective")
@@ -826,12 +857,12 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
       completedTeam,
     );
     await reloadTeamPanel(page, serverId, team!.id);
-    await expect(page.getByTestId("team-room-no-mission")).toBeVisible();
-    await openSettingsPage(page, "mission");
-    const completedHistory = page.getByTestId(`team-mission-history-${completed.id}`);
+    await expect(page.getByTestId("team-idle-overview")).toBeVisible();
+    const completedHistory = page.getByTestId(`team-overview-history-${completed.id}`);
     await expect(completedHistory).toBeVisible();
     await completedHistory.click();
-    await expect(page.getByTestId("team-settings-sheet")).toBeHidden();
+    await expect(page.getByTestId("team-room")).toBeVisible();
+    await expect(page.getByTestId("team-room-composer")).toHaveCount(0);
     await openSettingsPage(page, "mission");
     await expect(
       page
@@ -840,6 +871,15 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
         .first(),
     ).toBeVisible();
     await shoot(page, "13-desktop-completed-mission");
+    await page.keyboard.press("Escape");
+
+    await expect(page.getByTestId("team-room-start-mission")).toBeVisible();
+    await page.getByTestId("team-room-start-mission").click();
+    await expect(page.getByTestId("mission-start-sheet")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("mission-start-sheet")).toBeHidden();
+    await page.getByTestId("team-room-back-to-team").click();
+    await expect(page.getByTestId("team-idle-overview")).toBeVisible();
 
     await page.goto(`/h/${serverId}/workspace/${secondWorkspace.id}`);
     await inlineAdd.click();

@@ -1203,6 +1203,7 @@ export const ru: TranslationResources = {
       unsupported: "{{hostName}} слишком старый для команд. Обновите его, чтобы открыть ссылку.",
     },
     panel: {
+      ...teamV2Ru.panel,
       archiveRefused: "Не удалось заархивировать команду.",
       removeRefused: "Не удалось убрать участника.",
       leadTabClosed:

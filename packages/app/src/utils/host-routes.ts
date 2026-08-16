@@ -414,6 +414,11 @@ export function buildHostTeamRoute(serverId: string, teamId: string) {
   return `${base}/team/${encodeSegment(normalizedTeamId)}` as const;
 }
 
+export function buildHostTeamSettingsRoute(serverId: string, teamId: string): Href {
+  const route = buildHostTeamRoute(serverId, teamId);
+  return route === "/" ? ("/" as Href) : (`${route}?settings=1` as Href);
+}
+
 export function buildHostTeamsRoute(serverId: string): Href {
   const base = buildHostRootRoute(serverId);
   return base === "/" ? ("/" as Href) : (`${base}/teams` as Href);

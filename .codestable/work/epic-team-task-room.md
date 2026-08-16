@@ -2,8 +2,8 @@
 epic: ../epics/team-task-room.md
 phase: executing
 approved_revision: eb9b1d212874d0213e8b5bdea203223e78b6215c781cef04e6a172d48852b353
-current_item: TTR-ITEM-2
-next_action: 执行 TTR-ITEM-2，把 Team Hub 升级为 host-global 工作入口
+current_item: TTR-ITEM-3
+next_action: 执行 TTR-ITEM-3，简化 Team 创建与协作方式文案
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -13,7 +13,7 @@ remote_publish: final
 ## 子项进度
 
 - [x] TTR-ITEM-1 · 固化三层事件边界并隔离 physical Room subscription
-- [ ] TTR-ITEM-2 · 把 Team Hub 升级为 host-global 工作入口
+- [x] TTR-ITEM-2 · 把 Team Hub 升级为 host-global 工作入口
 - [ ] TTR-ITEM-3 · 简化 Team 创建与协作方式文案
 - [ ] TTR-ITEM-4 · 建立 MissionWorkroom 主布局
 - [ ] TTR-ITEM-5 · 固化 Room 发帖幂等性与 recipient routing
@@ -100,3 +100,16 @@ review lineage、checkpoint、测试和残余风险只写本游标；永久 Epic
   `aab401c022c2aaf11b78a75fccc209659798cb261a79e53b38a9e3360d7f5dc6` 上为
   `0 blocking / 0 important / 0 nit`、可合。里程碑主题为
   `fix(team): scope Room subscriptions to physical sources`；稳定 commit SHA 在本提交创建后由 Git 历史与最终交付索引记录。
+- 2026-08-16：TTR-ITEM-2 完成。`/h/[serverId]/teams` 继续作为 `HostLevelTeamList` 唯一 owner，顶部持续提供
+  创建 Team 与 Add/Open Workspace；每行投影模板、成员、Mission、Attention 与稳定主操作，并通过次级菜单直达
+  host-owned Team 设置。`TeamPanel` 成为 idle 概览、active Room、terminal replay 的唯一 surface owner；历史选择不改
+  active Mission placement，回放可返回概览或启动新 Mission。Team replica 与 Methodology catalog 失败继续隔离。
+- 2026-08-16：TTR-ITEM-2 TDD 先复现设置路由、历史缓存 action 漂移、active snapshot 缺失误报与 replay 无出口；
+  最终定点测试 `103/103`、Hub browser E2E `2/2`、完整 Team browser E2E `1/1` 通过。420px compact 证据断言
+  `scrollWidth <= clientWidth` 并保留截图；lint、format 与 diff-check 通过。App typecheck 仅命中未修改的既有基线
+  `packages/app/src/components/draggable-list.native.tsx:122`。
+- 2026-08-16：TTR-ITEM-2 独立 change review 使用 Paseo agent-scoped `gpt-5.6-sol/xhigh` reviewer
+  `/root/ttr_item2_review`：Round 1 为 `2 blocking / 2 important`，修复 Hub 设置入口、terminal replay 出口、稳定 idle
+  主操作与 compact 布局后，Round 2 在 staged diff
+  `d1fe494c836d65219b8b2df58fff2fb4d10da785c89eb530e89072fcbae8d78c` 上为
+  `0 blocking / 0 important / 0 minor`、可合。里程碑主题为 `feat(team): make Team Hub the work entry`。

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { router } from "expo-router";
-import { AlertCircle, ArrowLeft, FolderOpen, Plus, RotateCw } from "lucide-react-native";
+import { AlertCircle, ArrowLeft, RotateCw } from "lucide-react-native";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { HostLevelTeamList } from "@/components/teams/host-level-team-list";
@@ -32,10 +32,16 @@ export default function HostTeamsRoute() {
   const routeServerId = serverId ?? "";
   const runtime = useHostRuntimeSnapshot(routeServerId);
   const session = useSessionStore((state) => state.sessions[routeServerId]);
-  const rows = useMemo(
-    () => (session ? selectHostLevelTeamRows(session.teamMissionsReplica) : []),
-    [session],
-  );
+  const rows = useMemo(() => {
+    if (!session) return [];
+    const workspaceLabels = new Map(
+      [...session.workspaces.entries()].map(([workspaceId, item]) => [
+        workspaceId,
+        item.title ?? item.name ?? workspaceId,
+      ]),
+    );
+    return selectHostLevelTeamRows(session.teamMissionsReplica, workspaceLabels);
+  }, [session]);
   const workspace = useMemo(
     () => (session ? selectTeamHubWorkspace(session.workspaces) : null),
     [session],
@@ -180,43 +186,24 @@ function SupportedHub({
     <View style={styles.page} testID="team-hub-supported">
       {teamFailed ? (
         <Failure message={teamError ?? t("teams.host.hub.teamFailure")} onRetry={onRetryTeam} />
-      ) : (
-        <HostLevelTeamList
-          serverId={serverId}
-          rows={rows}
-          emptyDescription={t(
-            workspace
-              ? "teams.host.hub.emptyWithWorkspace"
-              : "teams.host.hub.emptyWithoutWorkspace",
-          )}
-        />
-      )}
+      ) : null}
+      <HostLevelTeamList
+        serverId={serverId}
+        rows={rows}
+        emptyDescription={t(
+          workspace ? "teams.host.hub.emptyWithWorkspace" : "teams.host.hub.emptyWithoutWorkspace",
+        )}
+        createDisabled={!createEnabled}
+        onCreate={openCreate}
+        onOpenWorkspace={workspace ? openWorkspace : openProject}
+        workspaceAvailable={Boolean(workspace)}
+        showEmptyState={!teamFailed}
+      />
       {catalogFailed ? (
         <Failure
           message={catalogError ?? t("teams.host.hub.methodologyFailure")}
           onRetry={onRetryCatalog}
         />
-      ) : null}
-      {rows.length === 0 ? (
-        <View style={styles.emptyActions} testID="team-hub-empty-actions">
-          <Button
-            size="sm"
-            leftIcon={Plus}
-            onPress={openCreate}
-            disabled={!createEnabled}
-            testID="team-hub-create"
-          >
-            {t("teams.host.hub.create")}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            leftIcon={FolderOpen}
-            onPress={workspace ? openWorkspace : openProject}
-          >
-            {workspace ? t("teams.host.hub.openWorkspace") : t("teams.host.hub.addProject")}
-          </Button>
-        </View>
       ) : null}
       {workspace ? (
         <TeamProfileFormSheet
@@ -298,12 +285,6 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[3],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
-  },
-  emptyActions: {
-    flexDirection: "row",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[4],
-    paddingBottom: theme.spacing[4],
   },
   message: { flex: 1, color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
 }));

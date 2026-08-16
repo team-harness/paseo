@@ -1215,6 +1215,7 @@ export const es: TranslationResources = {
         "{{hostName}} es demasiado antiguo para equipos. Actualízalo para abrir este enlace.",
     },
     panel: {
+      ...teamV2Es.panel,
       archiveRefused: "No se pudo archivar el equipo.",
       removeRefused: "No se pudo quitar a ese miembro.",
       leadTabClosed: "Pestaña cerrada. {{teamName}} sigue en marcha: archívalo desde su panel.",

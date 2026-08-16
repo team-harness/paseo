@@ -13,11 +13,25 @@ export const teamV2En = {
       emptyTitle: "No teams yet",
       emptyWithWorkspace: "Create a Team here or open the workspace.",
       emptyWithoutWorkspace: "Add or open a project before creating a Team.",
+      template: "Template: {{template}}",
+      memberCount: "{{count}} members",
+      noActiveMission: "No active task",
+      attentionCount: "{{count}} need attention",
+      enterRoom: "Enter task room",
+      startMission: "Start task",
+      viewHistory: "View history",
     },
   },
   mission: {
     empty: "No Mission yet",
     start: "Start Mission",
+  },
+  panel: {
+    settings: "Settings",
+    template: "Team template",
+    members: "Members ({{count}})",
+    workspaceRequired: "Add or open a project before starting a task.",
+    historyFailed: "Mission history could not be read.",
   },
   v2: {
     actions: {
@@ -352,6 +366,7 @@ function teamV2Locale(overrides: DeepPartial<TeamV2Resources>): TeamV2Resources 
       hub: { ...teamV2En.host.hub, ...overrides.host?.hub },
     },
     mission: { ...teamV2En.mission, ...overrides.mission },
+    panel: { ...teamV2En.panel, ...overrides.panel },
     v2: {
       actions: { ...teamV2En.v2.actions, ...overrides.v2?.actions },
       profile: { ...teamV2En.v2.profile, ...overrides.v2?.profile },
@@ -416,11 +431,25 @@ export const teamV2ZhCN: TeamV2Resources = {
       emptyTitle: "还没有团队",
       emptyWithWorkspace: "在这里创建团队，或打开现有 Workspace。",
       emptyWithoutWorkspace: "添加或打开项目后即可创建团队。",
+      template: "团队模板：{{template}}",
+      memberCount: "{{count}} 位成员",
+      noActiveMission: "暂无进行中的任务",
+      attentionCount: "{{count}} 项待处理",
+      enterRoom: "进入任务室",
+      startMission: "开始任务",
+      viewHistory: "查看历史",
     },
   },
   mission: {
     empty: "还没有 Mission",
     start: "启动 Mission",
+  },
+  panel: {
+    settings: "设置",
+    template: "团队模板",
+    members: "成员（{{count}}）",
+    workspaceRequired: "添加或打开项目后才能开始任务。",
+    historyFailed: "无法读取 Mission 历史。",
   },
   v2: {
     actions: {

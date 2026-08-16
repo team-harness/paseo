@@ -1178,6 +1178,7 @@ export const ar: TranslationResources = {
       unsupported: "{{hostName}} قديم جدًا ولا يدعم الفرق. حدّثه لفتح هذا الرابط.",
     },
     panel: {
+      ...teamV2Ar.panel,
       archiveRefused: "تعذّرت أرشفة الفريق.",
       removeRefused: "تعذّرت إزالة هذا العضو.",
       leadTabClosed: "أُغلق التبويب. {{teamName}} ما زال يعمل — أرشِفه من لوحة الفريق.",
