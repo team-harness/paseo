@@ -75,6 +75,32 @@ describe("PaseoTeamToolRegistrar", () => {
     });
   });
 
+  test("posts a standalone progress update with an optional explicit mention", async () => {
+    const postAgentRoomReply = vi.fn(async () => ({ message: { id: "update-1" } }));
+    const registrar = new PaseoTeamToolRegistrar({
+      service: collaborationFake({ postAgentRoomReply }),
+      logger: createTestLogger(),
+    });
+    const tools = new Map<string, PaseoToolDefinition>();
+    registrar.register("agent-member", captureTools(tools));
+
+    await tools.get("chat_post")?.handler(
+      {
+        missionId: "mission-1",
+        idempotencyKey: "progress-1",
+        body: "@team Parser implementation is ready for review.",
+      },
+      {},
+    );
+
+    expect(postAgentRoomReply).toHaveBeenCalledExactlyOnceWith({
+      callerAgentId: "agent-member",
+      missionId: "mission-1",
+      idempotencyKey: "progress-1",
+      body: "@team Parser implementation is ready for review.",
+    });
+  });
+
   test("rejects the scalar assign shape at the strict schema boundary", async () => {
     const registrar = new PaseoTeamToolRegistrar({
       service: collaborationFake(),

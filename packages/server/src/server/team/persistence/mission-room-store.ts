@@ -155,6 +155,13 @@ export class MissionRoomStore {
     };
   }
 
+  async get(missionId: string, messageId: string): Promise<MissionRoomMessageEvent | null> {
+    const room = await this.require(missionId);
+    const index = room.messages.findIndex((message) => message.id === messageId);
+    const message = room.messages[index];
+    return message ? { missionId, message, cursor: index + 1 } : null;
+  }
+
   onMessage(subscriber: (event: MissionRoomMessageEvent) => void): () => void {
     this.subscribers.add(subscriber);
     return () => this.subscribers.delete(subscriber);

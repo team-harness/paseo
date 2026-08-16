@@ -2,8 +2,8 @@
 epic: ../epics/team-task-room.md
 phase: executing
 approved_revision: eb9b1d212874d0213e8b5bdea203223e78b6215c781cef04e6a172d48852b353
-current_item: TTR-ITEM-5
-next_action: 执行 TTR-ITEM-5，固化 Room 发帖幂等性与 recipient routing
+current_item: TTR-ITEM-6
+next_action: 执行 TTR-ITEM-6，闭合回复界面与 Room 历史
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -16,7 +16,7 @@ remote_publish: final
 - [x] TTR-ITEM-2 · 把 Team Hub 升级为 host-global 工作入口
 - [x] TTR-ITEM-3 · 简化 Team 创建与协作方式文案
 - [x] TTR-ITEM-4 · 建立 MissionWorkroom 主布局
-- [ ] TTR-ITEM-5 · 固化 Room 发帖幂等性与 recipient routing
+- [x] TTR-ITEM-5 · 固化 Room 发帖幂等性与 recipient routing
 - [ ] TTR-ITEM-6 · 闭合回复界面与 Room 历史
 - [ ] TTR-ITEM-7 · 让 Agent 在任务室报告协作进展
 - [ ] TTR-ITEM-8 · 把任务、成员、结果和 Attention 收敛到 inspector
@@ -136,3 +136,16 @@ review lineage、checkpoint、测试和残余风险只写本游标；永久 Epic
   `TeamPanel` 接线；独立 reviewer `/root/ttr_item4_review` Round 1 为 `2 blocking / 1 important / 1 minor`，
   修复后 Round 2 在 staged diff `9b404af141268996cba34f5b9d1f85715ecbb9e8d7737d660df042dcc2a8dc5c`
   上为 `0 blocking / 0 important / 0 minor`、可合。里程碑主题为 `feat(team): add Mission workroom layout`。
+- 2026-08-16：TTR-ITEM-5 完成。Room 发帖采用 persisted recipient intents 与已落库零收件人消息双冻结点；human
+  默认路由 active Lead，reply 通过 historical Agent 映射 Member 后转 current binding，canonical `@team` 排除作者，
+  Agent `chat_post` 支持 standalone/reply/explicit mention。App composer 在失败重试期间保持同一 request id；无新
+  RPC、store、wire 字段或兼容分支。
+- 2026-08-16：TTR-ITEM-5 TDD 覆盖 human/Agent routing、re-binding、零收件人/response-lost、outbox→Room
+  recovery、终态拒绝、真实 composer 重试和隔离 daemon WebSocket 重放。最终 collaboration service `81/81`、
+  TeamRoom component `1/1`、daemon E2E `1/1` 通过；`build:server`、lint、format-check 与 diff-check 通过。全仓
+  typecheck 只命中未修改基线 `packages/app/src/components/draggable-list.native.tsx:122`。
+- 2026-08-16：TTR-ITEM-5 code-deep 对 caller-supplied diff 覆盖 21/21 文件、0 omitted；独立 reviewer
+  `/root/ttr_item5_review` Round 1 为 `1 blocking / 1 important`，Round 2 为 `1 blocking / 0 important`。补齐
+  reply+mention recovery、精确 human ack 与“Room 已发布、ack 未落盘”崩溃协调后，Round 3 在 staged diff
+  `38e1915d79fc71ab7f73a48d13fc5068a13625a9442adcdf6f8264a7f586d542` 上为
+  `0 blocking / 0 important / 0 minor`、可合。里程碑主题为 `feat(team): harden Room message routing`。

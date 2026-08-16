@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { TeamRoomMessage } from "@getpaseo/protocol/team/v2-types";
 
-import { postRoomMessage, type PostRoomMessageState } from "./post-room-message";
+import {
+  freezeRoomMessageIntent,
+  postRoomMessage,
+  type PostRoomMessageState,
+} from "./post-room-message";
 
 const LABELS = { refused: "That message was not posted.", offline: "The host is not connected." };
 
@@ -30,11 +34,26 @@ function gateway(answer: { message: TeamRoomMessage | null; error: string | null
 }
 
 describe("saying something in a team's room", () => {
+  it("reuses the request id for the same pending draft and rotates it after an edit", () => {
+    let nextId = 0;
+    const createId = () => `request-${++nextId}`;
+    const first = freezeRoomMessageIntent(null, " hello ", null, createId);
+    const retry = freezeRoomMessageIntent(first, "hello", null, createId);
+    const edited = freezeRoomMessageIntent(first, "hello again", null, createId);
+    const reply = freezeRoomMessageIntent(first, "hello", "message-1", createId);
+
+    expect(first).toEqual({ requestId: "request-1", body: "hello", replyToMessageId: null });
+    expect(retry).toBe(first);
+    expect(edited?.requestId).toBe("request-2");
+    expect(reply?.requestId).toBe("request-3");
+  });
+
   it("goes through pending and back to idle", async () => {
     const seen: PostRoomMessageState[] = [];
 
     await postRoomMessage(
       {
+        requestId: "request-1",
         missionId: "mission-1",
         body: "hello",
         client: gateway({ message: message(), error: null }),
@@ -51,9 +70,14 @@ describe("saying something in a team's room", () => {
   it("sends the room and the body it was given", async () => {
     const client = gateway({ message: message(), error: null });
 
-    await postRoomMessage({ missionId: "mission-1", body: "hello", client }, LABELS, () => {});
+    await postRoomMessage(
+      { requestId: "request-1", missionId: "mission-1", body: "hello", client },
+      LABELS,
+      () => {},
+    );
 
     expect(client.postTeamMissionMessage).toHaveBeenCalledWith({
+      requestId: "request-1",
       missionId: "mission-1",
       body: "hello",
     });
@@ -64,6 +88,7 @@ describe("saying something in a team's room", () => {
 
     await postRoomMessage(
       {
+        requestId: "request-1",
         missionId: "mission-1",
         body: "hello",
         client: gateway({ message: null, error: "Room is gone" }),
@@ -81,7 +106,12 @@ describe("saying something in a team's room", () => {
     const seen: PostRoomMessageState[] = [];
 
     await postRoomMessage(
-      { missionId: "mission-1", body: "hello", client: gateway({ message: null, error: null }) },
+      {
+        requestId: "request-1",
+        missionId: "mission-1",
+        body: "hello",
+        client: gateway({ message: null, error: null }),
+      },
       LABELS,
       (state) => seen.push(state),
     );
@@ -94,6 +124,7 @@ describe("saying something in a team's room", () => {
 
     await postRoomMessage(
       {
+        requestId: "request-1",
         missionId: "mission-1",
         body: "hello",
         client: gateway(new Error("The connection dropped")),
@@ -109,7 +140,7 @@ describe("saying something in a team's room", () => {
     const seen: PostRoomMessageState[] = [];
 
     await postRoomMessage(
-      { missionId: "mission-1", body: "hello", client: null },
+      { requestId: "request-1", missionId: "mission-1", body: "hello", client: null },
       LABELS,
       (state) => seen.push(state),
     );
@@ -121,8 +152,10 @@ describe("saying something in a team's room", () => {
     const client = gateway({ message: message(), error: null });
     const seen: PostRoomMessageState[] = [];
 
-    await postRoomMessage({ missionId: "mission-1", body: "   ", client }, LABELS, (state) =>
-      seen.push(state),
+    await postRoomMessage(
+      { requestId: "request-1", missionId: "mission-1", body: "   ", client },
+      LABELS,
+      (state) => seen.push(state),
     );
 
     expect(client.postTeamMissionMessage).not.toHaveBeenCalled();
@@ -132,9 +165,14 @@ describe("saying something in a team's room", () => {
   it("trims what it sends", async () => {
     const client = gateway({ message: message(), error: null });
 
-    await postRoomMessage({ missionId: "mission-1", body: "  hello  ", client }, LABELS, () => {});
+    await postRoomMessage(
+      { requestId: "request-1", missionId: "mission-1", body: "  hello  ", client },
+      LABELS,
+      () => {},
+    );
 
     expect(client.postTeamMissionMessage).toHaveBeenCalledWith({
+      requestId: "request-1",
       missionId: "mission-1",
       body: "hello",
     });

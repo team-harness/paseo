@@ -2453,6 +2453,25 @@ describe("team mission validation", () => {
     });
   });
 
+  it("rejects reserved broadcast handles inside a roster snapshot", () => {
+    for (const mentionHandle of ["team", "everyone"]) {
+      const aggregate = mission();
+      aggregate.rosterSnapshots[0]!.members[0]!.mentionHandle = mentionHandle;
+
+      expect(validateTeamMission(aggregate)).toEqual({
+        ok: false,
+        issues: [
+          {
+            kind: "invalid_roster_mention_handle",
+            snapshotRevision: 1,
+            memberId: "member-engineer",
+            mentionHandle,
+          },
+        ],
+      });
+    }
+  });
+
   it("rejects duplicate member and skill identities inside a roster snapshot", () => {
     const aggregate = mission();
     aggregate.rosterSnapshots[0]!.members.push({

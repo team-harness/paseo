@@ -92,7 +92,7 @@ describe("team profile validation", () => {
   });
 
   it("rejects non-token and reserved mention handles", () => {
-    for (const mentionHandle of ["not addressable!", "everyone"]) {
+    for (const mentionHandle of ["not addressable!", "everyone", "team"]) {
       const profile = team();
       profile.members[0]!.mentionHandle = mentionHandle;
 

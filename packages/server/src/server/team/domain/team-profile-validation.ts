@@ -55,6 +55,7 @@ export function validateTeamProfile(team: TeamV2): TeamProfileValidation {
     if (
       member.mentionHandle !== canonical ||
       canonical === "everyone" ||
+      canonical === "team" ||
       !isTeamMentionToken(canonical)
     ) {
       issues.push({

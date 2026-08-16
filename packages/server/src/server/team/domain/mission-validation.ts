@@ -896,6 +896,7 @@ function validateRosterSnapshot(snapshot: MissionRosterSnapshot): TeamMissionIss
     if (
       member.mentionHandle !== canonical ||
       canonical === "everyone" ||
+      canonical === "team" ||
       !isTeamMentionToken(canonical)
     ) {
       issues.push({

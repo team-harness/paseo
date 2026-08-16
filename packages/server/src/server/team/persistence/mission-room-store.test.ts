@@ -79,4 +79,20 @@ describe("MissionRoomStore", () => {
       }),
     ).rejects.toBeInstanceOf(MissionRoomMessageConflictError);
   });
+
+  test("reads one persisted message by id without changing the room", async () => {
+    const store = new MissionRoomStore(directory, () => "2026-08-11T01:00:00.000Z");
+    await store.create({ missionId: "mission-1", roomId: "room-1", teamId: "team-1" });
+    const posted = await store.post({
+      missionId: "mission-1",
+      roomId: "room-1",
+      messageId: "message-1",
+      author: { kind: "human", id: "client-1" },
+      body: "Status?",
+    });
+
+    await expect(store.get("mission-1", "message-1")).resolves.toEqual(posted);
+    await expect(store.get("mission-1", "missing")).resolves.toBeNull();
+    await expect(store.read({ missionId: "mission-1" })).resolves.toMatchObject({ cursor: 1 });
+  });
 });
