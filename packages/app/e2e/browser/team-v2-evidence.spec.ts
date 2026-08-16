@@ -585,6 +585,17 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     await expect(page.getByText("完整交付", { exact: true })).toBeVisible();
     await shoot(page, "00a-compact-team-templates");
     await page.getByText("精简交付", { exact: true }).click();
+    await expect(page.getByText("完整交付", { exact: true })).toBeHidden();
+    await expect(page.getByTestId("team-profile-member-0-responsibility")).toBeVisible();
+    await expect(page.getByTestId("team-profile-advanced-toggle")).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        ),
+      )
+      .toBe(true);
+    await shoot(page, "00b-compact-team-setup");
     await page.getByRole("button", { name: "Close" }).click();
     await expect(page.getByTestId("team-profile-form-sheet")).toBeHidden();
 
@@ -602,6 +613,9 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     await page.getByTestId("team-profile-name").fill("Release engineering");
     await expect(page.getByTestId("team-profile-member-0-role")).toHaveCount(0);
     await expect(page.getByTestId("team-profile-skill-0-name")).toHaveCount(0);
+    await page.getByTestId("team-profile-advanced-toggle").click();
+    await expect(page.getByTestId("team-profile-member-0-level")).toBeVisible();
+    await expect(page.getByTestId("team-profile-team-capabilities")).toContainText("交付实现");
     await configureMemberModel(page, 0);
     await configureMemberModel(page, 1);
     await expect(page.getByTestId("team-profile-submit")).toBeEnabled();
