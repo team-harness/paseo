@@ -41,7 +41,7 @@ import type { PendingPermission } from "@/types/shared";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { buildTeamMethodologyUpgradePreview } from "@/teams/team-settings-view";
 
-type TeamSettingsPage =
+export type TeamSettingsPage =
   | "root"
   | "team"
   | "members"
@@ -61,6 +61,7 @@ export interface TeamSettingsSheetProps {
   readonly team: TeamV2;
   readonly mission: TeamMission | null;
   readonly visible: boolean;
+  readonly initialPage?: TeamSettingsPage;
   readonly onClose: () => void;
   readonly onEditProfile?: () => void;
   readonly onStartMission?: () => void;
@@ -78,6 +79,7 @@ function OpenTeamSettingsSheet({
   team,
   mission,
   visible,
+  initialPage = "root",
   onClose,
   onEditProfile,
   onStartMission,
@@ -87,7 +89,7 @@ function OpenTeamSettingsSheet({
   const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
   const { profiles: agentProfiles } = useAgentProfiles(serverId);
-  const [page, setPage] = useState<TeamSettingsPage>("root");
+  const [page, setPage] = useState<TeamSettingsPage>(initialPage);
   const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [capabilityRefreshNotice, setCapabilityRefreshNotice] = useState<string | null>(null);

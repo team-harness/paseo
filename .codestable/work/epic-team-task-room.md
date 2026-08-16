@@ -2,8 +2,8 @@
 epic: ../epics/team-task-room.md
 phase: executing
 approved_revision: c4ed2ac22cf7962a6693746aebef75198f9469c3783ac5a083235788d481ff1c
-current_item: TTR-ITEM-8
-next_action: 执行 TTR-ITEM-8，把任务、成员、结果和 Attention 收敛到 inspector
+current_item: TTR-ITEM-9
+next_action: 执行 TTR-ITEM-9，闭合跨平台、重启/mixed socket、真实协作与权威文档验收
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -19,7 +19,7 @@ remote_publish: final
 - [x] TTR-ITEM-5 · 固化 Room 发帖幂等性与 recipient routing
 - [x] TTR-ITEM-6 · 闭合回复界面与 Room 历史
 - [x] TTR-ITEM-7 · 让 Agent 在任务室报告协作进展
-- [ ] TTR-ITEM-8 · 把任务、成员、结果和 Attention 收敛到 inspector
+- [x] TTR-ITEM-8 · 把任务、成员、结果和 Attention 收敛到 inspector
 - [ ] TTR-ITEM-9 · 完成跨平台与真实协作验收
 
 ## 决策记录
@@ -185,3 +185,15 @@ review lineage、checkpoint、测试和残余风险只写本游标；永久 Epic
   审计无新 finding，终态为 `0 blocking / 0 important / 0 minor`。定点四文件 `105/105`、隔离
   daemon restart E2E `1/1`、`build:server`、lint、format-check 与 diff-check 通过；typecheck 仅命中未修改的
   `packages/app/src/components/draggable-list.native.tsx:122` 基线错误。
+- 2026-08-17：TTR-ITEM-8 完成。`MissionWorkroom` inspector 收敛为工作、成员、结果三个视图：工作显示
+  owner、具体依赖及状态、direct/dependency blocker 与 review/final gate；成员显示冻结 Role、当前 Assignment、
+  实际 Agent lifecycle、Attention 与待处理权限；结果显示 report artifact/test、review verdict、waiver 与 final
+  verification evidence。Attention 行直达既有 controller 页，普通设置仍从 root 打开；聊天 prose 不参与任何投影。
+- 2026-08-17：TTR-ITEM-8 TDD 先复现真实 Agent/permission 被遗漏、verdict/evidence 未渲染、依赖仅显示数量和
+  长 Assignment 挤出 badge；最终 5 个定点文件 `58/58`、i18n `39/39` 通过，lint、format 与 diff-check 通过。
+  全仓 typecheck 仅命中未修改的既有基线 `packages/app/src/components/draggable-list.native.tsx:122`。
+- 2026-08-17：TTR-ITEM-8 code-deep 全树 review 被既有未跟踪 audit/dogfood 证据扩大为 138 文件、118 omitted，
+  随后定向追踪 7 个改动符号与运行态/依赖/evidence/Attention 数据流，未发现具体失败路径。独立 reviewer
+  `/root/ttr_item8_review` Round 1 为 `1 blocking / 2 important / 1 minor`；修复后 Round 2 在 staged diff
+  `47e8f14e10abac5c46cb4c6725be8119f2b3243bf925d34f6adfa0f97a5f99fa` 上为
+  `0 blocking / 0 important / 0 minor`、可合。里程碑主题为 `feat(team): add Mission inspector views`。

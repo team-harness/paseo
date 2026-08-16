@@ -95,10 +95,12 @@ vi.mock("@/stores/session-store", () => ({
 vi.mock("@/components/teams/mission-workroom", () => ({
   MissionWorkroom: ({
     onOpenSettings,
+    onOpenAttention,
     onStartMission,
     onExitReplay,
   }: {
     onOpenSettings: () => void;
+    onOpenAttention?: () => void;
     onStartMission?: () => void;
     onExitReplay?: () => void;
   }) =>
@@ -110,6 +112,13 @@ vi.mock("@/components/teams/mission-workroom", () => ({
         { type: "button", "data-testid": "room-settings", onClick: onOpenSettings },
         "Settings",
       ),
+      onOpenAttention
+        ? React.createElement(
+            "button",
+            { type: "button", "data-testid": "room-attention", onClick: onOpenAttention },
+            "Attention",
+          )
+        : null,
       onStartMission
         ? React.createElement(
             "button",
@@ -134,15 +143,18 @@ vi.mock("@/components/teams/team-idle-overview", () => ({
 vi.mock("@/components/teams/team-settings-sheet", () => ({
   TeamSettingsSheet: ({
     visible,
+    initialPage,
     onStartMission,
   }: {
     visible: boolean;
+    initialPage?: string;
     onStartMission?: () => void;
   }) =>
     visible
       ? React.createElement("div", {
           "data-testid": "settings-sheet",
           "data-can-start-mission": onStartMission ? "true" : "false",
+          "data-initial-page": initialPage ?? "root",
         })
       : null,
 }));
@@ -208,5 +220,28 @@ describe("TeamPanel without a live workspace", () => {
     );
 
     expect(screen.getByTestId("settings-sheet")).toBeTruthy();
+  });
+
+  it("opens the Attention controller directly from the workroom inspector", () => {
+    replica = {
+      status: "ready",
+      profiles: new Map([[TEAM.id, TEAM]]),
+      missions: new Map([[HISTORY_MISSION.id, HISTORY_MISSION]]),
+      historyReads: new Map(),
+      error: null,
+    };
+    render(
+      <TeamPanel
+        serverId="server-1"
+        workspaceId="workspace-live"
+        teamId="team-1"
+        selectedMissionId={HISTORY_MISSION.id}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("room-attention"));
+    expect(screen.getByTestId("settings-sheet").getAttribute("data-initial-page")).toBe(
+      "attention",
+    );
   });
 });
