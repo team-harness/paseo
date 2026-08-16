@@ -4,6 +4,14 @@ import type { MissionRoomStore } from "../../persistence/mission-room-store.js";
 export class PaseoTeamRoomAdapter implements TeamRoomPort, TeamMessagePort {
   constructor(private readonly rooms: MissionRoomStore) {}
 
+  async get(input: Parameters<TeamMessagePort["get"]>[0]) {
+    const found = await this.rooms.get(input.missionId, input.messageId);
+    if (found && found.message.roomId !== input.roomId) {
+      throw new Error(`Mission ${input.missionId} room mismatch`);
+    }
+    return found ? { message: found.message, cursor: found.cursor } : null;
+  }
+
   async createMissionRoom(input: Parameters<TeamRoomPort["createMissionRoom"]>[0]): Promise<void> {
     await this.rooms.create({
       missionId: input.missionId,

@@ -22,7 +22,12 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useAutocomplete } from "@/hooks/use-autocomplete";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { foldRoomMessage } from "@/teams/fold-message";
-import { postRoomMessage, type PostRoomMessageState } from "@/teams/post-room-message";
+import {
+  freezeRoomMessageIntent,
+  postRoomMessage,
+  type PostRoomMessageState,
+  type RoomMessageIntent,
+} from "@/teams/post-room-message";
 import { selectHumanMentionDeliveryReceipt } from "@/teams/team-room-delivery-receipt";
 import {
   applyRoomMentionReplacement,
@@ -251,6 +256,7 @@ function RoomComposer({
   const client = useHostRuntimeClient(serverId);
   const inputRef = useRef<TextInput>(null);
   const [body, setBody] = useState("");
+  const pendingIntentRef = useRef<RoomMessageIntent | null>(null);
   const [cursorIndex, setCursorIndex] = useState(0);
   const [state, setState] = useState<PostRoomMessageState>({ status: "idle" });
   const settingsBadge = useMemo(
@@ -362,16 +368,24 @@ function RoomComposer({
 
   const send = useCallback(() => {
     if (!missionId) return;
-    const sent = body;
+    const intent = freezeRoomMessageIntent(
+      pendingIntentRef.current,
+      body,
+      null,
+      () => `team-room-${crypto.randomUUID()}`,
+    );
+    if (!intent) return;
+    pendingIntentRef.current = intent;
     void postRoomMessage(
-      { missionId, body, client },
+      { missionId, requestId: intent.requestId, body: intent.body, client },
       { refused: t("teams.room.notPosted"), offline: t("common.errors.daemonClientUnavailable") },
       (next) => {
         setState(next);
         // Only clear once the daemon has it. Clearing on send loses the message
         // when the post is refused.
         if (next.status === "idle") {
-          setBody((current) => (current === sent ? "" : current));
+          if (pendingIntentRef.current === intent) pendingIntentRef.current = null;
+          setBody((current) => (current.trim() === intent.body ? "" : current));
           setCursorIndex(0);
         }
       },

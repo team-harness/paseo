@@ -7,9 +7,29 @@ export type PostRoomMessageState =
 
 export interface PostRoomMessageGateway {
   postTeamMissionMessage(options: {
+    requestId: string;
     missionId: string;
     body: string;
+    replyToMessageId?: string;
   }): Promise<{ message: TeamRoomMessage | null; error: string | null }>;
+}
+
+export interface RoomMessageIntent {
+  requestId: string;
+  body: string;
+  replyToMessageId: string | null;
+}
+
+export function freezeRoomMessageIntent(
+  current: RoomMessageIntent | null,
+  bodyInput: string,
+  replyToMessageId: string | null,
+  createRequestId: () => string,
+): RoomMessageIntent | null {
+  const body = bodyInput.trim();
+  if (!body) return null;
+  if (current?.body === body && current.replyToMessageId === replyToMessageId) return current;
+  return { requestId: createRequestId(), body, replyToMessageId };
 }
 
 export interface PostRoomMessageLabels {
@@ -28,7 +48,13 @@ export interface PostRoomMessageLabels {
  * copy would sit next to the real one when it arrived.
  */
 export async function postRoomMessage(
-  input: { missionId: string; body: string; client: PostRoomMessageGateway | null },
+  input: {
+    missionId: string;
+    requestId: string;
+    body: string;
+    replyToMessageId?: string | null;
+    client: PostRoomMessageGateway | null;
+  },
   labels: PostRoomMessageLabels,
   onState: (state: PostRoomMessageState) => void,
 ): Promise<void> {
@@ -44,7 +70,12 @@ export async function postRoomMessage(
 
   onState({ status: "pending" });
   try {
-    const answer = await input.client.postTeamMissionMessage({ missionId: input.missionId, body });
+    const answer = await input.client.postTeamMissionMessage({
+      requestId: input.requestId,
+      missionId: input.missionId,
+      body,
+      ...(input.replyToMessageId ? { replyToMessageId: input.replyToMessageId } : {}),
+    });
     if (!answer.message) {
       onState({ status: "failure", message: answer.error ?? labels.refused });
       return;

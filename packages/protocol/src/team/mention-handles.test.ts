@@ -54,6 +54,7 @@ describe("team mention handles", () => {
       { agentId: "a2", role: "server" },
       { agentId: "a3", role: "server" },
       { agentId: "a4", role: "everyone" },
+      { agentId: "a5", role: "team" },
     ]);
 
     expect(handles.map((entry) => entry.handle)).toEqual([
@@ -61,6 +62,7 @@ describe("team mention handles", () => {
       "server",
       "server-3",
       "everyone-2",
+      "team-2",
     ]);
   });
 

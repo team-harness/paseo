@@ -119,7 +119,7 @@ const ChatPostInputSchema = z
   .object({
     missionId: z.string().min(1),
     idempotencyKey: z.string().min(1),
-    replyToMessageId: z.string().min(1),
+    replyToMessageId: z.string().min(1).optional(),
     body: z.string().min(1),
   })
   .strict();
@@ -245,9 +245,9 @@ export class PaseoTeamToolRegistrar {
     registerTool(
       "chat_post",
       {
-        title: "Reply in Team chat",
+        title: "Post in Team chat",
         description:
-          "Post one persistent reply to the Mission room without notifying or interrupting another Member.",
+          "Post one persistent Mission room update. Explicit @member or @team mentions notify active teammates; ordinary updates do not interrupt anyone.",
         inputSchema: ChatPostInputSchema,
       },
       (input) =>

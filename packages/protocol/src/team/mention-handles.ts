@@ -28,7 +28,10 @@ export function buildTeamMentionHandles<Member extends TeamMentionMember>(
   // Exact ids and persisted handles are reserved globally. Unpersisted roles
   // allocate strictly in roster order, so appending a member cannot rename an
   // address already present in a briefing or room history.
-  const claimed = new Map<string, string | null>([["everyone", null]]);
+  const claimed = new Map<string, string | null>([
+    ["everyone", null],
+    ["team", null],
+  ]);
   for (const reservedHandle of options.reservedHandles ?? []) {
     const handle = reservedHandle.trim().toLowerCase();
     if (isTeamMentionToken(handle)) claimed.set(handle, null);

@@ -16,6 +16,7 @@ import type {
   MissionWorkstream,
   TeamMission,
   TeamMemberLevel,
+  TeamRoomMessage,
   TeamV2,
 } from "@getpaseo/protocol/team/v2-types";
 import { MissionAssignmentReportSchema } from "@getpaseo/protocol/team/v2-types";
@@ -87,7 +88,7 @@ import {
 } from "./assignment-replan.js";
 import { planMissionQualityGates } from "./quality-gate-assignments.js";
 import { TeamApplicationError } from "./team-mission-service.js";
-import { resolveMentionedParticipants } from "./team-room-mentions.js";
+import { resolveRoomMessageRecipients } from "./team-room-mentions.js";
 import {
   TeamOperationCoordinator,
   type TeamOperationPermit,
@@ -262,7 +263,7 @@ export interface PostAgentRoomReplyInput {
   callerAgentId: string;
   missionId: string;
   idempotencyKey: string;
-  replyToMessageId: string;
+  replyToMessageId?: string | null;
   body: string;
 }
 
@@ -924,10 +925,9 @@ export class TeamCollaborationService {
           throw new TeamApplicationError("empty_team_message", "Team message body is required");
         }
 
-        const current = await this.requireOpenMissionForRoomMessage(input.missionId);
-        const mentionedParticipants = resolveMentionedParticipants(current.mission, body);
-        const roster = current.mission.rosterSnapshots.find(
-          (candidate) => candidate.revision === current.mission.activeRosterSnapshotRevision,
+        let persisted = await this.requireOpenMissionForRoomMessage(input.missionId);
+        const roster = persisted.mission.rosterSnapshots.find(
+          (candidate) => candidate.revision === persisted.mission.activeRosterSnapshotRevision,
         );
         if (!roster) {
           throw new TeamApplicationError(
@@ -935,114 +935,213 @@ export class TeamCollaborationService {
             `Mission ${input.missionId} has no active roster snapshot`,
           );
         }
-        const mentionAgentIds = mentionedParticipants.map((participant) => participant.agentId);
-        const rosterMembersById = new Map(
-          roster.members.map((member) => [member.memberId, member] as const),
-        );
-        const mentionedMembers = mentionedParticipants.map((participant) => {
-          const member = rosterMembersById.get(participant.memberId);
-          if (!member) {
-            throw new TeamApplicationError(
-              "mission_member_not_found",
-              `Member ${participant.memberId} is absent from the active Mission roster`,
-            );
-          }
-          return { member, participant };
-        });
         const roomMessageId = humanRoomMessageId(input.missionId, input.idempotencyKey);
         const requestFingerprint = JSON.stringify({
           missionId: input.missionId,
           actorId: input.actorId,
           body,
           replyToMessageId: input.replyToMessageId ?? null,
-          recipientMemberIds: mentionedMembers.map(({ member }) => member.memberId),
         });
+        let deliveries = humanMentionDeliveriesForRoomMessage(persisted, roomMessageId);
+        assertHumanMentionRequestFingerprint(deliveries, requestFingerprint, input.idempotencyKey);
 
-        if (mentionedMembers.length > 0) {
-          let persisted = current;
-          for (let attempt = 0; attempt < 3; attempt += 1) {
-            const existing = persisted.recipientAttentionOutbox.filter(
-              (candidate) =>
-                candidate.origin === "human_mention" &&
-                candidate.idempotencyKey === input.idempotencyKey,
-            );
-            if (existing.some((candidate) => candidate.requestFingerprint !== requestFingerprint)) {
-              throw new TeamApplicationError(
-                "team_message_idempotency_conflict",
-                `Message key ${input.idempotencyKey} already belongs to a different request`,
-              );
-            }
-            if (existing.length > 0) break;
-            const createdAt = this.options.clock.now();
-            try {
-              persisted = await this.options.missions.updateRecoveryState({
-                missionId: input.missionId,
-                expectedStorageRevision: persisted.storageRevision,
-                update: (recovery) => ({
-                  ...recovery,
-                  recipientAttentionOutbox: [
-                    ...recovery.recipientAttentionOutbox,
-                    ...mentionedMembers.map(({ member, participant }) => ({
-                      origin: "human_mention" as const,
-                      deliveryId: humanMentionDeliveryId(roomMessageId, member.memberId),
-                      idempotencyKey: input.idempotencyKey,
-                      requestFingerprint,
-                      roomMessageId,
-                      actorId: input.actorId,
-                      replyToMessageId: input.replyToMessageId ?? null,
-                      mentionAgentIds,
-                      recipientMemberId: member.memberId,
-                      bindingEpoch: participant.bindingEpoch,
-                      mentionHandle: member.mentionHandle,
-                      body,
-                      roomPostedAt: null,
-                      roomCursor: null,
-                      attempts: 0,
-                      createdAt,
-                      successorDeliveryId: null,
-                      state: "pending" as const,
-                      lastAttemptAt: null,
-                      nextEligibleAt: createdAt,
-                      acknowledgedAt: null,
-                      canceledAt: null,
-                      cancelReason: null,
-                    })),
-                  ],
-                }),
-              });
-              break;
-            } catch (error) {
-              if (!(error instanceof MissionStorageRevisionConflictError) || attempt === 2) {
-                throw error;
-              }
-              persisted = await this.requireOpenMissionForRoomMessage(input.missionId);
-            }
+        if (deliveries.length === 0) {
+          const frozenMessage = await this.readFrozenHumanRoomMessage({
+            input,
+            body,
+            stored: persisted,
+            roomMessageId,
+          });
+          if (frozenMessage) return frozenMessage;
+
+          const recipients = await this.resolveHumanRoomMessageRecipients({
+            input,
+            body,
+            stored: persisted,
+            rosterMembers: roster.members,
+          });
+          if (recipients.length > 0) {
+            ({ persisted, deliveries } = await this.persistHumanMentionDeliveries({
+              input,
+              body,
+              persisted,
+              roomMessageId,
+              requestFingerprint,
+              recipients,
+            }));
+            this.indexPendingRecipientMission(persisted);
           }
-          this.indexPendingRecipientMission(persisted);
         }
 
-        const posted = await this.options.messages.post({
-          messageId: roomMessageId,
-          missionId: input.missionId,
-          roomId: current.mission.chatRoomId,
-          author: { kind: "human", id: input.actorId },
-          body,
-          replyToMessageId: input.replyToMessageId,
-          mentionAgentIds,
-        });
-        if (mentionedMembers.length > 0) {
-          await this.markRoomMessagePosted(input.missionId, roomMessageId, posted.cursor);
-          for (const { member } of mentionedMembers) {
-            await this.processRecipientAttention(
-              input.missionId,
-              humanMentionDeliveryId(roomMessageId, member.memberId),
+        const mentionAgentIds = projectPersistedHumanMentionAgentIds(deliveries);
+        let posted: Awaited<ReturnType<TeamMessagePort["post"]>>;
+        try {
+          posted = await this.options.messages.post({
+            messageId: roomMessageId,
+            missionId: input.missionId,
+            roomId: persisted.mission.chatRoomId,
+            author: { kind: "human", id: input.actorId },
+            body,
+            replyToMessageId: input.replyToMessageId,
+            mentionAgentIds,
+          });
+        } catch (error) {
+          if (error instanceof MissionRoomMessageConflictError) {
+            throw new TeamApplicationError(
+              "team_message_idempotency_conflict",
+              `Message key ${input.idempotencyKey} already belongs to a different request`,
             );
+          }
+          throw error;
+        }
+        if (deliveries.length > 0) {
+          await this.markRoomMessagePosted(input.missionId, roomMessageId, posted.cursor);
+          for (const delivery of deliveries) {
+            await this.processRecipientAttention(input.missionId, delivery.deliveryId);
           }
           await this.refreshPendingRecipientMission(input.missionId);
         }
         return { missionId: input.missionId, message: posted.message, cursor: posted.cursor };
       }),
     );
+  }
+
+  private async readFrozenHumanRoomMessage(input: {
+    input: PostHumanRoomMessageInput;
+    body: string;
+    stored: StoredMission;
+    roomMessageId: string;
+  }): Promise<MissionRoomMessageEvent | null> {
+    const frozenMessage = await this.options.messages.get({
+      missionId: input.input.missionId,
+      roomId: input.stored.mission.chatRoomId,
+      messageId: input.roomMessageId,
+    });
+    if (!frozenMessage) return null;
+    assertHumanRoomMessageIntent(frozenMessage.message, {
+      missionId: input.input.missionId,
+      roomId: input.stored.mission.chatRoomId,
+      actorId: input.input.actorId,
+      body: input.body,
+      replyToMessageId: input.input.replyToMessageId ?? null,
+    });
+    if (frozenMessage.message.mentionAgentIds.length > 0) {
+      throw new TeamApplicationError(
+        "team_message_recovery_invariant",
+        `Message ${input.roomMessageId} has recipients but no persisted delivery intents`,
+      );
+    }
+    return { missionId: input.input.missionId, ...frozenMessage };
+  }
+
+  private async resolveHumanRoomMessageRecipients(input: {
+    input: PostHumanRoomMessageInput;
+    body: string;
+    stored: StoredMission;
+    rosterMembers: readonly MissionRosterMemberSnapshot[];
+  }): Promise<Array<{ member: MissionRosterMemberSnapshot; participant: MissionParticipant }>> {
+    const replyToMessage = input.input.replyToMessageId
+      ? await this.options.messages.get({
+          missionId: input.input.missionId,
+          roomId: input.stored.mission.chatRoomId,
+          messageId: input.input.replyToMessageId,
+        })
+      : null;
+    if (input.input.replyToMessageId && !replyToMessage) {
+      throw new TeamApplicationError(
+        "team_message_reply_not_found",
+        `Mission room message ${input.input.replyToMessageId} does not exist`,
+      );
+    }
+    const recipients = resolveRoomMessageRecipients({
+      mission: input.stored.mission,
+      body: input.body,
+      author: { kind: "human", id: input.input.actorId },
+      replyToMessage: replyToMessage?.message ?? null,
+    });
+    const rosterMembersById = new Map(
+      input.rosterMembers.map((member) => [member.memberId, member] as const),
+    );
+    return recipients.map((participant) => {
+      const member = rosterMembersById.get(participant.memberId);
+      if (!member) {
+        throw new TeamApplicationError(
+          "mission_member_not_found",
+          `Member ${participant.memberId} is absent from the active Mission roster`,
+        );
+      }
+      return { member, participant };
+    });
+  }
+
+  private async persistHumanMentionDeliveries(input: {
+    input: PostHumanRoomMessageInput;
+    body: string;
+    persisted: StoredMission;
+    roomMessageId: string;
+    requestFingerprint: string;
+    recipients: Array<{
+      member: MissionRosterMemberSnapshot;
+      participant: MissionParticipant;
+    }>;
+  }): Promise<{ persisted: StoredMission; deliveries: HumanMentionDelivery[] }> {
+    let persisted = input.persisted;
+    const resolvedAgentIds = input.recipients.map(({ participant }) => participant.agentId);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const existing = humanMentionDeliveriesForRoomMessage(persisted, input.roomMessageId);
+      assertHumanMentionRequestFingerprint(
+        existing,
+        input.requestFingerprint,
+        input.input.idempotencyKey,
+      );
+      if (existing.length > 0) return { persisted, deliveries: existing };
+      const createdAt = this.options.clock.now();
+      try {
+        persisted = await this.options.missions.updateRecoveryState({
+          missionId: input.input.missionId,
+          expectedStorageRevision: persisted.storageRevision,
+          update: (recovery) => ({
+            ...recovery,
+            recipientAttentionOutbox: [
+              ...recovery.recipientAttentionOutbox,
+              ...input.recipients.map(({ member, participant }) => ({
+                origin: "human_mention" as const,
+                deliveryId: humanMentionDeliveryId(input.roomMessageId, member.memberId),
+                idempotencyKey: input.input.idempotencyKey,
+                requestFingerprint: input.requestFingerprint,
+                roomMessageId: input.roomMessageId,
+                actorId: input.input.actorId,
+                replyToMessageId: input.input.replyToMessageId ?? null,
+                mentionAgentIds: resolvedAgentIds,
+                recipientMemberId: member.memberId,
+                bindingEpoch: participant.bindingEpoch,
+                mentionHandle: member.mentionHandle,
+                body: input.body,
+                roomPostedAt: null,
+                roomCursor: null,
+                attempts: 0,
+                createdAt,
+                successorDeliveryId: null,
+                state: "pending" as const,
+                lastAttemptAt: null,
+                nextEligibleAt: createdAt,
+                acknowledgedAt: null,
+                canceledAt: null,
+                cancelReason: null,
+              })),
+            ],
+          }),
+        });
+        return {
+          persisted,
+          deliveries: humanMentionDeliveriesForRoomMessage(persisted, input.roomMessageId),
+        };
+      } catch (error) {
+        if (!(error instanceof MissionStorageRevisionConflictError) || attempt === 2) throw error;
+        persisted = await this.requireOpenMissionForRoomMessage(input.input.missionId);
+      }
+    }
+    throw new Error("Human mention delivery persistence exhausted without a result");
   }
 
   async postAgentRoomReply(input: PostAgentRoomReplyInput): Promise<MissionRoomMessageEvent> {
@@ -1055,31 +1154,84 @@ export class TeamCollaborationService {
         if (!body) {
           throw new TeamApplicationError("empty_team_message", "Team message body is required");
         }
-        if (parseTeamMentionTokens(body).length > 0) {
-          throw new TeamApplicationError(
-            "additional_mentions_not_allowed",
-            "chat_post replies to the room without notifying Members; remove mentions from body",
-          );
+        let persisted = context.storedMission;
+        const roomMessageId = agentRoomReplyMessageId(
+          input.missionId,
+          input.callerAgentId,
+          input.idempotencyKey,
+        );
+        const requestFingerprint = JSON.stringify({
+          missionId: input.missionId,
+          senderMemberId: context.callerMember.memberId,
+          body,
+          replyToMessageId: input.replyToMessageId ?? null,
+        });
+        let deliveries = agentMessageDeliveriesForRoomMessage(persisted, roomMessageId);
+        assertAgentMessageRequestFingerprint(deliveries, requestFingerprint, input.idempotencyKey);
+
+        if (deliveries.length === 0) {
+          const frozenMessage = await this.readFrozenAgentRoomMessage({
+            input,
+            body,
+            context,
+            roomMessageId,
+          });
+          if (frozenMessage) return frozenMessage;
+
+          const recipients = await this.resolveAgentRoomMessageRecipients({
+            input,
+            body,
+            context,
+          });
+          if (recipients.length > 0) {
+            persisted = await this.persistAgentMessageDeliveries({
+              input,
+              body,
+              context,
+              persisted,
+              roomMessageId,
+              requestFingerprint,
+              recipients,
+            });
+            deliveries = agentMessageDeliveriesForRoomMessage(persisted, roomMessageId);
+            this.indexPendingRecipientMission(persisted);
+          }
         }
+
+        const mentionAgentIds = projectPersistedAgentMessageAgentIds(
+          persisted.mission,
+          roomMessageId,
+          deliveries,
+        );
+        const replyToMessageId =
+          deliveries.length > 0
+            ? projectPersistedAgentMessageReplyToMessageId(deliveries)
+            : (input.replyToMessageId ?? null);
         try {
           const posted = await this.options.messages.post({
-            messageId: agentRoomReplyMessageId(
-              input.missionId,
-              input.callerAgentId,
-              input.idempotencyKey,
-            ),
+            messageId: roomMessageId,
             missionId: input.missionId,
             roomId: context.mission.chatRoomId,
             author: { kind: "agent", id: context.callerParticipant.agentId },
             body,
-            replyToMessageId: input.replyToMessageId,
+            replyToMessageId,
+            mentionAgentIds,
           });
-          await this.acknowledgeHumanMentionReply({
-            missionId: input.missionId,
-            recipientMemberId: context.callerMember.memberId,
-            replyToMessageId: input.replyToMessageId,
-            idempotencyKey: input.idempotencyKey,
-          });
+          if (deliveries.length > 0) {
+            await this.markRoomMessagePosted(input.missionId, roomMessageId, posted.cursor);
+            for (const delivery of deliveries) {
+              await this.processRecipientAttention(input.missionId, delivery.deliveryId);
+            }
+            await this.refreshPendingRecipientMission(input.missionId);
+          }
+          if (input.replyToMessageId) {
+            await this.acknowledgeHumanMentionReply({
+              missionId: input.missionId,
+              recipientMemberId: context.callerMember.memberId,
+              replyToMessageId: input.replyToMessageId,
+              idempotencyKey: input.idempotencyKey,
+            });
+          }
           return { missionId: input.missionId, message: posted.message, cursor: posted.cursor };
         } catch (error) {
           if (error instanceof MissionRoomMessageConflictError) {
@@ -1092,6 +1244,130 @@ export class TeamCollaborationService {
         }
       }),
     );
+  }
+
+  private async readFrozenAgentRoomMessage(input: {
+    input: PostAgentRoomReplyInput;
+    body: string;
+    context: AuthorizedMissionContext;
+    roomMessageId: string;
+  }): Promise<MissionRoomMessageEvent | null> {
+    const frozenMessage = await this.options.messages.get({
+      missionId: input.input.missionId,
+      roomId: input.context.mission.chatRoomId,
+      messageId: input.roomMessageId,
+    });
+    if (!frozenMessage) return null;
+    assertAgentRoomMessageIntent(frozenMessage.message, {
+      missionId: input.input.missionId,
+      roomId: input.context.mission.chatRoomId,
+      authorAgentId: input.context.callerParticipant.agentId,
+      body: input.body,
+      replyToMessageId: input.input.replyToMessageId ?? null,
+    });
+    if (frozenMessage.message.mentionAgentIds.length > 0) {
+      throw new TeamApplicationError(
+        "team_message_recovery_invariant",
+        `Message ${input.roomMessageId} has recipients but no persisted delivery intents`,
+      );
+    }
+    if (input.input.replyToMessageId) {
+      await this.acknowledgeHumanMentionReply({
+        missionId: input.input.missionId,
+        recipientMemberId: input.context.callerMember.memberId,
+        replyToMessageId: input.input.replyToMessageId,
+        idempotencyKey: input.input.idempotencyKey,
+      });
+    }
+    return { missionId: input.input.missionId, ...frozenMessage };
+  }
+
+  private async resolveAgentRoomMessageRecipients(input: {
+    input: PostAgentRoomReplyInput;
+    body: string;
+    context: AuthorizedMissionContext;
+  }): Promise<Array<{ member: MissionRosterMemberSnapshot; participant: MissionParticipant }>> {
+    const replyToMessage = input.input.replyToMessageId
+      ? await this.options.messages.get({
+          missionId: input.input.missionId,
+          roomId: input.context.mission.chatRoomId,
+          messageId: input.input.replyToMessageId,
+        })
+      : null;
+    if (input.input.replyToMessageId && !replyToMessage) {
+      throw new TeamApplicationError(
+        "team_message_reply_not_found",
+        `Mission room message ${input.input.replyToMessageId} does not exist`,
+      );
+    }
+    const recipients = resolveRoomMessageRecipients({
+      mission: input.context.mission,
+      body: input.body,
+      author: { kind: "agent", id: input.context.callerParticipant.agentId },
+      replyToMessage: replyToMessage?.message ?? null,
+    });
+    const rosterMembersById = new Map(
+      input.context.roster.map((member) => [member.memberId, member] as const),
+    );
+    return recipients.map((participant) => {
+      const member = rosterMembersById.get(participant.memberId);
+      if (!member) {
+        throw new TeamApplicationError(
+          "mission_member_not_found",
+          `Member ${participant.memberId} is absent from the active Mission roster`,
+        );
+      }
+      return { member, participant };
+    });
+  }
+
+  private async persistAgentMessageDeliveries(input: {
+    input: PostAgentRoomReplyInput;
+    body: string;
+    context: AuthorizedMissionContext;
+    persisted: StoredMission;
+    roomMessageId: string;
+    requestFingerprint: string;
+    recipients: Array<{
+      member: MissionRosterMemberSnapshot;
+      participant: MissionParticipant;
+    }>;
+  }): Promise<StoredMission> {
+    const createdAt = this.options.clock.now();
+    return this.options.missions.updateRecoveryState({
+      missionId: input.input.missionId,
+      expectedStorageRevision: input.persisted.storageRevision,
+      update: (recovery) => ({
+        ...recovery,
+        recipientAttentionOutbox: [
+          ...recovery.recipientAttentionOutbox,
+          ...input.recipients.map(({ member, participant }) => ({
+            origin: "agent_message" as const,
+            deliveryId: agentRoomMentionDeliveryId(input.roomMessageId, member.memberId),
+            idempotencyKey: input.input.idempotencyKey,
+            requestFingerprint: input.requestFingerprint,
+            roomMessageId: input.roomMessageId,
+            senderMemberId: input.context.callerMember.memberId,
+            senderAgentId: input.context.callerParticipant.agentId,
+            recipientMemberId: member.memberId,
+            bindingEpoch: participant.bindingEpoch,
+            mentionHandle: member.mentionHandle,
+            body: input.body,
+            roomPostedAt: null,
+            roomCursor: null,
+            attempts: 0,
+            createdAt,
+            successorDeliveryId: null,
+            state: "pending" as const,
+            lastAttemptAt: null,
+            nextEligibleAt: createdAt,
+            acknowledgedAt: null,
+            canceledAt: null,
+            cancelReason: null,
+          })),
+        ],
+      }),
+    });
   }
 
   async sendTeamMessage(input: SendTeamMessageInput): Promise<SendTeamMessageResult> {
@@ -1502,6 +1778,39 @@ export class TeamCollaborationService {
     }
   }
 
+  private async reconcilePostedAgentAcknowledgement(
+    stored: StoredMission,
+    delivery: MissionRecipientAttentionDelivery,
+  ): Promise<void> {
+    if (delivery.origin !== "human_mention") return;
+    const recipient = stored.mission.participants.find(
+      (participant) =>
+        participant.memberId === delivery.recipientMemberId &&
+        participant.bindingEpoch === delivery.bindingEpoch,
+    );
+    if (!recipient) return;
+    const idempotencyKey = `${delivery.deliveryId}:ack`;
+    const reply = await this.options.messages.get({
+      missionId: stored.mission.id,
+      roomId: stored.mission.chatRoomId,
+      messageId: agentRoomReplyMessageId(stored.mission.id, recipient.agentId, idempotencyKey),
+    });
+    if (
+      !reply ||
+      reply.message.author.kind !== "agent" ||
+      reply.message.author.id !== recipient.agentId ||
+      reply.message.replyToMessageId !== delivery.roomMessageId
+    ) {
+      return;
+    }
+    await this.acknowledgeHumanMentionReply({
+      missionId: stored.mission.id,
+      recipientMemberId: delivery.recipientMemberId,
+      replyToMessageId: delivery.roomMessageId,
+      idempotencyKey,
+    });
+  }
+
   async reconcilePendingMessages(): Promise<PendingMessageRecoveryResult> {
     const failures: PendingMessageRecoveryResult["failures"] = [];
     this.pendingMissionIdsByRecipientAgentId.clear();
@@ -1572,6 +1881,7 @@ export class TeamCollaborationService {
                     delivery,
                   );
                 }
+                await this.reconcilePostedAgentAcknowledgement(current, delivery);
                 await this.processRecipientAttention(current.mission.id, delivery.deliveryId);
               } catch (error) {
                 failures.push({
@@ -2113,6 +2423,14 @@ export class TeamCollaborationService {
     ) {
       return;
     }
+    const agentMessageDeliveries = agentMessageDeliveriesForRoomMessage(
+      beforePost,
+      delivery.roomMessageId,
+    );
+    const replyToMessageId =
+      delivery.origin === "human_mention"
+        ? delivery.replyToMessageId
+        : projectPersistedAgentMessageReplyToMessageId(agentMessageDeliveries);
     const posted = await this.options.messages.post({
       messageId: delivery.roomMessageId,
       missionId,
@@ -2124,12 +2442,27 @@ export class TeamCollaborationService {
       body: delivery.body,
       ...(delivery.origin === "human_mention"
         ? {
-            replyToMessageId: delivery.replyToMessageId,
+            replyToMessageId,
             mentionAgentIds: delivery.mentionAgentIds,
           }
-        : { replyToMessageId: null }),
+        : {
+            replyToMessageId,
+            mentionAgentIds: projectPersistedAgentMessageAgentIds(
+              beforePost.mission,
+              delivery.roomMessageId,
+              agentMessageDeliveries,
+            ),
+          }),
     });
     await this.markRoomMessagePosted(missionId, delivery.roomMessageId, posted.cursor);
+    if (delivery.origin === "agent_message" && replyToMessageId) {
+      await this.acknowledgeHumanMentionReply({
+        missionId,
+        recipientMemberId: delivery.senderMemberId,
+        replyToMessageId,
+        idempotencyKey: delivery.idempotencyKey,
+      });
+    }
   }
 
   private async markRoomMessagePosted(
@@ -3738,6 +4071,211 @@ function addMilliseconds(timestamp: string, milliseconds: number): string {
   return new Date(Date.parse(timestamp) + milliseconds).toISOString();
 }
 
+type HumanMentionDelivery = Extract<MissionRecipientAttentionDelivery, { origin: "human_mention" }>;
+type AgentMessageDelivery = Exclude<MissionRecipientAttentionDelivery, HumanMentionDelivery>;
+
+function humanMentionDeliveriesForRoomMessage(
+  stored: StoredMission,
+  roomMessageId: string,
+): HumanMentionDelivery[] {
+  return stored.recipientAttentionOutbox.filter(
+    (delivery): delivery is HumanMentionDelivery =>
+      delivery.origin === "human_mention" && delivery.roomMessageId === roomMessageId,
+  );
+}
+
+function assertHumanMentionRequestFingerprint(
+  deliveries: readonly HumanMentionDelivery[],
+  requestFingerprint: string,
+  idempotencyKey: string,
+): void {
+  if (deliveries.some((delivery) => delivery.requestFingerprint !== requestFingerprint)) {
+    throw new TeamApplicationError(
+      "team_message_idempotency_conflict",
+      `Message key ${idempotencyKey} already belongs to a different request`,
+    );
+  }
+}
+
+function projectPersistedHumanMentionAgentIds(
+  deliveries: readonly HumanMentionDelivery[],
+): string[] {
+  if (deliveries.length === 0) return [];
+  const mentionAgentIds = deliveries[0]?.mentionAgentIds ?? [];
+  const uniqueRecipientMemberIds = new Set(
+    deliveries.map((delivery) => delivery.recipientMemberId),
+  );
+  const hasConsistentProjection = deliveries.every((delivery) =>
+    isDeepStrictEqual(delivery.mentionAgentIds, mentionAgentIds),
+  );
+  if (
+    !hasConsistentProjection ||
+    new Set(mentionAgentIds).size !== mentionAgentIds.length ||
+    mentionAgentIds.length !== uniqueRecipientMemberIds.size
+  ) {
+    throw new TeamApplicationError(
+      "team_message_recovery_invariant",
+      `Human room message ${deliveries[0]?.roomMessageId ?? "unknown"} has inconsistent recipients`,
+    );
+  }
+  return [...mentionAgentIds];
+}
+
+function assertHumanRoomMessageIntent(
+  message: TeamRoomMessage,
+  input: {
+    missionId: string;
+    roomId: string;
+    actorId: string;
+    body: string;
+    replyToMessageId: string | null;
+  },
+): void {
+  if (
+    message.missionId !== input.missionId ||
+    message.roomId !== input.roomId ||
+    message.author.kind !== "human" ||
+    message.author.id !== input.actorId ||
+    message.body !== input.body ||
+    message.replyToMessageId !== input.replyToMessageId
+  ) {
+    throw new TeamApplicationError(
+      "team_message_idempotency_conflict",
+      `Message ${message.id} conflicts with the persisted room message`,
+    );
+  }
+}
+
+function agentMessageDeliveriesForRoomMessage(
+  stored: StoredMission,
+  roomMessageId: string,
+): AgentMessageDelivery[] {
+  return stored.recipientAttentionOutbox.filter(
+    (delivery): delivery is AgentMessageDelivery =>
+      delivery.origin !== "human_mention" && delivery.roomMessageId === roomMessageId,
+  );
+}
+
+function assertAgentMessageRequestFingerprint(
+  deliveries: readonly AgentMessageDelivery[],
+  requestFingerprint: string,
+  idempotencyKey: string,
+): void {
+  if (deliveries.some((delivery) => delivery.requestFingerprint !== requestFingerprint)) {
+    throw new TeamApplicationError(
+      "team_message_idempotency_conflict",
+      `Message key ${idempotencyKey} already belongs to a different request`,
+    );
+  }
+}
+
+function projectPersistedAgentMessageAgentIds(
+  mission: TeamMission,
+  roomMessageId: string,
+  deliveries: readonly AgentMessageDelivery[],
+): string[] {
+  if (deliveries.length === 0) return [];
+  const initialByMemberId = new Map<string, AgentMessageDelivery>();
+  for (const delivery of deliveries) {
+    const current = initialByMemberId.get(delivery.recipientMemberId);
+    if (!current || delivery.bindingEpoch < current.bindingEpoch) {
+      initialByMemberId.set(delivery.recipientMemberId, delivery);
+    }
+  }
+  const roster = mission.rosterSnapshots.find(
+    (candidate) => candidate.revision === mission.activeRosterSnapshotRevision,
+  );
+  if (!roster) {
+    throw new TeamApplicationError(
+      "active_roster_not_found",
+      `Mission ${mission.id} has no active roster snapshot`,
+    );
+  }
+  return roster.members.flatMap((member) => {
+    const delivery = initialByMemberId.get(member.memberId);
+    if (!delivery) return [];
+    const participant = mission.participants.find(
+      (candidate) =>
+        candidate.memberId === member.memberId && candidate.bindingEpoch === delivery.bindingEpoch,
+    );
+    if (!participant) {
+      throw new TeamApplicationError(
+        "team_message_recovery_invariant",
+        `Room message ${roomMessageId} has no participant for persisted recipient ${member.memberId}`,
+      );
+    }
+    return [participant.agentId];
+  });
+}
+
+function projectPersistedAgentMessageReplyToMessageId(
+  deliveries: readonly AgentMessageDelivery[],
+): string | null {
+  const explicitAgentMessages = deliveries.filter(
+    (delivery) => delivery.origin === "agent_message",
+  );
+  if (explicitAgentMessages.length === 0) return null;
+  if (explicitAgentMessages.length !== deliveries.length) {
+    throw new TeamApplicationError(
+      "team_message_recovery_invariant",
+      `Room message ${deliveries[0]?.roomMessageId ?? "unknown"} mixes delivery origins`,
+    );
+  }
+  const delivery = explicitAgentMessages[0];
+  if (!delivery) return null;
+  let intent: unknown;
+  try {
+    intent = JSON.parse(delivery.requestFingerprint);
+  } catch {
+    throw invalidAgentMessageIntent(delivery.roomMessageId);
+  }
+  if (
+    typeof intent !== "object" ||
+    intent === null ||
+    !("senderMemberId" in intent) ||
+    intent.senderMemberId !== delivery.senderMemberId ||
+    !("body" in intent) ||
+    intent.body !== delivery.body ||
+    !("replyToMessageId" in intent) ||
+    (intent.replyToMessageId !== null && typeof intent.replyToMessageId !== "string")
+  ) {
+    throw invalidAgentMessageIntent(delivery.roomMessageId);
+  }
+  return intent.replyToMessageId;
+}
+
+function invalidAgentMessageIntent(roomMessageId: string): TeamApplicationError {
+  return new TeamApplicationError(
+    "team_message_recovery_invariant",
+    `Room message ${roomMessageId} has an invalid persisted Agent intent`,
+  );
+}
+
+function assertAgentRoomMessageIntent(
+  message: TeamRoomMessage,
+  input: {
+    missionId: string;
+    roomId: string;
+    authorAgentId: string;
+    body: string;
+    replyToMessageId: string | null;
+  },
+): void {
+  if (
+    message.missionId !== input.missionId ||
+    message.roomId !== input.roomId ||
+    message.author.kind !== "agent" ||
+    message.author.id !== input.authorAgentId ||
+    message.body !== input.body ||
+    message.replyToMessageId !== input.replyToMessageId
+  ) {
+    throw new TeamApplicationError(
+      "team_message_idempotency_conflict",
+      `Message ${message.id} conflicts with the persisted room message`,
+    );
+  }
+}
+
 function humanRoomMessageId(missionId: string, idempotencyKey: string): string {
   return `human-room:${createHash("sha256")
     .update(`${missionId}\0${idempotencyKey}`)
@@ -3746,6 +4284,13 @@ function humanRoomMessageId(missionId: string, idempotencyKey: string): string {
 }
 
 function humanMentionDeliveryId(roomMessageId: string, memberId: string): string {
+  return `${roomMessageId}:mention:${createHash("sha256")
+    .update(memberId)
+    .digest("hex")
+    .slice(0, 16)}`;
+}
+
+function agentRoomMentionDeliveryId(roomMessageId: string, memberId: string): string {
   return `${roomMessageId}:mention:${createHash("sha256")
     .update(memberId)
     .digest("hex")

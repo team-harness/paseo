@@ -54,6 +54,73 @@ describe("Team Missions real-daemon WebSocket contract", () => {
     temporaryPaths.clear();
   }, 60_000);
 
+  test("replays a stable human Room post without duplicating the persisted message", async () => {
+    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-room-home-"));
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-room-workspace-"));
+    execFileSync("git", ["init", "-b", "main"], { cwd: workspaceRoot, stdio: "ignore" });
+    temporaryPaths.add(paseoHomeRoot);
+    temporaryPaths.add(workspaceRoot);
+    const provider = new TeamMissionsTestProvider();
+    const daemon = await createTeamDaemon({ paseoHomeRoot, provider });
+    daemons.add(daemon);
+    temporaryPaths.add(daemon.staticDir);
+
+    const client = await connectTeamClient(daemon);
+    clients.add(client);
+    const workspace = await client.createWorkspace({
+      source: { kind: "directory", path: workspaceRoot },
+      title: "Team Room replay E2E",
+    });
+    if (!workspace.workspace) throw new Error(workspace.error ?? "Workspace creation failed");
+    const members = [
+      testCreateMember("technical-lead", member("Technical lead", 5, ["coordination"])),
+    ];
+    const skills = [{ skillId: "coordination", name: "Coordination", description: null }];
+    const created = await client.createTeamProfile({
+      idempotencyKey: "team-room-replay-create",
+      name: "Room replay team",
+      creationWorkspaceId: workspace.workspace.id,
+      skills,
+      leadClientMemberKey: "technical-lead",
+      members,
+      methodologyBinding: testCreateMethodologyBinding(
+        members.map((candidate) => candidate.clientMemberKey),
+        skills.map((skill) => skill.skillId),
+      ),
+    });
+    if (!created.team) throw new Error(created.error ?? "Team creation failed");
+    const started = await client.startTeamMission({
+      idempotencyKey: "team-room-replay-start",
+      teamId: created.team.id,
+      expectedTeamRevision: created.team.revision,
+      expectedMethodologyRef: created.team.methodologyBinding.ref,
+      workspaceId: workspace.workspace.id,
+      objective: "Verify Room message retry idempotency",
+      constraints: [],
+      acceptanceCriteria: ["The Room contains one copy of a retried message"],
+    });
+    if (!started.mission) throw new Error(started.error ?? "Mission start failed");
+
+    const post = {
+      requestId: "team-room-replay-post",
+      missionId: started.mission.id,
+      body: "What is the current status?",
+    };
+    const first = await client.postTeamMissionMessage(post);
+    const replay = await client.postTeamMissionMessage(post);
+    expect(first).toMatchObject({ error: null, errorCode: null });
+    expect(replay).toEqual(first);
+
+    const room = await client.subscribeTeamMissionRoom({
+      requestId: "team-room-replay-read",
+      missionId: started.mission.id,
+      afterCursor: 0,
+      limit: 20,
+    });
+    expect(room).toMatchObject({ error: null, errorCode: null });
+    expect(room.messages.filter((message) => message.body === post.body)).toEqual([first.message]);
+  }, 30_000);
+
   // eslint-disable-next-line complexity -- This test preserves one real Mission lifecycle.
   test("isolates a review-gate blocker to one fork of a real-daemon Workstream DAG", async () => {
     const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-attention-home-"));

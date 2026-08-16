@@ -2556,6 +2556,7 @@ describe("TeamCollaborationService queries", () => {
         author: { kind: "agent", id: "agent-1" },
         body: "@software-engineer Please implement the parser API.",
         replyToMessageId: null,
+        mentionAgentIds: ["agent-member"],
       },
     ]);
     expect(await fixture.missions.get(mission.id)).toMatchObject({
@@ -2693,30 +2694,233 @@ describe("TeamCollaborationService queries", () => {
     });
   });
 
-  test("posts an idempotent Agent room reply without creating recipient attention", async () => {
+  test("notifies the active Lead when a human post has no explicit recipient", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { team, mission } = await createMission(fixture.lifecycle);
+
+    const posted = await fixture.collaboration.postHumanRoomMessage({
+      missionId: mission.id,
+      actorId: "user-1",
+      idempotencyKey: "human-message-default-lead",
+      body: "What should we do next?",
+    });
+
+    expect(posted.message.mentionAgentIds).toEqual(["agent-1"]);
+    expect(await fixture.missions.get(mission.id)).toMatchObject({
+      recipientAttentionOutbox: [
+        {
+          origin: "human_mention",
+          recipientMemberId: team.leadMemberId,
+          state: "notified",
+        },
+      ],
+    });
+  });
+
+  test("replays a zero-recipient human post after Lead replacement without creating delivery", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { team, mission } = await createMission(fixture.lifecycle);
+    const withoutLead = await fixture.missions.update({
+      missionId: mission.id,
+      expectedRevision: mission.revision,
+      update: (current) => ({
+        ...current,
+        participants: current.participants.map((participant) =>
+          participant.memberId === team.leadMemberId
+            ? { ...participant, archivedAt: NOW }
+            : participant,
+        ),
+      }),
+    });
+
+    const input = {
+      missionId: mission.id,
+      actorId: "user-1",
+      idempotencyKey: "human-message-no-lead",
+      body: "Is anyone coordinating this Mission?",
+    };
+    const first = await fixture.collaboration.postHumanRoomMessage(input);
+    expect(first.message.mentionAgentIds).toEqual([]);
+
+    await fixture.missions.update({
+      missionId: mission.id,
+      expectedRevision: withoutLead.mission.revision,
+      update: (current) => ({
+        ...current,
+        participants: [
+          ...current.participants,
+          {
+            memberId: team.leadMemberId,
+            agentId: "agent-lead-replacement",
+            bindingEpoch: 2,
+            joinedAt: NOW,
+            archivedAt: null,
+          },
+        ],
+      }),
+    });
+
+    const replay = await fixture.collaboration.postHumanRoomMessage(input);
+    expect(replay).toEqual(first);
+    expect(fixture.messagePosts).toHaveLength(1);
+    expect(fixture.attentionAttempts).toEqual([]);
+    expect((await fixture.missions.get(mission.id))?.recipientAttentionOutbox).toEqual([]);
+  });
+
+  test("routes a human reply through the original Agent to the Member's current binding", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { team, mission } = await createMission(fixture.lifecycle);
+    const targetMemberId = team.members[1]?.memberId ?? "missing";
+    const withOldBinding = await addParticipant(fixture.missions, mission.id, mission.revision, {
+      memberId: targetMemberId,
+      agentId: "agent-member-old",
+    });
+    const human = await fixture.collaboration.postHumanRoomMessage({
+      missionId: mission.id,
+      actorId: "user-1",
+      idempotencyKey: "human-message-for-reply",
+      body: "@software-engineer please report back.",
+    });
+    const agentReply = await fixture.collaboration.postAgentRoomReply({
+      callerAgentId: "agent-member-old",
+      missionId: mission.id,
+      idempotencyKey: "agent-reply-before-rebind",
+      replyToMessageId: human.message.id,
+      body: "The parser is ready for review.",
+    });
+    const current = await fixture.missions.get(mission.id);
+    if (!current) throw new Error("Mission disappeared");
+    await fixture.missions.update({
+      missionId: mission.id,
+      expectedRevision: current.mission.revision,
+      update: (missionState) => ({
+        ...missionState,
+        participants: [
+          ...missionState.participants.map((participant) =>
+            participant.memberId === targetMemberId
+              ? { ...participant, archivedAt: NOW }
+              : participant,
+          ),
+          {
+            memberId: targetMemberId,
+            agentId: "agent-member-new",
+            bindingEpoch: 2,
+            joinedAt: NOW,
+            archivedAt: null,
+          },
+        ],
+      }),
+    });
+    expect(withOldBinding.mission.participants).toEqual(
+      expect.arrayContaining([expect.objectContaining({ agentId: "agent-member-old" })]),
+    );
+
+    const followUp = await fixture.collaboration.postHumanRoomMessage({
+      missionId: mission.id,
+      actorId: "user-1",
+      idempotencyKey: "human-reply-after-rebind",
+      replyToMessageId: agentReply.message.id,
+      body: "Please address one final comment.",
+    });
+
+    expect(followUp.message.mentionAgentIds).toEqual(["agent-member-new"]);
+    expect(await fixture.missions.get(mission.id)).toMatchObject({
+      recipientAttentionOutbox: expect.arrayContaining([
+        expect.objectContaining({
+          roomMessageId: followUp.message.id,
+          recipientMemberId: targetMemberId,
+          bindingEpoch: 2,
+        }),
+      ]),
+    });
+  });
+
+  test("posts an idempotent standalone Agent update without creating recipient attention", async () => {
     const fixture = createFixture(rootDirectory);
     const { mission } = await createMission(fixture.lifecycle);
 
-    const posted = await fixture.collaboration.postAgentRoomReply({
+    const input = {
       callerAgentId: "agent-1",
       missionId: mission.id,
-      idempotencyKey: "ack-human-message",
-      replyToMessageId: "human-message-1",
+      idempotencyKey: "agent-progress-update",
       body: "收到，我正在检查解析器测试，完成后继续当前工作。",
-    });
+    };
+    const posted = await fixture.collaboration.postAgentRoomReply(input);
+    const replay = await fixture.collaboration.postAgentRoomReply(input);
 
+    expect(replay).toEqual(posted);
     expect(posted.message).toMatchObject({
       author: { kind: "agent", id: "agent-1" },
-      replyToMessageId: "human-message-1",
+      replyToMessageId: null,
       mentionAgentIds: [],
     });
     expect(fixture.messagePosts).toEqual([
       expect.objectContaining({
         author: { kind: "agent", id: "agent-1" },
-        replyToMessageId: "human-message-1",
+        replyToMessageId: null,
       }),
     ]);
     expect(fixture.attentionAttempts).toEqual([]);
+    expect((await fixture.missions.get(mission.id))?.recipientAttentionOutbox).toEqual([]);
+  });
+
+  test("lets an Agent notify active teammates with @team without notifying itself", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { team, mission } = await createMission(fixture.lifecycle);
+    const targetMemberId = team.members[1]?.memberId ?? "missing";
+    await addParticipant(fixture.missions, mission.id, mission.revision, {
+      memberId: targetMemberId,
+      agentId: "agent-member",
+    });
+
+    const posted = await fixture.collaboration.postAgentRoomReply({
+      callerAgentId: "agent-1",
+      missionId: mission.id,
+      idempotencyKey: "agent-team-update",
+      body: "@team the parser implementation is ready for review.",
+    });
+
+    expect(posted.message).toMatchObject({
+      author: { kind: "agent", id: "agent-1" },
+      replyToMessageId: null,
+      mentionAgentIds: ["agent-member"],
+    });
+    expect(await fixture.missions.get(mission.id)).toMatchObject({
+      recipientAttentionOutbox: [
+        {
+          origin: "agent_message",
+          senderAgentId: "agent-1",
+          recipientMemberId: targetMemberId,
+          state: "notified",
+        },
+      ],
+    });
+    expect(fixture.attentionAttempts).toHaveLength(1);
+  });
+
+  test("fails closed before persistence for an inactive Member or unknown reply target", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { mission } = await createMission(fixture.lifecycle);
+
+    await expect(
+      fixture.collaboration.postHumanRoomMessage({
+        missionId: mission.id,
+        actorId: "user-1",
+        idempotencyKey: "inactive-member",
+        body: "@software-engineer please respond.",
+      }),
+    ).rejects.toMatchObject({ code: "mission_member_not_provisioned" });
+    await expect(
+      fixture.collaboration.postAgentRoomReply({
+        callerAgentId: "agent-1",
+        missionId: mission.id,
+        idempotencyKey: "unknown-reply",
+        replyToMessageId: "missing-message",
+        body: "Acknowledged.",
+      }),
+    ).rejects.toMatchObject({ code: "team_message_reply_not_found" });
+
+    expect(fixture.messagePosts).toEqual([]);
     expect((await fixture.missions.get(mission.id))?.recipientAttentionOutbox).toEqual([]);
   });
 
@@ -2761,7 +2965,195 @@ describe("TeamCollaborationService queries", () => {
     });
   });
 
-  test("posts one room message while durably notifying every mentioned participant", async () => {
+  test("recovers an Agent reply with explicit mentions and acknowledges the replied delivery", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { team, mission } = await createMission(fixture.lifecycle);
+    const targetMemberId = team.members[1]?.memberId ?? "missing";
+    const lead = team.members.find((member) => member.memberId === team.leadMemberId);
+    if (!lead) throw new Error("Lead is missing");
+    await addParticipant(fixture.missions, mission.id, mission.revision, {
+      memberId: targetMemberId,
+      agentId: "agent-member",
+    });
+    const human = await fixture.collaboration.postHumanRoomMessage({
+      missionId: mission.id,
+      actorId: "user-1",
+      idempotencyKey: "human-message-for-recovery-reply",
+      body: "@software-engineer please coordinate with the Lead.",
+    });
+    const humanDelivery = (await fixture.missions.get(mission.id))?.recipientAttentionOutbox.find(
+      (delivery) =>
+        delivery.origin === "human_mention" && delivery.roomMessageId === human.message.id,
+    );
+    if (!humanDelivery) throw new Error("Human mention delivery is missing");
+    fixture.messageState.failNext = true;
+
+    await expect(
+      fixture.collaboration.postAgentRoomReply({
+        callerAgentId: "agent-member",
+        missionId: mission.id,
+        idempotencyKey: `${humanDelivery.deliveryId}:ack`,
+        replyToMessageId: human.message.id,
+        body: `@${lead.mentionHandle} I have finished the parser review.`,
+      }),
+    ).rejects.toThrow("simulated room post crash");
+    expect(await fixture.missions.get(mission.id)).toMatchObject({
+      recipientAttentionOutbox: expect.arrayContaining([
+        expect.objectContaining({
+          origin: "agent_message",
+          roomPostedAt: null,
+          state: "pending",
+        }),
+      ]),
+    });
+
+    const restarted = createFixture(rootDirectory);
+    await expect(restarted.collaboration.reconcilePendingMessages()).resolves.toEqual({
+      failures: [],
+    });
+
+    expect(restarted.messagePosts).toEqual([
+      expect.objectContaining({
+        author: { kind: "agent", id: "agent-member" },
+        replyToMessageId: human.message.id,
+        mentionAgentIds: ["agent-1"],
+      }),
+    ]);
+    expect(await restarted.missions.get(mission.id)).toMatchObject({
+      recipientAttentionOutbox: expect.arrayContaining([
+        expect.objectContaining({
+          origin: "human_mention",
+          roomMessageId: human.message.id,
+          state: "acknowledged",
+          acknowledgedAt: NOW,
+        }),
+        expect.objectContaining({
+          origin: "agent_message",
+          roomPostedAt: NOW,
+          state: "notified",
+        }),
+      ]),
+    });
+  });
+
+  test("reconciles an exact Agent acknowledgement that was posted before a crash", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { team, mission } = await createMission(fixture.lifecycle);
+    const targetMemberId = team.members[1]?.memberId ?? "missing";
+    const lead = team.members.find((member) => member.memberId === team.leadMemberId);
+    if (!lead) throw new Error("Lead is missing");
+    await addParticipant(fixture.missions, mission.id, mission.revision, {
+      memberId: targetMemberId,
+      agentId: "agent-member",
+    });
+    const human = await fixture.collaboration.postHumanRoomMessage({
+      missionId: mission.id,
+      actorId: "user-1",
+      idempotencyKey: "human-message-for-posted-reply",
+      body: "@software-engineer please coordinate with the Lead.",
+    });
+    const humanDelivery = (await fixture.missions.get(mission.id))?.recipientAttentionOutbox.find(
+      (delivery) =>
+        delivery.origin === "human_mention" && delivery.roomMessageId === human.message.id,
+    );
+    if (!humanDelivery) throw new Error("Human mention delivery is missing");
+    await fixture.collaboration.postAgentRoomReply({
+      callerAgentId: "agent-member",
+      missionId: mission.id,
+      idempotencyKey: `${humanDelivery.deliveryId}:ack`,
+      replyToMessageId: human.message.id,
+      body: `@${lead.mentionHandle} I have finished the parser review.`,
+    });
+
+    const afterReply = await fixture.missions.get(mission.id);
+    if (!afterReply) throw new Error("Mission is missing after Agent reply");
+    await fixture.missions.updateRecoveryState({
+      missionId: mission.id,
+      expectedStorageRevision: afterReply.storageRevision,
+      update: (recovery) => ({
+        ...recovery,
+        recipientAttentionOutbox: recovery.recipientAttentionOutbox.map((delivery) =>
+          delivery.deliveryId === humanDelivery.deliveryId
+            ? {
+                ...delivery,
+                state: "notified" as const,
+                lastAttemptAt: NOW,
+                nextEligibleAt: NOW,
+                acknowledgedAt: null,
+                canceledAt: null,
+                cancelReason: null,
+              }
+            : delivery,
+        ),
+      }),
+    });
+
+    await expect(fixture.collaboration.reconcilePendingMessages()).resolves.toEqual({
+      failures: [],
+    });
+    expect(await fixture.missions.get(mission.id)).toMatchObject({
+      recipientAttentionOutbox: expect.arrayContaining([
+        expect.objectContaining({
+          deliveryId: humanDelivery.deliveryId,
+          state: "acknowledged",
+          acknowledgedAt: NOW,
+        }),
+      ]),
+    });
+    expect(fixture.messagePosts.filter((post) => post.author.kind === "agent")).toHaveLength(1);
+  });
+
+  test("posts persisted human recipients after a binding changes during room-post recovery", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { team, mission } = await createMission(fixture.lifecycle);
+    const targetMemberId = team.members[1]?.memberId ?? "missing";
+    const withParticipant = await addParticipant(fixture.missions, mission.id, mission.revision, {
+      memberId: targetMemberId,
+      agentId: "agent-member-old",
+    });
+    fixture.messageState.failNext = true;
+    const input = {
+      missionId: mission.id,
+      actorId: "user-1",
+      idempotencyKey: "human-message-binding-change",
+      body: "@software-engineer status?",
+    };
+
+    await expect(fixture.collaboration.postHumanRoomMessage(input)).rejects.toThrow(
+      "simulated room post crash",
+    );
+    const rebound = await fixture.missions.update({
+      missionId: mission.id,
+      expectedRevision: withParticipant.mission.revision,
+      update: (current) => ({
+        ...current,
+        participants: [
+          ...current.participants.map((participant) =>
+            participant.memberId === targetMemberId
+              ? { ...participant, archivedAt: NOW }
+              : participant,
+          ),
+          {
+            memberId: targetMemberId,
+            agentId: "agent-member-new",
+            bindingEpoch: 2,
+            joinedAt: NOW,
+            archivedAt: null,
+          },
+        ],
+      }),
+    });
+    expect(rebound.mission.revision).toBeGreaterThan(withParticipant.mission.revision);
+
+    const replay = await fixture.collaboration.postHumanRoomMessage(input);
+
+    expect(replay.message.mentionAgentIds).toEqual(["agent-member-old"]);
+    expect(fixture.messagePosts).toEqual([
+      expect.objectContaining({ mentionAgentIds: ["agent-member-old"] }),
+    ]);
+  });
+
+  test("posts one room message while durably notifying every participant mentioned by @team", async () => {
     const fixture = createFixture(rootDirectory);
     const { team, mission } = await createMission(fixture.lifecycle);
     const targetMemberId = team.members[1]?.memberId ?? "missing";
@@ -2773,8 +3165,8 @@ describe("TeamCollaborationService queries", () => {
     await fixture.collaboration.postHumanRoomMessage({
       missionId: mission.id,
       actorId: "user-1",
-      idempotencyKey: "human-message-everyone",
-      body: "@everyone status?",
+      idempotencyKey: "human-message-team",
+      body: "@team status?",
     });
 
     expect(fixture.messagePosts).toHaveLength(1);
@@ -2785,6 +3177,28 @@ describe("TeamCollaborationService queries", () => {
       ],
     });
     expect(fixture.attentionAttempts).toHaveLength(2);
+  });
+
+  test("keeps @everyone reserved without treating it as a broadcast alias", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { team, mission } = await createMission(fixture.lifecycle);
+    const targetMemberId = team.members[1]?.memberId ?? "missing";
+    await addParticipant(fixture.missions, mission.id, mission.revision, {
+      memberId: targetMemberId,
+      agentId: "agent-member",
+    });
+
+    const posted = await fixture.collaboration.postHumanRoomMessage({
+      missionId: mission.id,
+      actorId: "user-1",
+      idempotencyKey: "human-message-everyone-is-text",
+      body: "@everyone status?",
+    });
+
+    expect(posted.message.mentionAgentIds).toEqual(["agent-1"]);
+    expect(await fixture.missions.get(mission.id)).toMatchObject({
+      recipientAttentionOutbox: [expect.objectContaining({ recipientMemberId: team.leadMemberId })],
+    });
   });
 
   test("targets scheduler-created Lead notifications without retrying prepass busy delivery", async () => {
@@ -3264,6 +3678,22 @@ describe("TeamCollaborationService queries", () => {
         missionId: mission.id,
         idempotencyKey: "message-after-cancel",
         recipient: "@technical-lead",
+        body: "This must not be posted.",
+      }),
+    ).rejects.toMatchObject({ code: "mission_terminal" });
+    await expect(
+      fixture.collaboration.postHumanRoomMessage({
+        missionId: mission.id,
+        actorId: "user-1",
+        idempotencyKey: "human-message-after-cancel",
+        body: "This must not be posted.",
+      }),
+    ).rejects.toMatchObject({ code: "mission_messages_closed" });
+    await expect(
+      fixture.collaboration.postAgentRoomReply({
+        callerAgentId: "agent-1",
+        missionId: mission.id,
+        idempotencyKey: "agent-message-after-cancel",
         body: "This must not be posted.",
       }),
     ).rejects.toMatchObject({ code: "mission_terminal" });
@@ -4333,6 +4763,30 @@ function createFixture(
     readPage: { messages: [], cursor: 0, hasMore: false },
   };
   const messages: TeamMessagePort = {
+    get: async (input) => {
+      const posted = messagePosts.find(
+        (candidate) =>
+          candidate.missionId === input.missionId &&
+          candidate.roomId === input.roomId &&
+          candidate.messageId === input.messageId,
+      );
+      return posted
+        ? {
+            message: {
+              id: posted.messageId,
+              missionId: posted.missionId,
+              roomId: posted.roomId,
+              authorAgentId: posted.author.id,
+              author: posted.author,
+              body: posted.body,
+              replyToMessageId: posted.replyToMessageId ?? null,
+              mentionAgentIds: [...(posted.mentionAgentIds ?? [])],
+              createdAt: NOW,
+            },
+            cursor: messagePosts.indexOf(posted) + 1,
+          }
+        : null;
+    },
     post: async (input) => {
       if (messageState.failNext) {
         messageState.failNext = false;

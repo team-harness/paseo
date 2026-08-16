@@ -787,6 +787,7 @@ function createConvergenceFixture(directory: string, seed: number) {
     },
   };
   const messages: TeamMessagePort = {
+    get: async () => null,
     post: async (input) => ({ messageId: input.messageId, cursor: 1 }),
     read: async () => ({ messages: [], cursor: 0, hasMore: false }),
   };

@@ -89,6 +89,11 @@ export interface TeamMemberHistoryPort {
 }
 
 export interface TeamMessagePort {
+  get(input: {
+    missionId: string;
+    roomId: string;
+    messageId: string;
+  }): Promise<{ message: TeamRoomMessage; cursor: number } | null>;
   post(input: {
     messageId: string;
     missionId: string;
