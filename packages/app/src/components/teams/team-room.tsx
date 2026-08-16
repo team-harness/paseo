@@ -10,7 +10,7 @@ import {
   type TextInputSelectionChangeEventData,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ArrowLeft, RotateCw, SendHorizontal, Settings2 } from "lucide-react-native";
+import { ArrowLeft, Reply, RotateCw, SendHorizontal, Settings2, X } from "lucide-react-native";
 
 import type { TeamRoomMessage } from "@getpaseo/protocol/team/v2-types";
 
@@ -86,7 +86,9 @@ export function TeamRoom({
   settingsAttentionCount = 0,
 }: TeamRoomProps): ReactElement {
   const { t } = useTranslation();
-  const { timeline, error, loading, retry } = useRoomSubscription(serverId, missionId);
+  const { timeline, error, historyError, loading, loadingOlder, retry, loadOlder } =
+    useRoomSubscription(serverId, missionId);
+  const [replyToMessage, setReplyToMessage] = useState<TeamRoomMessage | null>(null);
   const isPanelActive = useRetainedPanelActive();
   const listRef = useRef<FlatList<TeamRoomMessage>>(null);
   const scrollRetention = useTeamRoomScrollRetention({ active: isPanelActive, listRef });
@@ -120,6 +122,11 @@ export function TeamRoom({
     }),
     [roster, timeline.messages, t],
   );
+  const messagesById = useMemo(
+    () => new Map(timeline.messages.map((message) => [message.id, message])),
+    [timeline.messages],
+  );
+  const clearReply = useCallback(() => setReplyToMessage(null), []);
 
   const renderItem = useCallback(
     ({ item }: { item: TeamRoomMessage }) => (
@@ -127,10 +134,14 @@ export function TeamRoom({
         message={item}
         member={members.get(item.authorAgentId) ?? null}
         directory={directory}
+        replyToMessage={
+          item.replyToMessageId ? (messagesById.get(item.replyToMessageId) ?? null) : null
+        }
         onOpenAgent={onOpenAgent}
+        onReply={readOnly ? undefined : setReplyToMessage}
       />
     ),
-    [members, directory, onOpenAgent],
+    [members, directory, messagesById, onOpenAgent, readOnly],
   );
 
   const composer = (
@@ -143,6 +154,9 @@ export function TeamRoom({
       onStartMission={onStartMission}
       onExitReplay={onExitReplay}
       settingsAttentionCount={settingsAttentionCount}
+      replyToMessage={replyToMessage}
+      onCancelReply={clearReply}
+      onReplySent={clearReply}
     />
   );
 
@@ -192,8 +206,29 @@ export function TeamRoom({
     );
   }
 
+  const historyHeader =
+    timeline.hasOlder || historyError ? (
+      <View style={styles.historyHeader}>
+        {historyError ? (
+          <Text style={styles.error} testID="team-room-history-error">
+            {historyError}
+          </Text>
+        ) : null}
+        <Button
+          size="sm"
+          variant="ghost"
+          loading={loadingOlder}
+          onPress={loadOlder}
+          testID="team-room-load-older"
+        >
+          {historyError ? t("common.actions.retry") : t("teams.room.loadEarlier")}
+        </Button>
+      </View>
+    ) : null;
+
   return (
     <View style={styles.container}>
+      {historyHeader}
       {timeline.messages.length === 0 ? (
         <View style={styles.notice}>
           <Text style={styles.muted} testID="team-room-empty">
@@ -242,6 +277,9 @@ function RoomComposer({
   onStartMission,
   onExitReplay,
   settingsAttentionCount,
+  replyToMessage,
+  onCancelReply,
+  onReplySent,
 }: {
   serverId: string;
   missionId: string | null;
@@ -251,6 +289,9 @@ function RoomComposer({
   onStartMission?: () => void;
   onExitReplay?: () => void;
   settingsAttentionCount: number;
+  replyToMessage: TeamRoomMessage | null;
+  onCancelReply: () => void;
+  onReplySent: () => void;
 }): ReactElement {
   const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
@@ -259,6 +300,18 @@ function RoomComposer({
   const pendingIntentRef = useRef<RoomMessageIntent | null>(null);
   const [cursorIndex, setCursorIndex] = useState(0);
   const [state, setState] = useState<PostRoomMessageState>({ status: "idle" });
+  const replyTarget = useMemo(
+    () => selectReplyTarget(replyToMessage, roster, t("teams.room.you")),
+    [replyToMessage, roster, t],
+  );
+  const notifiedRecipients = useMemo(() => {
+    if (state.status !== "idle" || !state.message) return [];
+    const rowsByAgentId = new Map(roster.map((row) => [row.agentId, row]));
+    return state.message.mentionAgentIds.map((agentId) => {
+      const row = rowsByAgentId.get(agentId);
+      return row ? `@${row.mentionHandle}` : agentId;
+    });
+  }, [roster, state]);
   const settingsBadge = useMemo(
     () =>
       settingsAttentionCount > 0 ? (
@@ -371,13 +424,19 @@ function RoomComposer({
     const intent = freezeRoomMessageIntent(
       pendingIntentRef.current,
       body,
-      null,
+      replyToMessage?.id ?? null,
       () => `team-room-${crypto.randomUUID()}`,
     );
     if (!intent) return;
     pendingIntentRef.current = intent;
     void postRoomMessage(
-      { missionId, requestId: intent.requestId, body: intent.body, client },
+      {
+        missionId,
+        requestId: intent.requestId,
+        body: intent.body,
+        replyToMessageId: intent.replyToMessageId,
+        client,
+      },
       { refused: t("teams.room.notPosted"), offline: t("common.errors.daemonClientUnavailable") },
       (next) => {
         setState(next);
@@ -387,10 +446,11 @@ function RoomComposer({
           if (pendingIntentRef.current === intent) pendingIntentRef.current = null;
           setBody((current) => (current.trim() === intent.body ? "" : current));
           setCursorIndex(0);
+          onReplySent();
         }
       },
     );
-  }, [body, client, missionId, t]);
+  }, [body, client, missionId, onReplySent, replyToMessage, t]);
 
   let composerAction: ReactElement | null = null;
   if (!readOnly && missionId) {
@@ -430,9 +490,45 @@ function RoomComposer({
 
   return (
     <View style={styles.composer}>
+      {replyTarget ? (
+        <View style={styles.replyTarget} testID="team-room-reply-target">
+          <View style={styles.replyTargetText}>
+            <Text style={styles.replyAuthor}>
+              {t("teams.room.replyingTo", { author: replyTarget.author })}
+            </Text>
+            <Text style={styles.muted} numberOfLines={1}>
+              {replyTarget.summary}
+            </Text>
+            {!replyTarget.direct ? (
+              <Text style={styles.deliveryReceipt} testID="team-room-reply-routing">
+                {t(
+                  replyTarget.reason === "human"
+                    ? "teams.room.replyHumanLeadFallback"
+                    : "teams.room.replyLeadFallback",
+                )}
+              </Text>
+            ) : null}
+          </View>
+          <Button
+            size="sm"
+            variant="ghost"
+            leftIcon={X}
+            accessibilityLabel={t("teams.room.cancelReply")}
+            onPress={onCancelReply}
+            testID="team-room-cancel-reply"
+          />
+        </View>
+      ) : null}
       {state.status === "failure" ? (
         <Text style={styles.error} testID="team-room-post-error">
           {state.message}
+        </Text>
+      ) : null}
+      {state.status === "idle" && state.message ? (
+        <Text style={styles.deliveryReceipt} testID="team-room-post-receipt">
+          {notifiedRecipients.length > 0
+            ? `${t("teams.room.notifiedRecipients")} ${notifiedRecipients.join(", ")}`
+            : t("teams.room.noRecipientNotified")}
         </Text>
       ) : null}
       {isVisible ? (
@@ -476,18 +572,23 @@ function RoomMessage({
   message,
   member,
   directory,
+  replyToMessage,
   onOpenAgent,
+  onReply,
 }: {
   message: TeamRoomMessage;
   member: TeamPanelMember | null;
   directory: RoomMessageDirectory;
+  replyToMessage: TeamRoomMessage | null;
   onOpenAgent?: (agentId: string) => void;
+  onReply?: (message: TeamRoomMessage) => void;
 }): ReactElement {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const folded = useMemo(() => foldRoomMessage(message.body), [message.body]);
   const deliveryReceipt = selectHumanMentionDeliveryReceipt(message);
   const expand = useCallback(() => setExpanded(true), []);
+  const reply = useCallback(() => onReply?.(message), [message, onReply]);
 
   const isHuman = message.author.kind === "human";
   const author = describeTeamRoomAuthor({
@@ -537,7 +638,22 @@ function RoomMessage({
             {author}
           </Text>
           <Text style={styles.time}>{formatMessageTimestamp(new Date(message.createdAt))}</Text>
+          {onReply ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              leftIcon={Reply}
+              accessibilityLabel={t("teams.room.reply")}
+              onPress={reply}
+              testID={`team-room-message-${message.id}-reply`}
+            />
+          ) : null}
         </View>
+        <MessageReplySummary
+          message={message}
+          replyToMessage={replyToMessage}
+          directory={directory}
+        />
         <Text style={styles.body}>
           {segments.map((entry) => (
             <Segment key={entry.key} segment={entry.segment} onOpenAgent={onOpenAgent} />
@@ -603,6 +719,71 @@ function Segment({
   return <Text>{segment.text}</Text>;
 }
 
+function describeReplyAuthor(
+  message: TeamRoomMessage,
+  directory: RoomMessageDirectory,
+  youLabel: string,
+): string {
+  if (message.author.kind === "human") return youLabel;
+  const member = directory.members.find((candidate) => candidate.agentId === message.authorAgentId);
+  return member ? `${member.role} · @${member.mentionHandle}` : message.authorAgentId;
+}
+
+function MessageReplySummary({
+  message,
+  replyToMessage,
+  directory,
+}: {
+  message: TeamRoomMessage;
+  replyToMessage: TeamRoomMessage | null;
+  directory: RoomMessageDirectory;
+}): ReactElement | null {
+  const { t } = useTranslation();
+  if (!message.replyToMessageId) return null;
+  return (
+    <Text style={styles.replySummary} testID={`team-room-message-${message.id}-reply-summary`}>
+      {replyToMessage
+        ? `${t("teams.room.replyingTo", {
+            author: describeReplyAuthor(replyToMessage, directory, t("teams.room.you")),
+          })} · ${foldRoomMessage(replyToMessage.body).text}`
+        : t("teams.room.replyUnavailable")}
+    </Text>
+  );
+}
+
+function selectReplyTarget(
+  message: TeamRoomMessage | null,
+  roster: readonly TeamPanelMember[],
+  youLabel: string,
+): {
+  author: string;
+  summary: string;
+  direct: boolean;
+  reason: "direct" | "human" | "inactive";
+} | null {
+  if (!message) return null;
+  if (message.author.kind === "human") {
+    return {
+      author: youLabel,
+      summary: foldRoomMessage(message.body).text,
+      direct: false,
+      reason: "human",
+    };
+  }
+  const historical = roster.find((row) => row.agentId === message.authorAgentId);
+  const current = historical
+    ? roster.find((row) => row.memberId === historical.memberId && row.active)
+    : null;
+  return {
+    author: historical
+      ? `${historical.role} · @${historical.mentionHandle}`
+      : message.authorAgentId,
+    summary: foldRoomMessage(message.body).text,
+    direct: current !== undefined && current !== null,
+    reason: current ? "direct" : "inactive",
+  };
+}
+
 const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
@@ -619,6 +800,10 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "flex-end",
     gap: theme.spacing[3],
     padding: theme.spacing[4],
+  },
+  historyHeader: {
+    alignItems: "center",
+    gap: theme.spacing[1],
   },
   notice: {
     flex: 1,
@@ -643,6 +828,13 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "baseline",
     gap: theme.spacing[2],
+  },
+  replySummary: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    borderLeftWidth: 2,
+    borderLeftColor: theme.colors.border,
+    paddingLeft: theme.spacing[2],
   },
   author: {
     color: theme.colors.foreground,
@@ -687,6 +879,23 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[4],
     paddingBottom: theme.spacing[4],
+  },
+  replyTarget: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingLeft: theme.spacing[3],
+    borderLeftWidth: 2,
+    borderLeftColor: theme.colors.accentBright,
+  },
+  replyTargetText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  replyAuthor: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: "600",
   },
   composerRow: {
     flexDirection: "row",

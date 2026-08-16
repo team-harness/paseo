@@ -1185,6 +1185,16 @@ export const es: TranslationResources = {
       unopenable: "No se pudo abrir esta sala.",
       you: "Tú",
       empty: "Todavía no se ha dicho nada.",
+      loadEarlier: "Cargar mensajes anteriores",
+      reply: "Responder",
+      replyingTo: "Respuesta a {{author}}",
+      replyUnavailable: "Mensaje original no disponible",
+      replyLeadFallback:
+        "Este miembro ya no está activo. Sin otro @mention, se notificará al Lead.",
+      replyHumanLeadFallback: "Sin @mention, las respuestas a personas notifican al Lead.",
+      cancelReply: "Cancelar respuesta",
+      notifiedRecipients: "Notificados",
+      noRecipientNotified: "Guardado. No hay miembros activos a quienes notificar.",
       showMore: "Mostrar más",
       showMoreLines: "Mostrar {{count}} líneas más",
       mentionReceiptOne:

@@ -2,7 +2,7 @@ import type { TeamRoomMessage } from "@getpaseo/protocol/team/v2-types";
 
 export type PostRoomMessageState =
   | { status: "pending" }
-  | { status: "idle" }
+  | { status: "idle"; message?: TeamRoomMessage }
   | { status: "failure"; message: string };
 
 export interface PostRoomMessageGateway {
@@ -80,7 +80,7 @@ export async function postRoomMessage(
       onState({ status: "failure", message: answer.error ?? labels.refused });
       return;
     }
-    onState({ status: "idle" });
+    onState({ status: "idle", message: answer.message });
   } catch (cause) {
     onState({
       status: "failure",

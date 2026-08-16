@@ -54,7 +54,7 @@ describe("Team Missions real-daemon WebSocket contract", () => {
     temporaryPaths.clear();
   }, 60_000);
 
-  test("replays a stable human Room post without duplicating the persisted message", async () => {
+  test("replays, replies, and pages through a Mission Room", async () => {
     const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-room-home-"));
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-room-workspace-"));
     execFileSync("git", ["init", "-b", "main"], { cwd: workspaceRoot, stdio: "ignore" });
@@ -110,15 +110,45 @@ describe("Team Missions real-daemon WebSocket contract", () => {
     const replay = await client.postTeamMissionMessage(post);
     expect(first).toMatchObject({ error: null, errorCode: null });
     expect(replay).toEqual(first);
+    if (!first.message) throw new Error("First Room message was not persisted");
 
-    const room = await client.subscribeTeamMissionRoom({
-      requestId: "team-room-replay-read",
+    const second = await client.postTeamMissionMessage({
+      requestId: "team-room-replay-second",
+      missionId: started.mission.id,
+      body: "The implementation is ready.",
+    });
+    expect(second).toMatchObject({ error: null, errorCode: null });
+    const reply = await client.postTeamMissionMessage({
+      requestId: "team-room-replay-reply",
+      missionId: started.mission.id,
+      body: "Thanks, please continue.",
+      replyToMessageId: first.message.id,
+    });
+    expect(reply).toMatchObject({
+      error: null,
+      errorCode: null,
+      message: { replyToMessageId: first.message.id },
+    });
+
+    const latest = await client.subscribeTeamMissionRoom({
+      requestId: "team-room-replay-latest",
+      missionId: started.mission.id,
+      limit: 2,
+    });
+    expect(latest).toMatchObject({ error: null, errorCode: null, cursor: 3 });
+    expect(latest.messages.map((message) => message.id)).toEqual([
+      second.message?.id,
+      reply.message?.id,
+    ]);
+
+    const older = await client.subscribeTeamMissionRoom({
+      requestId: "team-room-replay-older",
       missionId: started.mission.id,
       afterCursor: 0,
-      limit: 20,
+      limit: 1,
     });
-    expect(room).toMatchObject({ error: null, errorCode: null });
-    expect(room.messages.filter((message) => message.body === post.body)).toEqual([first.message]);
+    expect(older).toMatchObject({ error: null, errorCode: null, cursor: 1 });
+    expect(older.messages).toEqual([first.message]);
   }, 30_000);
 
   // eslint-disable-next-line complexity -- This test preserves one real Mission lifecycle.

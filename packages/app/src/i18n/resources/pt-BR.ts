@@ -1174,6 +1174,16 @@ export const ptBR: TranslationResources = {
       unopenable: "Não foi possível abrir esta sala.",
       you: "Você",
       empty: "Ninguém disse nada ainda.",
+      loadEarlier: "Carregar mensagens anteriores",
+      reply: "Responder",
+      replyingTo: "Respondendo a {{author}}",
+      replyUnavailable: "Mensagem original indisponível",
+      replyLeadFallback:
+        "Este membro não está mais ativo. Sem outro @mention, o Lead será notificado.",
+      replyHumanLeadFallback: "Sem @mention, respostas a pessoas notificam o Lead.",
+      cancelReply: "Cancelar resposta",
+      notifiedRecipients: "Notificados",
+      noRecipientNotified: "Salvo. Não há membro ativo para notificar.",
       showMore: "Mostrar mais",
       showMoreLines: "Mostrar mais {{count}} linhas",
       mentionReceiptOne:

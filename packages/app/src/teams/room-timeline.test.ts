@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { TeamRoomMessage } from "@getpaseo/protocol/team/v2-types";
 
-import { applyStreamedRoomMessage, emptyRoomTimeline, seedRoomTimeline } from "./room-timeline";
+import {
+  applyHistoricalRoomPage,
+  applyStreamedRoomMessage,
+  emptyRoomTimeline,
+  seedRoomTimeline,
+} from "./room-timeline";
 
 function message(id: string, overrides: Partial<TeamRoomMessage> = {}): TeamRoomMessage {
   return {
@@ -28,7 +33,8 @@ describe("following a team's room", () => {
     });
 
     expect(timeline.messages.map((m) => m.id)).toEqual(["a", "b"]);
-    expect(timeline).toMatchObject({ cursor: 12, hasMore: true });
+    expect(timeline).toMatchObject({ liveCursor: 12, oldestCursor: 10 });
+    expect(timeline.hasOlder).toBe(true);
   });
 
   it("appends what arrives after the page", () => {
@@ -39,7 +45,7 @@ describe("following a team's room", () => {
     );
 
     expect(timeline.messages.map((m) => m.id)).toEqual(["a", "b"]);
-    expect(timeline.cursor).toBe(6);
+    expect(timeline.liveCursor).toBe(6);
   });
 
   it("drops a streamed message the page already carried", () => {
@@ -67,11 +73,46 @@ describe("following a team's room", () => {
     const timeline = applyStreamedRoomMessage(seeded, message("a"), 9);
 
     expect(timeline.messages.map((m) => m.id)).toEqual(["a"]);
-    expect(timeline.cursor).toBe(9);
+    expect(timeline.liveCursor).toBe(9);
   });
 
   it("has an empty state that is not a loaded empty room", () => {
-    expect(emptyRoomTimeline().cursor).toBe(0);
+    expect(emptyRoomTimeline().liveCursor).toBe(0);
     expect(emptyRoomTimeline().messages).toEqual([]);
+  });
+
+  it("prepends an older page without losing live messages", () => {
+    const seeded = seedRoomTimeline({
+      messages: [message("c"), message("d")],
+      cursor: 4,
+      hasMore: false,
+    });
+    const withLive = applyStreamedRoomMessage(seeded, message("e"), 5);
+    const timeline = applyHistoricalRoomPage(withLive, {
+      messages: [message("a"), message("b"), message("c")],
+      cursor: 2,
+      startCursor: 0,
+      expectedCursor: 2,
+    });
+
+    expect(timeline.messages.map((entry) => entry.id)).toEqual(["a", "b", "c", "d", "e"]);
+    expect(timeline).toMatchObject({ liveCursor: 5, oldestCursor: 0, hasOlder: false });
+  });
+
+  it("rejects a historical page whose cursor crossed the frozen boundary", () => {
+    const timeline = seedRoomTimeline({
+      messages: [message("c"), message("d")],
+      cursor: 4,
+      hasMore: false,
+    });
+
+    expect(() =>
+      applyHistoricalRoomPage(timeline, {
+        messages: [message("a")],
+        cursor: 3,
+        startCursor: 0,
+        expectedCursor: 2,
+      }),
+    ).toThrow("Room history cursor changed");
   });
 });

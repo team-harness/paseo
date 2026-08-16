@@ -8,13 +8,35 @@ import type { TeamRoomMessage } from "@getpaseo/protocol/team/v2-types";
 vi.stubGlobal("React", React);
 
 const postTeamMissionMessage = vi.fn();
+const loadOlder = vi.fn();
+const roomMessages: TeamRoomMessage[] = [];
+let roomHasOlder = false;
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: { author?: string }) =>
+      options?.author ? `${key}: ${options.author}` : key,
+  }),
 }));
 
 vi.mock("react-native", () => ({
-  FlatList: () => null,
+  FlatList: ({
+    data,
+    renderItem,
+    ListHeaderComponent,
+  }: {
+    data: TeamRoomMessage[];
+    renderItem: (input: { item: TeamRoomMessage }) => React.ReactNode;
+    ListHeaderComponent?: React.ReactNode;
+  }) =>
+    React.createElement(
+      "div",
+      null,
+      ListHeaderComponent,
+      data.map((item) =>
+        React.createElement(React.Fragment, { key: item.id }, renderItem({ item })),
+      ),
+    ),
   View: ({ children, testID }: { children?: React.ReactNode; testID?: string }) =>
     React.createElement("div", { "data-testid": testID }, children),
   Text: ({ children, testID }: { children?: React.ReactNode; testID?: string }) =>
@@ -42,9 +64,11 @@ vi.mock("react-native-unistyles", () => ({
 
 vi.mock("lucide-react-native", () => ({
   ArrowLeft: () => null,
+  Reply: () => null,
   RotateCw: () => null,
   SendHorizontal: () => null,
   Settings2: () => null,
+  X: () => null,
 }));
 
 vi.mock("@/components/retained-panel", () => ({ useRetainedPanelActive: () => true }));
@@ -75,10 +99,18 @@ vi.mock("@/runtime/host-runtime", () => ({
 }));
 vi.mock("@/teams/use-room-subscription", () => ({
   useRoomSubscription: () => ({
-    timeline: { messages: [], cursor: 0, hasMore: false },
+    timeline: {
+      messages: roomMessages,
+      liveCursor: roomMessages.length,
+      oldestCursor: roomHasOlder ? 1 : 0,
+      hasOlder: roomHasOlder,
+    },
     error: null,
+    historyError: null,
     loading: false,
+    loadingOlder: false,
     retry: () => undefined,
+    loadOlder,
   }),
 }));
 vi.mock("@/teams/use-team-room-scroll-retention", () => ({
@@ -110,6 +142,9 @@ const POSTED_MESSAGE: TeamRoomMessage = {
 describe("TeamRoom composer", () => {
   afterEach(() => {
     cleanup();
+    roomMessages.length = 0;
+    roomHasOlder = false;
+    loadOlder.mockReset();
     postTeamMissionMessage.mockReset();
     vi.restoreAllMocks();
   });
@@ -141,5 +176,120 @@ describe("TeamRoom composer", () => {
     expect(postTeamMissionMessage.mock.calls[1]?.[0].requestId).toBe(
       postTeamMissionMessage.mock.calls[0]?.[0].requestId,
     );
+  });
+
+  it("replies to an inactive member and shows the Lead actually notified", async () => {
+    roomMessages.push({
+      ...POSTED_MESSAGE,
+      id: "message-agent",
+      authorAgentId: "old-agent",
+      author: { kind: "agent", id: "old-agent" },
+      body: "Please check the release",
+    });
+    postTeamMissionMessage.mockResolvedValue({
+      message: {
+        ...POSTED_MESSAGE,
+        id: "message-reply",
+        replyToMessageId: "message-agent",
+        mentionAgentIds: ["lead-agent"],
+      },
+      error: null,
+    });
+    const roster = [
+      {
+        memberId: "member-old",
+        agentId: "old-agent",
+        role: "Reviewer",
+        mentionHandle: "reviewer",
+        active: false,
+        isLead: false,
+        agent: null,
+      },
+      {
+        memberId: "member-lead",
+        agentId: "lead-agent",
+        role: "Lead",
+        mentionHandle: "lead",
+        active: true,
+        isLead: true,
+        agent: null,
+      },
+    ];
+    render(
+      <TeamRoom
+        serverId="server-1"
+        missionId="mission-1"
+        roster={roster}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("team-room-message-message-agent-reply"));
+    expect(screen.getByTestId("team-room-reply-target").textContent).toContain("Reviewer");
+    expect(screen.getByTestId("team-room-reply-routing").textContent).toContain(
+      "teams.room.replyLeadFallback",
+    );
+    fireEvent.change(screen.getByTestId("team-room-composer"), {
+      target: { value: "@lead Done" },
+    });
+    expect(screen.getByTestId("team-room-reply-routing").textContent).toContain(
+      "teams.room.replyLeadFallback",
+    );
+    fireEvent.click(screen.getByTestId("team-room-send"));
+
+    await waitFor(() => expect(postTeamMissionMessage).toHaveBeenCalledOnce());
+    expect(postTeamMissionMessage.mock.calls[0]?.[0]).toMatchObject({
+      body: "@lead Done",
+      replyToMessageId: "message-agent",
+    });
+    expect(screen.getByTestId("team-room-post-receipt").textContent).toContain("@lead");
+  });
+
+  it("loads earlier messages from the room header", () => {
+    roomMessages.push(POSTED_MESSAGE);
+    roomHasOlder = true;
+    render(
+      <TeamRoom serverId="server-1" missionId="mission-1" roster={[]} onOpenSettings={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByTestId("team-room-load-older"));
+    expect(loadOlder).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a reply and hides reply actions in a terminal room", () => {
+    roomMessages.push(POSTED_MESSAGE);
+    const { rerender } = render(
+      <TeamRoom serverId="server-1" missionId="mission-1" roster={[]} onOpenSettings={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByTestId("team-room-message-message-1-reply"));
+    fireEvent.click(screen.getByTestId("team-room-cancel-reply"));
+    expect(screen.queryByTestId("team-room-reply-target")).toBeNull();
+
+    rerender(
+      <TeamRoom
+        serverId="server-1"
+        missionId="mission-1"
+        roster={[]}
+        readOnly
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("team-room-message-message-1-reply")).toBeNull();
+    expect(screen.queryByTestId("team-room-composer")).toBeNull();
+  });
+
+  it("keeps the selected reply target when a reconnect replaces the newest page", () => {
+    roomMessages.push(POSTED_MESSAGE);
+    const { rerender } = render(
+      <TeamRoom serverId="server-1" missionId="mission-1" roster={[]} onOpenSettings={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByTestId("team-room-message-message-1-reply"));
+
+    roomMessages.length = 0;
+    rerender(
+      <TeamRoom serverId="server-1" missionId="mission-1" roster={[]} onOpenSettings={vi.fn()} />,
+    );
+
+    expect(screen.getByTestId("team-room-reply-target").textContent).toContain("Status update");
   });
 });

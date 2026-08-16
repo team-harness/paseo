@@ -1,6 +1,7 @@
 import type { TeamRoomMessage } from "@getpaseo/protocol/team/v2-types";
 
 import {
+  applyHistoricalRoomPage,
   applyStreamedRoomMessage,
   emptyRoomTimeline,
   seedRoomTimeline,
@@ -9,7 +10,11 @@ import {
 
 export interface RoomSubscriptionClient {
   on(type: "team.mission.message.posted", handler: (message: unknown) => void): () => void;
-  subscribeTeamMissionRoom(options: { missionId: string; limit?: number }): Promise<{
+  subscribeTeamMissionRoom(options: {
+    missionId: string;
+    afterCursor?: number;
+    limit?: number;
+  }): Promise<{
     missionId: string;
     messages: TeamRoomMessage[];
     cursor: number;
@@ -23,7 +28,9 @@ export interface RoomSubscriptionClient {
 export interface RoomSubscriptionState {
   timeline: RoomTimeline;
   error: string | null;
+  historyError: string | null;
   loading: boolean;
+  loadingOlder: boolean;
 }
 
 interface StreamedMessage {
@@ -45,7 +52,9 @@ export class RoomSubscription {
   private unsubscribe: (() => void) | null = null;
   private disposed = false;
   private error: string | null = null;
+  private historyError: string | null = null;
   private loading = true;
+  private loadingOlder = false;
 
   constructor(
     private readonly missionId: string,
@@ -118,6 +127,51 @@ export class RoomSubscription {
     void this.load();
   }
 
+  loadOlder(limit = 50): void {
+    if (this.disposed || this.loading || this.loadingOlder || !this.timeline.hasOlder) return;
+    const expectedCursor = this.timeline.oldestCursor;
+    const pageSize = Math.min(limit, expectedCursor);
+    const startCursor = expectedCursor - pageSize;
+    this.loadingOlder = true;
+    this.historyError = null;
+    this.emit();
+    void this.loadHistoricalPage({ expectedCursor, pageSize, startCursor });
+  }
+
+  private async loadHistoricalPage(input: {
+    expectedCursor: number;
+    pageSize: number;
+    startCursor: number;
+  }): Promise<void> {
+    try {
+      const page = await this.client.subscribeTeamMissionRoom({
+        missionId: this.missionId,
+        afterCursor: input.startCursor,
+        limit: input.pageSize,
+      });
+      if (this.disposed) return;
+      if (page.error) {
+        this.historyError = page.error;
+      } else {
+        this.timeline = applyHistoricalRoomPage(this.timeline, {
+          messages: page.messages,
+          cursor: page.cursor,
+          startCursor: input.startCursor,
+          expectedCursor: input.expectedCursor,
+        });
+        this.historyError = null;
+      }
+    } catch (cause) {
+      if (this.disposed) return;
+      this.historyError = cause instanceof Error ? cause.message : this.unopenableLabel;
+    } finally {
+      if (!this.disposed) {
+        this.loadingOlder = false;
+        this.emit();
+      }
+    }
+  }
+
   private apply(streamed: StreamedMessage): void {
     const next = applyStreamedRoomMessage(this.timeline, streamed.message, streamed.cursor);
     if (next === this.timeline) return;
@@ -127,7 +181,13 @@ export class RoomSubscription {
 
   private emit(): void {
     if (this.disposed) return;
-    this.onState({ timeline: this.timeline, error: this.error, loading: this.loading });
+    this.onState({
+      timeline: this.timeline,
+      error: this.error,
+      historyError: this.historyError,
+      loading: this.loading,
+      loadingOlder: this.loadingOlder,
+    });
   }
 
   dispose(): void {

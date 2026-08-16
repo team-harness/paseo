@@ -9,6 +9,7 @@ import type { MissionWorkroomView } from "@/teams/mission-workroom-view";
 vi.stubGlobal("React", React);
 
 let compact = false;
+let roomInstance = 0;
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -84,11 +85,14 @@ vi.mock("@/components/teams/member-avatar", () => ({
 }));
 
 vi.mock("@/components/teams/team-room", () => ({
-  TeamRoom: ({ readOnly }: { readOnly?: boolean }) =>
-    React.createElement("div", {
+  TeamRoom: ({ readOnly }: { readOnly?: boolean }) => {
+    const [instance] = React.useState(() => ++roomInstance);
+    return React.createElement("div", {
       "data-testid": "team-room",
       "data-read-only": readOnly ? "true" : "false",
-    }),
+      "data-instance": String(instance),
+    });
+  },
 }));
 
 import { MissionWorkroom } from "./mission-workroom";
@@ -157,10 +161,13 @@ const FAILED_VIEW: MissionWorkroomView = {
     },
   ],
 };
+const UPDATED_VIEW: MissionWorkroomView = { ...VIEW, objective: "Updated objective" };
+const OTHER_MISSION_VIEW: MissionWorkroomView = { ...VIEW, missionId: "mission-2" };
 
 describe("MissionWorkroom", () => {
   afterEach(() => {
     compact = false;
+    roomInstance = 0;
     cleanup();
   });
 
@@ -223,5 +230,40 @@ describe("MissionWorkroom", () => {
     );
 
     expect(screen.getByText("teams.v2Settings.status.failed")).toBeTruthy();
+  });
+
+  it("remounts the Room session only when the Mission identity changes", () => {
+    const { rerender } = render(
+      <MissionWorkroom
+        serverId="server-1"
+        view={VIEW}
+        roster={ROSTER}
+        readOnly={false}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    const firstInstance = screen.getByTestId("team-room").getAttribute("data-instance");
+
+    rerender(
+      <MissionWorkroom
+        serverId="server-1"
+        view={UPDATED_VIEW}
+        roster={ROSTER}
+        readOnly={false}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("team-room").getAttribute("data-instance")).toBe(firstInstance);
+
+    rerender(
+      <MissionWorkroom
+        serverId="server-1"
+        view={OTHER_MISSION_VIEW}
+        roster={ROSTER}
+        readOnly={false}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("team-room").getAttribute("data-instance")).not.toBe(firstInstance);
   });
 });

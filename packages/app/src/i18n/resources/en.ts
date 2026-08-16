@@ -1160,6 +1160,16 @@ export const en = {
       unopenable: "This room could not be opened.",
       you: "You",
       empty: "Nothing said yet.",
+      loadEarlier: "Load earlier messages",
+      reply: "Reply",
+      replyingTo: "Replying to {{author}}",
+      replyUnavailable: "Original message unavailable",
+      replyLeadFallback:
+        "This member is no longer active. Without another @mention, the Lead will be notified.",
+      replyHumanLeadFallback: "Without an @mention, replies to people notify the Lead.",
+      cancelReply: "Cancel reply",
+      notifiedRecipients: "Notified",
+      noRecipientNotified: "Saved. No active member could be notified.",
       showMore: "Show more",
       showMoreLines: "Show {{count}} more lines",
       mentionReceiptOne:
