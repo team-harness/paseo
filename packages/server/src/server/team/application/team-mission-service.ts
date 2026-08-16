@@ -84,7 +84,7 @@ const DEFAULT_WORKSPACE_AUDIT_POLICY = {
   includeNonIgnoredUntrackedPaths: true,
   includeDeclaredArtifactPaths: true,
   excludeGitignoredPathsByDefault: true,
-  excludedPathPrefixes: [".git"],
+  excludedPathPrefixes: [".git", ".codegraph"],
 };
 
 const IMPLEMENTED_ATTENTION_RESOLUTION_KINDS = new Set<TeamMissionAttentionResolutionInput["kind"]>(

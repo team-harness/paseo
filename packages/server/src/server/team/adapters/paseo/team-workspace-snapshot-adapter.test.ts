@@ -37,7 +37,7 @@ describe("PaseoTeamWorkspaceSnapshotAdapter", () => {
       includeNonIgnoredUntrackedPaths: true,
       includeDeclaredArtifactPaths: true,
       excludeGitignoredPathsByDefault: true,
-      excludedPathPrefixes: [],
+      excludedPathPrefixes: [".codegraph"],
     };
     const baseline = await adapter.captureBaseline({
       workspaceId: "workspace-1",
@@ -50,6 +50,8 @@ describe("PaseoTeamWorkspaceSnapshotAdapter", () => {
     await writeFile(join(workspace, "packages/app/unsafe.ts"), "export const unsafe = true;\n");
     await mkdir(join(workspace, "dist"), { recursive: true });
     await writeFile(join(workspace, "dist/output.js"), "ignored\n");
+    await mkdir(join(workspace, ".codegraph"), { recursive: true });
+    await writeFile(join(workspace, ".codegraph/.gitignore"), "*\n!.gitignore\n");
 
     const delta = await adapter.captureDelta({
       workspaceId: "workspace-1",
@@ -68,6 +70,9 @@ describe("PaseoTeamWorkspaceSnapshotAdapter", () => {
     ]);
     expect(delta.capturedDelta).not.toContainEqual(
       expect.objectContaining({ path: "dist/output.js" }),
+    );
+    expect(delta.capturedDelta).not.toContainEqual(
+      expect.objectContaining({ path: ".codegraph/.gitignore" }),
     );
   });
 

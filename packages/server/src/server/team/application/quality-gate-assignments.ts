@@ -321,7 +321,6 @@ function hasReusableReviewLifecycle(
       assignment.workspaceBaseline !== null &&
       assignment.workspaceBaseline.workspaceId === input.mission.workspaceId &&
       assignment.workspaceBaseline.assignmentId === assignment.assignmentId &&
-      assignment.report === null &&
       assignment.scopeLease === null &&
       assignment.dispatchedAt !== null &&
       assignment.settledAt === null &&

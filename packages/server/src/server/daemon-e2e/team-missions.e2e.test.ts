@@ -23,6 +23,12 @@ import {
 } from "./team-missions-test-provider.js";
 import { StoredMissionSchema } from "../team/persistence/schemas.js";
 import { testCreateMember, testCreateMethodologyBinding } from "../team/test-fixtures.js";
+import {
+  FINAL_VERIFICATION_OUTCOME_PREFIX,
+  finalVerificationOutcomeIdempotencyKey,
+  LEAD_FINAL_SUMMARY_PREFIX,
+  leadFinalSummaryIdempotencyKey,
+} from "../team/application/team-room-closeout.js";
 
 interface McpToolResult {
   structuredContent?: Record<string, unknown>;
@@ -709,6 +715,347 @@ describe("Team Missions real-daemon WebSocket contract", () => {
     );
   }, 30_000);
 
+  test("recovers final closeout through persisted outbox and real tools after daemon restart", async () => {
+    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-closeout-recovery-home-"));
+    const workspaceRoot = await mkdtemp(
+      path.join(os.tmpdir(), "paseo-closeout-recovery-workspace-"),
+    );
+    execFileSync("git", ["init", "-b", "main"], { cwd: workspaceRoot, stdio: "ignore" });
+    temporaryPaths.add(paseoHomeRoot);
+    temporaryPaths.add(workspaceRoot);
+    const provider = new TeamMissionsTestProvider();
+    const daemonErrors: string[] = [];
+    let daemon = await createTeamDaemon({
+      paseoHomeRoot,
+      provider,
+      errorLog: daemonErrors,
+      reconcileIntervalMs: 25,
+    });
+    daemons.add(daemon);
+    temporaryPaths.add(daemon.staticDir);
+    let client = await connectTeamClient(daemon);
+    clients.add(client);
+    const workspace = await client.createWorkspace({
+      source: { kind: "directory", path: workspaceRoot },
+      title: "Final closeout recovery E2E",
+    });
+    if (!workspace.workspace) throw new Error(workspace.error ?? "Workspace creation failed");
+    const members = [
+      testCreateMember("technical-lead", member("Technical lead", 5, ["delivery"])),
+      testCreateMember("final-verifier", member("Final verifier", 5, ["verification"])),
+    ];
+    const skills = [
+      { skillId: "delivery", name: "Delivery", description: null },
+      { skillId: "verification", name: "Verification", description: null },
+    ];
+    const created = await client.createTeamProfile({
+      idempotencyKey: "team-closeout-recovery-create",
+      name: "Closeout recovery team",
+      creationWorkspaceId: workspace.workspace.id,
+      skills,
+      leadClientMemberKey: "technical-lead",
+      members,
+      methodologyBinding: testCreateMethodologyBinding(
+        members.map((candidate) => candidate.clientMemberKey),
+        skills.map((skill) => skill.skillId),
+      ),
+    });
+    if (!created.team) throw new Error(created.error ?? "Team creation failed");
+    const lead = created.team.members.find(
+      (candidate) => candidate.memberId === created.team?.leadMemberId,
+    );
+    const verifierMember = created.team.members.find(
+      (candidate) => candidate.role === "Final verifier",
+    );
+    if (!lead || !verifierMember) throw new Error("Closeout roster is incomplete");
+    const started = await client.startTeamMission({
+      idempotencyKey: "team-closeout-recovery-start",
+      teamId: created.team.id,
+      expectedTeamRevision: created.team.revision,
+      expectedMethodologyRef: created.team.methodologyBinding.ref,
+      workspaceId: workspace.workspace.id,
+      objective: "Deliver one artifact and close through durable final verification",
+      constraints: [],
+      acceptanceCriteria: ["The final closeout survives daemon restart"],
+    });
+    if (!started.mission) throw new Error(started.error ?? "Mission start failed");
+    await provider.waitForTurns(
+      (turns) => turns.length === 1 && turns[0]?.state === "running",
+      "Lead briefing acceptance",
+    );
+    await provider.completeTurn(provider.turns[0]!.turnId);
+    const leadAgentId = started.mission.participants[0]!.agentId;
+    let leadMcp = await createMcpClient(
+      `http://127.0.0.1:${daemon.port}/mcp/agents?callerAgentId=${encodeURIComponent(leadAgentId)}`,
+    );
+    mcpClients.add(leadMcp);
+    const drafts = [
+      workstreamDraft({
+        workstreamId: "delivery",
+        kind: "delivery",
+        skillId: "delivery",
+        scope: { kind: "paths", pathPrefixes: ["src/delivery"] },
+        dependencies: [],
+        review: false,
+      }),
+      workstreamDraft({
+        workstreamId: "final-verification",
+        kind: "verification",
+        skillId: "verification",
+        scope: { kind: "read_only" },
+        dependencies: ["delivery"],
+        review: false,
+      }),
+    ];
+    const planResult = await leadMcp.callTool({
+      name: "mission_plan",
+      args: {
+        missionId: started.mission.id,
+        expectedRevision: started.mission.revision,
+        expectedPlanRevision: 0,
+        workstreams: drafts,
+      },
+    });
+    if (planResult.isError) throw new Error(toolErrorText(planResult));
+    const planned = TeamMissionSchema.parse(requireToolSuccess(planResult));
+    const assignedResult = await leadMcp.callTool({
+      name: "assign_task",
+      args: {
+        missionId: planned.id,
+        expectedRevision: planned.revision,
+        expectedPlanRevision: planned.planRevision,
+        assignments: [deliveryDraft("delivery")],
+      },
+    });
+    if (assignedResult.isError) throw new Error(toolErrorText(assignedResult));
+    const delivering = await waitForMission(
+      client,
+      planned.id,
+      (mission) => hasRunningAssignment(mission, "delivery"),
+      "delivery dispatch",
+    );
+    const deliveryAssignment = requireAssignment(delivering, "delivery");
+    const deliveryMcp = await createMcpClient(
+      `http://127.0.0.1:${daemon.port}/mcp/agents?callerAgentId=${encodeURIComponent(requireRuntimeAgentId(deliveryAssignment))}`,
+    );
+    mcpClients.add(deliveryMcp);
+    await reportAssignment({
+      client,
+      mcp: deliveryMcp,
+      errorLog: daemonErrors,
+      missionId: delivering.id,
+      assignmentId: deliveryAssignment.assignmentId,
+      report: completedReport({
+        summary: "Delivery completed",
+        artifactPaths: [],
+        verdict: null,
+      }),
+    });
+    await provider.completeTurn(requireAcceptedTurnId(deliveryAssignment));
+    const verifying = await waitForMission(
+      client,
+      delivering.id,
+      hasRunningVerification,
+      "final verification dispatch",
+    );
+    const verification = requireKindAssignment(verifying, "verification");
+    const verifierAgentId = requireRuntimeAgentId(verification);
+    let verifierMcp = await createMcpClient(
+      `http://127.0.0.1:${daemon.port}/mcp/agents?callerAgentId=${encodeURIComponent(verifierAgentId)}`,
+    );
+    mcpClients.add(verifierMcp);
+    const outcomePost = requireToolSuccess(
+      await verifierMcp.callTool({
+        name: "chat_post",
+        args: {
+          missionId: verifying.id,
+          idempotencyKey: finalVerificationOutcomeIdempotencyKey(verification.assignmentId),
+          body: `${FINAL_VERIFICATION_OUTCOME_PREFIX} approved; @${lead.mentionHandle} post the final Mission summary.`,
+        },
+      }),
+    );
+    const outcomeMessageId = String((outcomePost.message as { id?: unknown } | undefined)?.id);
+    await provider.completeTurn(requireAcceptedTurnId(verification));
+    await waitForMission(
+      client,
+      verifying.id,
+      assignmentHasSemanticState(verification.assignmentId, "needs_report"),
+      "final verification awaiting report recovery",
+    );
+    await provider.waitForTurns(
+      hasRunningProviderTurn(
+        `team-mission:${verifying.id}:assignment:${verification.assignmentId}:report-recovery:1`,
+      ),
+      "first report recovery acceptance",
+      20_000,
+    );
+    const firstRecovery = provider.turns.find((turn) =>
+      turn.clientMessageId?.endsWith(`assignment:${verification.assignmentId}:report-recovery:1`),
+    );
+    if (!firstRecovery) throw new Error("First report recovery turn is missing");
+    const outcomeOnly = await client.subscribeTeamMissionRoom({
+      requestId: "closeout-outcome-only",
+      missionId: verifying.id,
+      limit: 20,
+    });
+    expect(outcomeOnly.messages.map((message) => message.id)).toEqual([outcomeMessageId]);
+    expect(
+      (await inspectMission(client, verifying.id)).assignments.find(
+        (candidate) => candidate.assignmentId === verification.assignmentId,
+      ),
+    ).toMatchObject({ report: null, semanticState: "needs_report" });
+
+    const summaryResult = await leadMcp.callTool({
+      name: "chat_post",
+      args: {
+        missionId: verifying.id,
+        idempotencyKey: leadFinalSummaryIdempotencyKey(verification.assignmentId),
+        body: `${LEAD_FINAL_SUMMARY_PREFIX} delivery and verification passed; @${verifierMember.mentionHandle} submit the final report.`,
+      },
+    });
+    if (summaryResult.isError) {
+      throw new Error(`${toolErrorText(summaryResult)}\n${daemonErrors.slice(-10).join("\n")}`);
+    }
+    const summaryPost = requireToolSuccess(summaryResult);
+    const summaryMessageId = String((summaryPost.message as { id?: unknown } | undefined)?.id);
+    const leadOutcomeWake = provider.turns.find(
+      (turn) =>
+        turn.agentId === leadAgentId &&
+        turn.state === "running" &&
+        turn.clientMessageId?.startsWith("team-message:") === true,
+    );
+    if (!leadOutcomeWake) throw new Error("Verifier outcome did not wake the Mission Lead");
+    await provider.completeTurn(leadOutcomeWake.turnId);
+    await provider.completeTurn(firstRecovery.turnId);
+    await provider.waitForTurns(
+      hasRunningTeamMessageTurn(verifierAgentId, firstRecovery.turnId),
+      "Lead summary recipient delivery",
+    );
+    const summaryWake = provider.turns.find(
+      (turn) =>
+        turn.agentId === verifierAgentId &&
+        turn.turnId !== firstRecovery.turnId &&
+        turn.state === "running" &&
+        turn.clientMessageId?.startsWith("team-message:") === true,
+    );
+    if (!summaryWake) throw new Error("Lead summary recipient turn is missing");
+    await provider.completeTurn(summaryWake.turnId);
+    const storedBeforeRestart = await waitForStoredMission(
+      daemon.paseoHome,
+      verifying.id,
+      hasReportRecoveryState(verification.assignmentId, 2, "dispatched"),
+      "second report recovery dispatch before restart",
+    );
+    expect(storedBeforeRestart.assignmentReportRecoveryOutbox).toContainEqual(
+      expect.objectContaining({
+        assignmentId: verification.assignmentId,
+        attempt: 2,
+        state: "dispatched",
+        turnId: expect.any(String),
+      }),
+    );
+
+    await Promise.all([...mcpClients].map((mcp) => mcp.close()));
+    mcpClients.clear();
+    await client.close();
+    clients.delete(client);
+    await withTimeout(daemon.close(), "close daemon before report recovery restart");
+    daemons.delete(daemon);
+    daemon = await createTeamDaemon({
+      paseoHomeRoot,
+      provider,
+      errorLog: daemonErrors,
+      reconcileIntervalMs: 25,
+    });
+    daemons.add(daemon);
+    temporaryPaths.add(daemon.staticDir);
+    client = await connectTeamClient(daemon);
+    clients.add(client);
+    await provider.waitForTurns(
+      hasRunningProviderTurn(
+        `team-mission:${verifying.id}:assignment:${verification.assignmentId}:report-recovery:2`,
+      ),
+      "second report recovery acceptance after daemon restart",
+      20_000,
+    );
+    const secondRecovery = provider.turns.find((turn) =>
+      turn.clientMessageId?.endsWith(`assignment:${verification.assignmentId}:report-recovery:2`),
+    );
+    if (!secondRecovery) throw new Error("Second report recovery turn is missing");
+    verifierMcp = await createMcpClient(
+      `http://127.0.0.1:${daemon.port}/mcp/agents?callerAgentId=${encodeURIComponent(verifierAgentId)}`,
+    );
+    mcpClients.add(verifierMcp);
+    await waitForMission(
+      client,
+      verifying.id,
+      assignmentHasSemanticState(verification.assignmentId, "needs_report"),
+      "pending recovery replay after daemon restart",
+    );
+    expect(
+      provider.turns.filter((turn) => turn.clientMessageId === secondRecovery.clientMessageId),
+    ).toEqual([secondRecovery]);
+    const closeoutVisible = requireToolSuccess(
+      await withTimeout(
+        verifierMcp.callTool({
+          name: "chat_read",
+          args: { missionId: verifying.id },
+        }),
+        "verifier chat_read after daemon restart",
+      ),
+    );
+    const closeoutMessages = Array.isArray(closeoutVisible.messages)
+      ? closeoutVisible.messages
+      : [];
+    expect(closeoutMessages.map((message) => (message as { id?: unknown }).id)).toEqual([
+      outcomeMessageId,
+      summaryMessageId,
+    ]);
+    const beforeReport = await client.subscribeTeamMissionRoom({
+      requestId: "closeout-before-report",
+      missionId: verifying.id,
+      limit: 20,
+    });
+    expect(beforeReport.messages.map((message) => message.id)).toEqual([
+      outcomeMessageId,
+      summaryMessageId,
+    ]);
+    await withTimeout(
+      reportAssignment({
+        client,
+        mcp: verifierMcp,
+        errorLog: daemonErrors,
+        missionId: verifying.id,
+        assignmentId: verification.assignmentId,
+        report: finalVerificationReport(
+          verification,
+          "approved",
+          "Final verification approved after durable closeout recovery",
+        ),
+      }),
+      "verifier assignment_report after daemon restart",
+    );
+    const afterReport = await client.subscribeTeamMissionRoom({
+      requestId: "closeout-after-report",
+      missionId: verifying.id,
+      limit: 20,
+    });
+    expect(afterReport.messages.map((message) => message.id)).toEqual([
+      outcomeMessageId,
+      summaryMessageId,
+    ]);
+    expect(
+      (await inspectMission(client, verifying.id)).assignments.find(
+        (candidate) => candidate.assignmentId === verification.assignmentId,
+      ),
+    ).toMatchObject({
+      report: expect.objectContaining({
+        summary: "Final verification approved after durable closeout recovery",
+      }),
+      semanticState: "completed",
+    });
+  }, 60_000);
+
   test("coordinates a lazy, parallel DAG through WebSocket and agent-scoped MCP", async () => {
     const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-flow-home-"));
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-team-flow-workspace-"));
@@ -1368,6 +1715,7 @@ async function createTeamDaemon(input: {
   paseoHomeRoot: string;
   provider: TeamMissionsTestProvider;
   errorLog?: string[];
+  reconcileIntervalMs?: number;
 }): Promise<TestPaseoDaemon> {
   return createTestPaseoDaemon({
     paseoHomeRoot: input.paseoHomeRoot,
@@ -1378,7 +1726,7 @@ async function createTeamDaemon(input: {
       : undefined,
     teamMissionsRuntime: {
       enabled: true,
-      reconcileIntervalMs: 60_000,
+      reconcileIntervalMs: input.reconcileIntervalMs ?? 60_000,
       toolIds: [
         "team_status",
         "mission_status",
@@ -1421,6 +1769,54 @@ function requireToolSuccess(result: McpToolResult): Record<string, unknown> {
 
 function toolErrorText(result: McpToolResult): string {
   return result.content?.map((item) => item.text ?? "").join("\n") ?? "";
+}
+
+function assignmentHasSemanticState(
+  assignmentId: string,
+  semanticState: MissionAssignmentContract["semanticState"],
+): (mission: TeamMission) => boolean {
+  return (mission) =>
+    mission.assignments.some(
+      (assignment) =>
+        assignment.assignmentId === assignmentId && assignment.semanticState === semanticState,
+    );
+}
+
+function hasRunningProviderTurn(
+  clientMessageId: string,
+): (turns: readonly AcceptedTestProviderTurn[]) => boolean {
+  return (turns) =>
+    turns.some((turn) => turn.clientMessageId === clientMessageId && turn.state === "running");
+}
+
+function hasRunningTeamMessageTurn(
+  agentId: string,
+  excludedTurnId: string,
+): (turns: readonly AcceptedTestProviderTurn[]) => boolean {
+  return (turns) =>
+    turns.some(
+      (turn) =>
+        turn.agentId === agentId &&
+        turn.turnId !== excludedTurnId &&
+        turn.state === "running" &&
+        turn.clientMessageId?.startsWith("team-message:") === true,
+    );
+}
+
+function hasReportRecoveryState(
+  assignmentId: string,
+  attempt: number,
+  state: ReturnType<
+    typeof StoredMissionSchema.parse
+  >["assignmentReportRecoveryOutbox"][number]["state"],
+): (stored: ReturnType<typeof StoredMissionSchema.parse>) => boolean {
+  return (stored) =>
+    stored.assignmentReportRecoveryOutbox.some(
+      (delivery) =>
+        delivery.assignmentId === assignmentId &&
+        delivery.attempt === attempt &&
+        delivery.state === state,
+    );
 }
 
 async function waitForMission(
@@ -1469,6 +1865,32 @@ async function inspectMission(client: DaemonClient, missionId: string): Promise<
   const response = await client.inspectTeamMission({ missionId });
   if (!response.mission) throw new Error(response.error ?? `Mission ${missionId} was not found`);
   return response.mission;
+}
+
+async function waitForStoredMission(
+  paseoHome: string,
+  missionId: string,
+  predicate: (stored: ReturnType<typeof StoredMissionSchema.parse>) => boolean,
+  label: string,
+  timeoutMs = 10_000,
+): Promise<ReturnType<typeof StoredMissionSchema.parse>> {
+  const missionPath = path.join(paseoHome, "team-missions", "missions", `${missionId}.json`);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const stored = StoredMissionSchema.parse(JSON.parse(await readFile(missionPath, "utf8")));
+    if (predicate(stored)) return stored;
+    await delay(25);
+  }
+  throw new Error(`Timed out waiting for stored Mission state: ${label}`);
+}
+
+async function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = 10_000): Promise<T> {
+  return await Promise.race([
+    promise,
+    delay(timeoutMs).then(() => {
+      throw new Error(`Timed out waiting for ${label}`);
+    }),
+  ]);
 }
 
 async function reportAssignment(input: {

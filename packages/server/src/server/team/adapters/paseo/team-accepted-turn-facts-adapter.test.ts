@@ -97,12 +97,51 @@ describe("PaseoTeamAcceptedTurnFactsAdapter", () => {
       outcome: "completed",
     });
 
-    expect(listener).toHaveBeenCalledWith({
-      missionId: "mission-1",
+    await vi.waitFor(() =>
+      expect(listener).toHaveBeenCalledWith({
+        missionId: "mission-1",
+        turnId: "turn-completed",
+        runtimeAgentId: "agent-completed",
+        outcome: "completed",
+      }),
+    );
+  });
+
+  test("does not await Team reconciliation inside the Agent settlement callback", async () => {
+    let recordChangeListener: ((change: AgentRecordChange) => Promise<void> | void) | null = null;
+    const adapter = new PaseoTeamAcceptedTurnFactsAdapter({
+      agentStorage: {
+        get: vi.fn(async (agentId: string) => ({
+          id: agentId,
+          labels: { "paseo.team-mission-id": "mission-1" },
+        })),
+      } as unknown as AgentStorage,
+      agentManager: {
+        onAgentRecordChange: (listener: (change: AgentRecordChange) => Promise<void> | void) => {
+          recordChangeListener = listener;
+          return () => undefined;
+        },
+      } as unknown as AgentManager,
+    });
+    let finishLedgerWrite: (() => void) | null = null;
+    const listener = vi.fn(
+      async () =>
+        new Promise<void>((resolve) => {
+          finishLedgerWrite = resolve;
+        }),
+    );
+    adapter.onTerminalFact(listener);
+
+    const callbackResult = recordChangeListener?.({
+      kind: "turn_settled",
+      agentId: "agent-completed",
       turnId: "turn-completed",
-      runtimeAgentId: "agent-completed",
       outcome: "completed",
     });
+
+    expect(callbackResult).toBeUndefined();
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce());
+    finishLedgerWrite?.();
   });
 
   test("stops routing terminal facts after the runtime disposes the adapter", async () => {
@@ -166,16 +205,15 @@ describe("PaseoTeamAcceptedTurnFactsAdapter", () => {
       acceptedTurnIds.push(fact.turnId);
     });
 
-    await expect(
-      recordChangeListener?.({
-        kind: "turn_settled",
-        agentId: "agent-member",
-        turnId: "turn-first",
-        outcome: "completed",
-      }),
-    ).rejects.toThrow("simulated Mission ledger write failure");
+    recordChangeListener?.({
+      kind: "turn_settled",
+      agentId: "agent-member",
+      turnId: "turn-first",
+      outcome: "completed",
+    });
+    await vi.waitFor(() => expect(attemptedTurnIds).toEqual(["turn-first"]));
     for (let index = 0; index < 101; index += 1) {
-      await recordChangeListener?.({
+      recordChangeListener?.({
         kind: "turn_settled",
         agentId: "agent-member",
         turnId: `turn-later-${index}`,
@@ -183,7 +221,7 @@ describe("PaseoTeamAcceptedTurnFactsAdapter", () => {
       });
     }
 
-    expect(acceptedTurnIds).toHaveLength(102);
+    await vi.waitFor(() => expect(acceptedTurnIds).toHaveLength(102));
     expect(acceptedTurnIds[0]).toBe("turn-first");
     expect(attemptedTurnIds.filter((turnId) => turnId === "turn-first")).toHaveLength(2);
   });
@@ -236,29 +274,28 @@ describe("PaseoTeamAcceptedTurnFactsAdapter", () => {
       agentManager,
     });
     const acceptedTurnIds: string[] = [];
+    const listenerAttemptedMissionIds: string[] = [];
     adapter.onTerminalFact(async (fact) => {
+      listenerAttemptedMissionIds.push(fact.missionId);
       if (fact.missionId === "mission-broken") throw new Error("broken Mission ledger");
       acceptedTurnIds.push(fact.turnId);
     });
 
-    await expect(
-      recordChangeListener?.({
-        kind: "turn_settled",
-        agentId: "agent-broken",
-        turnId: "turn-broken",
-        outcome: "completed",
-      }),
-    ).rejects.toThrow("broken Mission ledger");
-    await expect(
-      recordChangeListener?.({
-        kind: "turn_settled",
-        agentId: "agent-healthy",
-        turnId: "turn-healthy",
-        outcome: "completed",
-      }),
-    ).rejects.toThrow("broken Mission ledger");
+    recordChangeListener?.({
+      kind: "turn_settled",
+      agentId: "agent-broken",
+      turnId: "turn-broken",
+      outcome: "completed",
+    });
+    await vi.waitFor(() => expect(listenerAttemptedMissionIds).toContain("mission-broken"));
+    recordChangeListener?.({
+      kind: "turn_settled",
+      agentId: "agent-healthy",
+      turnId: "turn-healthy",
+      outcome: "completed",
+    });
 
-    expect(acceptedTurnIds).toEqual(["turn-healthy"]);
+    await vi.waitFor(() => expect(acceptedTurnIds).toEqual(["turn-healthy"]));
   });
 });
 

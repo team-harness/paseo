@@ -22,10 +22,10 @@ export class PaseoTeamAcceptedTurnFactsAdapter implements TeamAcceptedTurnFactsP
   private stopped = false;
 
   constructor(private readonly options: PaseoTeamAcceptedTurnFactsAdapterOptions) {
-    this.unsubscribeAgentChanges = this.options.agentManager.onAgentRecordChange(async (change) => {
+    this.unsubscribeAgentChanges = this.options.agentManager.onAgentRecordChange((change) => {
       if (this.stopped || !isTerminalTurnChange(change)) return;
       this.pendingChanges.set(turnFactKey(change.agentId, change.turnId), change);
-      await this.enqueueTerminalFactDrain();
+      void this.enqueueTerminalFactDrain().catch(() => undefined);
     });
   }
 

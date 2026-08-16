@@ -8,6 +8,7 @@ import { AgentManager } from "../../../agent/agent-manager.js";
 import { AgentStorage, type StoredAgentRecord } from "../../../agent/agent-storage.js";
 import { createTestAgentClients } from "../../../test-utils/fake-agent-client.js";
 import { PaseoTeamParticipantAdapter } from "./team-participant-adapter.js";
+import { TEAM_LEAD_ROOM_COLLABORATION_PROMPT } from "./team-room-collaboration-contract.js";
 
 describe("PaseoTeamParticipantAdapter", () => {
   let rootDirectory: string;
@@ -307,6 +308,8 @@ describe("PaseoTeamParticipantAdapter", () => {
         'Call mission_status with missionId "mission-1" now. Then use one mission_plan call with the complete Workstream DAG and its assignments field covering every delivery and integration Workstream, including nodes whose dependencies are not ready yet. The daemon derives Assignment dependencies from the Workstream DAG, gates dispatch, and materializes required review and final verification Assignments.',
         "",
         "Frozen methodology Lead contract.",
+        "",
+        TEAM_LEAD_ROOM_COLLABORATION_PROMPT,
         "</paseo-system>",
       ].join("\n"),
     ]);

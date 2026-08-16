@@ -11,6 +11,10 @@ import {
 import type { AgentStorage } from "../../../agent/agent-storage.js";
 import type { TeamAssignmentDispatchPort } from "../../application/team-mission-scheduler.js";
 import { TEAM_BINDING_EPOCH_LABEL, TEAM_MISSION_ID_LABEL } from "./team-participant-adapter.js";
+import {
+  TEAM_ROOM_COLLABORATION_PROMPT,
+  teamRoomReportRecoveryPrompt,
+} from "./team-room-collaboration-contract.js";
 
 interface PaseoTeamAssignmentDispatchAdapterOptions {
   agentManager: AgentManager;
@@ -32,7 +36,12 @@ export class PaseoTeamAssignmentDispatchAdapter implements TeamAssignmentDispatc
     return this.dispatchPrompt(
       input,
       `Call mission_status with missionId "${input.missionId}" now.`,
-      `Assignment "${input.assignmentId}" is ready. Execute only the persisted Assignment contract, then call assignment_report.`,
+      [
+        `Assignment "${input.assignmentId}" is ready. Execute only the persisted Assignment contract.`,
+        "Treat the persisted Assignment as the complete scope for this turn; do not start a separate agent or review orchestration loop.",
+        "Before this turn ends, call assignment_report exactly once unless the final-verification closeout rule above explicitly requires you to wait for the Lead summary. Do not end with only prose or shell output.",
+      ].join("\n"),
+      TEAM_ROOM_COLLABORATION_PROMPT,
     );
   }
 
@@ -40,7 +49,8 @@ export class PaseoTeamAssignmentDispatchAdapter implements TeamAssignmentDispatc
     return this.dispatchPrompt(
       input,
       `Call mission_status with missionId "${input.missionId}" now.`,
-      `Assignment "${input.assignmentId}" is waiting for its structured report (recovery attempt ${input.attempt}). Call assignment_report without repeating the implementation work.`,
+      `Assignment "${input.assignmentId}" is waiting for its structured report (recovery attempt ${input.attempt}).`,
+      teamRoomReportRecoveryPrompt(input.assignmentId),
     );
   }
 
@@ -48,6 +58,7 @@ export class PaseoTeamAssignmentDispatchAdapter implements TeamAssignmentDispatc
     input: DispatchInput | ReportRecoveryInput,
     runtimeBody: string,
     assignmentFacts: string,
+    collaborationPrompt: string | null,
   ): Promise<Awaited<ReturnType<TeamAssignmentDispatchPort["dispatch"]>>> {
     const replayTurnId = await this.findAcceptedTurnId(input.agentId, input.messageId);
     if (replayTurnId) return { kind: "accepted", turnId: replayTurnId };
@@ -68,6 +79,7 @@ export class PaseoTeamAssignmentDispatchAdapter implements TeamAssignmentDispatc
       const promptBody = [
         runtimeBody,
         ...input.methodologyPromptSections.map((section) => section.content),
+        ...(collaborationPrompt ? [collaborationPrompt] : []),
         assignmentFacts,
       ].join("\n\n");
       const result = await sendPromptToAgent({

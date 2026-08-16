@@ -28,6 +28,12 @@ import type {
 import { TeamCollaborationService } from "./team-collaboration-service.js";
 import { TeamMissionService } from "./team-mission-service.js";
 import {
+  FINAL_VERIFICATION_OUTCOME_PREFIX,
+  finalVerificationOutcomeIdempotencyKey,
+  LEAD_FINAL_SUMMARY_PREFIX,
+  leadFinalSummaryIdempotencyKey,
+} from "./team-room-closeout.js";
+import {
   TeamOperationCoordinator,
   type TeamOperationPermit,
 } from "./team-operation-coordinator.js";
@@ -2898,6 +2904,35 @@ describe("TeamCollaborationService queries", () => {
     expect(fixture.attentionAttempts).toHaveLength(1);
   });
 
+  test("rejects a recipient acknowledgment that would create another mention delivery", async () => {
+    const fixture = createFixture(rootDirectory);
+    const { team, mission } = await createMission(fixture.lifecycle);
+    const targetMemberId = team.members[1]?.memberId ?? "missing";
+    await addParticipant(fixture.missions, mission.id, mission.revision, {
+      memberId: targetMemberId,
+      agentId: "agent-member",
+    });
+    await fixture.collaboration.postAgentRoomReply({
+      callerAgentId: "agent-1",
+      missionId: mission.id,
+      idempotencyKey: "agent-team-update-for-ack",
+      body: "@team the parser implementation is ready for review.",
+    });
+    const delivery = (await fixture.missions.get(mission.id))?.recipientAttentionOutbox[0];
+    if (!delivery) throw new Error("Agent mention delivery was not persisted");
+
+    await expect(
+      fixture.collaboration.postAgentRoomReply({
+        callerAgentId: "agent-member",
+        missionId: mission.id,
+        idempotencyKey: `${delivery.deliveryId}:ack`,
+        body: "@team received; I am continuing the review.",
+      }),
+    ).rejects.toMatchObject({ code: "team_message_ack_mentions_not_allowed" });
+    expect(fixture.messagePosts).toHaveLength(1);
+    expect((await fixture.missions.get(mission.id))?.recipientAttentionOutbox).toHaveLength(1);
+  });
+
   test("fails closed before persistence for an inactive Member or unknown reply target", async () => {
     const fixture = createFixture(rootDirectory);
     const { mission } = await createMission(fixture.lifecycle);
@@ -4466,6 +4501,113 @@ describe("TeamCollaborationService queries", () => {
       ],
     });
     expect(fixture.attentionAttempts).toHaveLength(1);
+  });
+
+  test("requires a final verifier outcome and later Lead summary before an approved report", async () => {
+    const fixture = createFixture(rootDirectory);
+    const running = await createRunningDelivery(fixture);
+    const { blocked, failedVerificationId } = await createFailedDaemonOwnedVerification(
+      fixture,
+      running,
+      { withoutReview: true },
+    );
+    const needsReport = await fixture.missions.update({
+      missionId: running.mission.id,
+      expectedRevision: blocked.mission.revision,
+      update: (mission) => ({
+        ...mission,
+        attentionItems: [
+          {
+            attentionId: `${mission.id}:${failedVerificationId}:missing-report`,
+            kind: "missing_report" as const,
+            scope: { kind: "mission" as const },
+            status: "open" as const,
+            priorMissionStatus: "verifying" as const,
+            assignmentId: failedVerificationId,
+            summary: "The verification report is missing",
+            pathEvidence: [],
+            createdAt: NOW,
+            resolution: null,
+          },
+        ],
+        assignments: mission.assignments.map((assignment) =>
+          assignment.assignmentId === failedVerificationId
+            ? { ...assignment, report: null, semanticState: "needs_report" as const }
+            : assignment,
+        ),
+      }),
+    });
+    const verification = needsReport.mission.assignments.find(
+      (assignment) => assignment.assignmentId === failedVerificationId,
+    );
+    if (!verification) throw new Error("Verification fixture is incomplete");
+    const report = {
+      status: "completed" as const,
+      verdict: "approved" as const,
+      finalVerificationEvidence: {
+        kind: "final_verification" as const,
+        finalGateFingerprint: verification.finalVerificationGateFingerprint,
+        verdict: "approved" as const,
+        reviewGateEvidence: verification.reviewGateEvidence,
+      },
+      summary: "The implementation satisfies the final verification criteria",
+      artifactPaths: [],
+      tests: [{ command: "npm test parser", passed: true }],
+      decisions: [],
+      handoffs: [],
+    };
+    const reportAssignment = () =>
+      fixture.collaboration.reportAssignment({
+        callerAgentId: "agent-1",
+        missionId: running.mission.id,
+        assignmentId: failedVerificationId,
+        expectedRevision: needsReport.mission.revision,
+        expectedAssignmentRevision: verification.revision,
+        report,
+      });
+
+    await expect(reportAssignment()).rejects.toMatchObject({
+      code: "final_verification_closeout_required",
+    });
+    await fixture.collaboration.postAgentRoomReply({
+      callerAgentId: "agent-1",
+      missionId: running.mission.id,
+      idempotencyKey: finalVerificationOutcomeIdempotencyKey(failedVerificationId),
+      body: `${FINAL_VERIFICATION_OUTCOME_PREFIX} approved; the implementation is ready to close.`,
+    });
+    await expect(reportAssignment()).rejects.toMatchObject({
+      code: "final_verification_closeout_required",
+    });
+    expect(fixture.messagePosts).toHaveLength(1);
+    expect(
+      (await fixture.missions.get(running.mission.id))?.mission.assignments.find(
+        (assignment) => assignment.assignmentId === failedVerificationId,
+      ),
+    ).toMatchObject({ report: null, semanticState: "needs_report" });
+    await fixture.collaboration.postAgentRoomReply({
+      callerAgentId: "agent-1",
+      missionId: running.mission.id,
+      idempotencyKey: leadFinalSummaryIdempotencyKey(failedVerificationId),
+      body: `${LEAD_FINAL_SUMMARY_PREFIX} delivery and verification passed.`,
+    });
+    expect(fixture.messagePosts).toHaveLength(2);
+    await expect(reportAssignment()).rejects.toMatchObject({
+      code: "final_verification_closeout_required",
+    });
+    fixture.messageState.readPage = { messages: [], cursor: 2, hasMore: false };
+    await fixture.collaboration.readTeamChat({
+      callerAgentId: "agent-1",
+      missionId: running.mission.id,
+    });
+
+    await expect(reportAssignment()).resolves.toMatchObject({
+      assignment: {
+        assignmentId: failedVerificationId,
+        semanticState: "completed",
+        report: { status: "completed", verdict: "approved" },
+      },
+    });
+    expect(fixture.messagePosts).toHaveLength(2);
   });
 
   test("fails and supersedes a quality gate that reports late changes requested", async () => {

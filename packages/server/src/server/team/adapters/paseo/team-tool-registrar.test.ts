@@ -33,6 +33,11 @@ describe("PaseoTeamToolRegistrar", () => {
       missionId: "mission-1",
     });
     expect(result).toMatchObject({ structuredContent: { team: { id: "team-1" } } });
+    expect(tools.get("chat_post")?.description).toContain("does not change Assignment state");
+    expect(tools.get("assignment_report")?.description).toContain(
+      "does not publish a task-room update",
+    );
+    expect(tools.get("chat_post")?.description).toContain("substantive progress");
   });
 
   test("registers nothing without a caller Agent identity", () => {
