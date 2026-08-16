@@ -1169,6 +1169,16 @@ export const ru: TranslationResources = {
       unopenable: "Не удалось открыть эту комнату.",
       you: "Вы",
       empty: "Пока ничего не сказано.",
+      loadEarlier: "Загрузить предыдущие сообщения",
+      reply: "Ответить",
+      replyingTo: "Ответ для {{author}}",
+      replyUnavailable: "Исходное сообщение недоступно",
+      replyLeadFallback:
+        "Участник больше не активен. Без другого @mention уведомление получит Lead.",
+      replyHumanLeadFallback: "Без @mention ответы людям уведомляют Lead.",
+      cancelReply: "Отменить ответ",
+      notifiedRecipients: "Уведомлены",
+      noRecipientNotified: "Сохранено. Нет активных участников для уведомления.",
       showMore: "Показать ещё",
       showMoreLines: "Показать ещё {{count}} строк",
       mentionReceiptOne:

@@ -3,20 +3,16 @@ import type { TeamRoomMessage } from "@getpaseo/protocol/team/v2-types";
 export interface RoomTimeline {
   /** Oldest first, the order a room is read in. */
   messages: TeamRoomMessage[];
-  /** The newest cursor this timeline has applied. */
-  cursor: number;
-  /**
-   * The daemon says more history exists before `messages[0]`.
-   *
-   * Nothing reads it yet: paging backwards needs `afterCursor`, and the panel
-   * always opens on the newest page. It is here because the subscribe response
-   * carries it, and dropping it would make the gap invisible when that is built.
-   */
-  hasMore: boolean;
+  /** The newest streamed cursor this timeline has applied. */
+  liveCursor: number;
+  /** Absolute cursor immediately before the oldest loaded message. */
+  oldestCursor: number;
+  /** Derived from the absolute history boundary, never from wire `hasMore`. */
+  hasOlder: boolean;
 }
 
 export function emptyRoomTimeline(): RoomTimeline {
-  return { messages: [], cursor: 0, hasMore: false };
+  return { messages: [], liveCursor: 0, oldestCursor: 0, hasOlder: false };
 }
 
 export function seedRoomTimeline(page: {
@@ -24,7 +20,41 @@ export function seedRoomTimeline(page: {
   cursor: number;
   hasMore: boolean;
 }): RoomTimeline {
-  return { messages: [...page.messages], cursor: page.cursor, hasMore: page.hasMore };
+  const oldestCursor = Math.max(0, page.cursor - page.messages.length);
+  return {
+    messages: [...page.messages],
+    liveCursor: page.cursor,
+    oldestCursor,
+    hasOlder: oldestCursor > 0,
+  };
+}
+
+export function applyHistoricalRoomPage(
+  timeline: RoomTimeline,
+  page: {
+    messages: readonly TeamRoomMessage[];
+    cursor: number;
+    startCursor: number;
+    expectedCursor: number;
+  },
+): RoomTimeline {
+  if (page.cursor !== page.expectedCursor) {
+    throw new Error("Room history cursor changed while loading.");
+  }
+
+  const seen = new Set<string>();
+  const messages: TeamRoomMessage[] = [];
+  for (const message of [...page.messages, ...timeline.messages]) {
+    if (seen.has(message.id)) continue;
+    seen.add(message.id);
+    messages.push(message);
+  }
+  return {
+    ...timeline,
+    messages,
+    oldestCursor: page.startCursor,
+    hasOlder: page.startCursor > 0,
+  };
 }
 
 /**
@@ -43,14 +73,14 @@ export function applyStreamedRoomMessage(
   message: TeamRoomMessage,
   cursor: number,
 ): RoomTimeline {
-  if (cursor <= timeline.cursor) return timeline;
+  if (cursor <= timeline.liveCursor) return timeline;
 
   // A resumed subscription can re-send a message under a fresh cursor. Cursor
   // is the protocol's rule and id is the backstop: two copies of one message is
   // a visible bug, and skipping a duplicate is not.
   if (timeline.messages.some((existing) => existing.id === message.id)) {
-    return { ...timeline, cursor };
+    return { ...timeline, liveCursor: cursor };
   }
 
-  return { ...timeline, messages: [...timeline.messages, message], cursor };
+  return { ...timeline, messages: [...timeline.messages, message], liveCursor: cursor };
 }

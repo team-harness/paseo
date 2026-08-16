@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { TeamRoomMessage } from "@getpaseo/protocol/team/v2-types";
 
-import { RoomSubscription, type RoomSubscriptionClient } from "./room-subscription";
-import type { RoomTimeline } from "./room-timeline";
+import {
+  RoomSubscription,
+  type RoomSubscriptionClient,
+  type RoomSubscriptionState,
+} from "./room-subscription";
 
 function message(id: string): TeamRoomMessage {
   return {
@@ -37,6 +40,7 @@ function fakeClient() {
     answer: (page: { messages: TeamRoomMessage[]; cursor: number; hasMore?: boolean }) => void;
     fail: (error: string) => void;
     unsubscribeTeamMissionRoom: ReturnType<typeof vi.fn>;
+    calls: Array<{ missionId: string; afterCursor?: number; limit?: number }>;
   } = {
     on: (_type, handler) => {
       handlers.push(handler as (message: unknown) => void);
@@ -45,19 +49,20 @@ function fakeClient() {
         if (index >= 0) handlers.splice(index, 1);
       };
     },
-    subscribeTeamMissionRoom: vi.fn(
-      () =>
-        new Promise<{
-          missionId: string;
-          messages: TeamRoomMessage[];
-          cursor: number;
-          hasMore: boolean;
-          error: string | null;
-          requestId: string;
-        }>((resolve) => {
-          settle = resolve;
-        }),
-    ),
+    calls: [],
+    subscribeTeamMissionRoom: vi.fn((options) => {
+      client.calls.push(options);
+      return new Promise<{
+        missionId: string;
+        messages: TeamRoomMessage[];
+        cursor: number;
+        hasMore: boolean;
+        error: string | null;
+        requestId: string;
+      }>((resolve) => {
+        settle = resolve;
+      });
+    }),
     unsubscribeTeamMissionRoom: vi.fn(async () => ({
       missionId: "mission-1",
       error: null,
@@ -96,10 +101,10 @@ function fakeClient() {
 }
 
 function collect() {
-  const states: Array<{ timeline: RoomTimeline; error: string | null; loading: boolean }> = [];
+  const states: RoomSubscriptionState[] = [];
   return {
     states,
-    onState: (state: { timeline: RoomTimeline; error: string | null; loading: boolean }) => {
+    onState: (state: RoomSubscriptionState) => {
       states.push(state);
     },
   };
@@ -239,5 +244,51 @@ describe("following one Mission room over a socket", () => {
     await Promise.resolve();
 
     expect(sink.states.every((state) => state.timeline.messages.length === 0)).toBe(true);
+  });
+
+  it("loads the exact older range while live messages keep arriving", async () => {
+    const client = fakeClient();
+    const sink = collect();
+    const subscription = new RoomSubscription("mission-1", client, sink.onState);
+
+    subscription.start();
+    client.answer({ messages: [message("c"), message("d")], cursor: 4 });
+    await vi.waitFor(() => expect(sink.states.at(-1)?.loading).toBe(false));
+
+    subscription.loadOlder(20);
+    expect(client.calls.at(-1)).toEqual({ missionId: "mission-1", afterCursor: 0, limit: 2 });
+    client.emit("e", 5);
+    client.answer({ messages: [message("a"), message("b")], cursor: 2 });
+    await vi.waitFor(() => expect(sink.states.at(-1)?.loadingOlder).toBe(false));
+
+    expect(sink.states.at(-1)?.timeline.messages.map((entry) => entry.id)).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+    ]);
+  });
+
+  it("keeps the live subscription after an older page fails and can retry", async () => {
+    const client = fakeClient();
+    const sink = collect();
+    const subscription = new RoomSubscription("mission-1", client, sink.onState);
+
+    subscription.start();
+    client.answer({ messages: [message("c")], cursor: 3 });
+    await vi.waitFor(() => expect(sink.states.at(-1)?.loading).toBe(false));
+
+    subscription.loadOlder(1);
+    client.fail("History is unavailable");
+    await vi.waitFor(() => expect(sink.states.at(-1)?.historyError).toBe("History is unavailable"));
+    client.emit("d", 4);
+    expect(sink.states.at(-1)?.timeline.messages.map((entry) => entry.id)).toEqual(["c", "d"]);
+    expect(client.unsubscribeTeamMissionRoom).not.toHaveBeenCalled();
+
+    subscription.loadOlder(1);
+    client.answer({ messages: [message("b")], cursor: 2 });
+    await vi.waitFor(() => expect(sink.states.at(-1)?.historyError).toBeNull());
+    expect(sink.states.at(-1)?.timeline.messages.map((entry) => entry.id)).toEqual(["b", "c", "d"]);
   });
 });

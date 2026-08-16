@@ -8,11 +8,14 @@ import { emptyRoomTimeline } from "./room-timeline";
 const WAITING: RoomSubscriptionState = {
   timeline: emptyRoomTimeline(),
   error: null,
+  historyError: null,
   loading: true,
+  loadingOlder: false,
 };
 
 export interface RoomSubscriptionHandle extends RoomSubscriptionState {
   retry(): void;
+  loadOlder(): void;
 }
 
 /**
@@ -57,6 +60,7 @@ export function useRoomSubscription(
   }, [client, connectionEpoch, missionId, t]);
 
   const retry = useCallback(() => subscriptionRef.current?.retry(), []);
+  const loadOlder = useCallback(() => subscriptionRef.current?.loadOlder(), []);
 
-  return { ...state, retry };
+  return { ...state, retry, loadOlder };
 }

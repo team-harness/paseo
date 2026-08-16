@@ -2,8 +2,8 @@
 epic: ../epics/team-task-room.md
 phase: executing
 approved_revision: eb9b1d212874d0213e8b5bdea203223e78b6215c781cef04e6a172d48852b353
-current_item: TTR-ITEM-6
-next_action: 执行 TTR-ITEM-6，闭合回复界面与 Room 历史
+current_item: TTR-ITEM-7
+next_action: 执行 TTR-ITEM-7，让 Agent 在任务室报告协作进展
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -17,7 +17,7 @@ remote_publish: final
 - [x] TTR-ITEM-3 · 简化 Team 创建与协作方式文案
 - [x] TTR-ITEM-4 · 建立 MissionWorkroom 主布局
 - [x] TTR-ITEM-5 · 固化 Room 发帖幂等性与 recipient routing
-- [ ] TTR-ITEM-6 · 闭合回复界面与 Room 历史
+- [x] TTR-ITEM-6 · 闭合回复界面与 Room 历史
 - [ ] TTR-ITEM-7 · 让 Agent 在任务室报告协作进展
 - [ ] TTR-ITEM-8 · 把任务、成员、结果和 Attention 收敛到 inspector
 - [ ] TTR-ITEM-9 · 完成跨平台与真实协作验收
@@ -149,3 +149,17 @@ review lineage、checkpoint、测试和残余风险只写本游标；永久 Epic
   reply+mention recovery、精确 human ack 与“Room 已发布、ack 未落盘”崩溃协调后，Round 3 在 staged diff
   `38e1915d79fc71ab7f73a48d13fc5068a13625a9442adcdf6f8264a7f586d542` 上为
   `0 blocking / 0 important / 0 minor`、可合。里程碑主题为 `feat(team): harden Room message routing`。
+- 2026-08-16：TTR-ITEM-6 完成。App Room timeline 将 wire forward cursor 拆为 `liveCursor` 与
+  `oldestCursor`，以绝对边界连续加载旧页；重叠项按 message id 去重，history/live 竞态保留 live message，历史读取
+  失败只显示可重试错误、不退订 live。回复界面显示父消息摘要、取消与 Lead fallback 条件提示，透传现有
+  `replyToMessageId`，并用 daemon 返回的 `mentionAgentIds` 显示实际通知对象；Mission identity 变化会 remount Room
+  session，同 Mission 重连保留回复目标。
+- 2026-08-16：TTR-ITEM-6 TDD 覆盖初始截断、连续旧页、重叠页、cursor 不变量、history/live race、失败后 live
+  继续、回复 inactive Member、显式 mention、取消、终态只读、重连与 Mission 切换。最终 App 6 个定点文件
+  `38/38`、i18n `39/39`、隔离 daemon 回复/分页 E2E `1/1` 通过；`build:server`、lint、format-check 与 diff-check
+  通过。全仓 typecheck 只命中未修改基线 `packages/app/src/components/draggable-list.native.tsx:122`。
+- 2026-08-16：TTR-ITEM-6 code-deep 因既有未跟踪 audit/dogfood 输出扩大 working-tree 统计，随后定向追踪
+  timeline → subscription → TeamRoom 与 reply → wire → receipt 路径；独立 reviewer `/root/ttr_item6_review`
+  Round 1 为 `0 blocking / 2 important`。修复跨 Mission reply/receipt 状态泄漏与显式 mention 下的错误 Lead 承诺后，
+  Round 2 在 staged diff `6c3604c14aa118cae77714bc63b5843396509a527d91937a3e968895e2231e92` 上为
+  `0 blocking / 0 important / 0 minor`、可合。里程碑主题为 `feat(team): add Room replies and history`。

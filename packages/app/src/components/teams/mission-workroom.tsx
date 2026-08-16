@@ -86,6 +86,7 @@ export function MissionWorkroom({
       <View style={styles.content}>
         <View style={styles.chat}>
           <TeamRoom
+            key={view.missionId ?? "no-mission"}
             serverId={serverId}
             missionId={view.missionId}
             roster={roster}

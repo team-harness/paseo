@@ -64,7 +64,7 @@ describe("saying something in a team's room", () => {
 
     // The daemon broadcasts the message back, so the timeline learns about it
     // the same way it learns about everyone else's.
-    expect(seen.map((state) => state.status)).toEqual(["pending", "idle"]);
+    expect(seen).toEqual([{ status: "pending" }, { status: "idle", message: message() }]);
   });
 
   it("sends the room and the body it was given", async () => {
