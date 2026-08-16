@@ -1198,6 +1198,7 @@ export const ptBR: TranslationResources = {
       unsupported: "{{hostName}} é antigo demais para times. Atualize para abrir este link.",
     },
     panel: {
+      ...teamV2PtBR.panel,
       archiveRefused: "Não foi possível arquivar o time.",
       removeRefused: "Não foi possível remover esse membro.",
       leadTabClosed: "Aba fechada. {{teamName}} continua rodando — arquive pelo painel do time.",

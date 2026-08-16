@@ -84,7 +84,8 @@ test("a live workspace reaches its physical host Team Hub from the sidebar", asy
     await expect(teams).toBeVisible({ timeout: 30_000 });
     await teams.click();
     await expect(page).toHaveURL(new RegExp(`/h/${serverId}/teams$`));
-    await expect(page.getByTestId("team-hub-empty-actions")).toBeVisible();
+    await expect(page.getByTestId("team-hub-create")).toBeVisible();
+    await expect(page.getByTestId("team-hub-open-workspace")).toBeVisible();
     await mkdir(evidenceDir, { recursive: true });
     await page.screenshot({ path: path.join(evidenceDir, "workspace-sidebar-team-hub.png") });
   } finally {

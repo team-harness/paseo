@@ -21,6 +21,9 @@ export interface TeamPanelView {
   canStartMission: boolean;
   readOnly: boolean;
   settingsAttentionCount: number;
+  history: TeamMission[];
+  historyStatus: "idle" | "loading" | "ready" | "failed";
+  historyError: string | null;
 }
 
 export function describeTeamRoomAuthor(input: {
@@ -54,6 +57,9 @@ export function selectTeamPanelView(
       canStartMission: false,
       readOnly: true,
       settingsAttentionCount: 0,
+      history: [],
+      historyStatus: "idle",
+      historyError: null,
     };
   }
   if (!team) {
@@ -65,6 +71,9 @@ export function selectTeamPanelView(
       canStartMission: false,
       readOnly: true,
       settingsAttentionCount: 0,
+      history: [],
+      historyStatus: "idle",
+      historyError: null,
     };
   }
 
@@ -72,6 +81,17 @@ export function selectTeamPanelView(
   const candidate = missionId ? (replica.missions.get(missionId) ?? null) : null;
   const mission = candidate?.teamId === team.id ? candidate : null;
   const members = mission ? selectMissionMembers(mission, agents) : [];
+  const historyRead = replica.historyReads.get(team.id);
+  const history = (historyRead?.missionIds ?? [])
+    .map((historicalMissionId) => replica.missions.get(historicalMissionId) ?? null)
+    .filter(
+      (historical): historical is TeamMission =>
+        historical !== null && historical.teamId === team.id && historical.id !== mission?.id,
+    )
+    .sort(
+      (left, right) =>
+        right.updatedAt.localeCompare(left.updatedAt) || right.id.localeCompare(left.id),
+    );
   return {
     state: "ready",
     team,
@@ -80,6 +100,9 @@ export function selectTeamPanelView(
     canStartMission: team.lifecycle === "active" && team.activeMissionId === null,
     readOnly: team.lifecycle !== "active" || mission === null || isTerminalMission(mission),
     settingsAttentionCount: countSettingsAttention(team, mission, members),
+    history,
+    historyStatus: historyRead?.status ?? "idle",
+    historyError: historyRead?.error ?? null,
   };
 }
 

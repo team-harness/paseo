@@ -1187,6 +1187,7 @@ export const ja: TranslationResources = {
       unsupported: "{{hostName}} が古いためチームを扱えません。更新してから開いてください。",
     },
     panel: {
+      ...teamV2Ja.panel,
       archiveRefused: "チームをアーカイブできませんでした。",
       removeRefused: "メンバーを外せませんでした。",
       leadTabClosed: "タブを閉じました。{{teamName}} は動いたままです。終了はチームパネルから。",

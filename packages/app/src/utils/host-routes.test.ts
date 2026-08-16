@@ -3,6 +3,7 @@ import {
   buildHostAgentDetailRoute,
   buildHostRootRoute,
   buildHostTeamRoute,
+  buildHostTeamSettingsRoute,
   buildHostTeamsRoute,
   buildHostWorkspaceOpenRoute,
   buildHostWorkspaceRoute,
@@ -98,6 +99,12 @@ describe("workspace route parsing", () => {
   it("builds host-level Team routes without a workspace segment", () => {
     expect(buildHostTeamRoute("local host", "team/alpha")).toBe(
       "/h/local%20host/team/team%2Falpha",
+    );
+  });
+
+  it("builds a host-owned Team settings intent", () => {
+    expect(buildHostTeamSettingsRoute("local host", "team/alpha")).toBe(
+      "/h/local%20host/team/team%2Falpha?settings=1",
     );
   });
 

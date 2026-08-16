@@ -1182,6 +1182,7 @@ export const ko: TranslationResources = {
       unsupported: "{{hostName}}이(가) 너무 오래되어 팀을 지원하지 않습니다. 업데이트해 주세요.",
     },
     panel: {
+      ...teamV2Ko.panel,
       archiveRefused: "팀을 보관하지 못했습니다.",
       removeRefused: "멤버를 제외하지 못했습니다.",
       leadTabClosed:

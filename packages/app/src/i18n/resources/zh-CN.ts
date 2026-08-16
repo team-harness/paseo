@@ -1161,6 +1161,7 @@ export const zhCN: TranslationResources = {
       unsupported: "{{hostName}} 版本过旧，不支持团队。升级后才能打开此链接。",
     },
     panel: {
+      ...teamV2ZhCN.panel,
       archiveRefused: "团队归档失败。",
       removeRefused: "移出成员失败。",
       leadTabClosed: "标签页已关闭。{{teamName}} 仍在运行，需要归档请到团队面板。",

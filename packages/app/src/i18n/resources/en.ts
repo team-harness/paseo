@@ -1184,6 +1184,7 @@ export const en = {
       unsupported: "{{hostName}} is too old to have teams. Update it to open this link.",
     },
     panel: {
+      ...teamV2En.panel,
       archiveRefused: "The team could not be archived.",
       removeRefused: "That member could not be removed.",
       leadTabClosed: "Tab closed. {{teamName}} keeps running — archive it from the team panel.",

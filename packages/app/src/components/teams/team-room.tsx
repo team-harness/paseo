@@ -10,7 +10,7 @@ import {
   type TextInputSelectionChangeEventData,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { RotateCw, SendHorizontal, Settings2 } from "lucide-react-native";
+import { ArrowLeft, RotateCw, SendHorizontal, Settings2 } from "lucide-react-native";
 
 import type { TeamRoomMessage } from "@getpaseo/protocol/team/v2-types";
 
@@ -63,6 +63,8 @@ export interface TeamRoomProps {
   onOpenSettings: () => void;
   /** Starts the first/current Mission when this Team has no room yet. */
   onStartMission?: () => void;
+  /** Leaves a historical replay without changing the Team's active Mission. */
+  onExitReplay?: () => void;
   /** Pending permissions surfaced on the settings trigger. */
   settingsAttentionCount?: number;
 }
@@ -75,6 +77,7 @@ export function TeamRoom({
   onOpenAgent,
   onOpenSettings,
   onStartMission,
+  onExitReplay,
   settingsAttentionCount = 0,
 }: TeamRoomProps): ReactElement {
   const { t } = useTranslation();
@@ -133,6 +136,7 @@ export function TeamRoom({
       readOnly={readOnly || !missionId}
       onOpenSettings={onOpenSettings}
       onStartMission={onStartMission}
+      onExitReplay={onExitReplay}
       settingsAttentionCount={settingsAttentionCount}
     />
   );
@@ -231,6 +235,7 @@ function RoomComposer({
   readOnly,
   onOpenSettings,
   onStartMission,
+  onExitReplay,
   settingsAttentionCount,
 }: {
   serverId: string;
@@ -239,6 +244,7 @@ function RoomComposer({
   readOnly: boolean;
   onOpenSettings: () => void;
   onStartMission?: () => void;
+  onExitReplay?: () => void;
   settingsAttentionCount: number;
 }): ReactElement {
   const { t } = useTranslation();
@@ -400,7 +406,7 @@ function RoomComposer({
         </Button>
       </>
     );
-  } else if (!missionId && onStartMission) {
+  } else if (onStartMission) {
     composerAction = (
       <Button size="sm" onPress={onStartMission} testID="team-room-start-mission">
         {t("teams.mission.start")}
@@ -426,6 +432,16 @@ function RoomComposer({
         </View>
       ) : null}
       <View style={styles.composerRow}>
+        {onExitReplay ? (
+          <Button
+            size="sm"
+            variant="outline"
+            leftIcon={ArrowLeft}
+            accessibilityLabel={t("common.actions.back")}
+            onPress={onExitReplay}
+            testID="team-room-back-to-team"
+          />
+        ) : null}
         <Button
           size="sm"
           variant="outline"

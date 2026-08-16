@@ -21,9 +21,10 @@ export default function HostTeamRoute() {
 
 function HostTeamRouteContent() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ serverId?: string; teamId?: string }>();
+  const params = useLocalSearchParams<{ serverId?: string; teamId?: string; settings?: string }>();
   const serverId = typeof params.serverId === "string" ? params.serverId : "";
   const teamId = typeof params.teamId === "string" ? params.teamId : "";
+  const settingsRequested = params.settings === "1";
   const handledRef = useRef<string | null>(null);
 
   const hosts = useHosts();
@@ -67,6 +68,9 @@ function HostTeamRouteContent() {
     // A Team URL carries no workspace. A Mission hands off to its workspace;
     // an idle Team with no live workspace stays on this host route. Each
     // navigation outcome fires once so store ticks do not append deck entries.
+    if (settingsRequested && (resolution.kind === "hostLevel" || resolution.kind === "resolved")) {
+      return;
+    }
     let key: string | null = null;
     if (resolution.kind === "resolved") key = `workspace:${resolution.workspaceId}`;
     else if (resolution.kind === "invalid") key = "invalid";
@@ -83,7 +87,7 @@ function HostTeamRouteContent() {
       return;
     }
     router.replace(resolution.kind === "invalid" ? ("/" as Href) : buildHostRootRoute(serverId));
-  }, [resolution, router, serverId, teamId]);
+  }, [resolution, router, serverId, settingsRequested, teamId]);
 
   const handleRetry = useCallback(() => {
     if (serverId) void getHostRuntimeStore().runProbeCycleNow(serverId);
@@ -113,8 +117,15 @@ function HostTeamRouteContent() {
     );
   }
 
-  if (resolution.kind === "hostLevel") {
-    return <TeamPanel serverId={serverId} workspaceId={null} teamId={teamId} />;
+  if (resolution.kind === "hostLevel" || (settingsRequested && resolution.kind === "resolved")) {
+    return (
+      <TeamPanel
+        serverId={serverId}
+        workspaceId={resolution.kind === "resolved" ? resolution.workspaceId : null}
+        teamId={teamId}
+        initialSettingsOpen={settingsRequested}
+      />
+    );
   }
 
   return null;
