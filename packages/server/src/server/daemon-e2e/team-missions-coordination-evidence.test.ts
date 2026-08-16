@@ -6,14 +6,25 @@ import path from "node:path";
 
 import type { AgentClient, AgentSession } from "../agent/agent-sdk-types.js";
 import type { DaemonClient } from "../test-utils/daemon-client.js";
+import {
+  agentRoomCloseoutMessageId,
+  agentRoomMentionDeliveryId,
+  FINAL_VERIFICATION_OUTCOME_PREFIX,
+  finalVerificationOutcomeIdempotencyKey,
+  LEAD_FINAL_SUMMARY_PREFIX,
+  leadFinalSummaryIdempotencyKey,
+} from "../team/application/team-room-closeout.js";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   auditAssignmentDispatchEvidence,
   auditParallelDeliveryDag,
   auditRecoveryDependencyDag,
+  auditRoomCollaboration,
   auditRuntimeRecovery,
   auditToolDiscipline,
+  collectAcknowledgmentRoomMessageIds,
+  collectRecipientAttentionDeliveryIds,
   captureWorkspaceEvidence,
   collectCompleteTeamMissionRoomEvidence,
   collectCompleteTimelineEvidence,
@@ -204,6 +215,29 @@ describe("auditAssignmentDispatchEvidence", () => {
     expect(duplicate.valid).toBe(false);
     expect(duplicate.duplicateBoundaryCrossings).toBe(1);
     expect(duplicate.violations).toContain("assignment:a-1:provider_boundary_crossings:2");
+  });
+
+  test("keeps exactly-once dispatch evidence when a superseded assignment clears its binding", () => {
+    const mission = {
+      id: "mission-1",
+      assignments: [{ assignmentId: "review-1", runtimeAgentId: null, acceptedTurnId: null }],
+    };
+    const record: ProviderStartTurnEvidence = {
+      agentId: "reviewer-1",
+      clientMessageId: "team-mission:mission-1:assignment:review-1:dispatch",
+      turnId: "turn-1",
+      outcome: "accepted",
+      error: null,
+    };
+
+    expect(auditAssignmentDispatchEvidence(mission, [record])).toMatchObject({
+      valid: true,
+      duplicateBoundaryCrossings: 0,
+      violations: [],
+    });
+    expect(
+      auditAssignmentDispatchEvidence(mission, [{ ...record, outcome: "rejected" }]).violations,
+    ).toContain("assignment:review-1:provider_rejected");
   });
 });
 
@@ -1220,6 +1254,24 @@ describe("auditParallelDeliveryDag", () => {
     expect(audit.violations).toContain("parallel_delivery:unexpected_workstream_nodes:1");
     expect(audit.violations).toContain("parallel_delivery:unexpected_assignment_nodes:1");
   });
+
+  test("ignores superseded review retries when checking the current DAG node set", () => {
+    const fixture = parallelDagFixture();
+    const approvedReview = fixture.assignments.find(
+      (assignment) => assignment.assignmentId === "assignment-api-review",
+    );
+    if (!approvedReview) throw new Error("missing approved API review fixture");
+    fixture.assignments.push({
+      ...approvedReview,
+      assignmentId: "assignment-api-review-retry-1",
+      semanticState: "canceled",
+      report: null,
+      supersededBy: approvedReview.assignmentId,
+      terminationReason: "superseded",
+    });
+
+    expect(auditParallelDeliveryDag(fixture)).toMatchObject({ valid: true, violations: [] });
+  });
 });
 
 describe("auditRecoveryDependencyDag", () => {
@@ -2122,7 +2174,8 @@ describe("auditToolDiscipline", () => {
     messageEntry.item.status = "failed";
     messageEntry.item.error = { message: "transient failure" };
     timeline.entries.push({
-      seq: 99,
+      seqStart: 99,
+      seqEnd: 99,
       item: {
         ...messageEntry.item,
         callId: "call-team-message-retry",
@@ -2148,7 +2201,8 @@ describe("auditToolDiscipline", () => {
       throw new Error("missing team status fixture");
     }
     timeline.entries.push({
-      seq: 99,
+      seqStart: 99,
+      seqEnd: 99,
       item: {
         ...statusEntry.item,
         callId: "call-other-mission",
@@ -2214,6 +2268,535 @@ describe("auditToolDiscipline", () => {
 
     expect(audit.score).toBe(2);
     expect(audit.violations).toEqual([]);
+  });
+});
+
+describe("auditRoomCollaboration", () => {
+  test("rejects frozen real-provider evidence whose completed Mission omitted Room updates", () => {
+    const evidence = JSON.parse(
+      readFileSync(
+        path.resolve(
+          import.meta.dirname,
+          "../../../../../.codestable/audits/agent-teams-v2-real-provider/parallel_delivery-run-1.json",
+        ),
+        "utf8",
+      ),
+    ) as {
+      mission: {
+        participants: Array<{ memberId: string; agentId: string }>;
+        assignments: Array<{ assigneeMemberId: string }>;
+      };
+      roomHistory: { messages: ReturnType<typeof roomMessage>[] };
+    };
+    const audit = auditRoomCollaboration(evidence.mission, evidence.roomHistory.messages);
+
+    expect(audit.valid).toBe(false);
+    expect(audit.violations).toHaveLength(6);
+    expect(audit.violations).toEqual(
+      expect.arrayContaining([
+        ...evidence.mission.participants.map(
+          (participant) => `room_collaboration:member_updates:${participant.memberId}:0`,
+        ),
+        "room_collaboration:final_verifier_outcome_missing",
+      ]),
+    );
+  });
+
+  test("accepts start and outcome updates across archived Mission participant bindings", () => {
+    const audit = auditRoomCollaboration(
+      {
+        participants: [
+          { memberId: "member-lead", agentId: "agent-lead-old" },
+          { memberId: "member-lead", agentId: "agent-lead-new" },
+          { memberId: "member-worker", agentId: "agent-worker" },
+        ],
+        assignments: [{ assigneeMemberId: "member-worker" }],
+      },
+      [
+        roomMessage("lead-plan", "agent-lead-old", "The plan is ready and work is dispatched."),
+        roomMessage("lead-wrap", "agent-lead-new", "The Mission outcome is ready."),
+        roomMessage("worker-start", "agent-worker", "Starting the assigned implementation."),
+        roomMessage("worker-done", "agent-worker", "Implementation and tests are complete."),
+      ],
+    );
+
+    expect(audit).toEqual({
+      valid: true,
+      violations: [],
+      messageCountsByMemberId: { "member-lead": 2, "member-worker": 2 },
+      closeout: null,
+    });
+  });
+
+  test("requires the final verifier outcome followed by the Lead summary before verification settles", () => {
+    const mission = roomCloseoutMission();
+    const outcomeMessageId = agentRoomCloseoutMessageId(
+      mission.id,
+      "agent-verifier",
+      finalVerificationOutcomeIdempotencyKey("assignment-verification"),
+    );
+    const summaryMessageId = agentRoomCloseoutMessageId(
+      mission.id,
+      "agent-lead",
+      leadFinalSummaryIdempotencyKey("assignment-verification"),
+    );
+    const acknowledgmentMessageIds = new Set(["lead-ack", "verifier-ack"]);
+    const outcomeDeliveryId = agentRoomMentionDeliveryId(outcomeMessageId, "member-lead");
+    const summaryDeliveryId = agentRoomMentionDeliveryId(summaryMessageId, "member-verifier");
+    const recipientDeliveryIds = new Set([outcomeDeliveryId, summaryDeliveryId]);
+    const messages = [
+      roomMessage(
+        "verifier-start",
+        "agent-verifier",
+        "Starting final verification.",
+        "2026-01-01T00:00:05.000Z",
+      ),
+      roomMessage(
+        outcomeMessageId,
+        "agent-verifier",
+        `${FINAL_VERIFICATION_OUTCOME_PREFIX} approved. @lead please close out the Mission.`,
+        "2026-01-01T00:00:07.000Z",
+        ["agent-lead"],
+      ),
+      roomMessage(
+        "lead-ack",
+        "agent-lead",
+        "Acknowledged. I will post the final Mission summary.",
+        "2026-01-01T00:00:07.500Z",
+      ),
+      roomMessage(
+        summaryMessageId,
+        "agent-lead",
+        `${LEAD_FINAL_SUMMARY_PREFIX} @verifier delivery, review, and verification all passed.`,
+        "2026-01-01T00:00:08.000Z",
+        ["agent-verifier"],
+      ),
+      roomMessage(
+        "verifier-ack",
+        "agent-verifier",
+        "Acknowledged. I will submit the final verification report.",
+        "2026-01-01T00:00:08.500Z",
+      ),
+    ];
+    const evidenceMessages = [
+      messages[0]!,
+      roomMessage(
+        "ordinary-verifier-message",
+        "agent-verifier",
+        "@lead I am still checking one detail.",
+        "2026-01-01T00:00:06.000Z",
+        ["agent-lead"],
+      ),
+      roomMessage(
+        "ordinary-lead-reply",
+        "agent-lead",
+        "Acknowledged; continue verification.",
+        "2026-01-01T00:00:06.500Z",
+      ),
+      ...messages.slice(1),
+    ];
+
+    expect(
+      auditRoomCollaboration(
+        mission,
+        evidenceMessages,
+        acknowledgmentMessageIds,
+        closeoutTimeline(summaryMessageId),
+        recipientDeliveryIds,
+      ),
+    ).toMatchObject({
+      valid: true,
+      violations: [],
+      closeout: {
+        assignmentId: "assignment-verification",
+        verifierOutcomeMessageId: outcomeMessageId,
+        leadSummaryMessageId: summaryMessageId,
+        verifierSummaryReadSeq: 1,
+        verifierReportSeq: 2,
+        outcomeDeliveryIds: [outcomeDeliveryId],
+        leadSummaryDeliveryIds: [summaryDeliveryId],
+        acknowledgmentMessageIds: ["lead-ack", "verifier-ack"],
+      },
+    });
+    const sameMillisecondCloseout = structuredClone(evidenceMessages);
+    for (const message of sameMillisecondCloseout) {
+      if (message.id === outcomeMessageId || message.id === summaryMessageId) {
+        message.createdAt = "2026-01-01T00:00:07.000Z";
+      }
+    }
+    expect(
+      auditRoomCollaboration(
+        mission,
+        sameMillisecondCloseout,
+        acknowledgmentMessageIds,
+        closeoutTimeline(summaryMessageId),
+        recipientDeliveryIds,
+      ),
+    ).toMatchObject({ valid: true, violations: [] });
+    expect(
+      auditRoomCollaboration(
+        mission,
+        evidenceMessages.filter((message) => !acknowledgmentMessageIds.has(message.id)),
+        new Set(),
+        closeoutTimeline(summaryMessageId),
+        new Set([outcomeDeliveryId]),
+      ),
+    ).toMatchObject({
+      valid: true,
+      violations: [],
+      closeout: { acknowledgmentMessageIds: [] },
+    });
+    const archivedMission = structuredClone(mission);
+    for (const participant of archivedMission.participants) {
+      participant.archivedAt = "2026-01-01T00:00:08.750Z";
+    }
+    expect(
+      auditRoomCollaboration(
+        archivedMission,
+        evidenceMessages,
+        acknowledgmentMessageIds,
+        closeoutTimeline(summaryMessageId),
+        recipientDeliveryIds,
+      ),
+    ).toMatchObject({ valid: true, violations: [] });
+    expect(
+      auditRoomCollaboration(
+        mission,
+        messages,
+        acknowledgmentMessageIds,
+        closeoutTimeline(summaryMessageId),
+        new Set([`${outcomeMessageId}:mention:unexpected`]),
+      ).violations,
+    ).toContain("room_collaboration:closeout_delivery_handshake_missing");
+    expect(
+      auditRoomCollaboration(mission, messages, acknowledgmentMessageIds, [], recipientDeliveryIds)
+        .violations,
+    ).toContain("room_collaboration:final_verifier_summary_read_missing");
+    const timelineWithoutReport = closeoutTimeline(summaryMessageId);
+    timelineWithoutReport[0]!.entries = timelineWithoutReport[0]!.entries.slice(0, 1);
+    expect(
+      auditRoomCollaboration(
+        mission,
+        messages,
+        acknowledgmentMessageIds,
+        timelineWithoutReport,
+        recipientDeliveryIds,
+      ).violations,
+    ).toContain("room_collaboration:final_verifier_report_after_lead_summary_missing");
+
+    expect(
+      auditRoomCollaboration(mission, [
+        roomMessage(
+          summaryMessageId,
+          "agent-lead",
+          `${LEAD_FINAL_SUMMARY_PREFIX} posted before final verification.`,
+          "2026-01-01T00:00:06.000Z",
+        ),
+        messages[1]!,
+      ]).violations,
+    ).toContain("room_collaboration:lead_summary_must_follow_final_verifier");
+    expect(
+      auditRoomCollaboration(mission, [
+        messages[0]!,
+        messages[1]!,
+        roomMessage(
+          summaryMessageId,
+          "agent-lead",
+          `${LEAD_FINAL_SUMMARY_PREFIX} @verifier posted after completion.`,
+          "2026-01-01T00:00:10.000Z",
+          ["agent-verifier"],
+        ),
+      ]).violations,
+    ).toContain("room_collaboration:lead_summary_must_precede_mission_completion");
+
+    expect(
+      auditRoomCollaboration(mission, [
+        messages[0]!,
+        roomMessage(
+          outcomeMessageId,
+          "agent-verifier",
+          `${FINAL_VERIFICATION_OUTCOME_PREFIX} approved, but no Lead mention was sent.`,
+          "2026-01-01T00:00:07.000Z",
+        ),
+        messages[3]!,
+      ]).violations,
+    ).toContain("room_collaboration:final_verifier_lead_mention_missing");
+
+    expect(
+      auditRoomCollaboration(mission, [
+        messages[0]!,
+        messages[1]!,
+        roomMessage(
+          summaryMessageId,
+          "agent-lead",
+          `${LEAD_FINAL_SUMMARY_PREFIX} verifier was not notified.`,
+          "2026-01-01T00:00:08.000Z",
+        ),
+      ]).violations,
+    ).toContain("room_collaboration:lead_summary_must_notify_final_verifier");
+  });
+
+  test("accepts no-self-mention closeout when the final verifier is also the Mission Lead", () => {
+    const mission = roomCloseoutMission();
+    mission.rosterSnapshots[0]!.leadMemberId = "member-verifier";
+    mission.participants = [
+      { memberId: "member-verifier", agentId: "agent-verifier", archivedAt: null },
+    ];
+    const outcomeMessageId = agentRoomCloseoutMessageId(
+      mission.id,
+      "agent-verifier",
+      finalVerificationOutcomeIdempotencyKey("assignment-verification"),
+    );
+    const summaryMessageId = agentRoomCloseoutMessageId(
+      mission.id,
+      "agent-verifier",
+      leadFinalSummaryIdempotencyKey("assignment-verification"),
+    );
+    const audit = auditRoomCollaboration(
+      mission,
+      [
+        roomMessage(
+          outcomeMessageId,
+          "agent-verifier",
+          `${FINAL_VERIFICATION_OUTCOME_PREFIX} approved.`,
+          "2026-01-01T00:00:07.000Z",
+        ),
+        roomMessage(
+          summaryMessageId,
+          "agent-verifier",
+          `${LEAD_FINAL_SUMMARY_PREFIX} delivery and verification passed.`,
+          "2026-01-01T00:00:08.000Z",
+        ),
+      ],
+      new Set(),
+      closeoutTimeline(summaryMessageId),
+    );
+
+    expect(audit).toMatchObject({
+      valid: true,
+      violations: [],
+      closeout: { leadSummaryMessageId: summaryMessageId },
+    });
+  });
+
+  test("uses the Room history body digest for closeout evidence", async () => {
+    const mission = roomCloseoutMission();
+    const outcomeMessageId = agentRoomCloseoutMessageId(
+      mission.id,
+      "agent-verifier",
+      finalVerificationOutcomeIdempotencyKey("assignment-verification"),
+    );
+    const summaryMessageId = agentRoomCloseoutMessageId(
+      mission.id,
+      "agent-lead",
+      leadFinalSummaryIdempotencyKey("assignment-verification"),
+    );
+    const messages = [
+      roomMessage(
+        outcomeMessageId,
+        "agent-verifier",
+        `${FINAL_VERIFICATION_OUTCOME_PREFIX} approved.`,
+        "2026-01-01T00:00:07.000Z",
+        ["agent-lead"],
+      ),
+      roomMessage(
+        summaryMessageId,
+        "agent-lead",
+        `${LEAD_FINAL_SUMMARY_PREFIX} delivery and verification passed.`,
+        "2026-01-01T00:00:08.000Z",
+        ["agent-verifier"],
+      ),
+    ];
+    const roomCollaborationAudit = auditRoomCollaboration(
+      mission,
+      messages,
+      new Set(),
+      closeoutTimeline(summaryMessageId),
+      new Set([
+        agentRoomMentionDeliveryId(outcomeMessageId, "member-lead"),
+        agentRoomMentionDeliveryId(summaryMessageId, "member-verifier"),
+      ]),
+    );
+    const root = mkdtempSync(path.join(os.tmpdir(), "paseo-team-closeout-digest-"));
+    roots.push(root);
+    const manifestPath = path.join(root, "manifest.json");
+    await persistSanitizedEvidenceManifest(manifestPath, {
+      evidencePolicy: "allowlisted_v1",
+      roomHistory: { pages: [], messages, unsubscribe: null },
+      roomCollaborationAudit,
+    });
+    const projected = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+      roomHistory: { messages: Array<{ id: string; bodyDigest: string }> };
+      roomCollaborationAudit: {
+        closeout: { verifierOutcomeBodyDigest: string; leadSummaryBodyDigest: string };
+      };
+    };
+    const outcome = projected.roomHistory.messages.find(
+      (message) => message.id === outcomeMessageId,
+    );
+    const summary = projected.roomHistory.messages.find(
+      (message) => message.id === summaryMessageId,
+    );
+
+    expect(projected.roomCollaborationAudit.closeout.verifierOutcomeBodyDigest).toBe(
+      outcome?.bodyDigest,
+    );
+    expect(projected.roomCollaborationAudit.closeout.leadSummaryBodyDigest).toBe(
+      summary?.bodyDigest,
+    );
+  });
+
+  test("continues past an archived verifier binding that read the summary without reporting", () => {
+    const mission = roomCloseoutMission();
+    mission.assignments[0]!.runtimeAgentId = null;
+    mission.participants.splice(1, 0, {
+      memberId: "member-verifier",
+      agentId: "agent-verifier-old",
+      archivedAt: "2026-01-01T00:00:08.250Z",
+    });
+    const outcomeMessageId = agentRoomCloseoutMessageId(
+      mission.id,
+      "agent-verifier",
+      finalVerificationOutcomeIdempotencyKey("assignment-verification"),
+    );
+    const summaryMessageId = agentRoomCloseoutMessageId(
+      mission.id,
+      "agent-lead",
+      leadFinalSummaryIdempotencyKey("assignment-verification"),
+    );
+    const oldTimeline = closeoutTimeline(summaryMessageId)[0]!;
+    oldTimeline.agentId = "agent-verifier-old";
+    oldTimeline.entries = oldTimeline.entries.slice(0, 1);
+    const recipientDeliveryIds = new Set([
+      agentRoomMentionDeliveryId(outcomeMessageId, "member-lead"),
+      agentRoomMentionDeliveryId(summaryMessageId, "member-verifier"),
+    ]);
+    const acknowledgmentMessageIds = new Set(["lead-ack", "verifier-ack"]);
+
+    const audit = auditRoomCollaboration(
+      mission,
+      [
+        roomMessage(
+          "verifier-start",
+          "agent-verifier",
+          "Starting final verification.",
+          "2026-01-01T00:00:05.000Z",
+        ),
+        roomMessage(
+          outcomeMessageId,
+          "agent-verifier",
+          `${FINAL_VERIFICATION_OUTCOME_PREFIX} approved.`,
+          "2026-01-01T00:00:07.000Z",
+          ["agent-lead"],
+        ),
+        roomMessage("lead-ack", "agent-lead", "Acknowledged.", "2026-01-01T00:00:07.500Z"),
+        roomMessage(
+          summaryMessageId,
+          "agent-lead",
+          `${LEAD_FINAL_SUMMARY_PREFIX} delivery and verification passed.`,
+          "2026-01-01T00:00:08.000Z",
+          ["agent-verifier"],
+        ),
+        roomMessage("verifier-ack", "agent-verifier", "Acknowledged.", "2026-01-01T00:00:08.500Z"),
+      ],
+      acknowledgmentMessageIds,
+      [oldTimeline, ...closeoutTimeline(summaryMessageId)],
+      recipientDeliveryIds,
+    );
+
+    expect(audit).toMatchObject({
+      valid: true,
+      violations: [],
+      closeout: { verifierAgentId: "agent-verifier", verifierReportSeq: 2 },
+    });
+  });
+
+  test("does not count recipient acknowledgments as delivery updates", () => {
+    const timelines = [
+      {
+        agentId: "agent-worker",
+        entries: [
+          {
+            seqStart: 1,
+            seqEnd: 1,
+            item: {
+              type: "tool_call",
+              name: "chat_post",
+              status: "completed",
+              error: null,
+              detail: {
+                type: "unknown",
+                input: { idempotencyKey: "delivery-1:ack" },
+                output: {
+                  structuredContent: {
+                    missionId: "mission-current",
+                    message: { id: "worker-ack" },
+                    cursor: 2,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    ];
+    const recipientDeliveryIds = collectRecipientAttentionDeliveryIds([
+      { clientMessageId: "team-message:delivery-1:binding:1:attempt:1" },
+      { clientMessageId: "team-message:delivery-2:binding:3:binding:3:attempt:2" },
+    ]);
+    const acknowledgmentMessageIds = collectAcknowledgmentRoomMessageIds(
+      timelines,
+      recipientDeliveryIds,
+    );
+    const audit = auditRoomCollaboration(
+      {
+        participants: [{ memberId: "member-worker", agentId: "agent-worker" }],
+        assignments: [{ assigneeMemberId: "member-worker" }],
+      },
+      [
+        roomMessage("worker-start", "agent-worker", "Starting the assigned implementation."),
+        roomMessage("worker-ack", "agent-worker", "Acknowledged; continuing implementation."),
+      ],
+      acknowledgmentMessageIds,
+    );
+
+    expect([...acknowledgmentMessageIds]).toEqual(["worker-ack"]);
+    expect([...recipientDeliveryIds]).toEqual(["delivery-1", "delivery-2:binding:3"]);
+    expect(audit).toEqual({
+      valid: false,
+      violations: ["room_collaboration:member_updates:member-worker:1"],
+      messageCountsByMemberId: { "member-worker": 1 },
+      closeout: null,
+    });
+  });
+
+  test("keeps ordinary collaboration messages whose public key happens to end in ack", () => {
+    const timelines = [
+      {
+        agentId: "agent-verifier",
+        entries: [
+          {
+            seqStart: 1,
+            seqEnd: 1,
+            item: {
+              type: "tool_call",
+              name: "chat_post",
+              status: "completed",
+              error: null,
+              detail: {
+                type: "unknown",
+                input: { idempotencyKey: "final-verification:ack" },
+                output: { message: { id: "verification-outcome" } },
+              },
+            },
+          },
+        ],
+      },
+    ];
+
+    expect(collectAcknowledgmentRoomMessageIds(timelines, new Set(["unrelated-delivery"]))).toEqual(
+      new Set(),
+    );
   });
 });
 
@@ -2884,7 +3467,8 @@ function toolTimelineFixture() {
     {
       agentId: "agent-lead",
       entries: names.map((name, index) => ({
-        seq: index + 1,
+        seqStart: index + 1,
+        seqEnd: index + 1,
         item: {
           type: "tool_call" as const,
           callId: `call-${index}`,
@@ -2905,7 +3489,8 @@ function toolTimelineFixture() {
       agentId: "agent-worker",
       entries: [
         {
-          seq: 1,
+          seqStart: 1,
+          seqEnd: 1,
           item: {
             type: "tool_call" as const,
             callId: "call-assignment-report",
@@ -3007,6 +3592,95 @@ function runtimeMissionFixture() {
     attentionItems: [],
     assignments: [{ assignmentId: "assignment-current" }],
   };
+}
+
+function roomMessage(
+  id: string,
+  agentId: string,
+  body: string,
+  createdAt = "2026-01-01T00:00:01.000Z",
+  mentionAgentIds: string[] = [],
+) {
+  return {
+    id,
+    missionId: "mission-current",
+    roomId: "room-current",
+    authorAgentId: agentId,
+    author: { kind: "agent" as const, id: agentId },
+    body,
+    replyToMessageId: null,
+    mentionAgentIds,
+    createdAt,
+  };
+}
+
+function roomCloseoutMission() {
+  return {
+    id: "mission-current",
+    status: "completed",
+    completedAt: "2026-01-01T00:00:09.000Z",
+    planRevision: 1,
+    activeRosterSnapshotRevision: 1,
+    rosterSnapshots: [{ revision: 1, leadMemberId: "member-lead" }],
+    participants: [
+      { memberId: "member-lead", agentId: "agent-lead", archivedAt: null },
+      { memberId: "member-verifier", agentId: "agent-verifier", archivedAt: null },
+    ],
+    assignments: [
+      {
+        assignmentId: "assignment-verification",
+        kind: "verification",
+        planRevision: 1,
+        semanticState: "completed",
+        assigneeMemberId: "member-verifier",
+        runtimeAgentId: "agent-verifier" as string | null,
+        settledAt: "2026-01-01T00:00:09.000Z",
+      },
+    ],
+  };
+}
+
+function closeoutTimeline(leadSummaryMessageId: string) {
+  return [
+    {
+      agentId: "agent-verifier",
+      entries: [
+        {
+          seqStart: 1,
+          seqEnd: 1,
+          item: {
+            type: "tool_call",
+            name: "chat_read",
+            status: "completed",
+            error: null,
+            detail: {
+              type: "unknown",
+              input: { missionId: "mission-current" },
+              output: { structuredContent: { messages: [{ id: leadSummaryMessageId }] } },
+            },
+          },
+        },
+        {
+          seqStart: 2,
+          seqEnd: 2,
+          item: {
+            type: "tool_call",
+            name: "assignment_report",
+            status: "completed",
+            error: null,
+            detail: {
+              type: "unknown",
+              input: {
+                missionId: "mission-current",
+                assignmentId: "assignment-verification",
+              },
+              output: { structuredContent: { missionId: "mission-current" } },
+            },
+          },
+        },
+      ],
+    },
+  ];
 }
 
 function makeAssignment(

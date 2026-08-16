@@ -18,10 +18,18 @@ import {
 import os from "node:os";
 import path from "node:path";
 
-import type { TeamMission } from "@getpaseo/protocol/team/v2-types";
+import type { TeamMission, TeamRoomMessage } from "@getpaseo/protocol/team/v2-types";
 
 import type { AgentClient, AgentSession } from "../agent/agent-sdk-types.js";
 import type { DaemonClient } from "../test-utils/daemon-client.js";
+import {
+  agentRoomCloseoutMessageId,
+  agentRoomMentionDeliveryId,
+  FINAL_VERIFICATION_OUTCOME_PREFIX,
+  finalVerificationOutcomeIdempotencyKey,
+  LEAD_FINAL_SUMMARY_PREFIX,
+  leadFinalSummaryIdempotencyKey,
+} from "../team/application/team-room-closeout.js";
 
 export interface WorkspaceFileArtifactEvidence {
   path: string;
@@ -198,13 +206,20 @@ export function auditAssignmentDispatchEvidence(
       duplicateBoundaryCrossings += Math.max(0, boundaryCrossings.length - 1);
     }
     const crossing = boundaryCrossings.length === 1 ? boundaryCrossings[0] : undefined;
-    if (crossing && crossing.agentId !== assignment.runtimeAgentId) {
-      violations.push(`assignment:${assignment.assignmentId}:provider_agent_mismatch`);
-    }
     if (crossing && crossing.outcome !== "accepted") {
       violations.push(`assignment:${assignment.assignmentId}:provider_rejected`);
     }
-    if (crossing && crossing.turnId !== assignment.acceptedTurnId) {
+    const hasPersistedBinding =
+      assignment.runtimeAgentId !== null && assignment.acceptedTurnId !== null;
+    const hasPartialPersistedBinding =
+      (assignment.runtimeAgentId === null) !== (assignment.acceptedTurnId === null);
+    if (hasPartialPersistedBinding) {
+      violations.push(`assignment:${assignment.assignmentId}:incomplete_binding_evidence`);
+    }
+    if (crossing && hasPersistedBinding && crossing.agentId !== assignment.runtimeAgentId) {
+      violations.push(`assignment:${assignment.assignmentId}:provider_agent_mismatch`);
+    }
+    if (crossing && hasPersistedBinding && crossing.turnId !== assignment.acceptedTurnId) {
       violations.push(`assignment:${assignment.assignmentId}:accepted_turn_mismatch`);
     }
     return { assignmentId: assignment.assignmentId, clientMessageId, boundaryCrossings };
@@ -608,6 +623,7 @@ function projectAllowlistedSuccessEvidence(
     assignmentDispatchAudit: projectAssignmentDispatchAudit(record.assignmentDispatchAudit),
     participantTimelines: projectParticipantTimelines(record.participantTimelines),
     roomHistory: projectRoomHistory(record.roomHistory),
+    roomCollaborationAudit: projectRoomCollaborationAudit(record.roomCollaborationAudit),
     sanitizedPinoLog: projectSanitizedPinoLog(record.sanitizedPinoLog),
     parallelDagAudit: projectDagAudit(record.parallelDagAudit, [
       "api",
@@ -791,7 +807,6 @@ function projectTimelineEntry(entry: Record<string, unknown>): Record<string, un
   return {
     provider: structuralScalar(entry, "provider"),
     timestamp: structuralScalar(entry, "timestamp"),
-    seq: structuralScalar(entry, "seq"),
     seqStart: structuralScalar(entry, "seqStart"),
     seqEnd: structuralScalar(entry, "seqEnd"),
     sourceSeqRanges: recordArray(entry.sourceSeqRanges).map((range) => ({
@@ -869,6 +884,34 @@ function projectRoomHistory(value: unknown): Record<string, unknown> | null {
       };
     }),
     unsubscribe: projectRoomUnsubscribe(record.unsubscribe),
+  };
+}
+
+function projectRoomCollaborationAudit(value: unknown): Record<string, unknown> | null {
+  const record = asRecord(value);
+  if (!record) return null;
+  const closeout = asRecord(record.closeout);
+  return {
+    valid: structuralScalar(record, "valid"),
+    violations: projectDigestSummary(record.violations),
+    messageCountsByMemberId: projectNumericRecord(record.messageCountsByMemberId),
+    closeout: closeout
+      ? {
+          assignmentId: structuralScalar(closeout, "assignmentId"),
+          verifierOutcomeMessageId: structuralScalar(closeout, "verifierOutcomeMessageId"),
+          verifierOutcomeBodyDigest: structuralScalar(closeout, "verifierOutcomeBodyDigest"),
+          leadSummaryMessageId: structuralScalar(closeout, "leadSummaryMessageId"),
+          leadSummaryBodyDigest: structuralScalar(closeout, "leadSummaryBodyDigest"),
+          leadSummaryCreatedAt: structuralScalar(closeout, "leadSummaryCreatedAt"),
+          missionCompletedAt: structuralScalar(closeout, "missionCompletedAt"),
+          verifierAgentId: structuralScalar(closeout, "verifierAgentId"),
+          verifierSummaryReadSeq: structuralScalar(closeout, "verifierSummaryReadSeq"),
+          verifierReportSeq: structuralScalar(closeout, "verifierReportSeq"),
+          outcomeDeliveryIds: structuralStringArray(closeout.outcomeDeliveryIds),
+          leadSummaryDeliveryIds: structuralStringArray(closeout.leadSummaryDeliveryIds),
+          acknowledgmentMessageIds: structuralStringArray(closeout.acknowledgmentMessageIds),
+        }
+      : null,
   };
 }
 
@@ -1624,6 +1667,441 @@ export async function collectCompleteTeamMissionRoomEvidence(
   return { pages, messages, unsubscribe };
 }
 
+interface RoomCollaborationMissionEvidence {
+  id?: string;
+  status?: string;
+  completedAt?: string | null;
+  planRevision?: number;
+  activeRosterSnapshotRevision?: number;
+  rosterSnapshots?: Array<{
+    revision: number;
+    leadMemberId: string;
+  }>;
+  participants: Array<{
+    memberId: string;
+    agentId: string;
+    archivedAt?: string | null;
+  }>;
+  assignments: Array<{
+    assignmentId?: string;
+    assigneeMemberId: string;
+    runtimeAgentId?: string | null;
+    kind?: string;
+    planRevision?: number;
+    semanticState?: string;
+    settledAt?: string | null;
+  }>;
+}
+
+export interface RoomCollaborationAudit {
+  valid: boolean;
+  violations: string[];
+  messageCountsByMemberId: Record<string, number>;
+  closeout: {
+    assignmentId: string;
+    verifierOutcomeMessageId: string;
+    verifierOutcomeBodyDigest: string;
+    leadSummaryMessageId: string;
+    leadSummaryBodyDigest: string;
+    leadSummaryCreatedAt: string;
+    missionCompletedAt: string;
+    verifierAgentId: string;
+    verifierSummaryReadSeq: number;
+    verifierReportSeq: number;
+    outcomeDeliveryIds: string[];
+    leadSummaryDeliveryIds: string[];
+    acknowledgmentMessageIds: string[];
+  } | null;
+}
+
+export function auditRoomCollaboration(
+  mission: RoomCollaborationMissionEvidence,
+  messages: ReadonlyArray<TeamRoomMessage>,
+  acknowledgmentMessageIds: ReadonlySet<string> = new Set(),
+  timelines: ToolDisciplineTimelineEvidence[] = [],
+  recipientDeliveryIds: ReadonlySet<string> = new Set(),
+): RoomCollaborationAudit {
+  const memberIdByAgentId = new Map(
+    mission.participants.map((participant) => [participant.agentId, participant.memberId]),
+  );
+  const assignedMemberIds = new Set(
+    mission.assignments.map((assignment) => assignment.assigneeMemberId),
+  );
+  const participantMemberIds = [
+    ...new Set(mission.participants.map((participant) => participant.memberId)),
+  ];
+  const messageCountsByMemberId = Object.fromEntries(
+    participantMemberIds.map((memberId) => [memberId, 0]),
+  );
+  for (const message of messages) {
+    if (message.author.kind !== "agent") continue;
+    if (acknowledgmentMessageIds.has(message.id)) continue;
+    const memberId = memberIdByAgentId.get(message.author.id);
+    if (!memberId) continue;
+    messageCountsByMemberId[memberId] = (messageCountsByMemberId[memberId] ?? 0) + 1;
+  }
+  const violations: string[] = [];
+  for (const memberId of participantMemberIds) {
+    const expectedMinimum = assignedMemberIds.has(memberId) ? 2 : 1;
+    const actual = messageCountsByMemberId[memberId] ?? 0;
+    if (actual < expectedMinimum) {
+      violations.push(`room_collaboration:member_updates:${memberId}:${actual}`);
+    }
+  }
+  const closeout = auditCompletedMissionRoomCloseout(
+    mission,
+    messages,
+    acknowledgmentMessageIds,
+    timelines,
+    recipientDeliveryIds,
+  );
+  violations.push(...closeout.violations);
+  return {
+    valid: violations.length === 0,
+    violations,
+    messageCountsByMemberId,
+    closeout: closeout.evidence,
+  };
+}
+
+function auditCompletedMissionRoomCloseout(
+  mission: RoomCollaborationMissionEvidence,
+  messages: ReadonlyArray<TeamRoomMessage>,
+  acknowledgmentMessageIds: ReadonlySet<string>,
+  timelines: ToolDisciplineTimelineEvidence[],
+  recipientDeliveryIds: ReadonlySet<string>,
+): {
+  violations: string[];
+  evidence: RoomCollaborationAudit["closeout"];
+} {
+  if (mission.status !== "completed") return { violations: [], evidence: null };
+  const snapshot = mission.rosterSnapshots?.find(
+    (candidate) => candidate.revision === mission.activeRosterSnapshotRevision,
+  );
+  const verificationAssignments = mission.assignments.filter(
+    (assignment) =>
+      assignment.kind === "verification" &&
+      assignment.planRevision === mission.planRevision &&
+      assignment.semanticState === "completed",
+  );
+  if (!mission.id || !snapshot || verificationAssignments.length !== 1) {
+    return { violations: ["room_collaboration:closeout_identity_missing"], evidence: null };
+  }
+  const verification = verificationAssignments[0]!;
+  const missionCompletedAt = parseEvidenceTimestamp(mission.completedAt);
+  if (!verification.assignmentId || missionCompletedAt === null || !mission.completedAt) {
+    return {
+      violations: ["room_collaboration:mission_completion_evidence_missing"],
+      evidence: null,
+    };
+  }
+  const leadAgentIds = new Set(
+    mission.participants
+      .filter((participant) => participant.memberId === snapshot.leadMemberId)
+      .map((participant) => participant.agentId),
+  );
+  const verifierAgentIds = new Set(
+    verification.runtimeAgentId
+      ? [verification.runtimeAgentId]
+      : mission.participants
+          .filter((participant) => participant.memberId === verification.assigneeMemberId)
+          .map((participant) => participant.agentId),
+  );
+  const memberIdByAgentId = new Map(
+    mission.participants.map((participant) => [participant.agentId, participant.memberId]),
+  );
+  const collaborationMessages = messages.flatMap((message, roomIndex) => {
+    if (
+      message.author.kind !== "agent" ||
+      acknowledgmentMessageIds.has(message.id) ||
+      parseEvidenceTimestamp(message.createdAt) === null
+    ) {
+      return [];
+    }
+    return [{ message, createdAt: Date.parse(message.createdAt), roomIndex }];
+  });
+  const verifierIsLead = snapshot.leadMemberId === verification.assigneeMemberId;
+  const expectedOutcomeMessageIds = new Set(
+    [...verifierAgentIds].map((agentId) =>
+      agentRoomCloseoutMessageId(
+        mission.id!,
+        agentId,
+        finalVerificationOutcomeIdempotencyKey(verification.assignmentId!),
+      ),
+    ),
+  );
+  const verifierOutcome = collaborationMessages.find(
+    ({ message, createdAt }) =>
+      verifierAgentIds.has(message.author.id) &&
+      expectedOutcomeMessageIds.has(message.id) &&
+      message.body.startsWith(FINAL_VERIFICATION_OUTCOME_PREFIX) &&
+      createdAt <= missionCompletedAt,
+  );
+  if (!verifierOutcome) {
+    return {
+      violations: ["room_collaboration:final_verifier_outcome_missing"],
+      evidence: null,
+    };
+  }
+  if (
+    !verifierIsLead &&
+    !verifierOutcome.message.mentionAgentIds.some((agentId) => leadAgentIds.has(agentId))
+  ) {
+    return {
+      violations: ["room_collaboration:final_verifier_lead_mention_missing"],
+      evidence: null,
+    };
+  }
+  const expectedSummaryMessageIds = new Set(
+    [...leadAgentIds].map((agentId) =>
+      agentRoomCloseoutMessageId(
+        mission.id!,
+        agentId,
+        leadFinalSummaryIdempotencyKey(verification.assignmentId!),
+      ),
+    ),
+  );
+  const leadSummaries = collaborationMessages
+    .filter(
+      ({ message }) =>
+        leadAgentIds.has(message.author.id) &&
+        expectedSummaryMessageIds.has(message.id) &&
+        message.body.startsWith(LEAD_FINAL_SUMMARY_PREFIX),
+    )
+    .toSorted((left, right) => left.roomIndex - right.roomIndex);
+  const leadSummary = leadSummaries.find(({ roomIndex }) => roomIndex > verifierOutcome.roomIndex);
+  if (!leadSummary) {
+    return {
+      violations: ["room_collaboration:lead_summary_must_follow_final_verifier"],
+      evidence: null,
+    };
+  }
+  if (
+    !verifierIsLead &&
+    !leadSummary.message.mentionAgentIds.some((agentId) => verifierAgentIds.has(agentId))
+  ) {
+    return {
+      violations: ["room_collaboration:lead_summary_must_notify_final_verifier"],
+      evidence: null,
+    };
+  }
+  if (leadSummary.createdAt > missionCompletedAt) {
+    return {
+      violations: ["room_collaboration:lead_summary_must_precede_mission_completion"],
+      evidence: null,
+    };
+  }
+  const handshake = collectCloseoutHandshakeEvidence({
+    messages,
+    acknowledgmentMessageIds,
+    recipientDeliveryIds,
+    leadAgentIds,
+    verifierAgentIds,
+    memberIdByAgentId,
+    verifierOutcome,
+    leadSummary,
+    verifierIsLead,
+  });
+  if (!handshake.valid) {
+    return {
+      violations: ["room_collaboration:closeout_delivery_handshake_missing"],
+      evidence: null,
+    };
+  }
+  const toolOrder = findVerifierCloseoutToolOrder(
+    timelines,
+    verifierAgentIds,
+    verification.assignmentId,
+    leadSummary.message.id,
+  );
+  if (toolOrder.summaryReadSeq === null) {
+    return {
+      violations: ["room_collaboration:final_verifier_summary_read_missing"],
+      evidence: null,
+    };
+  }
+  if (toolOrder.reportSeq === null) {
+    return {
+      violations: ["room_collaboration:final_verifier_report_after_lead_summary_missing"],
+      evidence: null,
+    };
+  }
+  return {
+    violations: [],
+    evidence: {
+      assignmentId: verification.assignmentId,
+      verifierOutcomeMessageId: verifierOutcome.message.id,
+      verifierOutcomeBodyDigest: digestValue(verifierOutcome.message.body)!,
+      leadSummaryMessageId: leadSummary.message.id,
+      leadSummaryBodyDigest: digestValue(leadSummary.message.body)!,
+      leadSummaryCreatedAt: leadSummary.message.createdAt,
+      missionCompletedAt: mission.completedAt,
+      verifierAgentId: toolOrder.agentId!,
+      verifierSummaryReadSeq: toolOrder.summaryReadSeq,
+      verifierReportSeq: toolOrder.reportSeq,
+      outcomeDeliveryIds: handshake.outcomeDeliveryIds,
+      leadSummaryDeliveryIds: handshake.leadSummaryDeliveryIds,
+      acknowledgmentMessageIds: handshake.acknowledgmentMessageIds,
+    },
+  };
+}
+
+interface TimedRoomMessage {
+  message: TeamRoomMessage;
+  createdAt: number;
+  roomIndex: number;
+}
+
+function collectCloseoutHandshakeEvidence(input: {
+  messages: ReadonlyArray<TeamRoomMessage>;
+  acknowledgmentMessageIds: ReadonlySet<string>;
+  recipientDeliveryIds: ReadonlySet<string>;
+  leadAgentIds: ReadonlySet<string>;
+  verifierAgentIds: ReadonlySet<string>;
+  memberIdByAgentId: ReadonlyMap<string, string>;
+  verifierOutcome: TimedRoomMessage;
+  leadSummary: TimedRoomMessage;
+  verifierIsLead: boolean;
+}): {
+  valid: boolean;
+  outcomeDeliveryIds: string[];
+  leadSummaryDeliveryIds: string[];
+  acknowledgmentMessageIds: string[];
+} {
+  const outcomeDeliveryIds = closeoutMessageDeliveryIds(
+    input.verifierOutcome.message,
+    input.leadAgentIds,
+    input.memberIdByAgentId,
+  );
+  const leadSummaryDeliveryIds = closeoutMessageDeliveryIds(
+    input.leadSummary.message,
+    input.verifierAgentIds,
+    input.memberIdByAgentId,
+  );
+  const unexpectedObservedDelivery = [...input.recipientDeliveryIds].some((deliveryId) => {
+    if (deliveryId.startsWith(`${input.verifierOutcome.message.id}:mention:`)) {
+      return !outcomeDeliveryIds.includes(deliveryId);
+    }
+    if (deliveryId.startsWith(`${input.leadSummary.message.id}:mention:`)) {
+      return !leadSummaryDeliveryIds.includes(deliveryId);
+    }
+    return false;
+  });
+  const acknowledgments = input.messages.flatMap((message, roomIndex) =>
+    message.author.kind === "agent" && input.acknowledgmentMessageIds.has(message.id)
+      ? [{ message, roomIndex }]
+      : [],
+  );
+  const leadAcknowledgment = acknowledgments.find(
+    ({ message, roomIndex }) =>
+      input.leadAgentIds.has(message.author.id) &&
+      roomIndex > input.verifierOutcome.roomIndex &&
+      roomIndex < input.leadSummary.roomIndex,
+  );
+  const verifierAcknowledgment = acknowledgments.find(
+    ({ message, roomIndex }) =>
+      input.verifierAgentIds.has(message.author.id) && roomIndex > input.leadSummary.roomIndex,
+  );
+  const valid =
+    input.verifierIsLead ||
+    (!unexpectedObservedDelivery &&
+      outcomeDeliveryIds.length > 0 &&
+      leadSummaryDeliveryIds.length > 0);
+  return {
+    valid,
+    outcomeDeliveryIds,
+    leadSummaryDeliveryIds,
+    acknowledgmentMessageIds: [
+      leadAcknowledgment?.message.id,
+      verifierAcknowledgment?.message.id,
+    ].filter((messageId): messageId is string => Boolean(messageId)),
+  };
+}
+
+function closeoutMessageDeliveryIds(
+  message: TeamRoomMessage,
+  recipientAgentIds: ReadonlySet<string>,
+  memberIdByAgentId: ReadonlyMap<string, string>,
+): string[] {
+  // Agent Room mentions are projected from persisted recipient outbox intents.
+  return [
+    ...new Set(
+      message.mentionAgentIds.flatMap((agentId) => {
+        if (!recipientAgentIds.has(agentId)) return [];
+        const memberId = memberIdByAgentId.get(agentId);
+        return memberId ? [agentRoomMentionDeliveryId(message.id, memberId)] : [];
+      }),
+    ),
+  ].toSorted();
+}
+
+function findVerifierCloseoutToolOrder(
+  timelines: ToolDisciplineTimelineEvidence[],
+  verifierAgentIds: ReadonlySet<string>,
+  assignmentId: string,
+  leadSummaryMessageId: string,
+): { agentId: string | null; summaryReadSeq: number | null; reportSeq: number | null } {
+  let partial: { agentId: string; summaryReadSeq: number; reportSeq: null } | null = null;
+  for (const timeline of timelines) {
+    if (!verifierAgentIds.has(timeline.agentId)) continue;
+    let summaryReadSeq: number | null = null;
+    for (const entry of [...timeline.entries].sort(
+      (left, right) => left.seqStart - right.seqStart || left.seqEnd - right.seqEnd,
+    )) {
+      const call = completedEvidenceToolCall(entry.item);
+      if (!call) continue;
+      if (call.name === "chat_read") {
+        const output = unwrapToolOutput(call.detail.output);
+        const outputMessages = Array.isArray(output?.messages) ? output.messages : [];
+        if (outputMessages.some((message) => asRecord(message)?.id === leadSummaryMessageId)) {
+          summaryReadSeq = entry.seqEnd;
+        }
+        continue;
+      }
+      if (
+        call.name !== "assignment_report" ||
+        summaryReadSeq === null ||
+        entry.seqStart <= summaryReadSeq
+      ) {
+        continue;
+      }
+      const input = asRecord(call.detail.input);
+      if (input?.assignmentId === assignmentId) {
+        return { agentId: timeline.agentId, summaryReadSeq, reportSeq: entry.seqEnd };
+      }
+    }
+    if (summaryReadSeq !== null) {
+      partial = { agentId: timeline.agentId, summaryReadSeq, reportSeq: null };
+    }
+  }
+  return partial ?? { agentId: null, summaryReadSeq: null, reportSeq: null };
+}
+
+function completedEvidenceToolCall(itemValue: unknown): {
+  name: AuditedTeamToolName;
+  detail: Record<string, unknown>;
+} | null {
+  const item = asRecord(itemValue);
+  if (
+    item?.type !== "tool_call" ||
+    typeof item.name !== "string" ||
+    item.status !== "completed" ||
+    item.error !== null
+  ) {
+    return null;
+  }
+  const detail = asRecord(item.detail);
+  if (detail?.type !== "unknown") return null;
+  const name = normalizeAuditedToolName(item.name);
+  return name ? { name, detail } : null;
+}
+
+function parseEvidenceTimestamp(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 const AUDITED_TEAM_TOOL_NAMES = [
   "mission_status",
   "mission_plan",
@@ -1633,6 +2111,7 @@ const AUDITED_TEAM_TOOL_NAMES = [
   "team_member_history",
   "team_message",
   "chat_read",
+  "chat_post",
 ] as const;
 
 type AuditedTeamToolName = (typeof AUDITED_TEAM_TOOL_NAMES)[number];
@@ -1656,12 +2135,58 @@ interface ToolDisciplineMissionEvidence {
   }>;
 }
 
-interface ToolDisciplineTimelineEvidence {
+export interface ToolDisciplineTimelineEvidence {
   agentId: string;
   entries: Array<{
-    seq: number;
+    seqStart: number;
+    seqEnd: number;
     item: unknown;
   }>;
+}
+
+export function collectAcknowledgmentRoomMessageIds(
+  timelines: ToolDisciplineTimelineEvidence[],
+  recipientDeliveryIds: ReadonlySet<string>,
+): Set<string> {
+  const messageIds = new Set<string>();
+  for (const timeline of timelines) {
+    for (const entry of timeline.entries) {
+      const item = asRecord(entry.item);
+      if (
+        item?.type !== "tool_call" ||
+        typeof item.name !== "string" ||
+        normalizeAuditedToolName(item.name) !== "chat_post" ||
+        item.status !== "completed" ||
+        item.error !== null
+      ) {
+        continue;
+      }
+      const detail = asRecord(item.detail);
+      if (detail?.type !== "unknown") continue;
+      const input = asRecord(detail.input);
+      if (typeof input?.idempotencyKey !== "string" || !input.idempotencyKey.endsWith(":ack")) {
+        continue;
+      }
+      const deliveryId = input.idempotencyKey.slice(0, -":ack".length);
+      if (!recipientDeliveryIds.has(deliveryId)) continue;
+      const output = unwrapToolOutput(detail.output);
+      const message = asRecord(output?.message);
+      if (typeof message?.id === "string") messageIds.add(message.id);
+    }
+  }
+  return messageIds;
+}
+
+export function collectRecipientAttentionDeliveryIds(
+  providerStartTurns: ReadonlyArray<Pick<ProviderStartTurnEvidence, "clientMessageId">>,
+): Set<string> {
+  const deliveryIds = new Set<string>();
+  for (const turn of providerStartTurns) {
+    const match = turn.clientMessageId?.match(/^team-message:(.+):binding:\d+:attempt:\d+$/);
+    const deliveryId = match?.[1];
+    if (deliveryId) deliveryIds.add(deliveryId);
+  }
+  return deliveryIds;
 }
 
 export interface ToolDisciplineAudit {
@@ -1759,7 +2284,7 @@ function collectToolDisciplineCalls(
       const assignmentActivation = classifyAssignmentActivation(name, input, output, mission);
       calls.push({
         agentId: timeline.agentId,
-        seq: entry.seq,
+        seq: entry.seqEnd,
         rawName: item.name,
         name,
         status,
@@ -1896,6 +2421,7 @@ function assessToolMissionAssociation(
     case "team_message":
       return assessTeamMessageAssociation(context);
     case "chat_read":
+    case "chat_post":
       return "verified";
   }
 }
@@ -2118,6 +2644,8 @@ interface ParallelDagMissionEvidence {
     planRevision: number;
     semanticState: string;
     report: { status: string; verdict: string | null } | null;
+    supersededBy?: string | null;
+    terminationReason?: string | null;
     dispatchedAt: string | null;
     settledAt: string | null;
   }>;
@@ -2290,7 +2818,9 @@ function validateExactDagNodeSet(
   );
   const unexpectedAssignments = mission.assignments.filter(
     (node) =>
-      node.planRevision === mission.planRevision && !expectedAssignmentIds.has(node.assignmentId),
+      node.planRevision === mission.planRevision &&
+      node.supersededBy == null &&
+      !expectedAssignmentIds.has(node.assignmentId),
   );
   if (unexpectedAssignments.length > 0) {
     violations.push(`${prefix}:unexpected_assignment_nodes:${unexpectedAssignments.length}`);

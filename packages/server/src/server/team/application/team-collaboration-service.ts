@@ -90,6 +90,14 @@ import { planMissionQualityGates } from "./quality-gate-assignments.js";
 import { TeamApplicationError } from "./team-mission-service.js";
 import { resolveRoomMessageRecipients } from "./team-room-mentions.js";
 import {
+  agentRoomCloseoutMessageId,
+  agentRoomMentionDeliveryId,
+  FINAL_VERIFICATION_OUTCOME_PREFIX,
+  finalVerificationOutcomeIdempotencyKey,
+  LEAD_FINAL_SUMMARY_PREFIX,
+  leadFinalSummaryIdempotencyKey,
+} from "./team-room-closeout.js";
+import {
   TeamOperationCoordinator,
   type TeamOperationPermit,
 } from "./team-operation-coordinator.js";
@@ -1183,6 +1191,15 @@ export class TeamCollaborationService {
             body,
             context,
           });
+          if (
+            recipients.length > 0 &&
+            isAgentRecipientAcknowledgment(context.storedMission, input.idempotencyKey)
+          ) {
+            throw new TeamApplicationError(
+              "team_message_ack_mentions_not_allowed",
+              "A recipient acknowledgment cannot mention another Team member",
+            );
+          }
           if (recipients.length > 0) {
             persisted = await this.persistAgentMessageDeliveries({
               input,
@@ -1536,6 +1553,7 @@ export class TeamCollaborationService {
       scopeLease: lateReport ? null : assignment.scopeLease,
     };
     assertValidFinalVerificationReport(context.mission, nextAssignment);
+    await this.assertFinalVerificationRoomCloseout(context, nextAssignment);
     const reportedAt = this.options.clock.now();
     const acceptedTurnsById = await this.readAcceptedTurnFacts(
       { ...context.mission, assignments: [nextAssignment] },
@@ -1602,6 +1620,80 @@ export class TeamCollaborationService {
       }
     }
     return { mission: stored.mission, assignment: persistedAssignment };
+  }
+
+  private async assertFinalVerificationRoomCloseout(
+    context: AuthorizedMissionContext,
+    assignment: MissionAssignmentContract,
+  ): Promise<void> {
+    if (
+      assignment.kind !== "verification" ||
+      assignment.report?.status !== "completed" ||
+      assignment.report.verdict !== "approved"
+    ) {
+      return;
+    }
+    const snapshot = context.mission.rosterSnapshots.find(
+      (candidate) => candidate.revision === context.mission.activeRosterSnapshotRevision,
+    );
+    const activeLead = context.mission.participants.find(
+      (participant) =>
+        participant.memberId === snapshot?.leadMemberId && participant.archivedAt === null,
+    );
+    if (!snapshot || !activeLead) {
+      throw new TeamApplicationError(
+        "final_verification_closeout_required",
+        "Final verification requires an active Mission Lead to publish the final summary",
+      );
+    }
+    const outcome = await this.options.messages.get({
+      missionId: context.mission.id,
+      roomId: context.mission.chatRoomId,
+      messageId: agentRoomCloseoutMessageId(
+        context.mission.id,
+        context.callerParticipant.agentId,
+        finalVerificationOutcomeIdempotencyKey(assignment.assignmentId),
+      ),
+    });
+    const summary = await this.options.messages.get({
+      missionId: context.mission.id,
+      roomId: context.mission.chatRoomId,
+      messageId: agentRoomCloseoutMessageId(
+        context.mission.id,
+        activeLead.agentId,
+        leadFinalSummaryIdempotencyKey(assignment.assignmentId),
+      ),
+    });
+    const leadAgentIds = new Set(
+      context.mission.participants
+        .filter((participant) => participant.memberId === snapshot.leadMemberId)
+        .map((participant) => participant.agentId),
+    );
+    const verifierIsLead = context.callerMember.memberId === snapshot.leadMemberId;
+    const outcomeValid = isValidFinalVerificationOutcome({
+      outcome,
+      verifierAgentId: context.callerParticipant.agentId,
+      verifierIsLead,
+      leadAgentIds,
+    });
+    const summaryValid = isValidLeadFinalSummary({
+      summary,
+      outcome,
+      leadAgentId: activeLead.agentId,
+      verifierAgentId: context.callerParticipant.agentId,
+      verifierIsLead,
+    });
+    const verifierReadCursor =
+      context.storedMission.recipientChatCursors.find(
+        (cursor) => cursor.memberId === context.callerMember.memberId,
+      )?.cursor ?? 0;
+    const summaryRead = summary !== null && verifierReadCursor >= summary.cursor;
+    if (!outcomeValid || !summaryValid || !summaryRead) {
+      throw new TeamApplicationError(
+        "final_verification_closeout_required",
+        `Final verification Assignment ${assignment.assignmentId} requires its Room outcome and a later Lead summary visible through chat_read before assignment_report`,
+      );
+    }
   }
 
   private persistAssignmentReport(input: PersistAssignmentReportInput): Promise<StoredMission> {
@@ -4290,13 +4382,6 @@ function humanMentionDeliveryId(roomMessageId: string, memberId: string): string
     .slice(0, 16)}`;
 }
 
-function agentRoomMentionDeliveryId(roomMessageId: string, memberId: string): string {
-  return `${roomMessageId}:mention:${createHash("sha256")
-    .update(memberId)
-    .digest("hex")
-    .slice(0, 16)}`;
-}
-
 function agentRoomReplyMessageId(
   missionId: string,
   callerAgentId: string,
@@ -4306,6 +4391,49 @@ function agentRoomReplyMessageId(
     .update(`${missionId}\0${callerAgentId}\0${idempotencyKey}`)
     .digest("hex")
     .slice(0, 32)}`;
+}
+
+function isAgentRecipientAcknowledgment(mission: StoredMission, idempotencyKey: string): boolean {
+  if (!idempotencyKey.endsWith(":ack")) return false;
+  const deliveryId = idempotencyKey.slice(0, -":ack".length);
+  return mission.recipientAttentionOutbox.some(
+    (delivery) => delivery.deliveryId === deliveryId && delivery.origin !== "human_mention",
+  );
+}
+
+type StoredRoomMessage = NonNullable<Awaited<ReturnType<TeamMessagePort["get"]>>>;
+
+function isValidFinalVerificationOutcome(input: {
+  outcome: StoredRoomMessage | null;
+  verifierAgentId: string;
+  verifierIsLead: boolean;
+  leadAgentIds: ReadonlySet<string>;
+}): boolean {
+  if (!input.outcome || input.outcome.message.author.kind !== "agent") return false;
+  return (
+    input.outcome.message.author.id === input.verifierAgentId &&
+    input.outcome.message.body.startsWith(FINAL_VERIFICATION_OUTCOME_PREFIX) &&
+    (input.verifierIsLead ||
+      input.outcome.message.mentionAgentIds.some((agentId) => input.leadAgentIds.has(agentId)))
+  );
+}
+
+function isValidLeadFinalSummary(input: {
+  summary: StoredRoomMessage | null;
+  outcome: StoredRoomMessage | null;
+  leadAgentId: string;
+  verifierAgentId: string;
+  verifierIsLead: boolean;
+}): boolean {
+  if (!input.summary || !input.outcome || input.summary.message.author.kind !== "agent")
+    return false;
+  return (
+    input.summary.message.author.id === input.leadAgentId &&
+    input.summary.message.body.startsWith(LEAD_FINAL_SUMMARY_PREFIX) &&
+    (input.verifierIsLead ||
+      input.summary.message.mentionAgentIds.includes(input.verifierAgentId)) &&
+    input.summary.cursor > input.outcome.cursor
+  );
 }
 
 function isTerminalAcceptedTurnFact<Fact extends { outcome: AcceptedTurnFact["outcome"] }>(

@@ -1,9 +1,9 @@
 ---
 epic: ../epics/team-task-room.md
 phase: executing
-approved_revision: eb9b1d212874d0213e8b5bdea203223e78b6215c781cef04e6a172d48852b353
-current_item: TTR-ITEM-7
-next_action: 执行 TTR-ITEM-7，让 Agent 在任务室报告协作进展
+approved_revision: c4ed2ac22cf7962a6693746aebef75198f9469c3783ac5a083235788d481ff1c
+current_item: TTR-ITEM-8
+next_action: 执行 TTR-ITEM-8，把任务、成员、结果和 Attention 收敛到 inspector
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -18,7 +18,7 @@ remote_publish: final
 - [x] TTR-ITEM-4 · 建立 MissionWorkroom 主布局
 - [x] TTR-ITEM-5 · 固化 Room 发帖幂等性与 recipient routing
 - [x] TTR-ITEM-6 · 闭合回复界面与 Room 历史
-- [ ] TTR-ITEM-7 · 让 Agent 在任务室报告协作进展
+- [x] TTR-ITEM-7 · 让 Agent 在任务室报告协作进展
 - [ ] TTR-ITEM-8 · 把任务、成员、结果和 Attention 收敛到 inspector
 - [ ] TTR-ITEM-9 · 完成跨平台与真实协作验收
 
@@ -163,3 +163,25 @@ review lineage、checkpoint、测试和残余风险只写本游标；永久 Epic
   Round 1 为 `0 blocking / 2 important`。修复跨 Mission reply/receipt 状态泄漏与显式 mention 下的错误 Lead 承诺后，
   Round 2 在 staged diff `6c3604c14aa118cae77714bc63b5843396509a527d91937a3e968895e2231e92` 上为
   `0 blocking / 0 important / 0 minor`、可合。里程碑主题为 `feat(team): add Room replies and history`。
+- 2026-08-16：TTR-ITEM-7 候选已取得两份新鲜真实 provider 证据：`parallel_delivery` 与
+  `recovery_dependency` 均为 Mission completed、score 8、Room audit valid、0 validation violations、0 scope conflicts；
+  负责人总结早于 Mission 完成，验证者分别以 `17 < 19` 与 `16 < 18` 的 timeline 序号读取总结后再报告，
+  Room history 与 closeout 的两条 body digest 交叉一致。manifest 分别位于
+  `/tmp/ttr-item-7-parallel-closeout-round3.7QscHL/parallel_delivery-run-1.json` 与
+  `/tmp/ttr-item-7-dependency-closeout-round3.L7y7zk/recovery_dependency-run-1.json`。
+- 2026-08-16：TTR-ITEM-7 change review 第 3 轮对 staged diff
+  `f57a98584a01822d888673e02442099f926244c807652d117c30670cc9b1adc4` 为 `2 blocking / 0 important`。Round 2 的
+  timeline `seqStart/seqEnd` 与 body digest 问题已解决；未决为：必须用可执行的 crash/restart recovery 测试覆盖
+  outcome-only 不报告与 both-present 不重复发 Room message；verifier 同时为 Lead 时必须按
+  `chat_post(summary) → chat_read(summary visible) → assignment_report` 执行，否则会通过运行时 gate 但无法通过自身证据审计。
+- 2026-08-17：owner 授权修复上述两条 blocker 并追加 Round 4。真实 daemon E2E 现在从 controlled
+  provider、实际 MCP tool、持久 outbox 贯穿 outcome-only → Lead summary → verifier read/report，并在同一
+  `PASEO_HOME` 重启后断言无重复 provider turn、Room 仍恰好两条消息。Agent record listener 改为只异步
+  入队 Team reconcile，消除 settlement callback 等待自身 `getAcceptedTurnId` 的死锁。同角色 verifier/Lead 的
+  runtime gate 要求持久 chat cursor 覆盖 Lead summary，定点测试先证直接 report 被拒，再 read 后成功。
+- 2026-08-17：同一 reviewer `/root/ttr_closeout_contract_review_v2` Round 4 复验 staged diff
+  `8eb6666293bd3163d1630c732e059cbca4486d3959a9c203170e30361e221fa1` 与 design
+  `c4ed2ac22cf7962a6693746aebef75198f9469c3783ac5a083235788d481ff1c`，上轮两条 blocker 均 RESOLVED，listener
+  审计无新 finding，终态为 `0 blocking / 0 important / 0 minor`。定点四文件 `105/105`、隔离
+  daemon restart E2E `1/1`、`build:server`、lint、format-check 与 diff-check 通过；typecheck 仅命中未修改的
+  `packages/app/src/components/draggable-list.native.tsx:122` 基线错误。

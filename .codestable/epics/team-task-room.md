@@ -44,9 +44,11 @@ Hermes Studio 的 Crew / War Room 证明了“稳定房间、成员状态、任�
 - **TTR-DEC-7 - Participant 边界：** V1 只允许通知当前 Mission Participants。尚未 provision 的 Team
   Member 不会因 mention 被秘密启动；UI 不把它显示为可 mention 对象，手写该 handle 时返回可操作错误，
   提示用户直接通知 Lead 重新规划。
-- **TTR-DEC-8 - Agent 公开汇报：** Agent 在 Assignment 开始、实质进展、阻塞、交付、审查结论和
-  Mission 收口时向 Room 发布简短、可读更新。结构化 `assignment_report`、Mission snapshot 和 report
-  evidence 仍是权威事实。
+- **TTR-DEC-8 - Agent 公开汇报：** Agent 在 Assignment 开始、实质进展、阻塞、交付和审查结论时向
+  Room 发布简短、可读更新。final verifier 先发布终态验证结果并显式 mention Lead；Lead 读取该结果后
+  发布最终 Mission 总结并 mention 该 verifier；这条消息复用 recipient outbox 唤醒 verifier，verifier 看到总结后才调用
+  `assignment_report`。这使负责人总结在 Mission
+  完成前已持久化，无需完成后再唤醒 Lead。结构化 `assignment_report`、Mission snapshot 和 report evidence 仍是权威事实。
 - **TTR-DEC-9 - 增量实现：** 复用现有 Room store、Team RPC、snapshot replica、recipient outbox、
   settings selectors 和 Agent tools。V1 不增加通用事件总线、不 event-source Mission、不新建第二套通知引擎。
 - **TTR-DEC-10 - 功能胶囊优先：** 新领域选择器、表单投影和 UI 放在 Team-owned 目录；`session.ts`、路由、
@@ -315,7 +317,28 @@ update 不会误 ack 另一条通知。需要立即协调的 Agent 必须显式 
 - 阻塞：先提交结构化 blocked report，再在 Room 说明 blocker、所需决定和受影响工作项；
 - 交付：在结构化 completed report 前后发布 artifact、tests、decision 与 handoff 的简短摘要；
 - review/verification：发布 verdict 和需要用户或 Lead 关注的具体问题；
-- Lead：计划接受、replan、Attention 处理和 Mission 收口时发布面向全体的摘要。
+- Lead：计划接受、replan 和 Attention 处理时发布面向全体的摘要；
+- final verifier：发布终态验证结果时显式 mention Lead，等待 Lead 的最终 Mission 总结在 Room 可见后，
+  才调用最终 `assignment_report`；
+- Lead：收到 final verifier 的终态结果后读取 Room，发布面向用户的最终总结并 mention 该 verifier，以现有
+  recipient outbox 唤醒它提交 report。Mission 完成后不再唤醒
+  Lead 补发消息。
+
+final verifier 发出结果后若尚未看到 Lead 总结，当前 turn 在不调用 `assignment_report` 的情况下结束。
+现有 report recovery 下次唤醒时先 `chat_read`：已有 verifier 结果但没有 Lead 总结时继续不 report；两者都
+可见时才 report。verifier 结果未持久化时，recovery 使用 Assignment 派生的稳定 idempotency key 只补发一次并
+mention 当前 Lead。Lead 无 active Participant 时不降级跳过；由现有 `lead_unavailable` / `replace_lead` 路径恢复后再完成
+总结和 report。verifier outcome 与 Lead summary 分别使用 Assignment 派生的固定 idempotency key 和可验证正文前缀；
+最终验证 `assignment_report` 在 application service 内读取现有 Room message 与 verifier 的持久 chat cursor；缺少任一条、
+作者/mention 不符、顺序颠倒，或 cursor 尚未覆盖 Lead summary 时 fail closed。若 verifier 同时是 Lead，它顺序发布两条不同消息、
+再次 `chat_read` 看到 summary 后才 report，不要求 self mention；report recovery 发现已有
+outcome 但没有 summary 时由该同一 Participant 自行补 summary，不等待不存在的另一条 Lead reply。证据审计按相同的
+`missionId + agentId + Assignment idempotency key` 派生精确 message id，并校验正文前缀；普通双边聊天不能冒充收口证据。
+
+recipient delivery 的 `:ack` message 禁止解析出任何收件人；Agent 即使违反 prompt 在 ack 中 mention 他人，application
+service 也拒绝该 post，不允许 ack → delivery → ack 的通知循环。收口握手不强制额外的独立 ack 消息：Lead 最终总结就是对
+verifier outcome 的确认，verifier 在成功 `chat_read` 后提交的最终 report 就是对 Lead 总结的确认；若 Agent 另发简短 ack，
+证据可以记录其 message id，但缺少该冗余消息不能阻止 Mission 完成或使真实证据失败。
 
 禁止把每次 tool call、token 流或完整 Agent transcript 镜像到 Room。成员没有新信息时不发心跳。审计继续以
 Assignment report、accepted turn fact 和 workspace ownership evidence 为准。
@@ -486,12 +509,30 @@ TTR-ITEM-1 的 owning test，不在本项重复实现。
 
 **依赖：** TTR-ITEM-5。
 
-把开始、实质进展、阻塞、交付、review/verification 与 Lead 收口约定注入现有 Team/Methodology prompt sections 和
-tool descriptions。Room update 与 `assignment_report` 明确分工；recipient notification 继续要求 Agent 先
-`chat_read`、简短确认，再继续当前 Assignment。不得镜像 transcript 或每个 tool call。
+把开始、实质进展、阻塞、交付、review/verification、Lead plan/replan 摘要，以及 final verifier 结果 → Lead 总结 → final
+`assignment_report` 的收口顺序注入
+现有 Team/Methodology prompt sections 和 tool descriptions。Room update 与 `assignment_report` 明确分工；recipient notification 继续要求 Agent 先
+`chat_read`、简短确认，再继续当前 Assignment。运行时收口指令位于方法论 section 之后：当前持久 Assignment 是本 turn 的完整范围，
+Agent 不得另起 agent/review 编排；除等待 Lead 总结的 final verification 外，turn 结束前必须恰好调用一次
+`assignment_report`，不得只留下 prose 或 shell 输出。不得镜像 transcript 或每个 tool call。
+报告可能先于 provider turn 终态落盘；`running + report` 是合法中间态，quality-gate planner 必须继续复用同一 Assignment，
+不得在 turn 结算前 supersede 并创建 replacement review。
 
-**验收：** prompt/tool contract 测试、漏 Room update 的真实失败用例、至少一条并行 Mission 和一条显式依赖 Mission
-的真实 provider 证据；每个成员有合理的开始/交付或阻塞消息，Assignment/Mission 状态只由结构化工具推进。
+**验收：** prompt/tool contract 测试、漏 Room update 的真实失败用例、至少一条并行 Mission 和一条显式依赖 Mission；
+prompt contract 必须证明长 review methodology section 之后仍保留单 Assignment 收口和必报规则；
+调度测试必须覆盖 review report 已落盘而 accepted turn 尚未结算的窗口，并证明零 replacement churn；
+两条真实证据都必须包含 mention Lead 的 final verifier 结果、之后 mention 该 verifier 的 Lead 最终总结，
+并证明该总结早于 `mission.completedAt`；verifier timeline 必须证明成功 `chat_read` 的输出包含该 Lead summary message id，
+且更高 seq 才出现该最终验证 Assignment 的成功 `assignment_report`；allowlisted manifest 持久化派生 closeout audit，包含
+两条 message id/body digest、delivery 身份、存在时的 ack 身份、summary/completion 时间和 read/report seq，供 reviewer 复核；
+若 verifier binding 在 summary 可见后更换，审计必须继续检查后续 binding 的 timeline，不能因旧 binding 只读未 report 而
+提前失败；verifier 同时是 Lead 的路径改为两条无 self mention 的固定身份消息；
+定点 crash/recovery 测试必须覆盖 verifier 结果已发、Lead 总结未发与两者都已发两种恢复状态，前者不得调用
+`assignment_report`，后者不得重复发 Room update；Agent turn settlement listener 只把 durable fact / recipient eligibility
+异步排入 Team reconciliation，不得同步等待可能回读同一 turn-state write 的 reconcile；测试必须覆盖该 callback 立即返回和
+daemon restart 后从持久 report-recovery outbox 恢复且不重复启动 provider turn。每个成员有合理的开始/交付或阻塞消息，Assignment/Mission
+状态只由结构化工具推进。真实 provider 启动的 code-deep 索引位于 `.codegraph`，与 `.git` 一样属于 workspace
+基础设施元数据；默认 workspace audit policy 必须排除该前缀，且定点测试证明业务路径的 ownership 校验没有放宽。
 
 ### TTR-ITEM-8 · 把任务、成员、结果和 Attention 收敛到 inspector
 

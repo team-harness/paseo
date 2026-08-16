@@ -217,7 +217,7 @@ export class PaseoTeamToolRegistrar {
       {
         title: "Report Assignment",
         description:
-          "Assignee only. Persist completed, blocked, or failed delivery evidence for the current binding.",
+          "Assignee only. Persist the authoritative completed, blocked, or failed state and delivery evidence for the current binding. This does not publish a task-room update; use chat_post separately for the human-visible outcome.",
         inputSchema: AssignmentReportInputSchema,
       },
       (input) => execute(() => this.options.service.reportAssignment({ callerAgentId, ...input })),
@@ -247,7 +247,7 @@ export class PaseoTeamToolRegistrar {
       {
         title: "Post in Team chat",
         description:
-          "Post one persistent Mission room update. Explicit @member or @team mentions notify active teammates; ordinary updates do not interrupt anyone.",
+          "Post one persistent human-visible Mission task-room update for Assignment start, substantive progress, blockers, delivery, review, verification, Lead plan/replan summaries, or the final verifier's terminal outcome. This does not change Assignment state. Explicit @member or @team mentions notify active teammates; ordinary updates do not interrupt anyone. Do not mirror routine tool calls or transcripts.",
         inputSchema: ChatPostInputSchema,
       },
       (input) =>

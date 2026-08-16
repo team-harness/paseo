@@ -243,6 +243,9 @@ describe("TeamMissionService lifecycle", () => {
       id: "mission-1",
       status: "planning",
       chatRoomId: "room-1",
+      workspaceAuditPolicy: {
+        excludedPathPrefixes: [".git", ".codegraph"],
+      },
       participants: [
         {
           memberId: "member-1",
@@ -5462,7 +5465,7 @@ function pendingMissionStartIntent(team: TeamV2): TeamMissionStartIntent {
       includeNonIgnoredUntrackedPaths: true,
       includeDeclaredArtifactPaths: true,
       excludeGitignoredPathsByDefault: true,
-      excludedPathPrefixes: [".git"],
+      excludedPathPrefixes: [".git", ".codegraph"],
     },
     stage: "reserved",
     requestedAt: NOW,

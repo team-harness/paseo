@@ -12,6 +12,7 @@ describe("PaseoTeamRecipientAttentionAdapter", () => {
   let sentPrompts: SendPromptToAgentParams[];
   let steerInputs: Parameters<AgentManager["steerActiveTurn"]>[0][];
   let steerStatus: Awaited<ReturnType<AgentManager["steerActiveTurn"]>>["status"];
+  let sendPromptError: Error | null;
   let adapter: PaseoTeamRecipientAttentionAdapter;
 
   beforeEach(() => {
@@ -20,6 +21,7 @@ describe("PaseoTeamRecipientAttentionAdapter", () => {
     sentPrompts = [];
     steerInputs = [];
     steerStatus = "delivered";
+    sendPromptError = null;
     const agentManager = {
       getAgent: () => ({ lifecycle }),
       hasInFlightRun: () => lifecycle === "running",
@@ -46,6 +48,7 @@ describe("PaseoTeamRecipientAttentionAdapter", () => {
       agentStorage,
       logger: createTestLogger(),
       sendPrompt: async (input) => {
+        if (sendPromptError) throw sendPromptError;
         sentPrompts.push(input);
         return { outOfBand: false };
       },
@@ -54,6 +57,13 @@ describe("PaseoTeamRecipientAttentionAdapter", () => {
 
   test("does not replace a busy turn", async () => {
     lifecycle = "running";
+
+    await expect(adapter.attempt(attemptInput())).resolves.toBe("busy");
+    expect(sentPrompts).toEqual([]);
+  });
+
+  test("keeps delivery pending when a resumed provider reports an active turn", async () => {
+    sendPromptError = new Error("Session resumed-session already has an active turn");
 
     await expect(adapter.attempt(attemptInput())).resolves.toBe("busy");
     expect(sentPrompts).toEqual([]);
@@ -100,6 +110,17 @@ describe("PaseoTeamRecipientAttentionAdapter", () => {
       replaceRunning: false,
     });
     expect(sentPrompts[0]?.prompt).toContain('Call chat_read with missionId "mission-1" now.');
+    expect(sentPrompts[0]?.prompt).toContain("brief acknowledgment or current status");
+    expect(sentPrompts[0]?.prompt).toContain("continue the same Assignment");
+    expect(sentPrompts[0]?.prompt).toContain("without a mention or replyToMessageId");
+    expect(sentPrompts[0]?.prompt).toContain(
+      'Use idempotencyKey "assignment:<assignmentId>:lead-final-summary"',
+    );
+    expect(sentPrompts[0]?.prompt).toContain("mention the verifier who requested it");
+    expect(sentPrompts[0]?.prompt).toContain(
+      "submit the pending final verification assignment_report",
+    );
+    expect(sentPrompts[0]?.prompt).not.toContain('replyToMessageId "room-message-1"');
     expect(sentPrompts[0]?.prompt).not.toContain("objective");
   });
 
@@ -114,7 +135,29 @@ describe("PaseoTeamRecipientAttentionAdapter", () => {
       outcome: "completed",
     });
 
-    expect(listener).toHaveBeenCalledWith("agent-member");
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledWith("agent-member"));
+  });
+
+  test("does not await recipient reconciliation inside the Agent settlement callback", async () => {
+    let finishReconciliation: (() => void) | null = null;
+    const listener = vi.fn(
+      async () =>
+        new Promise<void>((resolve) => {
+          finishReconciliation = resolve;
+        }),
+    );
+    adapter.onEligibilityChange(listener);
+
+    const callbackResult = recordChangeListener?.({
+      kind: "turn_settled",
+      agentId: "agent-member",
+      turnId: "turn-1",
+      outcome: "completed",
+    });
+
+    expect(callbackResult).toBeUndefined();
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledWith("agent-member"));
+    finishReconciliation?.();
   });
 
   test("stops routing eligibility changes after the runtime disposes the adapter", async () => {

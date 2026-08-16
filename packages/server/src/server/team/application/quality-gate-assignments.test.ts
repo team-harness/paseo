@@ -313,6 +313,122 @@ describe("planMissionQualityGates", () => {
     expect(plan.currentVerificationAssignments).toEqual([]);
   });
 
+  it("reuses a running review after its report is persisted but before its turn settles", () => {
+    const delivery = {
+      assignmentId: "assignment-delivery",
+      priority: 3,
+    } as MissionAssignmentContract;
+    const gate = buildMissionReviewGate({
+      workstreamId: "api",
+      planRevision: 2,
+      subjectAssignmentIds: [delivery.assignmentId],
+      requirements: {
+        requiredSkillIds: [],
+        preferredSkillIds: [],
+        requiredRuntimeCapabilityIds: [],
+        minimumLevel: 1,
+      },
+      selection: {
+        kind: "assigned",
+        reviewerMemberId: "member-reviewer",
+        matchExplanation: {} as never,
+        overrideReason: null,
+      },
+      outcome: { kind: "pending" },
+    });
+    if (gate.kind !== "required") throw new Error("required review gate expected");
+    const runningReview = {
+      assignmentId: "assignment-review-running",
+      revision: 3,
+      kind: "review",
+      subjectAssignmentIds: [delivery.assignmentId],
+      reviewGateFingerprint: gate.gateKeyFingerprint,
+      reviewSubjectFingerprint: gate.subjectFingerprint,
+      finalVerificationGateFingerprint: null,
+      reviewGateEvidence: [],
+      missionId: "mission-1",
+      workstreamId: "api",
+      assigneeMemberId: "member-reviewer",
+      runtimeAgentId: "agent-reviewer",
+      bindingEpoch: 1,
+      objective: "Implement the parser API",
+      inputRefs: [`assignment-report:${delivery.assignmentId}`],
+      deliverables: ["Parser implementation"],
+      acceptanceCriteria: ["Parser tests pass"],
+      mutableScope: { kind: "read_only" },
+      dependencyAssignmentIds: [delivery.assignmentId],
+      priority: 3,
+      planRevision: 2,
+      rosterSnapshotRevision: 1,
+      methodologySnapshotRevision: 1,
+      supersededBy: null,
+      terminationReason: null,
+      scopeLease: null,
+      workspaceBaseline: {
+        workspaceId: "workspace-1",
+        assignmentId: "assignment-review-running",
+      },
+      report: {
+        status: "completed",
+        verdict: "approved",
+        finalVerificationEvidence: null,
+        summary: "Approved",
+        artifactPaths: [],
+        tests: [],
+        decisions: [],
+        handoffs: [],
+      },
+      dispatchState: "dispatched",
+      semanticState: "running",
+      attempt: 1,
+      acceptedTurnId: "turn-review",
+      createdAt: "2026-08-10T11:59:00.000Z",
+      dispatchedAt: "2026-08-10T12:00:00.000Z",
+      settledAt: null,
+    } as MissionAssignmentContract;
+    const mission = {
+      id: "mission-1",
+      workspaceId: "workspace-1",
+      planRevision: 2,
+      assignments: [delivery, runningReview],
+      workstreams: [
+        {
+          workstreamId: "api",
+          kind: "delivery",
+          objective: runningReview.objective,
+          deliverables: runningReview.deliverables,
+          acceptanceCriteria: runningReview.acceptanceCriteria,
+          mutableScope: { kind: "paths", pathPrefixes: ["packages/server"] },
+          ownerMemberId: "member-owner",
+          rosterSnapshotRevision: 1,
+          methodologySnapshotRevision: 1,
+          reviewGate: gate,
+          status: "review",
+        },
+      ],
+    } as TeamMission;
+    const coverage: MissionAssignmentCoverage = {
+      assignmentIdsByWorkstreamId: new Map([["api", delivery.assignmentId]]),
+      completedDeliveryAssignmentIds: new Set([delivery.assignmentId]),
+      approvedReviewAssignmentIdsByWorkstreamId: new Map(),
+      missingWorkstreamIds: [],
+      ambiguousWorkstreamIds: [],
+    };
+
+    const plan = planMissionQualityGates({
+      mission,
+      coverage,
+      settledReviewGateWorkstreamIds: new Set(),
+      acceptedTurnsById: new Map(),
+      createdAt: "2026-08-10T12:01:00.000Z",
+      materializePending: true,
+    });
+
+    expect(plan.additions).toEqual([]);
+    expect(plan.obsoleteReviewAssignments).toEqual([]);
+    expect(plan.selectedAssignments).toContain(runningReview);
+  });
+
   it("uses :2 when the canonical quality-gate Assignment id is already occupied", () => {
     const delivery = {
       assignmentId: "assignment-delivery",

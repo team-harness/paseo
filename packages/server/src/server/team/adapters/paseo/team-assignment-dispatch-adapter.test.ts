@@ -10,6 +10,7 @@ import { AgentStorage } from "../../../agent/agent-storage.js";
 import { createTestAgentClients } from "../../../test-utils/fake-agent-client.js";
 import { PaseoTeamAssignmentDispatchAdapter } from "./team-assignment-dispatch-adapter.js";
 import { PaseoTeamParticipantAdapter } from "./team-participant-adapter.js";
+import { resolveFinalVerificationRecoveryAction } from "./team-room-collaboration-contract.js";
 
 describe("PaseoTeamAssignmentDispatchAdapter", () => {
   let rootDirectory: string;
@@ -105,9 +106,122 @@ describe("PaseoTeamAssignmentDispatchAdapter", () => {
     expect(promptText.indexOf("Frozen methodology delivery contract.")).toBeLessThan(
       promptText.indexOf('Assignment "assignment-api" is ready'),
     );
+    expect(promptText).toContain("Post a brief task-room update with chat_post when you start");
+    expect(promptText).toContain("Before assignment_report");
+    expect(promptText).toContain(
+      'idempotencyKey "assignment:<assignmentId>:final-verification-outcome"',
+    );
+    expect(promptText).toContain("mention the Mission Lead");
+    expect(promptText).toContain(
+      "Wait until that Lead summary is visible before assignment_report",
+    );
+    expect(promptText).toContain("Do not mirror your transcript or routine tool calls");
+    expect(promptText).toContain(
+      "Treat the persisted Assignment as the complete scope for this turn; do not start a separate agent or review orchestration loop.",
+    );
+    expect(promptText).toContain(
+      "Before this turn ends, call assignment_report exactly once unless the final-verification closeout rule above explicitly requires you to wait for the Lead summary. Do not end with only prose or shell output.",
+    );
 
     await manager.closeAgent(agentId);
     await Promise.all([manager.flush(), storage.flush()]);
+  });
+
+  test("keeps report recovery focused on structured state without repeating delivery work", async () => {
+    const logger = createTestLogger();
+    const storage = new AgentStorage(join(rootDirectory, "agents"), logger);
+    await storage.initialize();
+    const manager = new AgentManager({
+      clients: createTestAgentClients(),
+      registry: storage,
+      logger,
+    });
+    const participant = new PaseoTeamParticipantAdapter({
+      agentManager: manager,
+      agentStorage: storage,
+      resolveWorkspaceCwd: async () => rootDirectory,
+      logger,
+    });
+    const agentId = "00000000-0000-4000-8000-000000000405";
+    await participant.ensureParticipant({
+      agentId,
+      teamId: "team-1",
+      missionId: "mission-1",
+      workspaceId: "workspace-1",
+      memberId: "member-api",
+      bindingEpoch: 1,
+      role: "API engineer",
+      mentionHandle: "api-engineer",
+      executionProfile: {
+        provider: "codex",
+        model: null,
+        modeId: null,
+        thinkingOptionId: null,
+        featureValues: {},
+      },
+    });
+    const adapter = new PaseoTeamAssignmentDispatchAdapter({
+      agentManager: manager,
+      agentStorage: storage,
+      logger,
+    });
+
+    await adapter.requestReport({
+      teamId: "team-1",
+      missionId: "mission-1",
+      assignmentId: "assignment-api",
+      agentId,
+      bindingEpoch: 1,
+      attempt: 2,
+      messageId: "team-mission:mission-1:assignment:assignment-api:report-recovery:2",
+      methodologyPromptSections: [],
+    });
+
+    const promptText = manager
+      .fetchTimeline(agentId, { direction: "tail", limit: 20 })
+      .rows.flatMap((row) => (row.item.type === "user_message" ? [row.item.text] : []))
+      .at(-1);
+    expect(promptText).toContain("Call chat_read before assignment_report");
+    expect(promptText).toContain(
+      'idempotencyKey "assignment:assignment-api:final-verification-outcome"',
+    );
+    expect(promptText).toContain("end this turn without assignment_report");
+    expect(promptText).toContain(
+      "For any other Assignment, call assignment_report now without another task-room update",
+    );
+
+    await manager.closeAgent(agentId);
+    await Promise.all([manager.flush(), storage.flush()]);
+  });
+
+  test("waits without reporting when recovery sees the verifier outcome but no Lead summary", () => {
+    expect(
+      fakeRecoveryProviderCalls({
+        outcomeVisible: true,
+        leadSummaryVisible: false,
+        verifierIsLead: false,
+      }),
+    ).toEqual([]);
+  });
+
+  test("reports without duplicating Room updates when recovery sees outcome and summary", () => {
+    expect(
+      fakeRecoveryProviderCalls({
+        outcomeVisible: true,
+        leadSummaryVisible: true,
+        verifierIsLead: false,
+      }),
+    ).toEqual(["assignment_report"]);
+  });
+
+  test("re-reads its own Lead summary before reporting when the verifier is also Lead", () => {
+    expect(
+      fakeRecoveryProviderCalls({
+        outcomeVisible: true,
+        leadSummaryVisible: false,
+        verifierIsLead: true,
+      }),
+    ).toEqual(["chat_post", "chat_read", "assignment_report"]);
   });
 
   test("replays the accepted turn after restart when another turn has intervened", async () => {
@@ -283,3 +397,14 @@ describe("PaseoTeamAssignmentDispatchAdapter", () => {
     await Promise.all([restartedManager.flush(), restartedStorage.flush()]);
   });
 });
+
+function fakeRecoveryProviderCalls(
+  observation: Parameters<typeof resolveFinalVerificationRecoveryAction>[0],
+): Array<"chat_post" | "chat_read" | "assignment_report"> {
+  const action = resolveFinalVerificationRecoveryAction(observation);
+  return [
+    ...(action.roomPost === null ? [] : (["chat_post"] as const)),
+    ...(action.readAfterRoomPost ? (["chat_read"] as const) : []),
+    ...(action.submitReport ? (["assignment_report"] as const) : []),
+  ];
+}

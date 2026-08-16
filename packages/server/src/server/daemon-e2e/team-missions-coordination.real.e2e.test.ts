@@ -20,12 +20,15 @@ import {
 } from "../team/test-fixtures.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { createTestPaseoDaemon, type TestPaseoDaemon } from "../test-utils/paseo-daemon.js";
-import type { UsageLedger, UsageTotalsDelta } from "../usage-ledger/index.js";
+import type { UsageTotalsDelta } from "../usage-ledger/index.js";
 import {
   type AssignmentDispatchAudit,
   auditAssignmentDispatchEvidence,
+  collectAcknowledgmentRoomMessageIds,
+  collectRecipientAttentionDeliveryIds,
   auditParallelDeliveryDag,
   auditRecoveryDependencyDag,
+  auditRoomCollaboration,
   auditRuntimeRecovery,
   auditToolDiscipline,
   captureWorkspaceEvidence,
@@ -41,6 +44,7 @@ import {
   type PersistedSanitizedPinoLogEvidence,
   type ProviderStartTurnEvidence,
   type RecoveryDependencyDagAudit,
+  type RoomCollaborationAudit,
   type RuntimeRecoveryAudit,
   type ToolDisciplineAudit,
   validatePositiveTokenUsage,
@@ -49,7 +53,7 @@ import {
 } from "./team-missions-coordination-evidence.js";
 
 const RUN_REAL_COORDINATION = process.env.PASEO_TEAM_MISSIONS_REAL_E2E === "1";
-const PARALLEL_RUN_TIMEOUT_MS = 12 * 60_000;
+const PARALLEL_RUN_TIMEOUT_MS = 18 * 60_000;
 const RECOVERY_RUN_TIMEOUT_MS = 18 * 60_000;
 const TEAM_TOOL_NAMES = [
   "team_status",
@@ -60,6 +64,7 @@ const TEAM_TOOL_NAMES = [
   "assignment_report",
   "team_message",
   "chat_read",
+  "chat_post",
 ] as const;
 
 type TaskShape = "parallel_delivery" | "recovery_dependency";
@@ -101,6 +106,7 @@ interface RunEvidence {
     timeline: CompleteTimelineEvidence;
   }>;
   roomHistory: CompleteTeamMissionRoomEvidence;
+  roomCollaborationAudit: RoomCollaborationAudit;
   sanitizedPinoLog: PersistedSanitizedPinoLogEvidence | null;
   parallelDagAudit: ParallelDeliveryDagAudit | null;
   recoveryDagAudit: RecoveryDependencyDagAudit | null;
@@ -363,7 +369,6 @@ async function runCoordinationMission(
         providerStartTurns,
         verification,
         workspaceRoot,
-        usageLedger: daemon.daemon.usageLedger,
       });
     },
     finalize: async ({ result, error }) => {
@@ -449,7 +454,6 @@ async function collectEvidence(input: {
   providerStartTurns: ProviderStartTurnEvidence[];
   verification: RunEvidence["verification"];
   workspaceRoot: string;
-  usageLedger: UsageLedger;
 }): Promise<RunEvidence> {
   let busyWaitCallCount = 0;
   const participantTimelines: RunEvidence["participantTimelines"] = [];
@@ -479,7 +483,8 @@ async function collectEvidence(input: {
     input.mission,
   );
   const toolCalls: Record<string, number> = { ...toolDisciplineAudit.successfulCounts };
-  const tokenUsage = await input.usageLedger.getTotals({ workspaceId: input.team.workspaceId });
+  // This daemon is isolated to one evidence run, so its lifetime totals are the run totals.
+  const tokenUsage = (await input.client.getStatusSummary()).summary.usage.lifetime;
   const tokenUsageViolations = validatePositiveTokenUsage(tokenUsage);
   const roomHistory = await collectCompleteTeamMissionRoomEvidence(input.client, input.mission.id);
   const workspace = captureWorkspaceEvidence(input.workspaceRoot);
@@ -493,8 +498,21 @@ async function collectEvidence(input: {
     input.definition.shape === "recovery_dependency"
       ? auditRecoveryDependencyDag(input.mission)
       : null;
+  const toolTimelines = participantTimelines.map((participant) => ({
+    agentId: participant.agentId,
+    entries: participant.timeline.entries,
+  }));
+  const recipientDeliveryIds = collectRecipientAttentionDeliveryIds(input.providerStartTurns);
+  const roomCollaborationAudit = auditRoomCollaboration(
+    input.mission,
+    roomHistory.messages,
+    collectAcknowledgmentRoomMessageIds(toolTimelines, recipientDeliveryIds),
+    toolTimelines,
+    recipientDeliveryIds,
+  );
   const validationViolations = [
     ...tokenUsageViolations,
+    ...roomCollaborationAudit.violations,
     ...assignmentDispatchAudit.violations,
     ...(parallelDagAudit?.violations ?? []),
     ...(recoveryDagAudit?.violations ?? []),
@@ -572,6 +590,7 @@ async function collectEvidence(input: {
     assignmentDispatchAudit,
     participantTimelines,
     roomHistory,
+    roomCollaborationAudit,
     sanitizedPinoLog: null,
     parallelDagAudit,
     recoveryDagAudit,

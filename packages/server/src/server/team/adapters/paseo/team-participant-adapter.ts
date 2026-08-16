@@ -14,6 +14,7 @@ import { archiveAgentCommand } from "../../../agent/lifecycle-command.js";
 import type { TeamParticipantPort } from "../../application/ports.js";
 import { TeamApplicationError } from "../../application/errors.js";
 import type { TeamParticipantProvisionPort } from "../../application/team-mission-scheduler.js";
+import { TEAM_LEAD_ROOM_COLLABORATION_PROMPT } from "./team-room-collaboration-contract.js";
 
 export const TEAM_MISSION_ID_LABEL = "paseo.team-mission-id";
 export const TEAM_MEMBER_ID_LABEL = "paseo.team-member-id";
@@ -206,7 +207,9 @@ export class PaseoTeamParticipantAdapter
       .map((section) => section.content)
       .join("\n\n");
     const prompt = formatSystemNotificationPrompt(
-      methodologySections ? `${runtimeSection}\n\n${methodologySections}` : runtimeSection,
+      [runtimeSection, methodologySections, TEAM_LEAD_ROOM_COLLABORATION_PROMPT]
+        .filter(Boolean)
+        .join("\n\n"),
     );
     const result = await sendPromptToAgent({
       agentManager: this.agentManager,
