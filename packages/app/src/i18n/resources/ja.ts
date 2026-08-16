@@ -97,6 +97,7 @@ export const ja: TranslationResources = {
       interruptAgent: "エージェントを中断",
       queueMessage: "メッセージをキューに追加",
       sendAndInterrupt: "送信して中断",
+      sendAndSteer: "送信して指示を追加",
       sendMessage: "メッセージを送信",
       queue: "キュー",
       send: "送信",
@@ -725,6 +726,7 @@ export const ja: TranslationResources = {
         renameAgent: "エージェントの名前を変更",
       },
       actions: {
+        newTab: "新しいタブ",
         newAgent: "新しいエージェント",
         newTerminal: "新しいターミナル",
         preparingTerminal: "ターミナルタブを準備中",
@@ -733,6 +735,9 @@ export const ja: TranslationResources = {
         exitFocusMode: "フォーカスモードを終了",
         splitRight: "右にペインを分割",
         splitDown: "下にペインを分割",
+        changes: "変更",
+        files: "ファイル",
+        pullRequest: "プルリクエスト",
         terminalProfilesMenu: "ターミナルプロファイル",
         editTerminalProfiles: "プロファイルを編集…",
         pinTarget: "ピン留め",
@@ -1115,6 +1120,8 @@ export const ja: TranslationResources = {
       },
       show: {
         label: "表示項目",
+        branch: "ブランチ",
+        project: "プロジェクト",
         host: "ホスト",
         changeRequest: "プルリクエスト",
         checks: "チェック",
@@ -1559,6 +1566,7 @@ export const ja: TranslationResources = {
     defaultModel: "デフォルト",
     profiles: "プロファイル",
     providers: "プロバイダー",
+    model: "モデル",
     editProfiles: "編集",
     editProfilesLabel: "エージェントプロファイルを編集",
     createProfile: "プロファイルを作成",
@@ -1804,6 +1812,18 @@ export const ja: TranslationResources = {
         reloadMessage: "ローカルの変更は失われます。",
       },
     },
+    files: {
+      label: "ファイル",
+      subtitle: "ワークスペースのファイル",
+      tooltip: "ワークスペースのファイルを参照",
+    },
+    pullRequest: {
+      label: "プルリクエスト",
+      subtitle: "プルリクエストの詳細",
+      emptyTitle: "プルリクエストはまだありません",
+      emptyDescription:
+        "このチェックアウトのプルリクエストを作成すると、ここに詳細が表示されます。",
+    },
     diff: {
       changesLabel: "変更",
       changesSubtitle: "作業ツリーの差分",
@@ -2010,10 +2030,13 @@ export const ja: TranslationResources = {
         label: "デフォルトの送信",
         descriptions: {
           interrupt: "エージェント実行中、Enterで中断します。Command/Ctrl+Enterでキューに追加。",
+          steer:
+            "エージェント実行中、Enterで現在のターンに指示を送ります。Command/Ctrl+Enterでキューに追加。",
           queue: "エージェント実行中、Enterでキューに追加します。Command/Ctrl+Enterで送信。",
         },
         options: {
           interrupt: "中断",
+          steer: "指示",
           queue: "キュー",
         },
       },

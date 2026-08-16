@@ -4,6 +4,8 @@ import { Pressable, Text, View, type GestureResponderEvent } from "react-native"
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   ExternalLink,
+  Folder,
+  GitBranch,
   GitMerge,
   GitPullRequest,
   GitPullRequestClosed,
@@ -35,12 +37,15 @@ export {
 const META_ICON_SIZE = HOST_BADGE_ICON_SIZE;
 
 const ThemedExternalLink = withUnistyles(ExternalLink);
+const ThemedFolder = withUnistyles(Folder);
+const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedGitMerge = withUnistyles(GitMerge);
 const ThemedGitPullRequestClosed = withUnistyles(GitPullRequestClosed);
 const ThemedGlobe = withUnistyles(Globe);
 
 const foregroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const mutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const mergedMapping = (theme: Theme) => ({ color: theme.colors.statusMerged });
 const dangerMapping = (theme: Theme) => ({ color: theme.colors.statusDanger });
 
@@ -55,20 +60,22 @@ const dangerMapping = (theme: Theme) => ({ color: theme.colors.statusDanger });
  * leaves color to mean status.
  */
 export function WorkspaceMetaRow({
-  contextLabel = null,
-  contextTestID,
+  currentBranch,
+  projectName,
   hostBadge,
   prHint,
   serviceSummary,
 }: {
-  contextLabel?: string | null;
-  contextTestID?: string;
+  currentBranch: string | null;
+  projectName: string | null;
   hostBadge: HostBadgeModel | null;
   prHint: PrHint | null;
   serviceSummary: WorkspaceServiceSummary | null;
 }) {
   const { rowItems, checksDisplay } = useSidebarMetaPreferences();
   const items = selectMetaRowItems({
+    currentBranch,
+    projectName,
     hasHostBadge: hostBadge !== null,
     prHint,
     serviceSummary,
@@ -76,18 +83,13 @@ export function WorkspaceMetaRow({
     checksDisplay,
   });
 
-  if (!contextLabel && items.length === 0) return null;
+  if (items.length === 0) return null;
 
   return (
     <View style={styles.row}>
-      {contextLabel ? (
-        <Text style={styles.contextLabel} numberOfLines={1} testID={contextTestID}>
-          {contextLabel}
-        </Text>
-      ) : null}
       {items.map((item, index) => (
         <Fragment key={item.kind}>
-          {contextLabel || index > 0 ? <Text style={styles.separator}>·</Text> : null}
+          {index > 0 ? <Text style={styles.separator}>·</Text> : null}
           <MetaItemNode item={item} hostBadge={hostBadge} />
         </Fragment>
       ))}
@@ -102,6 +104,12 @@ function MetaItemNode({
   item: MetaRowItem;
   hostBadge: HostBadgeModel | null;
 }): ReactNode {
+  if (item.kind === "branch") {
+    return <IdentityItem kind="branch" name={item.name} />;
+  }
+  if (item.kind === "project") {
+    return <IdentityItem kind="project" name={item.name} />;
+  }
   if (item.kind === "host") {
     return hostBadge ? <HostBadge badge={hostBadge} /> : null;
   }
@@ -112,6 +120,20 @@ function MetaItemNode({
     return <ChecksItem summary={item.summary} label={item.label} />;
   }
   return <ServiceItem summary={item.summary} />;
+}
+
+function IdentityItem({ kind, name }: { kind: "branch" | "project"; name: string }) {
+  const Icon = kind === "branch" ? ThemedGitBranch : ThemedFolder;
+  return (
+    <View style={styles.identityItem} testID={`sidebar-workspace-${kind}`}>
+      <View style={styles.identityIcon}>
+        <Icon size={META_ICON_SIZE} uniProps={mutedMapping} />
+      </View>
+      <Text style={styles.identityText} numberOfLines={1}>
+        {name}
+      </Text>
+    </View>
+  );
 }
 
 /**
@@ -276,7 +298,17 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     flexShrink: 0,
   },
-  contextLabel: {
+  identityItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  identityIcon: {
+    flexShrink: 0,
+  },
+  identityText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     lineHeight: 16,

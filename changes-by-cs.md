@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `4748aad103bf3c4d4f23dacef37616450e490f4a`，同步于 2026-08-15。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `4748aad103bf3c4d4f23dacef37616450e490f4a`）。
+- 最近同步基线：`upstream/main` = `ac433145613020064b4b2d2d10aa2bf9ae7f588e`，同步于 2026-08-17。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `ac433145613020064b4b2d2d10aa2bf9ae7f588e`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-08-17: `upstream/main` `ac4331456` / post-`v0.4.0`
+
+- 合入上游 active-turn steering、持久化 Agent timeline、OpenCode 事件流恢复、无关 PR 合并归档保护、本地插件管理、项目 CLI，以及大型 Diff、Composer 输入和工作区切换性能改进。
+- 工作区右侧采用上游一等 tab host、TreeRail 文件浏览和可配置分支/项目元信息；文件预览继续传递 `workspaceId`，保留 fork 的跨 File/Changes Review Comments、关联 Agent 和 workspace 隔离。Composer 采用上游 after-paint 光标发布，同时保留 fork 的 Prompt Library、选区引用和完整消息历史。
+- Agent Manager 同时启用上游 durable timeline buffer 与 fork usage ledger；active-turn steering 沿用上游协议和 Provider 分发，评论投递继续交给 Composer 的 interrupt/steer/queue 行为，不另加运行状态拦截。
+- 上游仍未提供 fork 的 Status Bar/usage ledger、多 Host 汇总、Threadshare 分享、Host Prompt Library、完整 Composer 消息历史、Assistant 时间、跨文件 Review Comments、固定签名 DMG、Web Server tar 或独立 Android APK 分发。本轮没有下线 fork 能力。
 
 ### 2026-08-15: `upstream/main` `4748aad10` / post-`v0.4.0`
 
