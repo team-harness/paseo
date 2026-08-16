@@ -329,7 +329,10 @@ describe("TeamRuntime v2 façade", () => {
         },
         {
           actorId: "human-client",
-          subscribeMissionRoom: (missionId) => subscribed.push(missionId),
+          subscribeMissionRoom: (missionId) => {
+            subscribed.push(missionId);
+            return true;
+          },
           unsubscribeMissionRoom: (missionId) => unsubscribed.push(missionId),
         },
       ),
@@ -357,6 +360,73 @@ describe("TeamRuntime v2 façade", () => {
       },
     );
     expect(unsubscribed).toEqual(["mission-room"]);
+  });
+
+  test("keeps an existing room subscription when a history read fails", async () => {
+    const service = new FakeTeamRuntimeService(Promise.resolve());
+    vi.spyOn(service, "readMissionRoom").mockRejectedValueOnce(new Error("room read failed"));
+    const runtime = createTeamRuntime({ runtime: { enabled: true }, service });
+    await runtime.start();
+    const unsubscribeMissionRoom = vi.fn();
+
+    await expect(
+      runtime.sessionDeps()?.handleRequest(
+        {
+          type: "team.mission.room.subscribe.request",
+          requestId: "subscribe-existing",
+          missionId: "mission-room",
+        },
+        {
+          actorId: "human-client",
+          subscribeMissionRoom: () => false,
+          unsubscribeMissionRoom,
+        },
+      ),
+    ).resolves.toMatchObject({
+      type: "team.mission.room.subscribe.response",
+      payload: {
+        requestId: "subscribe-existing",
+        missionId: "mission-room",
+        error: "room read failed",
+        errorCode: "internal_error",
+      },
+    });
+
+    expect(unsubscribeMissionRoom).not.toHaveBeenCalled();
+  });
+
+  test("rolls back a newly inserted room subscription when the initial read fails", async () => {
+    const service = new FakeTeamRuntimeService(Promise.resolve());
+    vi.spyOn(service, "readMissionRoom").mockRejectedValueOnce(new Error("room read failed"));
+    const runtime = createTeamRuntime({ runtime: { enabled: true }, service });
+    await runtime.start();
+    const unsubscribeMissionRoom = vi.fn();
+
+    await expect(
+      runtime.sessionDeps()?.handleRequest(
+        {
+          type: "team.mission.room.subscribe.request",
+          requestId: "subscribe-new",
+          missionId: "mission-room",
+        },
+        {
+          actorId: "human-client",
+          subscribeMissionRoom: () => true,
+          unsubscribeMissionRoom,
+        },
+      ),
+    ).resolves.toMatchObject({
+      type: "team.mission.room.subscribe.response",
+      payload: {
+        requestId: "subscribe-new",
+        missionId: "mission-room",
+        error: "room read failed",
+        errorCode: "internal_error",
+      },
+    });
+
+    expect(unsubscribeMissionRoom).toHaveBeenCalledOnce();
+    expect(unsubscribeMissionRoom).toHaveBeenCalledWith("mission-room");
   });
 
   test("authorizes review waiver per physical controller source and forwards its attribution", async () => {

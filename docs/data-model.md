@@ -481,6 +481,11 @@ storage are not part of the Team feature. The room stores ordered messages plus 
 for recipient notification recovery. Mission state changes only through structured Mission and
 Assignment operations, never by interpreting room prose.
 
+`MissionRoomStore.onMessage` is a process-wide notification that a durable message was appended. It
+does not know about sockets or client capabilities. `Session` owns physical-socket subscriptions and
+filters this notification before transport delivery; recipient wake and retry remain in the Mission
+recovery outbox.
+
 The workspace lease registry coordinates writable scopes across all Teams and Missions that resolve
 to the same canonical workspace. Read-only work takes no lease. Writable scopes are normalized path
 prefixes or the whole workspace; overlapping requests queue deterministically. Historical ownership

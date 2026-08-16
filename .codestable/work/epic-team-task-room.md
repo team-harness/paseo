@@ -2,8 +2,8 @@
 epic: ../epics/team-task-room.md
 phase: executing
 approved_revision: eb9b1d212874d0213e8b5bdea203223e78b6215c781cef04e6a172d48852b353
-current_item: TTR-ITEM-1
-next_action: 执行 TTR-ITEM-1，固化三层事件边界并隔离 physical Room subscription
+current_item: TTR-ITEM-2
+next_action: 执行 TTR-ITEM-2，把 Team Hub 升级为 host-global 工作入口
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -12,7 +12,7 @@ remote_publish: final
 
 ## 子项进度
 
-- [ ] TTR-ITEM-1 · 固化三层事件边界并隔离 physical Room subscription
+- [x] TTR-ITEM-1 · 固化三层事件边界并隔离 physical Room subscription
 - [ ] TTR-ITEM-2 · 把 Team Hub 升级为 host-global 工作入口
 - [ ] TTR-ITEM-3 · 简化 Team 创建与协作方式文案
 - [ ] TTR-ITEM-4 · 建立 MissionWorkroom 主布局
@@ -83,3 +83,20 @@ remote_publish: final
 
 规划阶段不记录实现 commit 或测试证据。owner 接受设计并冻结 `approved_revision` 后，所有 item 的 active progress、
 review lineage、checkpoint、测试和残余风险只写本游标；永久 Epic 只在 final owner acceptance 汇总稳定交付指针。
+
+- 2026-08-16：TTR-ITEM-1 完成。Session 将 Mission Room subscription 收敛为 physical-source scoped Map，
+  同 source/Mission 的 subscribe/unsubscribe 串行；首次订阅读失败只回滚本次插入，source close、capability/identity
+  撤销和 Session cleanup 都阻止 queued request 或旧 response 复活。App 以 `connectionEpoch` 驱动同一
+  `DaemonClient` 的重连重订阅；RoomStore、wire schema 与全局 `onMessage` 接口保持不变。
+- 2026-08-16：TTR-ITEM-1 TDD 先复现既有订阅读失败被误退订、mixed source 串流、同 client 重连不重订阅、
+  sibling capability 借用与 concurrent subscribe 竞态；最终 5 个 owning test 文件 `34/34` 通过，
+  `build:server`、lint、format-check 与 diff-check 通过。全仓 typecheck 只命中未修改的既有基线
+  `packages/app/src/components/draggable-list.native.tsx:122`。
+- 2026-08-16：TTR-ITEM-1 code-deep 对冻结的 8 文件完整覆盖、0 omitted；`session.ts` 的
+  `symbol-count-mismatch` 已用定向调用图核对。独立 change review 使用 Paseo agent-scoped
+  `gpt-5.6-sol/xhigh` reviewer `/root/ttr_item1_review`：Round 1 为 `0 blocking / 3 important`，补齐 direct
+  epoch 跳变、真实 TeamRuntime+Session rollback/unsubscribe 竞态、source/session cleanup queued work 组合测试及
+  response 二次授权后，Round 2 在 staged diff
+  `aab401c022c2aaf11b78a75fccc209659798cb261a79e53b38a9e3360d7f5dc6` 上为
+  `0 blocking / 0 important / 0 nit`、可合。里程碑主题为
+  `fix(team): scope Room subscriptions to physical sources`；稳定 commit SHA 在本提交创建后由 Git 历史与最终交付索引记录。

@@ -244,10 +244,16 @@ New session RPCs use dotted names with `.request` and `.response` suffixes, such
 - `checkout_status_update`, `checkout_diff_update`, and the full `checkout_*` request/response set for git operations
 - `team.profile.*` and `team.mission.*` request/response pairs, Mission room messages, and profile and Mission snapshots
 
-A Mission room subscription belongs to one physical socket and dies with it. The daemon records the
-socket's `missionId` subscription before reading the first page, so a message posted in between can
-arrive twice: once in the page and once on the stream. The client drops streamed messages whose cursor
-is at or below the subscribe response cursor. Reversing that order could lose the message without a
+A Mission room subscription belongs to one physical socket and dies with it. Live messages have no
+session-wide fallback: the daemon sends them only to sockets that both subscribed to the Mission and
+advertised Team support. A resumed socket must subscribe again; the App keys its Room subscription to
+the host connection epoch because the `DaemonClient` object survives an internal reconnect.
+
+The daemon records the socket's `missionId` subscription before reading the first page. A message
+posted in between can therefore arrive twice: once in the page and once on the stream. The client drops
+streamed messages whose cursor is at or below the subscribe response cursor. If the first read fails,
+the daemon rolls back only a subscription inserted by that request; a failed history read cannot tear
+down an existing live stream. Reversing the subscribe/read order could lose a message without a
 detectable cursor gap.
 
 Team profile and Mission RPCs use the `team.profile.*` and `team.mission.*` namespaces. The daemon
