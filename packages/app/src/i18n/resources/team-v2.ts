@@ -33,6 +33,21 @@ export const teamV2En = {
     workspaceRequired: "Add or open a project before starting a task.",
     historyFailed: "Mission history could not be read.",
   },
+  workroom: {
+    attention: "Needs attention",
+    attentionCount: "{{count}} need attention",
+    details: "Task details",
+    inspector: "Task room details",
+    lead: "Lead",
+    members: "Members",
+    missionScope: "Whole task",
+    noAttention: "Nothing needs attention",
+    noPlan: "The plan has not been created yet",
+    noResults: "No results yet",
+    openAgent: "Open {{role}}",
+    plan: "Task plan",
+    results: "Results",
+  },
   v2: {
     actions: {
       newTeam: "New Team",
@@ -385,6 +400,7 @@ function teamV2Locale(overrides: DeepPartial<TeamV2Resources>): TeamV2Resources 
     },
     mission: { ...teamV2En.mission, ...overrides.mission },
     panel: { ...teamV2En.panel, ...overrides.panel },
+    workroom: { ...teamV2En.workroom, ...overrides.workroom },
     v2: {
       actions: { ...teamV2En.v2.actions, ...overrides.v2?.actions },
       profile: { ...teamV2En.v2.profile, ...overrides.v2?.profile },
@@ -468,6 +484,21 @@ export const teamV2ZhCN: TeamV2Resources = {
     members: "成员（{{count}}）",
     workspaceRequired: "添加或打开项目后才能开始任务。",
     historyFailed: "无法读取 Mission 历史。",
+  },
+  workroom: {
+    attention: "待处理",
+    attentionCount: "{{count}} 项待处理",
+    details: "任务详情",
+    inspector: "任务室详情",
+    lead: "负责人",
+    members: "成员",
+    missionScope: "整个任务",
+    noAttention: "当前没有待处理事项",
+    noPlan: "任务计划尚未生成",
+    noResults: "暂时没有结果",
+    openAgent: "打开 {{role}}",
+    plan: "任务计划",
+    results: "结果",
   },
   v2: {
     actions: {

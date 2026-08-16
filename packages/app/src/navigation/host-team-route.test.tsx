@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.stubGlobal("React", React);
@@ -8,6 +8,7 @@ vi.stubGlobal("React", React);
 const mocked = vi.hoisted(() => ({
   navigateToWorkspace: vi.fn(),
   replace: vi.fn(),
+  push: vi.fn(),
   back: vi.fn(),
   params: { serverId: "host-1", teamId: "team-1", settings: undefined as string | undefined },
   activeMissionId: null as string | null,
@@ -18,6 +19,7 @@ vi.mock("expo-router", () => ({
   useLocalSearchParams: () => mocked.params,
   useRouter: () => ({
     replace: mocked.replace,
+    push: mocked.push,
     back: mocked.back,
     canGoBack: () => false,
   }),
@@ -33,19 +35,33 @@ vi.mock("@/components/teams/team-panel", () => ({
     workspaceId,
     teamId,
     initialSettingsOpen,
+    onOpenAgent,
   }: {
     serverId: string;
     workspaceId: string | null;
     teamId: string;
     initialSettingsOpen?: boolean;
+    onOpenAgent?: (agentId: string) => void;
   }) =>
-    React.createElement("div", {
-      "data-testid": "host-level-team-panel",
-      "data-server-id": serverId,
-      "data-workspace-id": workspaceId ?? "null",
-      "data-team-id": teamId,
-      "data-settings-open": initialSettingsOpen ? "true" : "false",
-    }),
+    React.createElement(
+      "div",
+      {
+        "data-testid": "host-level-team-panel",
+        "data-server-id": serverId,
+        "data-workspace-id": workspaceId ?? "null",
+        "data-team-id": teamId,
+        "data-settings-open": initialSettingsOpen ? "true" : "false",
+      },
+      React.createElement(
+        "button",
+        {
+          type: "button",
+          "data-testid": "host-level-open-agent",
+          onClick: () => onOpenAgent?.("agent-1"),
+        },
+        "Open Agent",
+      ),
+    ),
 }));
 
 vi.mock("@/navigation/team-route-resolution-view", () => ({
@@ -111,6 +127,7 @@ describe("host-level Team deep links", () => {
   beforeEach(() => {
     mocked.navigateToWorkspace.mockClear();
     mocked.replace.mockClear();
+    mocked.push.mockClear();
     mocked.params.settings = undefined;
     mocked.activeMissionId = null;
     mocked.liveWorkspaceIds = [];
@@ -139,5 +156,13 @@ describe("host-level Team deep links", () => {
     expect(panel.getAttribute("data-workspace-id")).toBe("workspace-live");
     expect(panel.getAttribute("data-settings-open")).toBe("true");
     expect(mocked.navigateToWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("opens a historical member through the host-owned Agent deep link", () => {
+    render(<HostTeamRoute />);
+
+    fireEvent.click(screen.getByTestId("host-level-open-agent"));
+
+    expect(mocked.push).toHaveBeenCalledWith("/h/host-1/agent/agent-1");
   });
 });

@@ -2,8 +2,8 @@
 epic: ../epics/team-task-room.md
 phase: executing
 approved_revision: eb9b1d212874d0213e8b5bdea203223e78b6215c781cef04e6a172d48852b353
-current_item: TTR-ITEM-4
-next_action: 执行 TTR-ITEM-4，建立 MissionWorkroom 主布局
+current_item: TTR-ITEM-5
+next_action: 执行 TTR-ITEM-5，固化 Room 发帖幂等性与 recipient routing
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -15,7 +15,7 @@ remote_publish: final
 - [x] TTR-ITEM-1 · 固化三层事件边界并隔离 physical Room subscription
 - [x] TTR-ITEM-2 · 把 Team Hub 升级为 host-global 工作入口
 - [x] TTR-ITEM-3 · 简化 Team 创建与协作方式文案
-- [ ] TTR-ITEM-4 · 建立 MissionWorkroom 主布局
+- [x] TTR-ITEM-4 · 建立 MissionWorkroom 主布局
 - [ ] TTR-ITEM-5 · 固化 Room 发帖幂等性与 recipient routing
 - [ ] TTR-ITEM-6 · 闭合回复界面与 Room 历史
 - [ ] TTR-ITEM-7 · 让 Agent 在任务室报告协作进展
@@ -124,3 +124,15 @@ review lineage、checkpoint、测试和残余风险只写本游标；永久 Epic
   补齐“可提交 → 添加空成员后禁用 → 删除后恢复可提交”的双向测试与创建态删除操作后，Round 2 在 staged diff
   `303612bb686d39e504e78f964fc396cb53a0d43fe97f4c50adaf020fde49039d` 上为
   `0 blocking / 0 important / 0 minor`、可合。里程碑主题为 `feat(team): simplify Team creation`。
+- 2026-08-16：TTR-ITEM-4 完成。新增 `MissionWorkroom` 作为 active/terminal Mission 唯一工作面：header 展示
+  objective、status、workspace 与 Attention；desktop 将聊天主列和 inspector 并排，compact/native 复用同一 selector
+  tree 放入当前 snap 高度的 sheet。成员、计划、Attention、结果复用 Team settings 纯投影；host-only 历史回放可跳
+  Agent deep link，历史成员读取冻结 roster。
+- 2026-08-16：TTR-ITEM-4 TDD 先复现模块缺失，并在 Round 1 后复现 host-only Agent 跳转、历史 roster 漂移、
+  compact sheet 长内容裁切与失败结果无状态；最终 5 个定点 test 文件 `19/19`，隔离 browser E2E `1/1`
+  （41.4 秒），compact inspector 可滚到 Results，lint、format 与 diff-check 通过。全仓 typecheck 仅命中未修改基线
+  `packages/app/src/components/draggable-list.native.tsx:122`。
+- 2026-08-16：TTR-ITEM-4 code-deep 首次 review 因既有未跟踪 dogfood 证据截断，随后定向追踪新 selector、组件与
+  `TeamPanel` 接线；独立 reviewer `/root/ttr_item4_review` Round 1 为 `2 blocking / 1 important / 1 minor`，
+  修复后 Round 2 在 staged diff `9b404af141268996cba34f5b9d1f85715ecbb9e8d7737d660df042dcc2a8dc5c`
+  上为 `0 blocking / 0 important / 0 minor`、可合。里程碑主题为 `feat(team): add Mission workroom layout`。
