@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useHostRuntimeClient } from "@/runtime/host-runtime";
+import { useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { RoomSubscription, type RoomSubscriptionState } from "./room-subscription";
 import { emptyRoomTimeline } from "./room-timeline";
 
@@ -19,15 +19,17 @@ export interface RoomSubscriptionHandle extends RoomSubscriptionState {
  * Follows a room for as long as this component is mounted.
  *
  * A subscription belongs to one socket and dies with it, so the client
- * identity is a dependency: a reconnect has to resubscribe, or the room goes
- * quiet with no sign that it has.
+ * connection epoch is a dependency: the DaemonClient survives an internal
+ * reconnect, but the server-side subscription belongs to the old socket.
  */
 export function useRoomSubscription(
   serverId: string,
   missionId: string | null,
 ): RoomSubscriptionHandle {
   const { t } = useTranslation();
-  const client = useHostRuntimeClient(serverId);
+  const runtime = useHostRuntimeSnapshot(serverId);
+  const client = runtime?.connectionStatus === "online" ? runtime.client : null;
+  const connectionEpoch = runtime?.connectionEpoch ?? 0;
   const [state, setState] = useState<RoomSubscriptionState>(WAITING);
   const subscriptionRef = useRef<RoomSubscription | null>(null);
 
@@ -52,7 +54,7 @@ export function useRoomSubscription(
       subscriptionRef.current = null;
       subscription.dispose();
     };
-  }, [client, missionId, t]);
+  }, [client, connectionEpoch, missionId, t]);
 
   const retry = useCallback(() => subscriptionRef.current?.retry(), []);
 

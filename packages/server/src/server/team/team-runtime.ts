@@ -56,7 +56,7 @@ export interface TeamRuntimeRequestContext {
     connectionId: string;
     selfReportedClientLabel: string;
   };
-  subscribeMissionRoom?(missionId: string): void;
+  subscribeMissionRoom?(missionId: string): boolean;
   unsubscribeMissionRoom?(missionId: string): void;
 }
 
@@ -506,7 +506,7 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
         };
       }
       case "team.mission.room.subscribe.request": {
-        context.subscribeMissionRoom?.(request.missionId);
+        const insertedSubscription = context.subscribeMissionRoom?.(request.missionId) ?? false;
         try {
           const page = await service.readMissionRoom({
             missionId: request.missionId,
@@ -524,7 +524,7 @@ class TeamRuntimeController implements TeamRuntime, TeamRuntimeSessionDeps {
             },
           };
         } catch (error) {
-          context.unsubscribeMissionRoom?.(request.missionId);
+          if (insertedSubscription) context.unsubscribeMissionRoom?.(request.missionId);
           throw error;
         }
       }

@@ -736,7 +736,8 @@ export class Session {
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
   private readonly teamRuntime: TeamRuntimeSessionDeps | null;
-  private readonly teamMissionRoomSubscriptions = new Set<string>();
+  private readonly teamMissionRoomSubscriptions = new Map<object, Set<string>>();
+  private readonly teamMissionRoomSubscriptionTails = new Map<object, Map<string, Promise<void>>>();
   private unsubscribeTeamMissionRoomMessages: (() => void) | null = null;
 
   constructor(options: SessionOptions) {
@@ -1120,8 +1121,64 @@ export class Session {
   private subscribeToTeamMissionRoomMessages(): (() => void) | null {
     if (!this.teamRuntime) return null;
     return this.teamRuntime.onMissionRoomMessage((event) => {
-      if (!this.teamMissionRoomSubscriptions.has(event.missionId)) return;
-      this.emit({ type: "team.mission.message.posted", payload: event });
+      if (!this.onMessageToSource) return;
+      const message: SessionOutboundMessage = {
+        type: "team.mission.message.posted",
+        payload: event,
+      };
+      for (const [source, missionIds] of this.teamMissionRoomSubscriptions) {
+        if (!missionIds.has(event.missionId)) continue;
+        if (!this.clientCapabilitiesBySource.get(source)?.has(CLIENT_CAPS.teamMissions)) continue;
+        this.onMessageToSource(source, message);
+      }
+    });
+  }
+
+  private subscribeTeamMissionRoom(source: object, missionId: string): boolean {
+    let missionIds = this.teamMissionRoomSubscriptions.get(source);
+    if (!missionIds) {
+      missionIds = new Set();
+      this.teamMissionRoomSubscriptions.set(source, missionIds);
+    }
+    const inserted = !missionIds.has(missionId);
+    missionIds.add(missionId);
+    return inserted;
+  }
+
+  private unsubscribeTeamMissionRoom(source: object, missionId: string): boolean {
+    const missionIds = this.teamMissionRoomSubscriptions.get(source);
+    if (!missionIds) return false;
+    const deleted = missionIds.delete(missionId);
+    if (missionIds.size === 0) this.teamMissionRoomSubscriptions.delete(source);
+    return deleted;
+  }
+
+  private serializeTeamMissionRoomSubscription<T>(
+    source: object,
+    missionId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    let sourceTails = this.teamMissionRoomSubscriptionTails.get(source);
+    if (!sourceTails) {
+      sourceTails = new Map();
+      this.teamMissionRoomSubscriptionTails.set(source, sourceTails);
+    }
+    const previous = sourceTails.get(missionId) ?? Promise.resolve();
+    const result = previous.catch(() => undefined).then(operation);
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    sourceTails.set(missionId, tail);
+    return result.finally(() => {
+      if (sourceTails.get(missionId) !== tail) return;
+      sourceTails.delete(missionId);
+      if (
+        sourceTails.size === 0 &&
+        this.teamMissionRoomSubscriptionTails.get(source) === sourceTails
+      ) {
+        this.teamMissionRoomSubscriptionTails.delete(source);
+      }
     });
   }
 
@@ -1152,6 +1209,8 @@ export class Session {
   clearAgentTimelineSubscription(source: object): void {
     this.clientCapabilitiesBySource.delete(source);
     this.teamControllerIdentityBySource.delete(source);
+    this.teamMissionRoomSubscriptions.delete(source);
+    this.teamMissionRoomSubscriptionTails.delete(source);
     if (this.viewedTimelineAgentIdsBySource.delete(source)) {
       this.rebuildViewedTimelineAgentIds();
     }
@@ -2098,7 +2157,11 @@ export class Session {
     source?: object,
   ): Promise<void> | undefined {
     if (!isTeamMissionsRequest(msg)) return undefined;
-    if (!this.teamRuntime || !source || !this.supportsForSource(CLIENT_CAPS.teamMissions, source)) {
+    const physicalSource = source ? this.teamControllerIdentityBySource.get(source) : undefined;
+    const sourceSupportsTeamMissions =
+      source !== undefined &&
+      this.clientCapabilitiesBySource.get(source)?.has(CLIENT_CAPS.teamMissions) === true;
+    if (!this.teamRuntime || !source || !physicalSource || !sourceSupportsTeamMissions) {
       this.emitForSource(
         teamMissionsUnavailableResponse(
           msg,
@@ -2110,15 +2173,43 @@ export class Session {
       );
       return Promise.resolve();
     }
-    return this.teamRuntime
-      .handleRequest(msg, {
-        actorId: this.clientId,
-        controller: source ? this.supportsForSource(CLIENT_CAPS.teamMissions, source) : false,
-        ...(source ? { physicalSource: this.teamControllerIdentityBySource.get(source) } : {}),
-        subscribeMissionRoom: (missionId) => this.teamMissionRoomSubscriptions.add(missionId),
-        unsubscribeMissionRoom: (missionId) => this.teamMissionRoomSubscriptions.delete(missionId),
-      })
-      .then((response) => this.emitForSource(response, source));
+    const teamRuntime = this.teamRuntime;
+    const dispatch = (): Promise<void> => {
+      const currentPhysicalSource = this.teamControllerIdentityBySource.get(source);
+      if (
+        this.isCleanedUp ||
+        !currentPhysicalSource ||
+        this.clientCapabilitiesBySource.get(source)?.has(CLIENT_CAPS.teamMissions) !== true
+      ) {
+        return Promise.resolve();
+      }
+      return teamRuntime
+        .handleRequest(msg, {
+          actorId: this.clientId,
+          controller: true,
+          physicalSource: currentPhysicalSource,
+          subscribeMissionRoom: (missionId) => this.subscribeTeamMissionRoom(source, missionId),
+          unsubscribeMissionRoom: (missionId) => this.unsubscribeTeamMissionRoom(source, missionId),
+        })
+        .then((response) => {
+          if (
+            this.isCleanedUp ||
+            this.teamControllerIdentityBySource.get(source) !== currentPhysicalSource ||
+            this.clientCapabilitiesBySource.get(source)?.has(CLIENT_CAPS.teamMissions) !== true
+          ) {
+            return undefined;
+          }
+          this.emitForSource(response, source);
+          return undefined;
+        });
+    };
+    if (
+      msg.type === "team.mission.room.subscribe.request" ||
+      msg.type === "team.mission.room.unsubscribe.request"
+    ) {
+      return this.serializeTeamMissionRoomSubscription(source, msg.missionId, dispatch);
+    }
+    return dispatch();
   }
 
   private dispatchVoiceAndControlMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -7362,6 +7453,7 @@ export class Session {
     this.unsubscribeTeamMissionRoomMessages?.();
     this.unsubscribeTeamMissionRoomMessages = null;
     this.teamMissionRoomSubscriptions.clear();
+    this.teamMissionRoomSubscriptionTails.clear();
 
     if (this.unsubscribeAgentEvents) {
       this.unsubscribeAgentEvents();
