@@ -1,8 +1,7 @@
 ---
-status: active
+status: accepted
 created: 2026-08-16
 depends_on: team-methodologies
-work: ../work/epic-team-task-room.md
 ---
 
 # Team 任务室与协作体验
@@ -582,7 +581,26 @@ TTR-ITEM-2、TTR-ITEM-3 与 TTR-ITEM-5 可在 TTR-ITEM-1 后并行。TTR-ITEM-6�
 TTR-ITEM-8 在各自依赖满足后可并行；TTR-ITEM-6 与 TTR-ITEM-8 都消费 `MissionWorkroomViewModel` 时，
 由先启动者拥有公共 selector 骨架，避免双写。
 
-## 整体验收标准
+## 最终交付索引
+
+| 子项       | 稳定交付指针 | 结果                                                    |
+| ---------- | ------------ | ------------------------------------------------------- |
+| TTR-ITEM-1 | `09d61fd5f`  | Room subscription 按 physical source 隔离               |
+| TTR-ITEM-2 | `9bb457334`  | Team Hub 成为 host-global 工作入口                      |
+| TTR-ITEM-3 | `81b19bfc3`  | Team 创建主路径收敛为模板与 Agent Profile               |
+| TTR-ITEM-4 | `b8bb74ee4`  | Mission Task room 主布局与 inspector 骨架               |
+| TTR-ITEM-5 | `ef79c46a0`  | Room recipient routing、mention 与幂等恢复              |
+| TTR-ITEM-6 | `8d9ee146e`  | 回复界面、历史分页与 live/history 合并                  |
+| TTR-ITEM-7 | `073c92583`  | 负责人总结与 verifier 先读后报告的完成门禁              |
+| TTR-ITEM-8 | `8ec08a012`  | 工作、成员、结果与 Attention inspector                  |
+| TTR-ITEM-9 | `f2711e10e`  | Browser、compact、真实 packaged Electron 与最终协作验收 |
+
+## 整体验收
+
+owner 于 2026-08-17 接受。fresh final acceptance review 核对 HEAD `f2711e10e` 与全部九个子项，结论为
+`0 blocking / 0 important / 0 minor`。真实协作证据包含负责人在 Mission 完成前总结、final verifier 读取总结后
+报告，以及 daemon 重启后 Room 消息不重复。最终分支已发布到 `origin/feat/agent-teams`；替换前的远端历史保存在
+`backup/agent-teams-before-task-room-20260817`。
 
 - Team Hub 是 host-global Team 的一级入口和唯一列表 owner；Settings 只做次级管理。
 - idle Team 不显示空 Room；active Mission 默认进入任务室；terminal Mission 只读回放。
