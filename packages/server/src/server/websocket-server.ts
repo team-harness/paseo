@@ -113,6 +113,10 @@ import {
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
 
+function optionalOrNull<T>(value: T | undefined): T | null {
+  return value ?? null;
+}
+
 export interface ExternalSocketMetadata {
   transport: "relay";
   externalSessionKey?: string;
@@ -671,7 +675,7 @@ export class VoiceAssistantWebSocketServer {
     this.browserToolsBroker = browserToolsBroker ?? null;
     this.hubRelationships = hubRelationships ?? null;
     this.pluginRuntime = pluginRuntime;
-    this.teamRuntime = teamRuntime ?? null;
+    this.teamRuntime = optionalOrNull(teamRuntime);
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();

@@ -1236,11 +1236,15 @@ export class AgentManager {
     const turnId = agent.activeForegroundTurnId;
     if (!turnId) return { status: "not_running", turnId: null };
     if (!agent.session.steerActiveTurn) return { status: "unsupported", turnId };
-    const status = await agent.session.steerActiveTurn(input.prompt, {
+    const result = await agent.session.steerActiveTurn(input.prompt, {
       expectedTurnId: turnId,
       clientMessageId: input.clientMessageId,
     });
-    return { status, turnId };
+    if (result.status === "accepted") return { status: "delivered", turnId };
+    return {
+      status: agent.activeForegroundTurnId === turnId ? "not_steerable" : "stale_turn",
+      turnId,
+    };
   }
 
   async waitForAgentClose(agentId: string): Promise<void> {

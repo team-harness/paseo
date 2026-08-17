@@ -114,7 +114,7 @@ describe("OMP agent client and session", () => {
 
     await expect(
       harness.steerActiveTurn("Reply in the Team room, then continue.", turnId),
-    ).resolves.toBe("delivered");
+    ).resolves.toEqual({ status: "accepted" });
     expect(harness.steerRequests()).toEqual([
       { message: "Reply in the Team room, then continue.", imageCount: 0 },
     ]);

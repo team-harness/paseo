@@ -24,6 +24,8 @@ import {
   type AgentRuntimeInfo,
   type AgentSession,
   type AgentSessionConfig,
+  type SteerActiveTurnOptions,
+  type SteerResult,
   type AgentSlashCommand,
   type AgentStreamEvent,
   type AgentTimelineItem,
@@ -1020,15 +1022,15 @@ export class OmpAgentSession implements AgentSession {
 
   async steerActiveTurn(
     prompt: AgentPromptInput,
-    options: { expectedTurnId: string },
-  ): Promise<"delivered" | "not_steerable" | "stale_turn"> {
-    if (this.activeTurnId !== options.expectedTurnId) return "stale_turn";
+    options: SteerActiveTurnOptions,
+  ): Promise<SteerResult> {
+    if (this.activeTurnId !== options.expectedTurnId) return { status: "unavailable" };
     try {
       const payload = convertPromptInput(prompt, { model: this.state.model });
       this.runtimeSession.steer(payload.text, payload.images);
-      return "delivered";
+      return { status: "accepted" };
     } catch {
-      return "not_steerable";
+      return { status: "unavailable" };
     }
   }
 

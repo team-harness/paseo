@@ -752,7 +752,7 @@ describe("Codex app-server provider", () => {
         expectedTurnId: "test-turn",
         clientMessageId: "team-message-1",
       }),
-    ).resolves.toBe("delivered");
+    ).resolves.toEqual({ status: "accepted" });
 
     expect(request).toHaveBeenCalledExactlyOnceWith(
       "turn/steer",

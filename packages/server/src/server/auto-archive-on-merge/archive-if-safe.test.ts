@@ -300,7 +300,7 @@ function createRealOutcomeHarness(input: {
       }),
     } as unknown as AutoArchiveArchiveOptions["agentManager"],
     agentStorage: {
-      list: async (): Promise<StoredAgentRecord[]> => [],
+      listByWorkspace: async (): Promise<StoredAgentRecord[]> => [],
     } as unknown as AutoArchiveArchiveOptions["agentStorage"],
     terminalManager: {
       listDirectories: () => [],
