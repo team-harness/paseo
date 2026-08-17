@@ -825,7 +825,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   triggerCount: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontVariant: ["tabular-nums"],
   },
   list: {
@@ -843,7 +843,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   associatedLabel: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   associatedName: {
     flex: 1,
@@ -858,7 +858,7 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: theme.spacing[4],
     marginBottom: theme.spacing[1],
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     textTransform: "uppercase",
   },
   agentRow: {
@@ -893,7 +893,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   agentMeta: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   fileGroup: {
     gap: theme.spacing[2],
@@ -923,7 +923,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   location: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   quote: {
     borderLeftWidth: 2,
@@ -961,14 +961,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   footerCount: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   footerStatus: {
     gap: theme.spacing[0.5],
   },
   deliveryCounts: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   footerActions: {
     flexDirection: "row",

@@ -823,8 +823,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   rowPreview: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.4),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
   },
   menuTrigger: {
     width: 44,
@@ -863,7 +863,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   errorText: {
     color: theme.colors.palette.red[300],
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   footerActions: {
     flexDirection: "row",

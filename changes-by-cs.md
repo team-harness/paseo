@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `ac433145613020064b4b2d2d10aa2bf9ae7f588e`，同步于 2026-08-17。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `ac433145613020064b4b2d2d10aa2bf9ae7f588e`）。
+- 最近同步基线：`upstream/main` = `75ccae13b`（完整 SHA 以 Git 为准），同步于 2026-08-18。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `75ccae13b`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-08-18: `upstream/main` `75ccae13b` / post-`v0.4.0`
+
+- 合入上游 Canvas Diff/Explorer 工作区、Changes 工具栏、工作区 tab 稳定性、插件 workspace panels、保留终端流、字体基线与 Android clean-prebuild 等 34 个提交；`packages/app/src/git/diff-pane.tsx` 采用上游 `ChangesToolbar`，并将 fork 的 Review Comments 汇总入口接入新工具栏。
+- 上游删除了旧的 `workspace-pins` 重复实现；Status Bar 继续直接消费共享 workspace 的 `pinnedAt` 与列表投影，因此无需恢复已删除目录。上游任务轨道、任务清单和 composer pill 布局采用上游实现，fork 的选区引用仍通过 `AgentStreamView` 回调接入 Composer。
+- 保留 fork 的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨 File/Changes Review Comments、Assistant 时间、Threadshare 分享、计划任务既有 Agent 目标、bounded canonical timeline `limit: 100`、固定签名 DMG、Web Server tar、独立 Android APK 和 Haseo TestFlight 身份；本轮没有下线 fork 能力。
 
 ### 2026-08-17: `upstream/main` `ac4331456` / post-`v0.4.0`
 

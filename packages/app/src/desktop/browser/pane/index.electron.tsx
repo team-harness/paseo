@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -8,6 +9,7 @@ import {
   type ReactNode,
   createElement,
 } from "react";
+import { createPortal } from "react-dom";
 import { Pressable, Text, TextInput, View, type StyleProp, type ViewStyle } from "react-native";
 import {
   ArrowLeft,
@@ -45,6 +47,7 @@ import {
 import type { AttachmentMetadata, BrowserElementAttachment } from "@/attachments/types";
 import { persistAttachmentFromDataUrl } from "@/attachments/service";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
+import { getOverlayRoot } from "@/lib/overlay-root";
 import {
   getDesktopHost,
   isElectronRuntime,
@@ -1540,6 +1543,7 @@ export function BrowserPane({
         })}
         {pendingSelection ? (
           <BrowserElementAnnotationCard
+            anchor={webviewClipRef.current}
             selection={pendingSelection}
             onSubmit={submitAnnotation}
             onCancel={cancelAnnotation}
@@ -1551,15 +1555,18 @@ export function BrowserPane({
 }
 
 function BrowserElementAnnotationCard({
+  anchor,
   selection,
   onSubmit,
   onCancel,
 }: {
+  anchor: HTMLElement | null;
   selection: BrowserElementSelection;
   onSubmit: (annotation: BrowserElementAnnotation) => void;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  const bounds = useElementBounds(anchor);
   const [comment, setComment] = useState("");
   const commentRef = useRef(comment);
   commentRef.current = comment;
@@ -1591,8 +1598,12 @@ function BrowserElementAnnotationCard({
   const elementText = truncateText(selection.text.trim().replace(/\s+/g, " "), 60);
   const elementLabel = elementText ? `${selection.tag} · ${elementText}` : selection.tag;
 
-  return (
-    <View style={styles.annotationOverlay} pointerEvents="box-none">
+  if (!bounds) {
+    return null;
+  }
+
+  return createPortal(
+    <View style={[styles.annotationOverlay, bounds]} pointerEvents="box-none">
       <View style={styles.annotationCard}>
         <View style={styles.annotationHeader}>
           <Text numberOfLines={1} style={styles.annotationTitle}>
@@ -1629,8 +1640,34 @@ function BrowserElementAnnotationCard({
           </Button>
         </View>
       </View>
-    </View>
+    </View>,
+    getOverlayRoot(),
   );
+}
+
+function useElementBounds(element: HTMLElement | null): ViewStyle | null {
+  const [bounds, setBounds] = useState<ViewStyle | null>(null);
+
+  useLayoutEffect(() => {
+    if (!element) {
+      setBounds(null);
+      return;
+    }
+    const update = () => {
+      const rect = element.getBoundingClientRect();
+      setBounds({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [element]);
+
+  return bounds;
 }
 
 const ThemedCloseIcon = withUnistyles(X);
@@ -1701,7 +1738,7 @@ const styles = StyleSheet.create((theme) => ({
   urlInput: {
     flex: 1,
     minWidth: 0,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     paddingVertical: 0,
     paddingHorizontal: 0,
   },
@@ -1713,7 +1750,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
   },
   metaError: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   webviewWrap: {
     flex: 1,
@@ -1734,17 +1771,15 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   toolbarTooltipText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.popoverForeground,
   },
   annotationOverlay: {
     position: "absolute",
     zIndex: 1,
-    left: 0,
-    right: 0,
-    bottom: 0,
     padding: theme.spacing[3],
     alignItems: "center",
+    justifyContent: "flex-end",
   },
   annotationCard: {
     width: "100%",
@@ -1768,7 +1803,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   annotationTitle: {
     flex: 1,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: "600",
     color: theme.colors.foreground,
   },
@@ -1780,13 +1815,13 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
   },
   annotationElement: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     marginBottom: theme.spacing[2],
   },
   annotationInput: {
     minHeight: 64,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foreground,
     borderRadius: theme.borderRadius.md,
     borderWidth: 1,
@@ -1809,10 +1844,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: 8,
   },
   unavailableTitle: {
-    fontSize: 16,
+    fontSize: theme.fontSize.base,
     fontWeight: "600",
   },
   unavailableSubtitle: {
-    fontSize: 12,
+    fontSize: theme.fontSize.sm,
   },
 }));
