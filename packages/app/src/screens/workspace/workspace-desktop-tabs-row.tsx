@@ -32,6 +32,8 @@ import {
   Plus,
   SquarePen,
   SquareTerminal,
+  Target,
+  Users,
   X,
 } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -129,6 +131,8 @@ const ThemedPlus = withUnistyles(Plus);
 const ThemedFileDiff = withUnistyles(FileDiff);
 const ThemedFolderTree = withUnistyles(FolderTree);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
+const ThemedTarget = withUnistyles(Target);
+const ThemedUsers = withUnistyles(Users);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
@@ -138,6 +142,8 @@ const BROWSER_ICON = <ThemedGlobe size={14} uniProps={mutedColorMapping} />;
 const CHANGES_ICON = <ThemedFileDiff size={14} uniProps={mutedColorMapping} />;
 const FILES_ICON = <ThemedFolderTree size={14} uniProps={mutedColorMapping} />;
 const PULL_REQUEST_ICON = <ThemedGitPullRequest size={14} uniProps={mutedColorMapping} />;
+const TEAM_ICON = <ThemedUsers size={14} uniProps={mutedColorMapping} />;
+const MISSION_ICON = <ThemedTarget size={14} uniProps={mutedColorMapping} />;
 
 const DRAFT_TARGET: PinnedTabTarget = { kind: "draft" };
 const TERMINAL_TARGET: PinnedTabTarget = { kind: "terminal" };
@@ -260,8 +266,12 @@ function useTabTargetLauncher({
 
 interface WorkspaceNewTabButtonProps extends TabTargetLauncherOptions {
   shortcutKeys: ShortcutKey[][] | null;
+  onCreateTeam: () => void;
+  onStartMission: () => void;
   onEditProfiles: () => void;
   showCreateBrowserTab: boolean;
+  showCreateTeam: boolean;
+  showStartMission: boolean;
   terminalDisabled: boolean;
   isGit: boolean;
   showPullRequest: boolean;
@@ -271,6 +281,8 @@ interface WorkspaceNewTabButtonProps extends TabTargetLauncherOptions {
 function WorkspaceNewTabButton({
   shortcutKeys,
   onCreateAgentTab,
+  onCreateTeam,
+  onStartMission,
   onCreateTerminal,
   onCreateBrowser,
   onOpenChanges,
@@ -280,6 +292,8 @@ function WorkspaceNewTabButton({
   onEditProfiles,
   normalizedServerId,
   showCreateBrowserTab,
+  showCreateTeam,
+  showStartMission,
   terminalDisabled,
   isGit,
   showPullRequest,
@@ -325,6 +339,24 @@ function WorkspaceNewTabButton({
             shortcut={shortcutKeys}
             onSelect={onCreateAgentTab}
           />
+          {showCreateTeam ? (
+            <DropdownMenuItem
+              testID="workspace-new-tab-menu-team"
+              leading={TEAM_ICON}
+              onSelect={onCreateTeam}
+            >
+              {t("teams.v2.actions.newTeam")}
+            </DropdownMenuItem>
+          ) : null}
+          {showStartMission ? (
+            <DropdownMenuItem
+              testID="workspace-new-tab-menu-mission"
+              leading={MISSION_ICON}
+              onSelect={onStartMission}
+            >
+              {t("teams.v2.actions.startMission")}
+            </DropdownMenuItem>
+          ) : null}
           <PinnableMenuItem
             testID="workspace-new-tab-menu-terminal"
             target={TERMINAL_TARGET}
@@ -509,9 +541,13 @@ interface WorkspaceDesktopTabsRowProps {
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
   onCreateDraftTab: (input: { paneId?: string }) => void;
+  onCreateTeam: () => void;
+  onStartMission: () => void;
   onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfileInput }) => void;
   onCreateBrowserTab: (input: { paneId?: string }) => void;
   showCreateBrowserTab?: boolean;
+  showCreateTeam?: boolean;
+  showStartMission?: boolean;
   disableCreateTerminal?: boolean;
   isWaitingOnTerminalReadiness?: boolean;
   onReorderTabs: (nextTabs: WorkspaceTabDescriptor[]) => void;
@@ -884,9 +920,13 @@ export function WorkspaceDesktopTabsRow({
   onCloseTabsToRight,
   onCloseOtherTabs,
   onCreateDraftTab,
+  onCreateTeam,
+  onStartMission,
   onCreateTerminalTab,
   onCreateBrowserTab,
   showCreateBrowserTab = false,
+  showCreateTeam = false,
+  showStartMission = false,
   disableCreateTerminal = false,
   isWaitingOnTerminalReadiness = false,
   onReorderTabs,
@@ -1202,6 +1242,8 @@ export function WorkspaceDesktopTabsRow({
       <WorkspaceNewTabButton
         shortcutKeys={newTabKeys}
         onCreateAgentTab={handleCreateAgentTab}
+        onCreateTeam={onCreateTeam}
+        onStartMission={onStartMission}
         onCreateTerminal={handleCreateTerminal}
         onCreateBrowser={handleCreateBrowser}
         onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
@@ -1211,6 +1253,8 @@ export function WorkspaceDesktopTabsRow({
         onEditProfiles={handleEditProfiles}
         normalizedServerId={normalizedServerId}
         showCreateBrowserTab={showCreateBrowserTab}
+        showCreateTeam={showCreateTeam}
+        showStartMission={showStartMission}
         terminalDisabled={terminalDisabled}
         isGit={isGit}
         showPullRequest={showPullRequest}

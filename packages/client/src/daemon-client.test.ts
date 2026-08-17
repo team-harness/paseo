@@ -742,6 +742,7 @@ test("advertises client capabilities in hello", async () => {
       project_updates: true,
       provider_subagents: true,
       reasoning_merge_enum: true,
+      team_missions: true,
       terminal_reflowable_snapshot: true,
       browser_host: {
         supportedCommands: ["list_tabs"],
@@ -6100,4 +6101,138 @@ test("waitForFinish with timeout=0 omits timeoutMs and has no client deadline", 
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("advertises Team Missions in the hello handshake", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "team_hello_test",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen({ preserveSent: true });
+  await connectPromise;
+
+  const hello = JSON.parse(mock.sent[0] as string) as {
+    capabilities?: Record<string, unknown>;
+  };
+  expect(hello.capabilities?.[CLIENT_CAPS.teamMissions]).toBe(true);
+});
+
+test("creates a Team profile through the v2 SDK and publishes its snapshot", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "team_profile_test",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "status",
+      payload: {
+        status: "server_info",
+        serverId: "srv-team",
+        features: {
+          teamMissions: true,
+          globalTeamProfiles: true,
+          teamMethodologies: true,
+        },
+      },
+    }),
+  );
+
+  const member = {
+    memberId: "member-lead",
+    role: "lead",
+    level: 5,
+    skillIds: ["coordination"],
+    executionProfile: {
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      modeId: null,
+      thinkingOptionId: "high",
+      featureValues: {},
+    },
+    mentionHandle: "lead",
+  };
+  const team = {
+    id: "team-1",
+    name: "Release team",
+    creationWorkspaceId: "wks-1",
+    leadMemberId: member.memberId,
+    skills: [{ skillId: "coordination", name: "Coordination", description: null }],
+    members: [member],
+    methodologyBinding: {
+      ref: {
+        bundleId: "paseo/standard",
+        version: "1",
+        digest: `sha256:${"0".repeat(64)}`,
+      },
+      presetId: "lean-delivery",
+      memberArchetypeBindings: [{ memberId: member.memberId, archetypeId: "lead" }],
+      skillBindings: [{ teamSkillId: "coordination", methodologySkillId: null }],
+    },
+    lifecycle: "active" as const,
+    activeMissionId: null,
+    lifecycleRecoveryFailure: null,
+    revision: 1,
+    createdAt: "2026-08-09T08:00:00.000Z",
+    updatedAt: "2026-08-09T08:00:00.000Z",
+    archivedAt: null,
+  };
+
+  const createPromise = client.createTeamProfile({
+    idempotencyKey: "profile-create-1",
+    name: team.name,
+    creationWorkspaceId: team.creationWorkspaceId,
+    skills: team.skills,
+    leadClientMemberKey: "lead",
+    members: [
+      {
+        clientMemberKey: "lead",
+        role: member.role,
+        level: member.level,
+        skillIds: member.skillIds,
+        executionProfileSelection: {
+          kind: "inline",
+          executionProfile: member.executionProfile,
+        },
+      },
+    ],
+    methodologyBinding: {
+      ref: team.methodologyBinding.ref,
+      presetId: "lean-delivery",
+      memberArchetypeBindings: [{ clientMemberKey: "lead", archetypeId: "lead" }],
+      skillBindings: [{ teamSkillId: "coordination", methodologySkillId: null }],
+    },
+  });
+  const request = JSON.parse(mock.sent.at(-1) as string).message as Record<string, unknown>;
+  expect(request).toMatchObject({
+    type: "team.profile.create.request",
+    idempotencyKey: "profile-create-1",
+    creationWorkspaceId: "wks-1",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "team.profile.create.response",
+      payload: { requestId: request.requestId, team, error: null, errorCode: null },
+    }),
+  );
+  await expect(createPromise).resolves.toMatchObject({ team, error: null });
+
+  const events: Array<{ type: string; teamId?: string }> = [];
+  client.on((event) => events.push(event));
+  mock.triggerMessage(wrapSessionMessage({ type: "team.profile.snapshot", payload: { team } }));
+  expect(events.at(-1)).toMatchObject({ type: "team.profile.snapshot", teamId: "team-1" });
 });

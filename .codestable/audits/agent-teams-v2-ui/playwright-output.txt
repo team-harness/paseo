@@ -1,0 +1,38 @@
+[metro] Starting project at /Users/wyattfang/.paseo/worktrees/3rvhzvvc/agent-teams/packages/app
+[metro] Using src/app as the root directory for Expo Router.
+[metro] Experimental Expo Autolinking module resolver is enabled.
+[metro] React Compiler enabled
+[metro] Starting Metro Bundler
+[metro] Waiting on http://localhost:52194
+[metro] Logs for your project will appear below.
+[metro] | (node:46055) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[metro] | (Use `node --trace-warnings ...` to show where the warning was created)
+[metro] Web packages/app/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (4839/4840)
+[metro] Web Bundled 2494ms packages/app/index.ts (4842 modules)
+[e2e] Metro warmed on port 52194
+
+Running 1 test using 1 worker
+
+(node:46310) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:46310) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[metro] Web packages/app/index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+[metro] Web Bundled 257ms packages/app/index.ts (1 module)
+[metro]  LOG  [web] Logs will appear in the browser console
+[metro] Web Bundled 59ms packages/app/src/attachments/web/indexeddb-attachment-store.ts (1 module)
+[metro] Web packages/app/index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+[metro] Web Bundled 162ms packages/app/index.ts (1 module)
+[metro] Web Bundled 13ms packages/app/src/attachments/web/indexeddb-attachment-store.ts (1 module)
+[metro]  LOG  [web] Logs will appear in the browser console
+[metro] Web Bundled 173ms packages/app/index.ts (1 module)
+[metro] Web Bundled 6ms packages/app/src/attachments/web/indexeddb-attachment-store.ts (1 module)
+[metro]  LOG  [web] Logs will appear in the browser console
+[metro] Web Bundled 160ms packages/app/index.ts (1 module)
+[metro] Web Bundled 10ms packages/app/src/attachments/web/indexeddb-attachment-store.ts (1 module)
+[metro]  LOG  [web] Logs will appear in the browser console
+
+  ✓  1 [browser] › packages/app/e2e/browser/team-v2-evidence.spec.ts:401:5 › Team v2 creation, Mission chat, settings, and responsive evidence (15.2s)
+[e2e] Metro stopped
+
+  1 passed (23.7s)

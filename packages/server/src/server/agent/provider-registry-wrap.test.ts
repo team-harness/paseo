@@ -18,6 +18,7 @@ type OptionalAgentSessionMethodName = {
 }[keyof AgentSession];
 
 const OPTIONAL_AGENT_SESSION_METHOD_NAMES = [
+  "steerActiveTurn",
   "listCommands",
   "setModel",
   "setThinkingOption",
@@ -69,6 +70,11 @@ class FakeSession implements AgentSession {
   async startTurn() {
     this.recordedCalls.push("startTurn");
     return { turnId: "turn-1" };
+  }
+
+  async steerActiveTurn() {
+    this.recordedCalls.push("steerActiveTurn");
+    return "delivered" as const;
   }
 
   subscribe(_callback: (event: AgentStreamEvent) => void) {
@@ -172,6 +178,10 @@ describe("wrapSessionProvider", () => {
     const session = new FakeSession();
     const wrapped = wrapSessionProvider("custom-claude", session);
 
+    await wrapped.steerActiveTurn?.("status update", {
+      expectedTurnId: "turn-1",
+      clientMessageId: "message-1",
+    });
     await wrapped.listCommands?.();
     await wrapped.setModel?.("sonnet");
     await wrapped.setThinkingOption?.("high");
@@ -183,6 +193,7 @@ describe("wrapSessionProvider", () => {
     await handler?.run({ emit: () => {} });
 
     expect(session.recordedCalls).toEqual([
+      "steerActiveTurn",
       "listCommands",
       "setModel",
       "setThinkingOption",

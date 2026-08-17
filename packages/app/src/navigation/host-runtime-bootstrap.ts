@@ -7,6 +7,7 @@ import type {
 import type { Href } from "expo-router";
 import {
   buildHostRootRoute,
+  buildHostTeamsRoute,
   buildHostWorkspaceRoute,
   buildOpenProjectRoute,
 } from "@/utils/host-routes";
@@ -163,6 +164,48 @@ export function resolveHostIndexRoute(input: {
     return buildHostWorkspaceRoute(input.serverId, input.workspaceSelection.workspaceId);
   }
   return buildOpenProjectRoute();
+}
+
+export type HostIndexRouteDecision =
+  | { kind: "waitingForHost" }
+  | { kind: "loading" }
+  | { kind: "redirect"; href: Href };
+
+export function resolveHostIndexRouteDecision(input: {
+  serverId: string;
+  workspaceSelection: ActiveWorkspaceSelection | null;
+  workspaceSelectionStatus: WorkspaceSelectionStatus;
+  connectionStatus: "idle" | "connecting" | "online" | "offline" | "error";
+  features: {
+    teamMissions?: boolean;
+    globalTeamProfiles?: boolean;
+    teamMethodologies?: boolean;
+  } | null;
+}): HostIndexRouteDecision {
+  if (
+    input.workspaceSelection?.serverId === input.serverId &&
+    shouldRestoreWorkspaceSelection(input)
+  ) {
+    return {
+      kind: "redirect",
+      href: buildHostWorkspaceRoute(input.serverId, input.workspaceSelection.workspaceId),
+    };
+  }
+
+  if (input.connectionStatus !== "online") return { kind: "waitingForHost" };
+  if (!input.features) return { kind: "loading" };
+  if (
+    input.features.teamMissions &&
+    input.features.globalTeamProfiles &&
+    input.features.teamMethodologies
+  ) {
+    return { kind: "redirect", href: buildHostTeamsRoute(input.serverId) };
+  }
+
+  return {
+    kind: "redirect",
+    href: resolveHostIndexRoute(input),
+  };
 }
 
 function isIndexPathname(pathname: string) {

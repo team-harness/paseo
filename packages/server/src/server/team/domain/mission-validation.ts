@@ -1,0 +1,2815 @@
+import type {
+  MissionAssignmentContract,
+  MissionAttentionItem,
+  MissionFinalVerificationGate,
+  MissionMemberRequirements,
+  MissionReviewGateEvidence,
+  MissionReviewGateKey,
+  MissionReviewWaiver,
+  MissionRosterMemberSnapshot,
+  MissionRosterSnapshot,
+  MissionWorkstream,
+  TeamMission,
+} from "@getpaseo/protocol/team/v2-types";
+import { isTeamMentionToken } from "@getpaseo/protocol/team/mention-handles";
+
+import {
+  type AcceptedTurnFact,
+  type AssignmentStateViolation,
+  validateAssignmentContract,
+} from "./assignment-contract-validation.js";
+import {
+  matchMissionFinalVerifier,
+  matchWorkstreamOwner,
+  matchWorkstreamReviewer,
+} from "./member-matching.js";
+import { buildMissionFinalVerificationGate } from "./mission-final-verification-gate.js";
+import {
+  missionReviewGateKeyFingerprint,
+  missionReviewReportFingerprint,
+  missionReviewSubjectFingerprint,
+  sameCanonicalValue,
+} from "./mission-review-gate.js";
+import {
+  isMutableScopeContainedBy,
+  isNormalizedWorkspaceFilePath,
+  isNormalizedWorkspacePathPrefix,
+  type MissionPlanIssue,
+  validateMissionWorkstreams,
+} from "./mission-plan-validation.js";
+
+export type TeamMissionIssue =
+  | MissionPlanIssue
+  | { kind: "missing_final_verification" }
+  | { kind: "multiple_final_verifications"; workstreamIds: string[] }
+  | {
+      kind: "multiple_final_verification_assignments";
+      workstreamId: string;
+      assignmentIds: string[];
+    }
+  | { kind: "awaiting_final_verification_has_assignment"; workstreamId: string }
+  | { kind: "final_verification_assignment_gate_mismatch"; assignmentId: string }
+  | { kind: "invalid_final_verification_review_evidence"; assignmentId: string }
+  | { kind: "invalid_final_verification_report_evidence"; assignmentId: string }
+  | { kind: "writable_final_verification"; workstreamId: string }
+  | { kind: "invalid_final_verification_gate"; workstreamId: string }
+  | {
+      kind: "uncovered_final_verification_path";
+      verificationWorkstreamId: string;
+      workstreamId: string;
+    }
+  | { kind: "non_independent_final_verification"; workstreamId: string; memberId: string }
+  | {
+      kind: "undocumented_final_verification_exception";
+      workstreamId: string;
+      memberId: string;
+    }
+  | { kind: "missing_completed_final_verification_assignment"; workstreamId: string }
+  | {
+      kind: "uncovered_final_verification_assignment";
+      verificationAssignmentId: string;
+      assignmentId: string;
+    }
+  | {
+      kind: "invalid_final_verification_assignment_coverage";
+      verificationAssignmentId: string;
+      expectedAssignmentIds: string[];
+      subjectAssignmentIds: string[];
+      dependencyAssignmentIds: string[];
+    }
+  | { kind: "completed_at_required" }
+  | {
+      kind: "unaccepted_workstream_at_completion";
+      workstreamId: string;
+      status: MissionWorkstream["status"];
+    }
+  | { kind: "needs_attention_without_open_item" }
+  | {
+      kind: "open_attention_status_mismatch";
+      attentionId: string;
+      missionStatus: TeamMission["status"];
+    }
+  | { kind: "attention_resolution_mismatch"; attentionId: string }
+  | { kind: "duplicate_attention_id"; attentionId: string }
+  | { kind: "attention_suspended_status_mismatch"; attentionId?: string }
+  | { kind: "invalid_attention_resolution_kind"; attentionId: string }
+  | { kind: "invalid_attention_path"; attentionId: string; path: string }
+  | { kind: "unknown_attention_assignment"; attentionId: string; assignmentId: string }
+  | { kind: "invalid_workstream_attention_history"; attentionId: string }
+  | {
+      kind: "open_workstream_attention_not_blocked";
+      attentionId: string;
+      workstreamId: string;
+    }
+  | {
+      kind: "open_workstream_attention_gate_mismatch";
+      attentionId: string;
+      workstreamId: string;
+    }
+  | { kind: "invalid_audit_excluded_path_prefix"; pathPrefix: string }
+  | { kind: "invalid_workspace_audit_policy" }
+  | {
+      kind: "workspace_baseline_policy_mismatch";
+      assignmentId: string;
+      policyRevision: number;
+    }
+  | {
+      kind: "workstream_plan_revision_mismatch";
+      workstreamId: string;
+      planRevision: number;
+    }
+  | { kind: "duplicate_workstream_plan_snapshot_revision"; planRevision: number }
+  | { kind: "non_historical_workstream_plan_snapshot"; planRevision: number }
+  | {
+      kind: "workstream_plan_snapshot_revision_mismatch";
+      snapshotRevision: number;
+      workstreamId: string;
+      planRevision: number;
+    }
+  | {
+      kind: "future_assignment_plan_revision";
+      assignmentId: string;
+      planRevision: number;
+    }
+  | {
+      kind: "stale_assignment_plan_revision";
+      assignmentId: string;
+      planRevision: number;
+    }
+  | {
+      kind: "assignment_kind_workstream_mismatch";
+      assignmentId: string;
+      workstreamId: string;
+    }
+  | {
+      kind: "assignment_assignee_role_mismatch";
+      assignmentId: string;
+      expectedMemberId: string;
+      actualMemberId: string;
+    }
+  | { kind: "unknown_active_roster_snapshot"; snapshotRevision: number }
+  | { kind: "duplicate_roster_snapshot_revision"; snapshotRevision: number }
+  | {
+      kind: "invalid_roster_mention_handle";
+      snapshotRevision: number;
+      memberId: string;
+      mentionHandle: string;
+    }
+  | {
+      kind: "duplicate_roster_mention_handle";
+      snapshotRevision: number;
+      mentionHandle: string;
+    }
+  | {
+      kind: "duplicate_roster_member_id";
+      snapshotRevision: number;
+      memberId: string;
+    }
+  | {
+      kind: "duplicate_roster_skill_id";
+      snapshotRevision: number;
+      skillId: string;
+    }
+  | {
+      kind: "unknown_roster_member_skill";
+      snapshotRevision: number;
+      memberId: string;
+      skillId: string;
+    }
+  | {
+      kind: "unknown_workstream_roster_snapshot";
+      workstreamId: string;
+      snapshotRevision: number;
+    }
+  | {
+      kind: "unknown_assignment_roster_snapshot";
+      assignmentId: string;
+      snapshotRevision: number;
+    }
+  | {
+      kind: "unknown_workstream_owner";
+      workstreamId: string;
+      memberId: string;
+      snapshotRevision: number;
+    }
+  | { kind: "incomplete_required_review"; workstreamId: string }
+  | { kind: "unexpected_review_configuration"; workstreamId: string }
+  | { kind: "invalid_review_gate"; workstreamId: string }
+  | { kind: "invalid_review_gate_outcome"; workstreamId: string }
+  | { kind: "duplicate_review_waiver_id"; waiverId: string }
+  | { kind: "duplicate_review_waiver_gate"; gateKeyFingerprint: string }
+  | { kind: "duplicate_review_waiver_attention"; attentionId: string }
+  | { kind: "invalid_review_waiver"; waiverId: string }
+  | { kind: "ineligible_workstream_owner"; workstreamId: string; memberId: string }
+  | { kind: "unknown_workstream_reviewer"; workstreamId: string; memberId: string }
+  | { kind: "ineligible_workstream_reviewer"; workstreamId: string; memberId: string }
+  | { kind: "non_independent_workstream_reviewer"; workstreamId: string; memberId: string }
+  | { kind: "undocumented_workstream_review_exception"; workstreamId: string; memberId: string }
+  | { kind: "invalid_owner_match_explanation"; workstreamId: string }
+  | { kind: "invalid_reviewer_match_explanation"; workstreamId: string }
+  | {
+      kind: "unexplained_owner_override";
+      workstreamId: string;
+      recommendedMemberId: string;
+      selectedMemberId: string;
+    }
+  | {
+      kind: "unexplained_reviewer_override";
+      workstreamId: string;
+      recommendedMemberId: string;
+      selectedMemberId: string;
+    }
+  | {
+      kind: "unknown_assignment_assignee";
+      assignmentId: string;
+      memberId: string;
+      snapshotRevision: number;
+    }
+  | { kind: "duplicate_participant_binding"; memberId: string; bindingEpoch: number }
+  | { kind: "multiple_active_participant_bindings"; memberId: string }
+  | { kind: "duplicate_participant_agent_id"; agentId: string }
+  | { kind: "duplicate_assignment_id"; assignmentId: string }
+  | { kind: "assignment_mission_mismatch"; assignmentId: string; missionId: string }
+  | { kind: "unknown_assignment_workstream"; assignmentId: string; workstreamId: string }
+  | {
+      kind: "unknown_assignment_workstream_revision";
+      assignmentId: string;
+      workstreamId: string;
+      planRevision: number;
+    }
+  | {
+      kind: "unknown_assignment_dependency";
+      assignmentId: string;
+      dependencyAssignmentId: string;
+    }
+  | {
+      kind: "unknown_subject_assignment";
+      assignmentId: string;
+      subjectAssignmentId: string;
+    }
+  | { kind: "unknown_superseding_assignment"; assignmentId: string; supersededBy: string }
+  | { kind: "assignment_dependency_cycle"; assignmentIds: string[] }
+  | { kind: "missing_assignment_contract"; workstreamId: string }
+  | { kind: "ambiguous_assignment_contract"; workstreamId: string }
+  | {
+      kind: "assignment_dependency_workstream_mismatch";
+      assignmentId: string;
+      workstreamId: string;
+    }
+  | { kind: "writable_review_assignment"; assignmentId: string }
+  | { kind: "assignment_scope_exceeds_workstream"; assignmentId: string; workstreamId: string }
+  | { kind: "accepted_workstream_missing_delivery"; workstreamId: string }
+  | { kind: "accepted_workstream_missing_approved_review"; workstreamId: string }
+  | { kind: "accepted_verification_missing_approval"; workstreamId: string }
+  | {
+      kind: "accepted_workstream_has_unresolved_assignment";
+      workstreamId: string;
+      assignmentId: string;
+    }
+  | {
+      kind: "invalid_assignment_contract";
+      assignmentId: string;
+      violations: AssignmentStateViolation[];
+    }
+  | { kind: "unknown_roster_lead"; snapshotRevision: number; memberId: string }
+  | {
+      kind: "assignment_runtime_participant_mismatch";
+      assignmentId: string;
+      memberId: string;
+      runtimeAgentId: string;
+    }
+  | { kind: "running_assignment_bound_to_archived_participant"; assignmentId: string };
+
+export type TeamMissionValidation = { ok: true } | { ok: false; issues: TeamMissionIssue[] };
+
+export interface ValidateTeamMissionContext {
+  /** Accepted-turn facts for the Mission's full history, not only its current plan revision. */
+  acceptedTurnsById: ReadonlyMap<string, AcceptedTurnFact>;
+}
+
+function duplicateValues<Value>(values: ReadonlyArray<Value>): Value[] {
+  const seen = new Set<Value>();
+  const reported = new Set<Value>();
+  const duplicates: Value[] = [];
+  for (const value of values) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      continue;
+    }
+    if (reported.has(value)) continue;
+    reported.add(value);
+    duplicates.push(value);
+  }
+  return duplicates;
+}
+
+function findAssignmentDependencyCycle(
+  assignments: ReadonlyArray<MissionAssignmentContract>,
+): string[] | null {
+  const byId = new Map(assignments.map((assignment) => [assignment.assignmentId, assignment]));
+  const visited = new Set<string>();
+  const path: string[] = [];
+
+  function visit(assignmentId: string): string[] | null {
+    const cycleStart = path.indexOf(assignmentId);
+    if (cycleStart >= 0) return path.slice(cycleStart);
+    if (visited.has(assignmentId)) return null;
+    const assignment = byId.get(assignmentId);
+    if (!assignment) return null;
+
+    path.push(assignmentId);
+    for (const dependencyAssignmentId of assignment.dependencyAssignmentIds) {
+      const cycle = visit(dependencyAssignmentId);
+      if (cycle) return cycle;
+    }
+    path.pop();
+    visited.add(assignmentId);
+    return null;
+  }
+
+  for (const assignment of assignments) {
+    const cycle = visit(assignment.assignmentId);
+    if (cycle) return cycle;
+  }
+  return null;
+}
+
+function workstreamTransitivelyDependsOn(
+  workstreamId: string,
+  dependencyId: string,
+  byId: ReadonlyMap<string, MissionWorkstream>,
+  visited = new Set<string>(),
+): boolean {
+  if (visited.has(workstreamId)) return false;
+  visited.add(workstreamId);
+  const workstream = byId.get(workstreamId);
+  if (!workstream) return false;
+  if (workstream.dependencyWorkstreamIds.includes(dependencyId)) return true;
+  return workstream.dependencyWorkstreamIds.some((candidateId) =>
+    workstreamTransitivelyDependsOn(candidateId, dependencyId, byId, visited),
+  );
+}
+
+function ownerRequirements(workstream: MissionWorkstream): MissionMemberRequirements {
+  return {
+    requiredSkillIds: workstream.requiredSkillIds,
+    preferredSkillIds: workstream.preferredSkillIds,
+    requiredRuntimeCapabilityIds: workstream.requiredRuntimeCapabilityIds,
+    minimumLevel: workstream.minimumLevel,
+  };
+}
+
+function memberMeetsHardRequirements(
+  member: MissionRosterMemberSnapshot,
+  requirements: MissionMemberRequirements,
+): boolean {
+  return (
+    member.level >= requirements.minimumLevel &&
+    member.capabilityFacts.kind === "known" &&
+    requirements.requiredSkillIds.every((skillId) => member.skillIds.includes(skillId)) &&
+    requirements.requiredRuntimeCapabilityIds.every(
+      (capabilityId) =>
+        member.capabilityFacts.kind === "known" &&
+        member.capabilityFacts.capabilityIds.includes(capabilityId),
+    )
+  );
+}
+
+const allowedAttentionResolutionKinds: Record<
+  TeamMission["attentionItems"][number]["kind"],
+  ReadonlySet<string>
+> = {
+  ownership_violation: new Set(["attribute_owner", "external_change", "cancel_mission"]),
+  missing_report: new Set(["report_received", "recovery_assignment", "replan", "cancel_mission"]),
+  assignment_requires_replan: new Set(["replan", "cancel_mission"]),
+  provider_unavailable: new Set(["resume_provider", "replan", "cancel_mission"]),
+  dispatch_acceptance_unknown: new Set(["cancel_mission"]),
+  participant_unavailable: new Set(["replan", "cancel_mission"]),
+  reviewer_unavailable: new Set(["replan", "cancel_mission"]),
+  review_gate_reviewer_unavailable: new Set(["replan", "waive_review", "cancel_mission"]),
+  review_gate_capability_unknown: new Set(["replan", "cancel_mission"]),
+  final_verifier_unavailable: new Set(["replan", "cancel_mission"]),
+  final_verifier_capability_unknown: new Set(["replan", "cancel_mission"]),
+  lead_unavailable: new Set(["replace_lead", "cancel_mission"]),
+  notification_unacknowledged: new Set(["restore_notification", "cancel_mission"]),
+};
+
+export function validateMissionAttentionResolution(
+  mission: TeamMission,
+  item: TeamMission["attentionItems"][number],
+  resolution: NonNullable<TeamMission["attentionItems"][number]["resolution"]>,
+): TeamMissionIssue[] {
+  const assignmentIds = new Set(mission.assignments.map((assignment) => assignment.assignmentId));
+  const resolved = { ...item, status: "resolved", resolution } as MissionAttentionItem;
+  return validateAttentionItem(resolved, assignmentIds);
+}
+
+function validateAttentionItem(
+  item: TeamMission["attentionItems"][number],
+  assignmentIds: ReadonlySet<string>,
+): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  const hasMatchingResolution =
+    (item.status === "open" && item.resolution === null) ||
+    (item.status === "resolved" && item.resolution !== null);
+  if (!hasMatchingResolution) {
+    issues.push({ kind: "attention_resolution_mismatch", attentionId: item.attentionId });
+  }
+  if (
+    item.resolution !== null &&
+    !allowedAttentionResolutionKinds[item.kind].has(item.resolution.kind)
+  ) {
+    issues.push({ kind: "invalid_attention_resolution_kind", attentionId: item.attentionId });
+  }
+  const referencedAssignmentIds = [
+    item.assignmentId,
+    item.resolution?.ownerAssignmentId,
+    item.resolution?.recoveryAssignmentId,
+  ].filter(
+    (assignmentId): assignmentId is string => assignmentId !== null && assignmentId !== undefined,
+  );
+  for (const assignmentId of referencedAssignmentIds) {
+    if (assignmentIds.has(assignmentId)) continue;
+    issues.push({
+      kind: "unknown_attention_assignment",
+      attentionId: item.attentionId,
+      assignmentId,
+    });
+  }
+  for (const evidence of item.pathEvidence) {
+    if (isNormalizedWorkspaceFilePath(evidence.path)) continue;
+    issues.push({
+      kind: "invalid_attention_path",
+      attentionId: item.attentionId,
+      path: evidence.path,
+    });
+  }
+  return issues;
+}
+
+function validateAttentionMissionState(
+  mission: TeamMission,
+  openItems: TeamMission["attentionItems"],
+): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  const openMissionItems = openItems.filter((item) => item.scope.kind === "mission");
+  if (mission.status === "needs_attention" && openMissionItems.length === 0) {
+    issues.push({ kind: "needs_attention_without_open_item" });
+  }
+  if (mission.status === "needs_attention") {
+    if (mission.suspendedStatus === null) {
+      issues.push({ kind: "attention_suspended_status_mismatch" });
+    } else {
+      for (const item of openMissionItems) {
+        if (item.priorMissionStatus === mission.suspendedStatus) continue;
+        issues.push({ kind: "attention_suspended_status_mismatch", attentionId: item.attentionId });
+      }
+    }
+  } else if (mission.suspendedStatus !== null) {
+    issues.push({ kind: "attention_suspended_status_mismatch" });
+  }
+  if (mission.status !== "needs_attention") {
+    for (const item of openMissionItems) {
+      issues.push({
+        kind: "open_attention_status_mismatch",
+        attentionId: item.attentionId,
+        missionStatus: mission.status,
+      });
+    }
+  }
+  return issues;
+}
+
+function validateWorkstreamAttentionState(mission: TeamMission): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  for (const item of mission.attentionItems) {
+    if (
+      item.kind !== "review_gate_reviewer_unavailable" &&
+      item.kind !== "review_gate_capability_unknown" &&
+      item.kind !== "final_verifier_unavailable" &&
+      item.kind !== "final_verifier_capability_unknown"
+    ) {
+      continue;
+    }
+    const hasValidHistory = hasValidWorkstreamAttentionHistory(item);
+    if (!hasValidHistory) {
+      issues.push({ kind: "invalid_workstream_attention_history", attentionId: item.attentionId });
+    }
+    if (item.status !== "open") continue;
+    const workstream = mission.workstreams.find(
+      (candidate) => candidate.workstreamId === item.scope.workstreamId,
+    );
+    if (!workstream || workstream.status !== "blocked") {
+      issues.push({
+        kind: "open_workstream_attention_not_blocked",
+        attentionId: item.attentionId,
+        workstreamId: item.scope.workstreamId,
+      });
+    }
+    if (!matchesCurrentWorkstreamAttention(mission, item, hasValidHistory)) {
+      issues.push({
+        kind: "open_workstream_attention_gate_mismatch",
+        attentionId: item.attentionId,
+        workstreamId: item.scope.workstreamId,
+      });
+    }
+  }
+  return issues;
+}
+
+type WorkstreamAttentionItem = Extract<
+  MissionAttentionItem,
+  {
+    kind:
+      | "review_gate_reviewer_unavailable"
+      | "review_gate_capability_unknown"
+      | "final_verifier_unavailable"
+      | "final_verifier_capability_unknown";
+  }
+>;
+
+function hasValidWorkstreamAttentionHistory(item: WorkstreamAttentionItem): boolean {
+  if ("finalVerificationGateDetails" in item) {
+    const details = item.finalVerificationGateDetails;
+    return (
+      item.priorMissionStatus === null &&
+      details.gateKey.workstreamId === item.scope.workstreamId &&
+      details.gateFingerprint ===
+        buildMissionFinalVerificationGate({
+          ...details.gateKey,
+          selection: { kind: "awaiting_verifier" },
+        }).fingerprint
+    );
+  }
+  const details = item.reviewGateDetails;
+  return (
+    item.priorMissionStatus === null &&
+    details.gateKey.subject.workstreamId === item.scope.workstreamId &&
+    details.gateKeyFingerprint === missionReviewGateKeyFingerprint(details.gateKey) &&
+    details.subjectFingerprint === missionReviewSubjectFingerprint(details.gateKey.subject)
+  );
+}
+
+function matchesCurrentWorkstreamAttention(
+  mission: TeamMission,
+  item: WorkstreamAttentionItem,
+  hasValidHistory: boolean,
+): boolean {
+  if (!hasValidHistory || ["completed", "failed", "canceled"].includes(mission.status)) {
+    return false;
+  }
+  const workstream = mission.workstreams.find(
+    (candidate) => candidate.workstreamId === item.scope.workstreamId,
+  );
+  if ("finalVerificationGateDetails" in item) {
+    return matchesCurrentFinalVerifierAttention(mission, workstream, item);
+  }
+  return matchesCurrentReviewGateAttention(mission, workstream, item);
+}
+
+function matchesCurrentFinalVerifierAttention(
+  mission: TeamMission,
+  workstream: MissionWorkstream | undefined,
+  item: Extract<WorkstreamAttentionItem, { finalVerificationGateDetails: unknown }>,
+): boolean {
+  const gate = workstream?.finalVerificationGate;
+  const expectedSelectionKind =
+    item.kind === "final_verifier_unavailable" ? "awaiting_verifier" : "awaiting_capabilities";
+  const hasVerificationAssignment = mission.assignments.some(
+    (assignment) =>
+      assignment.kind === "verification" &&
+      assignment.workstreamId === item.scope.workstreamId &&
+      assignment.planRevision === mission.planRevision &&
+      assignment.semanticState !== "canceled",
+  );
+  return (
+    workstream?.kind === "verification" &&
+    workstream.planRevision === mission.planRevision &&
+    gate?.selection.kind === expectedSelectionKind &&
+    !hasVerificationAssignment &&
+    sameCanonicalValue(gate.key, item.finalVerificationGateDetails.gateKey) &&
+    gate.fingerprint === item.finalVerificationGateDetails.gateFingerprint
+  );
+}
+
+function matchesCurrentReviewGateAttention(
+  mission: TeamMission,
+  workstream: MissionWorkstream | undefined,
+  item: Extract<WorkstreamAttentionItem, { reviewGateDetails: unknown }>,
+): boolean {
+  if (
+    workstream?.planRevision !== mission.planRevision ||
+    workstream.reviewGate.kind !== "required"
+  ) {
+    return false;
+  }
+  const gate = workstream.reviewGate;
+  const expectedSelectionKind =
+    item.kind === "review_gate_reviewer_unavailable"
+      ? "awaiting_reviewer"
+      : "awaiting_capabilities";
+  const details = item.reviewGateDetails;
+  return (
+    gate.outcome.kind === "pending" &&
+    gate.selection.kind === expectedSelectionKind &&
+    sameCanonicalValue(gate.gateKey, details.gateKey) &&
+    gate.gateKeyFingerprint === details.gateKeyFingerprint &&
+    gate.subjectFingerprint === details.subjectFingerprint
+  );
+}
+
+function validateAttentionState(mission: TeamMission): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  const openItems = mission.attentionItems.filter((item) => item.status === "open");
+  const assignmentIds = new Set(mission.assignments.map((assignment) => assignment.assignmentId));
+  const attentionIds = new Set<string>();
+  for (const item of mission.attentionItems) {
+    if (attentionIds.has(item.attentionId)) {
+      issues.push({ kind: "duplicate_attention_id", attentionId: item.attentionId });
+    } else {
+      attentionIds.add(item.attentionId);
+    }
+    issues.push(...validateAttentionItem(item, assignmentIds));
+  }
+  issues.push(...validateAttentionMissionState(mission, openItems));
+  return issues;
+}
+
+function validateFinalVerificationPlan(
+  workstreams: ReadonlyArray<MissionWorkstream>,
+  finalVerifications: ReadonlyArray<MissionWorkstream>,
+): TeamMissionIssue[] {
+  if (workstreams.length > 0 && finalVerifications.length === 0) {
+    return [{ kind: "missing_final_verification" }];
+  }
+  if (finalVerifications.length > 1) {
+    return [
+      {
+        kind: "multiple_final_verifications",
+        workstreamIds: finalVerifications.map((workstream) => workstream.workstreamId),
+      },
+    ];
+  }
+  const finalVerification = finalVerifications[0];
+  if (!finalVerification) return [];
+  const issues: TeamMissionIssue[] = [];
+  if (finalVerification.mutableScope.kind !== "read_only") {
+    issues.push({
+      kind: "writable_final_verification",
+      workstreamId: finalVerification.workstreamId,
+    });
+  }
+  const workstreamById = new Map(
+    workstreams.map((workstream) => [workstream.workstreamId, workstream]),
+  );
+  for (const workstream of workstreams) {
+    if (workstream.workstreamId === finalVerification.workstreamId) continue;
+    const isCovered = workstreamTransitivelyDependsOn(
+      finalVerification.workstreamId,
+      workstream.workstreamId,
+      workstreamById,
+    );
+    if (isCovered) continue;
+    issues.push({
+      kind: "uncovered_final_verification_path",
+      verificationWorkstreamId: finalVerification.workstreamId,
+      workstreamId: workstream.workstreamId,
+    });
+  }
+  return issues;
+}
+
+function currentFinalVerificationAssignments(
+  mission: TeamMission,
+  finalVerification: MissionWorkstream,
+): MissionAssignmentContract[] {
+  return mission.assignments.filter(
+    (assignment) =>
+      assignment.kind === "verification" &&
+      assignment.workstreamId === finalVerification.workstreamId &&
+      assignment.planRevision === mission.planRevision &&
+      assignment.semanticState !== "canceled",
+  );
+}
+
+function validateFinalVerificationAssignments(
+  mission: TeamMission,
+  finalVerifications: ReadonlyArray<MissionWorkstream>,
+): TeamMissionIssue[] {
+  const finalVerification = finalVerifications.length === 1 ? finalVerifications[0] : null;
+  if (!finalVerification) return [];
+  const assignments = currentFinalVerificationAssignments(mission, finalVerification);
+  const assignmentIds = assignments.map((assignment) => assignment.assignmentId).toSorted();
+  const issues: TeamMissionIssue[] = [];
+  if (
+    finalVerification.finalVerificationGate?.selection.kind !== "assigned" &&
+    assignmentIds.length > 0
+  ) {
+    issues.push({
+      kind: "awaiting_final_verification_has_assignment",
+      workstreamId: finalVerification.workstreamId,
+    });
+  }
+  const gate = finalVerification.finalVerificationGate;
+  const assignment = assignments.length === 1 ? assignments[0] : null;
+  if (assignmentIds.length > 1) {
+    issues.push({
+      kind: "multiple_final_verification_assignments",
+      workstreamId: finalVerification.workstreamId,
+      assignmentIds,
+    });
+  }
+  if (!assignment || gate?.selection.kind !== "assigned") return issues;
+  issues.push(...validateFinalVerificationAssignmentEvidence(mission, assignment, gate));
+  return issues;
+}
+
+export function validateFinalVerificationAssignmentEvidence(
+  mission: TeamMission,
+  assignment: MissionAssignmentContract,
+  gate: MissionFinalVerificationGate,
+): TeamMissionIssue[] {
+  if (
+    gate.selection.kind !== "assigned" ||
+    assignment.assigneeMemberId !== gate.selection.verifierMemberId ||
+    assignment.finalVerificationGateFingerprint !== gate.fingerprint ||
+    assignment.mutableScope.kind !== "read_only"
+  ) {
+    return [
+      {
+        kind: "final_verification_assignment_gate_mismatch",
+        assignmentId: assignment.assignmentId,
+      },
+    ];
+  }
+  const expectedAssignmentIds = gate.key.subjectAssignmentIds.toSorted();
+  const missionAssignmentIds = new Set(
+    mission.assignments.map((candidate) => candidate.assignmentId),
+  );
+  const referencesUnknownAssignment = [
+    ...assignment.subjectAssignmentIds,
+    ...assignment.dependencyAssignmentIds,
+  ].some((assignmentId) => !missionAssignmentIds.has(assignmentId));
+  if (
+    mission.status !== "completed" &&
+    !referencesUnknownAssignment &&
+    (!hasExactUniqueAssignmentIds(assignment.subjectAssignmentIds, expectedAssignmentIds) ||
+      !hasExactUniqueAssignmentIds(assignment.dependencyAssignmentIds, expectedAssignmentIds))
+  ) {
+    return [
+      {
+        kind: "invalid_final_verification_assignment_coverage",
+        verificationAssignmentId: assignment.assignmentId,
+        expectedAssignmentIds,
+        subjectAssignmentIds: assignment.subjectAssignmentIds.toSorted(),
+        dependencyAssignmentIds: assignment.dependencyAssignmentIds.toSorted(),
+      },
+    ];
+  }
+  const expectedReviewGateEvidence = expectedFinalReviewGateEvidence(mission);
+  const expectedReviewGateFingerprints = expectedReviewGateEvidence
+    .map((evidence) => evidence.gateKeyFingerprint)
+    .toSorted();
+  if (
+    !sameCanonicalValue(
+      canonicalReviewGateEvidence(assignment.reviewGateEvidence),
+      canonicalReviewGateEvidence(expectedReviewGateEvidence),
+    ) ||
+    !sameCanonicalValue(gate.key.reviewGateFingerprints, expectedReviewGateFingerprints)
+  ) {
+    return [
+      {
+        kind: "invalid_final_verification_review_evidence",
+        assignmentId: assignment.assignmentId,
+      },
+    ];
+  }
+  if (assignment.report === null) return [];
+  if (assignment.report.status !== "completed") {
+    return [
+      {
+        kind: "invalid_final_verification_report_evidence",
+        assignmentId: assignment.assignmentId,
+      },
+    ];
+  }
+  const evidence = assignment.report.finalVerificationEvidence;
+  return !evidence ||
+    evidence.finalGateFingerprint !== gate.fingerprint ||
+    evidence.verdict !== assignment.report.verdict ||
+    !sameCanonicalValue(
+      canonicalReviewGateEvidence(evidence.reviewGateEvidence),
+      canonicalReviewGateEvidence(assignment.reviewGateEvidence),
+    )
+    ? [
+        {
+          kind: "invalid_final_verification_report_evidence",
+          assignmentId: assignment.assignmentId,
+        },
+      ]
+    : [];
+}
+
+function expectedFinalReviewGateEvidence(mission: TeamMission): MissionReviewGateEvidence[] {
+  return mission.workstreams.flatMap<MissionReviewGateEvidence>((workstream) => {
+    const gate = workstream.reviewGate;
+    if (gate.kind !== "required") return [];
+    if (gate.outcome.kind === "approved") {
+      return [
+        {
+          kind: "approved" as const,
+          gateKey: gate.gateKey,
+          gateKeyFingerprint: gate.gateKeyFingerprint,
+          subjectFingerprint: gate.subjectFingerprint,
+          reviewAssignmentId: gate.outcome.reviewAssignmentId,
+          reportFingerprint: gate.outcome.reportFingerprint,
+          inheritedFromGateFingerprint: gate.outcome.inheritedFromGateFingerprint,
+        },
+      ];
+    }
+    if (gate.outcome.kind === "waived") {
+      const waiverId = gate.outcome.waiverId;
+      const waiver = mission.reviewWaivers.find((candidate) => candidate.waiverId === waiverId);
+      if (!waiver) return [];
+      return [
+        {
+          kind: "waived" as const,
+          gateKey: gate.gateKey,
+          gateKeyFingerprint: gate.gateKeyFingerprint,
+          subjectFingerprint: gate.subjectFingerprint,
+          waiverId,
+          connectionId: waiver.connectionId,
+          selfReportedClientLabel: waiver.selfReportedClientLabel,
+          reason: waiver.reason,
+        },
+      ];
+    }
+    return [];
+  });
+}
+
+function canonicalReviewGateEvidence(
+  evidence: ReadonlyArray<MissionReviewGateEvidence>,
+): MissionReviewGateEvidence[] {
+  return [...evidence].toSorted((left, right) =>
+    left.gateKeyFingerprint.localeCompare(right.gateKeyFingerprint),
+  );
+}
+
+function validateRosterSnapshot(snapshot: MissionRosterSnapshot): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  if (!snapshot.members.some((member) => member.memberId === snapshot.leadMemberId)) {
+    issues.push({
+      kind: "unknown_roster_lead",
+      snapshotRevision: snapshot.revision,
+      memberId: snapshot.leadMemberId,
+    });
+  }
+  for (const memberId of duplicateValues(snapshot.members.map((member) => member.memberId))) {
+    issues.push({
+      kind: "duplicate_roster_member_id",
+      snapshotRevision: snapshot.revision,
+      memberId,
+    });
+  }
+  for (const skillId of duplicateValues(snapshot.skills.map((skill) => skill.skillId))) {
+    issues.push({
+      kind: "duplicate_roster_skill_id",
+      snapshotRevision: snapshot.revision,
+      skillId,
+    });
+  }
+  const knownSkillIds = new Set(snapshot.skills.map((skill) => skill.skillId));
+  for (const member of snapshot.members) {
+    for (const skillId of new Set(member.skillIds)) {
+      if (knownSkillIds.has(skillId)) continue;
+      issues.push({
+        kind: "unknown_roster_member_skill",
+        snapshotRevision: snapshot.revision,
+        memberId: member.memberId,
+        skillId,
+      });
+    }
+  }
+  const canonicalMentionHandles = snapshot.members.map((member) => {
+    const canonical = member.mentionHandle.trim().toLowerCase();
+    if (
+      member.mentionHandle !== canonical ||
+      canonical === "everyone" ||
+      canonical === "team" ||
+      !isTeamMentionToken(canonical)
+    ) {
+      issues.push({
+        kind: "invalid_roster_mention_handle",
+        snapshotRevision: snapshot.revision,
+        memberId: member.memberId,
+        mentionHandle: member.mentionHandle,
+      });
+    }
+    return canonical;
+  });
+  for (const mentionHandle of duplicateValues(canonicalMentionHandles)) {
+    issues.push({
+      kind: "duplicate_roster_mention_handle",
+      snapshotRevision: snapshot.revision,
+      mentionHandle,
+    });
+  }
+  return issues;
+}
+
+function validateRosterSnapshots(mission: TeamMission): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  for (const snapshotRevision of duplicateValues(
+    mission.rosterSnapshots.map((snapshot) => snapshot.revision),
+  )) {
+    issues.push({ kind: "duplicate_roster_snapshot_revision", snapshotRevision });
+  }
+  for (const snapshot of mission.rosterSnapshots) {
+    issues.push(...validateRosterSnapshot(snapshot));
+  }
+  const snapshotRevisions = new Set(mission.rosterSnapshots.map((snapshot) => snapshot.revision));
+  if (!snapshotRevisions.has(mission.activeRosterSnapshotRevision)) {
+    issues.push({
+      kind: "unknown_active_roster_snapshot",
+      snapshotRevision: mission.activeRosterSnapshotRevision,
+    });
+  }
+  return issues;
+}
+
+function sameValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length && left.every((value, index) => sameValue(value, right[index]))
+    );
+  }
+  if (
+    left !== null &&
+    right !== null &&
+    typeof left === "object" &&
+    typeof right === "object" &&
+    !Array.isArray(left) &&
+    !Array.isArray(right)
+  ) {
+    const leftRecord = left as Record<string, unknown>;
+    const rightRecord = right as Record<string, unknown>;
+    const leftKeys = Object.keys(leftRecord).toSorted();
+    const rightKeys = Object.keys(rightRecord).toSorted();
+    return (
+      sameValue(leftKeys, rightKeys) &&
+      leftKeys.every((key) => sameValue(leftRecord[key], rightRecord[key]))
+    );
+  }
+  return false;
+}
+
+function candidatesFromExplanation(
+  snapshot: MissionRosterSnapshot,
+  explanation: MissionWorkstream["ownerMatchExplanation"],
+) {
+  if (explanation.candidateOpenAssignments.length !== snapshot.members.length) return null;
+  const candidates = snapshot.members.map((profile, index) => {
+    const recorded = explanation.candidateOpenAssignments[index];
+    if (!recorded || recorded.memberId !== profile.memberId) return null;
+    return { profile, openAssignments: recorded.openAssignments };
+  });
+  return candidates.some((candidate) => candidate === null)
+    ? null
+    : candidates.filter((candidate) => candidate !== null);
+}
+
+function recomputeOwnerMatch(workstream: MissionWorkstream, snapshot: MissionRosterSnapshot) {
+  const candidates = candidatesFromExplanation(snapshot, workstream.ownerMatchExplanation);
+  if (!candidates) return null;
+  const requirements =
+    workstream.kind === "verification"
+      ? {
+          requiredSkillIds: workstream.ownerMatchExplanation.requiredSkillIds,
+          preferredSkillIds: workstream.ownerMatchExplanation.preferredSkillIds,
+          requiredRuntimeCapabilityIds:
+            workstream.ownerMatchExplanation.requiredRuntimeCapabilityIds,
+          minimumLevel: workstream.ownerMatchExplanation.minimumLevel,
+        }
+      : ownerRequirements(workstream);
+  return matchWorkstreamOwner({
+    candidates,
+    ...requirements,
+    previousOwnerMemberId: workstream.ownerMatchExplanation.previousMemberId,
+  });
+}
+
+function recomputeReviewerMatch(workstream: MissionWorkstream, snapshot: MissionRosterSnapshot) {
+  const gate = workstream.reviewGate;
+  if (gate.kind !== "required" || gate.selection.kind !== "assigned") return null;
+  const candidates = candidatesFromExplanation(snapshot, gate.selection.matchExplanation);
+  if (!candidates) return null;
+  return matchWorkstreamReviewer({
+    candidates,
+    ...gate.requirements,
+    previousReviewerMemberId: gate.selection.matchExplanation.previousMemberId,
+    ownerMemberId: workstream.ownerMemberId,
+    ownerMutableScope: workstream.mutableScope,
+  });
+}
+
+function validateWorkstreamOwnerSelection(
+  workstream: MissionWorkstream,
+  snapshot: MissionRosterSnapshot,
+): TeamMissionIssue[] {
+  const owner = snapshot.members.find((member) => member.memberId === workstream.ownerMemberId);
+  if (!owner) {
+    return [
+      {
+        kind: "unknown_workstream_owner",
+        workstreamId: workstream.workstreamId,
+        memberId: workstream.ownerMemberId,
+        snapshotRevision: workstream.rosterSnapshotRevision,
+      },
+    ];
+  }
+  const issues: TeamMissionIssue[] = [];
+  const recomputedMatch = recomputeOwnerMatch(workstream, snapshot);
+  const recommendedMemberId = recomputedMatch?.kind === "matched" ? recomputedMatch.memberId : null;
+  if (
+    recomputedMatch?.kind !== "matched" ||
+    !sameValue(recomputedMatch.explanation, workstream.ownerMatchExplanation)
+  ) {
+    issues.push({ kind: "invalid_owner_match_explanation", workstreamId: workstream.workstreamId });
+  }
+  const ownerEligibilityRequirements =
+    workstream.kind === "verification"
+      ? workstream.ownerMatchExplanation
+      : ownerRequirements(workstream);
+  if (!memberMeetsHardRequirements(owner, ownerEligibilityRequirements)) {
+    issues.push({
+      kind: "ineligible_workstream_owner",
+      workstreamId: workstream.workstreamId,
+      memberId: workstream.ownerMemberId,
+    });
+  }
+  if (
+    recommendedMemberId !== null &&
+    workstream.ownerMemberId !== recommendedMemberId &&
+    workstream.ownerOverrideReason === null
+  ) {
+    issues.push({
+      kind: "unexplained_owner_override",
+      workstreamId: workstream.workstreamId,
+      recommendedMemberId,
+      selectedMemberId: workstream.ownerMemberId,
+    });
+  }
+  return issues;
+}
+
+function validateFinalVerificationGate(
+  workstream: MissionWorkstream,
+  snapshot: MissionRosterSnapshot,
+  writableOwnerMemberIds: ReadonlySet<string>,
+): TeamMissionIssue[] {
+  const gate = workstream.finalVerificationGate;
+  if (workstream.kind !== "verification") {
+    return gate === null
+      ? []
+      : [{ kind: "invalid_final_verification_gate", workstreamId: workstream.workstreamId }];
+  }
+  if (!gate) {
+    return [{ kind: "invalid_final_verification_gate", workstreamId: workstream.workstreamId }];
+  }
+  if (!isCanonicalFinalVerificationGate(workstream, gate)) {
+    return [{ kind: "invalid_final_verification_gate", workstreamId: workstream.workstreamId }];
+  }
+  const expected = expectedFinalVerifierSelection(gate, snapshot, writableOwnerMemberIds);
+  if (gate.selection.kind !== "assigned") {
+    return sameCanonicalValue(gate.selection, expected)
+      ? []
+      : [{ kind: "invalid_final_verification_gate", workstreamId: workstream.workstreamId }];
+  }
+  return validateAssignedFinalVerifier(
+    workstream,
+    gate,
+    expected,
+    snapshot,
+    writableOwnerMemberIds,
+  );
+}
+
+function isCanonicalFinalVerificationGate(
+  workstream: MissionWorkstream,
+  gate: MissionFinalVerificationGate,
+): boolean {
+  const canonicalSubjectAssignmentIds = [...new Set(gate.key.subjectAssignmentIds)].toSorted();
+  const canonicalReviewGateFingerprints = [...new Set(gate.key.reviewGateFingerprints)].toSorted();
+  const rebuilt = buildMissionFinalVerificationGate({
+    workstreamId: gate.key.workstreamId,
+    planRevision: gate.key.planRevision,
+    methodologySnapshotRevision: gate.key.methodologySnapshotRevision,
+    subjectAssignmentIds: gate.key.subjectAssignmentIds,
+    reviewGateFingerprints: gate.key.reviewGateFingerprints,
+    requirements: gate.key.requirements,
+    selection: gate.selection,
+  });
+  return !(
+    gate.key.workstreamId !== workstream.workstreamId ||
+    gate.key.planRevision !== workstream.planRevision ||
+    gate.key.methodologySnapshotRevision !== workstream.methodologySnapshotRevision ||
+    !sameCanonicalValue(gate.key.subjectAssignmentIds, canonicalSubjectAssignmentIds) ||
+    !sameCanonicalValue(gate.key.reviewGateFingerprints, canonicalReviewGateFingerprints) ||
+    !sameCanonicalValue(gate.key.requirements, ownerRequirements(workstream)) ||
+    gate.fingerprint !== rebuilt.fingerprint
+  );
+}
+
+function expectedFinalVerifierSelection(
+  gate: MissionFinalVerificationGate,
+  snapshot: MissionRosterSnapshot,
+  writableOwnerMemberIds: ReadonlySet<string>,
+): MissionFinalVerificationGate["selection"] {
+  const candidateLoads =
+    gate.selection.kind === "assigned"
+      ? new Map(
+          gate.selection.matchExplanation.candidateOpenAssignments.map((candidate) => [
+            candidate.memberId,
+            candidate.openAssignments,
+          ]),
+        )
+      : new Map<string, number>();
+  return matchMissionFinalVerifier({
+    candidates: snapshot.members.map((profile) => ({
+      profile,
+      openAssignments: candidateLoads.get(profile.memberId) ?? 0,
+    })),
+    ...gate.key.requirements,
+    previousVerifierMemberId:
+      gate.selection.kind === "assigned" ? gate.selection.matchExplanation.previousMemberId : null,
+    writableOwnerMemberIds,
+  });
+}
+
+function validateAssignedFinalVerifier(
+  workstream: MissionWorkstream,
+  gate: MissionFinalVerificationGate,
+  expected: MissionFinalVerificationGate["selection"],
+  snapshot: MissionRosterSnapshot,
+  writableOwnerMemberIds: ReadonlySet<string>,
+): TeamMissionIssue[] {
+  if (gate.selection.kind !== "assigned") return [];
+  const assignedSelection = gate.selection;
+  const verifier = snapshot.members.find(
+    (member) => member.memberId === assignedSelection.verifierMemberId,
+  );
+  if (!verifier || !memberMeetsHardRequirements(verifier, gate.key.requirements)) {
+    return [{ kind: "invalid_final_verification_gate", workstreamId: workstream.workstreamId }];
+  }
+  if (writableOwnerMemberIds.has(assignedSelection.verifierMemberId)) {
+    const hasIndependentAlternative = snapshot.members.some(
+      (member) =>
+        !writableOwnerMemberIds.has(member.memberId) &&
+        memberMeetsHardRequirements(member, gate.key.requirements),
+    );
+    if (hasIndependentAlternative) {
+      return [
+        {
+          kind: "non_independent_final_verification",
+          workstreamId: workstream.workstreamId,
+          memberId: assignedSelection.verifierMemberId,
+        },
+      ];
+    }
+    if (assignedSelection.independenceExceptionReason === null) {
+      return [
+        {
+          kind: "undocumented_final_verification_exception",
+          workstreamId: workstream.workstreamId,
+          memberId: assignedSelection.verifierMemberId,
+        },
+      ];
+    }
+  }
+  return expected.kind === "assigned" &&
+    expected.verifierMemberId === assignedSelection.verifierMemberId &&
+    (expected.independenceExceptionReason === null) ===
+      (assignedSelection.independenceExceptionReason === null)
+    ? []
+    : [{ kind: "invalid_final_verification_gate", workstreamId: workstream.workstreamId }];
+}
+
+function validateReviewerMatchAudit(
+  workstream: MissionWorkstream,
+  snapshot: MissionRosterSnapshot,
+  reviewerMemberId: string,
+): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  const recomputedMatch = recomputeReviewerMatch(workstream, snapshot);
+  const recommendedMemberId = recomputedMatch?.kind === "matched" ? recomputedMatch.memberId : null;
+  if (
+    recomputedMatch?.kind !== "matched" ||
+    workstream.reviewGate.kind !== "required" ||
+    workstream.reviewGate.selection.kind !== "assigned" ||
+    !sameValue(recomputedMatch.explanation, workstream.reviewGate.selection.matchExplanation)
+  ) {
+    issues.push({
+      kind: "invalid_reviewer_match_explanation",
+      workstreamId: workstream.workstreamId,
+    });
+  }
+  if (
+    recommendedMemberId !== null &&
+    reviewerMemberId !== recommendedMemberId &&
+    workstream.reviewGate.kind === "required" &&
+    workstream.reviewGate.selection.kind === "assigned" &&
+    workstream.reviewGate.selection.overrideReason === null
+  ) {
+    issues.push({
+      kind: "unexplained_reviewer_override",
+      workstreamId: workstream.workstreamId,
+      recommendedMemberId,
+      selectedMemberId: reviewerMemberId,
+    });
+  }
+  return issues;
+}
+
+function validateReviewerIndependence(
+  workstream: MissionWorkstream,
+  snapshot: MissionRosterSnapshot,
+  requirements: MissionMemberRequirements,
+  reviewerMemberId: string,
+): TeamMissionIssue[] {
+  if (
+    workstream.mutableScope.kind === "read_only" ||
+    reviewerMemberId !== workstream.ownerMemberId
+  ) {
+    return [];
+  }
+  const hasIndependentAlternative = snapshot.members.some(
+    (member) =>
+      member.memberId !== workstream.ownerMemberId &&
+      memberMeetsHardRequirements(member, requirements),
+  );
+  if (hasIndependentAlternative) {
+    return [
+      {
+        kind: "non_independent_workstream_reviewer",
+        workstreamId: workstream.workstreamId,
+        memberId: reviewerMemberId,
+      },
+    ];
+  }
+  return workstream.reviewGate.kind === "required" &&
+    workstream.reviewGate.selection.kind === "assigned" &&
+    workstream.reviewGate.selection.overrideReason === null
+    ? [
+        {
+          kind: "undocumented_workstream_review_exception",
+          workstreamId: workstream.workstreamId,
+          memberId: reviewerMemberId,
+        },
+      ]
+    : [];
+}
+
+function validateWorkstreamReviewSelection(
+  workstream: MissionWorkstream,
+  snapshot: MissionRosterSnapshot,
+  policyRequiresReview: boolean,
+): TeamMissionIssue[] {
+  const gate = workstream.reviewGate;
+  if (gate.kind === "none") {
+    return policyRequiresReview &&
+      workstream.kind !== "verification" &&
+      workstream.mutableScope.kind !== "read_only"
+      ? [{ kind: "invalid_review_gate", workstreamId: workstream.workstreamId }]
+      : [];
+  }
+  const canonicalSubjectIds = [...new Set(gate.gateKey.subject.subjectAssignmentIds)].toSorted();
+  if (
+    gate.gateKey.subject.workstreamId !== workstream.workstreamId ||
+    gate.gateKey.planRevision !== workstream.planRevision ||
+    !sameCanonicalValue(gate.gateKey.subject.subjectAssignmentIds, canonicalSubjectIds) ||
+    gate.gateKeyFingerprint !== missionReviewGateKeyFingerprint(gate.gateKey) ||
+    gate.subjectFingerprint !== missionReviewSubjectFingerprint(gate.gateKey.subject)
+  ) {
+    return [{ kind: "invalid_review_gate", workstreamId: workstream.workstreamId }];
+  }
+  const match = matchWorkstreamReviewer({
+    candidates: snapshot.members.map((profile) => ({
+      profile,
+      openAssignments:
+        gate.selection.kind === "assigned"
+          ? (gate.selection.matchExplanation.candidateOpenAssignments.find(
+              (candidate) => candidate.memberId === profile.memberId,
+            )?.openAssignments ?? 0)
+          : 0,
+    })),
+    ...gate.requirements,
+    previousReviewerMemberId:
+      gate.selection.kind === "assigned" ? gate.selection.matchExplanation.previousMemberId : null,
+    ownerMemberId: workstream.ownerMemberId,
+    ownerMutableScope: workstream.mutableScope,
+  });
+  if (gate.selection.kind !== "assigned") {
+    const requiredSkills = new Set(gate.requirements.requiredSkillIds);
+    const unknownCandidateMemberIds = snapshot.members
+      .filter(
+        (member) =>
+          member.memberId !== workstream.ownerMemberId &&
+          member.level >= gate.requirements.minimumLevel &&
+          [...requiredSkills].every((skillId) => member.skillIds.includes(skillId)) &&
+          member.capabilityFacts.kind === "unknown",
+      )
+      .map((member) => member.memberId);
+    const validWaitingSelection =
+      match.kind === "unmatched" &&
+      (gate.selection.kind === "awaiting_reviewer"
+        ? unknownCandidateMemberIds.length === 0
+        : sameCanonicalValue(gate.selection.candidateMemberIds, unknownCandidateMemberIds));
+    return validWaitingSelection
+      ? []
+      : [{ kind: "invalid_review_gate", workstreamId: workstream.workstreamId }];
+  }
+  const reviewerRequirements = gate.requirements;
+  const reviewerMemberId = gate.selection.reviewerMemberId;
+  const reviewer = snapshot.members.find((member) => member.memberId === reviewerMemberId);
+  if (!reviewer) {
+    return [
+      {
+        kind: "unknown_workstream_reviewer",
+        workstreamId: workstream.workstreamId,
+        memberId: reviewerMemberId,
+      },
+    ];
+  }
+  if (!memberMeetsHardRequirements(reviewer, reviewerRequirements)) {
+    return [
+      {
+        kind: "ineligible_workstream_reviewer",
+        workstreamId: workstream.workstreamId,
+        memberId: reviewerMemberId,
+      },
+    ];
+  }
+  const issues = validateReviewerMatchAudit(workstream, snapshot, reviewerMemberId);
+  issues.push(
+    ...validateReviewerIndependence(workstream, snapshot, reviewerRequirements, reviewerMemberId),
+  );
+  return issues;
+}
+
+function validateReviewGateOutcomes(
+  mission: TeamMission,
+  workstreamByRevision: WorkstreamRevisionIndex,
+  context: ValidateTeamMissionContext,
+): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  const coverage = resolveMissionAssignmentCoverage(mission, context);
+  for (const workstream of mission.workstreams) {
+    const gate = workstream.reviewGate;
+    if (gate.kind !== "required" || gate.outcome.kind === "pending") continue;
+    if (
+      !isReviewGateSettledByEvidence(mission, workstream, workstreamByRevision, context, coverage)
+    ) {
+      issues.push({ kind: "invalid_review_gate_outcome", workstreamId: workstream.workstreamId });
+    }
+  }
+  return issues;
+}
+
+function validateReviewWaiverAggregate(mission: TeamMission): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  for (const waiverId of duplicateValues(mission.reviewWaivers.map((waiver) => waiver.waiverId))) {
+    issues.push({ kind: "duplicate_review_waiver_id", waiverId });
+  }
+  for (const gateKeyFingerprint of duplicateValues(
+    mission.reviewWaivers.map((waiver) => waiver.gateKeyFingerprint),
+  )) {
+    issues.push({ kind: "duplicate_review_waiver_gate", gateKeyFingerprint });
+  }
+  for (const attentionId of duplicateValues(
+    mission.reviewWaivers.map((waiver) => waiver.attentionId),
+  )) {
+    issues.push({ kind: "duplicate_review_waiver_attention", attentionId });
+  }
+  const allWorkstreams = [
+    ...mission.workstreams,
+    ...mission.workstreamPlanSnapshots.flatMap((snapshot) => snapshot.workstreams),
+  ];
+  for (const waiver of mission.reviewWaivers) {
+    const workstreams = allWorkstreams.filter((workstream) => {
+      const gate = workstream.reviewGate;
+      return gate.kind === "required" && gate.gateKeyFingerprint === waiver.gateKeyFingerprint;
+    });
+    const attentions = mission.attentionItems.filter(
+      (attention) => attention.attentionId === waiver.attentionId,
+    );
+    if (
+      workstreams.length !== 1 ||
+      attentions.length !== 1 ||
+      !isValidReviewWaiverForWorkstream(mission, waiver, workstreams[0]!, attentions[0])
+    ) {
+      issues.push({ kind: "invalid_review_waiver", waiverId: waiver.waiverId });
+    }
+  }
+  return issues;
+}
+
+function isValidReviewWaiverForWorkstream(
+  mission: TeamMission,
+  waiver: MissionReviewWaiver,
+  workstream: MissionWorkstream,
+  attention: MissionAttentionItem,
+): boolean {
+  const gate = workstream.reviewGate;
+  if (
+    gate.kind !== "required" ||
+    gate.outcome.kind !== "waived" ||
+    gate.outcome.waiverId !== waiver.waiverId ||
+    gate.selection.kind !== "awaiting_reviewer" ||
+    workstream.kind === "verification" ||
+    mission.methodologySnapshot.hardPolicy.review.operatorWaiver !== "allowed_with_reason" ||
+    gate.gateKeyFingerprint !== missionReviewGateKeyFingerprint(gate.gateKey) ||
+    gate.subjectFingerprint !== missionReviewSubjectFingerprint(gate.gateKey.subject) ||
+    gate.outcome.gateKeyFingerprint !== gate.gateKeyFingerprint ||
+    gate.outcome.subjectFingerprint !== gate.subjectFingerprint ||
+    gate.gateKey.subject.workstreamId !== workstream.workstreamId ||
+    gate.gateKey.planRevision !== workstream.planRevision ||
+    !isValidReviewWaiverRecord(
+      waiver,
+      gate.gateKey,
+      gate.gateKeyFingerprint,
+      gate.subjectFingerprint,
+      gate.outcome.decidedAt,
+    )
+  ) {
+    return false;
+  }
+  const snapshots = mission.rosterSnapshots.filter(
+    (snapshot) => snapshot.revision === workstream.rosterSnapshotRevision,
+  );
+  return (
+    snapshots.length === 1 &&
+    hasValidReviewSelectionEvidence(mission, workstream, snapshots[0]!) &&
+    isValidReviewWaiverAttention(
+      attention,
+      waiver,
+      workstream.workstreamId,
+      gate.gateKey,
+      gate.gateKeyFingerprint,
+      gate.subjectFingerprint,
+    )
+  );
+}
+
+export function isMissionReviewGateSettledByEvidence(
+  mission: TeamMission,
+  workstreamId: string,
+  context: ValidateTeamMissionContext,
+): boolean {
+  const workstreams = mission.workstreams.filter(
+    (workstream) => workstream.workstreamId === workstreamId,
+  );
+  if (workstreams.length !== 1) return false;
+  return isReviewGateSettledByEvidence(
+    mission,
+    workstreams[0]!,
+    buildWorkstreamRevisionIndex(mission),
+    context,
+    resolveMissionAssignmentCoverage(mission, context),
+  );
+}
+
+export function resolveMissionSettledReviewGateWorkstreamIds(
+  mission: TeamMission,
+  context: ValidateTeamMissionContext,
+): ReadonlySet<string> {
+  const workstreamByRevision = buildWorkstreamRevisionIndex(mission);
+  const coverage = resolveMissionAssignmentCoverage(mission, context);
+  return new Set(
+    mission.workstreams
+      .filter((workstream) =>
+        isReviewGateSettledByEvidence(mission, workstream, workstreamByRevision, context, coverage),
+      )
+      .map((workstream) => workstream.workstreamId),
+  );
+}
+
+function isReviewGateSettledByEvidence(
+  mission: TeamMission,
+  workstream: MissionWorkstream,
+  workstreamByRevision: WorkstreamRevisionIndex,
+  context: ValidateTeamMissionContext,
+  coverage: MissionAssignmentCoverage,
+): boolean {
+  const gate = workstream.reviewGate;
+  if (gate.kind === "none") {
+    return !missionPolicyRequiresReview(mission, workstream);
+  }
+  if (!hasValidReviewGateIdentity(workstream)) return false;
+  const deliveryAssignmentId = coverage.assignmentIdsByWorkstreamId.get(workstream.workstreamId);
+  if (
+    !deliveryAssignmentId ||
+    !coverage.completedDeliveryAssignmentIds.has(deliveryAssignmentId) ||
+    !sameCanonicalValue(gate.gateKey.subject.subjectAssignmentIds, [deliveryAssignmentId])
+  ) {
+    return false;
+  }
+  const snapshots = mission.rosterSnapshots.filter(
+    (snapshot) => snapshot.revision === workstream.rosterSnapshotRevision,
+  );
+  if (snapshots.length !== 1) return false;
+  if (!hasValidReviewSelectionEvidence(mission, workstream, snapshots[0]!)) return false;
+  if (gate.outcome.kind === "waived") {
+    return isValidWaivedReviewGateOutcome(mission, workstream);
+  }
+  if (gate.outcome.kind !== "approved") return false;
+  const reviewAssignmentId = gate.outcome.reviewAssignmentId;
+  const assignments = mission.assignments.filter(
+    (assignment) => assignment.assignmentId === reviewAssignmentId,
+  );
+  return (
+    assignments.length === 1 &&
+    isValidApprovedReviewGateOutcome(
+      mission,
+      workstream,
+      assignments[0],
+      workstreamByRevision,
+      context,
+    )
+  );
+}
+
+function missionPolicyRequiresReview(mission: TeamMission, workstream: MissionWorkstream): boolean {
+  return (
+    mission.methodologySnapshot.hardPolicy.review.writableWorkstreams === "independent_required" &&
+    workstream.kind !== "verification" &&
+    workstream.mutableScope.kind !== "read_only"
+  );
+}
+
+function hasValidReviewGateIdentity(workstream: MissionWorkstream): boolean {
+  const gate = workstream.reviewGate;
+  if (gate.kind !== "required" || gate.outcome.kind === "pending") return false;
+  if (gate.gateKey.subject.workstreamId !== workstream.workstreamId) return false;
+  if (gate.gateKey.planRevision !== workstream.planRevision) return false;
+  if (gate.gateKeyFingerprint !== missionReviewGateKeyFingerprint(gate.gateKey)) return false;
+  if (gate.subjectFingerprint !== missionReviewSubjectFingerprint(gate.gateKey.subject)) {
+    return false;
+  }
+  return (
+    gate.outcome.gateKeyFingerprint === gate.gateKeyFingerprint &&
+    gate.outcome.subjectFingerprint === gate.subjectFingerprint
+  );
+}
+
+function hasValidReviewSelectionEvidence(
+  mission: TeamMission,
+  workstream: MissionWorkstream,
+  snapshot: MissionRosterSnapshot,
+): boolean {
+  const gate = workstream.reviewGate;
+  if (gate.kind !== "required") return false;
+  if (gate.selection.kind !== "assigned") {
+    return (
+      validateWorkstreamReviewSelection(
+        workstream,
+        snapshot,
+        missionPolicyRequiresReview(mission, workstream),
+      ).length === 0
+    );
+  }
+  const reviewerMemberId = gate.selection.reviewerMemberId;
+  const reviewer = snapshot.members.find((member) => member.memberId === reviewerMemberId);
+  if (
+    !reviewer ||
+    reviewerMemberId === workstream.ownerMemberId ||
+    !memberMeetsHardRequirements(reviewer, gate.requirements)
+  ) {
+    return false;
+  }
+  return (
+    validateReviewerMatchAudit(workstream, snapshot, reviewerMemberId).length === 0 &&
+    validateReviewerIndependence(workstream, snapshot, gate.requirements, reviewer.memberId)
+      .length === 0
+  );
+}
+
+function isValidApprovedReviewGateOutcome(
+  mission: TeamMission,
+  workstream: MissionWorkstream,
+  assignment: MissionAssignmentContract | undefined,
+  workstreamByRevision: WorkstreamRevisionIndex,
+  context: ValidateTeamMissionContext,
+): boolean {
+  const gate = workstream.reviewGate;
+  if (
+    gate.kind !== "required" ||
+    gate.outcome.kind !== "approved" ||
+    gate.selection.kind !== "assigned" ||
+    !assignment
+  ) {
+    return false;
+  }
+  if (
+    !hasApprovedReviewAssignmentEvidence(
+      assignment,
+      workstream,
+      gate.selection.reviewerMemberId,
+      gate.outcome.inheritedFromGateFingerprint ?? gate.gateKeyFingerprint,
+      gate.subjectFingerprint,
+      gate.gateKey.subject.subjectAssignmentIds,
+      gate.outcome.reportFingerprint,
+      workstreamByRevision,
+      context,
+    )
+  ) {
+    return false;
+  }
+  const inheritedFingerprint = gate.outcome.inheritedFromGateFingerprint;
+  if (inheritedFingerprint === null) {
+    return assignment.reviewGateFingerprint === gate.gateKeyFingerprint;
+  }
+  const historicalWorkstream = validHistoricalApprovedReviewWorkstream(
+    mission,
+    workstream,
+    inheritedFingerprint,
+  );
+  if (!historicalWorkstream) return false;
+  const historicalGate = historicalWorkstream.reviewGate;
+  if (
+    historicalGate.kind !== "required" ||
+    historicalGate.outcome.kind !== "approved" ||
+    historicalGate.selection.kind !== "assigned"
+  ) {
+    return false;
+  }
+  const historicalSnapshots = mission.rosterSnapshots.filter(
+    (snapshot) => snapshot.revision === historicalWorkstream.rosterSnapshotRevision,
+  );
+  if (historicalSnapshots.length !== 1) return false;
+  if (!hasValidReviewSelectionEvidence(mission, historicalWorkstream, historicalSnapshots[0]!)) {
+    return false;
+  }
+  return hasApprovedReviewAssignmentEvidence(
+    assignment,
+    historicalWorkstream,
+    historicalGate.selection.reviewerMemberId,
+    historicalGate.gateKeyFingerprint,
+    historicalGate.subjectFingerprint,
+    historicalGate.gateKey.subject.subjectAssignmentIds,
+    historicalGate.outcome.reportFingerprint,
+    workstreamByRevision,
+    context,
+  );
+}
+
+function validHistoricalApprovedReviewWorkstream(
+  mission: TeamMission,
+  currentWorkstream: MissionWorkstream,
+  inheritedFingerprint: string,
+): MissionWorkstream | null {
+  const historicalWorkstreams = mission.workstreamPlanSnapshots.flatMap((snapshot) =>
+    snapshot.workstreams.filter(
+      (candidate) =>
+        candidate.workstreamId === currentWorkstream.workstreamId &&
+        candidate.reviewGate.kind === "required" &&
+        candidate.reviewGate.gateKeyFingerprint === inheritedFingerprint,
+    ),
+  );
+  if (historicalWorkstreams.length !== 1) return null;
+  const historicalWorkstream = historicalWorkstreams[0]!;
+  const historicalGate = historicalWorkstream.reviewGate;
+  const currentGate = currentWorkstream.reviewGate;
+  if (
+    currentGate.kind !== "required" ||
+    currentGate.outcome.kind !== "approved" ||
+    historicalGate.kind !== "required" ||
+    historicalGate.outcome.kind !== "approved" ||
+    historicalGate.selection.kind !== "assigned" ||
+    historicalGate.gateKeyFingerprint !== missionReviewGateKeyFingerprint(historicalGate.gateKey) ||
+    historicalGate.subjectFingerprint !==
+      missionReviewSubjectFingerprint(historicalGate.gateKey.subject) ||
+    historicalGate.outcome.gateKeyFingerprint !== historicalGate.gateKeyFingerprint ||
+    historicalGate.outcome.subjectFingerprint !== historicalGate.subjectFingerprint ||
+    historicalGate.outcome.inheritedFromGateFingerprint !== null ||
+    historicalGate.outcome.reviewAssignmentId !== currentGate.outcome.reviewAssignmentId ||
+    historicalGate.outcome.reportFingerprint !== currentGate.outcome.reportFingerprint ||
+    historicalGate.subjectFingerprint !== currentGate.subjectFingerprint ||
+    !sameCanonicalValue(
+      historicalGate.gateKey.subject.subjectAssignmentIds,
+      currentGate.gateKey.subject.subjectAssignmentIds,
+    ) ||
+    !sameReusableWorkstreamContract(historicalWorkstream, currentWorkstream, "review")
+  ) {
+    return null;
+  }
+  return historicalWorkstream;
+}
+
+function hasApprovedReviewAssignmentEvidence(
+  assignment: MissionAssignmentContract,
+  workstream: MissionWorkstream,
+  reviewerMemberId: string,
+  gateKeyFingerprint: string,
+  subjectFingerprint: string,
+  subjectAssignmentIds: ReadonlyArray<string>,
+  reportFingerprint: string,
+  workstreamByRevision: WorkstreamRevisionIndex,
+  context: ValidateTeamMissionContext,
+): boolean {
+  if (assignment.kind !== "review" || assignment.workstreamId !== workstream.workstreamId) {
+    return false;
+  }
+  if (!assignmentCanSatisfyWorkstream(assignment, workstream, workstreamByRevision)) return false;
+  if (!isCompletedAssignment(assignment, "review", "approved", context)) return false;
+  if (assignment.assigneeMemberId !== reviewerMemberId) return false;
+  if (assignment.reviewGateFingerprint !== gateKeyFingerprint) return false;
+  if (assignment.reviewSubjectFingerprint !== subjectFingerprint) return false;
+  if (!sameCanonicalValue(assignment.subjectAssignmentIds, subjectAssignmentIds)) return false;
+  if (!sameCanonicalValue(assignment.dependencyAssignmentIds, subjectAssignmentIds)) return false;
+  return (
+    assignment.report?.status === "completed" &&
+    missionReviewReportFingerprint(assignment.report) === reportFingerprint
+  );
+}
+
+function isValidWaivedReviewGateOutcome(
+  mission: TeamMission,
+  workstream: MissionWorkstream,
+): boolean {
+  const gate = workstream.reviewGate;
+  if (
+    gate.kind !== "required" ||
+    gate.outcome.kind !== "waived" ||
+    gate.selection.kind !== "awaiting_reviewer" ||
+    workstream.kind === "verification" ||
+    mission.methodologySnapshot.hardPolicy.review.operatorWaiver !== "allowed_with_reason"
+  ) {
+    return false;
+  }
+  const outcome = gate.outcome;
+  const waivers = mission.reviewWaivers.filter(
+    (waiver) => waiver.gateKeyFingerprint === gate.gateKeyFingerprint,
+  );
+  if (waivers.length !== 1 || waivers[0]!.waiverId !== outcome.waiverId) return false;
+  const waiver = waivers[0]!;
+  if (
+    !isValidReviewWaiverRecord(
+      waiver,
+      gate.gateKey,
+      gate.gateKeyFingerprint,
+      gate.subjectFingerprint,
+      outcome.decidedAt,
+    )
+  ) {
+    return false;
+  }
+  const attentions = mission.attentionItems.filter(
+    (item) =>
+      item.kind === "review_gate_reviewer_unavailable" &&
+      item.reviewGateDetails.gateKeyFingerprint === gate.gateKeyFingerprint,
+  );
+  if (attentions.length !== 1 || attentions[0]!.attentionId !== waiver.attentionId) return false;
+  return isValidReviewWaiverAttention(
+    attentions[0],
+    waiver,
+    workstream.workstreamId,
+    gate.gateKey,
+    gate.gateKeyFingerprint,
+    gate.subjectFingerprint,
+  );
+}
+
+function isValidReviewWaiverRecord(
+  waiver: MissionReviewWaiver,
+  gateKey: MissionReviewGateKey,
+  gateKeyFingerprint: string,
+  subjectFingerprint: string,
+  decidedAt: string,
+): boolean {
+  return (
+    sameCanonicalValue(waiver.gateKey, gateKey) &&
+    waiver.gateKeyFingerprint === gateKeyFingerprint &&
+    waiver.subjectFingerprint === subjectFingerprint &&
+    waiver.createdAt === decidedAt
+  );
+}
+
+function isValidReviewWaiverAttention(
+  attention: MissionAttentionItem | undefined,
+  waiver: MissionReviewWaiver,
+  workstreamId: string,
+  gateKey: MissionReviewGateKey,
+  gateKeyFingerprint: string,
+  subjectFingerprint: string,
+): boolean {
+  if (
+    attention?.kind !== "review_gate_reviewer_unavailable" ||
+    attention.status !== "resolved" ||
+    attention.priorMissionStatus !== null ||
+    attention.scope.kind !== "workstream"
+  ) {
+    return false;
+  }
+  const details = attention.reviewGateDetails;
+  const resolution = attention.resolution;
+  if (resolution?.kind !== "waive_review") return false;
+  return (
+    attention.attentionId === waiver.attentionId &&
+    attention.scope.workstreamId === workstreamId &&
+    sameCanonicalValue(details.gateKey, gateKey) &&
+    details.gateKeyFingerprint === gateKeyFingerprint &&
+    details.subjectFingerprint === subjectFingerprint &&
+    resolution.connectionId === waiver.connectionId &&
+    resolution.selfReportedClientLabel === waiver.selfReportedClientLabel &&
+    resolution.gateKeyFingerprint === waiver.gateKeyFingerprint &&
+    resolution.subjectFingerprint === waiver.subjectFingerprint &&
+    resolution.reason === waiver.reason &&
+    resolution.resolvedAt === waiver.createdAt
+  );
+}
+
+function validateWorkstreamSelections(
+  workstreams: ReadonlyArray<MissionWorkstream>,
+  expectedPlanRevision: number,
+  snapshotByRevision: ReadonlyMap<number, MissionRosterSnapshot>,
+  requiresIndependentWritableReviews: boolean,
+): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  const writableOwnerMemberIds = new Set(
+    workstreams
+      .filter(
+        (workstream) =>
+          workstream.kind !== "verification" && workstream.mutableScope.kind !== "read_only",
+      )
+      .map((workstream) => workstream.ownerMemberId),
+  );
+  for (const workstream of workstreams) {
+    if (workstream.planRevision !== expectedPlanRevision) {
+      issues.push({
+        kind: "workstream_plan_revision_mismatch",
+        workstreamId: workstream.workstreamId,
+        planRevision: workstream.planRevision,
+      });
+    }
+    const snapshot = snapshotByRevision.get(workstream.rosterSnapshotRevision);
+    if (!snapshot) {
+      issues.push({
+        kind: "unknown_workstream_roster_snapshot",
+        workstreamId: workstream.workstreamId,
+        snapshotRevision: workstream.rosterSnapshotRevision,
+      });
+      continue;
+    }
+    if (
+      new Set(snapshot.members.map((member) => member.memberId)).size !== snapshot.members.length
+    ) {
+      continue;
+    }
+    issues.push(...validateWorkstreamOwnerSelection(workstream, snapshot));
+    issues.push(...validateFinalVerificationGate(workstream, snapshot, writableOwnerMemberIds));
+    issues.push(
+      ...validateWorkstreamReviewSelection(
+        workstream,
+        snapshot,
+        requiresIndependentWritableReviews &&
+          workstream.kind !== "verification" &&
+          workstream.mutableScope.kind !== "read_only",
+      ),
+    );
+  }
+  return issues;
+}
+
+type WorkstreamRevisionIndex = ReadonlyMap<string, MissionWorkstream>;
+
+function workstreamRevisionKey(planRevision: number, workstreamId: string): string {
+  return `${planRevision}\0${workstreamId}`;
+}
+
+function buildWorkstreamRevisionIndex(mission: TeamMission): WorkstreamRevisionIndex {
+  const workstreamByRevision = new Map<string, MissionWorkstream>();
+  for (const workstream of mission.workstreams) {
+    workstreamByRevision.set(
+      workstreamRevisionKey(workstream.planRevision, workstream.workstreamId),
+      workstream,
+    );
+  }
+  for (const snapshot of mission.workstreamPlanSnapshots) {
+    for (const workstream of snapshot.workstreams) {
+      const key = workstreamRevisionKey(snapshot.planRevision, workstream.workstreamId);
+      if (!workstreamByRevision.has(key)) workstreamByRevision.set(key, workstream);
+    }
+  }
+  return workstreamByRevision;
+}
+
+function validateWorkstreamPlanSnapshots(
+  mission: TeamMission,
+  snapshotByRevision: ReadonlyMap<number, MissionRosterSnapshot>,
+): { issues: TeamMissionIssue[]; workstreamByRevision: WorkstreamRevisionIndex } {
+  const issues: TeamMissionIssue[] = [];
+  const workstreamByRevision = new Map<string, MissionWorkstream>();
+  for (const workstream of mission.workstreams) {
+    workstreamByRevision.set(
+      workstreamRevisionKey(workstream.planRevision, workstream.workstreamId),
+      workstream,
+    );
+  }
+  for (const planRevision of duplicateValues(
+    mission.workstreamPlanSnapshots.map((snapshot) => snapshot.planRevision),
+  )) {
+    issues.push({ kind: "duplicate_workstream_plan_snapshot_revision", planRevision });
+  }
+  for (const snapshot of mission.workstreamPlanSnapshots) {
+    if (snapshot.planRevision >= mission.planRevision) {
+      issues.push({
+        kind: "non_historical_workstream_plan_snapshot",
+        planRevision: snapshot.planRevision,
+      });
+    }
+    const planValidation = validateMissionWorkstreams(snapshot.workstreams);
+    if (!planValidation.ok) issues.push(...planValidation.issues);
+    const finalVerifications = snapshot.workstreams.filter(
+      (workstream) => workstream.kind === "verification",
+    );
+    issues.push(...validateFinalVerificationPlan(snapshot.workstreams, finalVerifications));
+    issues.push(
+      ...validateWorkstreamSelections(
+        snapshot.workstreams,
+        snapshot.planRevision,
+        snapshotByRevision,
+        mission.methodologySnapshot.hardPolicy.review.writableWorkstreams ===
+          "independent_required",
+      ),
+    );
+    for (const workstream of snapshot.workstreams) {
+      if (workstream.planRevision !== snapshot.planRevision) {
+        issues.push({
+          kind: "workstream_plan_snapshot_revision_mismatch",
+          snapshotRevision: snapshot.planRevision,
+          workstreamId: workstream.workstreamId,
+          planRevision: workstream.planRevision,
+        });
+        continue;
+      }
+      const key = workstreamRevisionKey(snapshot.planRevision, workstream.workstreamId);
+      if (!workstreamByRevision.has(key)) workstreamByRevision.set(key, workstream);
+    }
+  }
+  return { issues, workstreamByRevision };
+}
+
+function validateAssignmentSnapshotReferences(
+  mission: TeamMission,
+  snapshotByRevision: ReadonlyMap<number, MissionRosterSnapshot>,
+): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  for (const assignment of mission.assignments) {
+    const snapshot = snapshotByRevision.get(assignment.rosterSnapshotRevision);
+    if (!snapshot) {
+      issues.push({
+        kind: "unknown_assignment_roster_snapshot",
+        assignmentId: assignment.assignmentId,
+        snapshotRevision: assignment.rosterSnapshotRevision,
+      });
+      continue;
+    }
+    if (!snapshot.members.some((member) => member.memberId === assignment.assigneeMemberId)) {
+      issues.push({
+        kind: "unknown_assignment_assignee",
+        assignmentId: assignment.assignmentId,
+        memberId: assignment.assigneeMemberId,
+        snapshotRevision: assignment.rosterSnapshotRevision,
+      });
+    }
+  }
+  return issues;
+}
+
+interface ParticipantBindingValidation {
+  issues: TeamMissionIssue[];
+  canResolveAssignmentBindings: boolean;
+}
+
+function validateParticipantBindings(mission: TeamMission): ParticipantBindingValidation {
+  const issues: TeamMissionIssue[] = [];
+  const participantBindings = new Set<string>();
+  let hasDuplicateParticipantBinding = false;
+  for (const participant of mission.participants) {
+    const bindingKey = `${participant.memberId}\0${participant.bindingEpoch}`;
+    if (participantBindings.has(bindingKey)) {
+      hasDuplicateParticipantBinding = true;
+      issues.push({
+        kind: "duplicate_participant_binding",
+        memberId: participant.memberId,
+        bindingEpoch: participant.bindingEpoch,
+      });
+      continue;
+    }
+    participantBindings.add(bindingKey);
+  }
+  const duplicateActiveMemberIds = duplicateValues(
+    mission.participants
+      .filter((participant) => participant.archivedAt === null)
+      .map((participant) => participant.memberId),
+  );
+  for (const memberId of duplicateActiveMemberIds) {
+    issues.push({ kind: "multiple_active_participant_bindings", memberId });
+  }
+  const duplicateAgentIds = duplicateValues(
+    mission.participants.map((participant) => participant.agentId),
+  );
+  for (const agentId of duplicateAgentIds) {
+    issues.push({ kind: "duplicate_participant_agent_id", agentId });
+  }
+  return {
+    issues,
+    canResolveAssignmentBindings:
+      !hasDuplicateParticipantBinding &&
+      duplicateActiveMemberIds.length === 0 &&
+      duplicateAgentIds.length === 0,
+  };
+}
+
+function validateAssignmentHeader(
+  mission: TeamMission,
+  assignment: MissionAssignmentContract,
+  workstreamByRevision: WorkstreamRevisionIndex,
+): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  if (assignment.planRevision > mission.planRevision) {
+    issues.push({
+      kind: "future_assignment_plan_revision",
+      assignmentId: assignment.assignmentId,
+      planRevision: assignment.planRevision,
+    });
+  } else if (
+    assignment.planRevision < mission.planRevision &&
+    assignment.semanticState !== "completed" &&
+    assignment.semanticState !== "canceled"
+  ) {
+    issues.push({
+      kind: "stale_assignment_plan_revision",
+      assignmentId: assignment.assignmentId,
+      planRevision: assignment.planRevision,
+    });
+  }
+  if (
+    assignment.workspaceBaseline !== null &&
+    assignment.workspaceBaseline.policyRevision !== mission.workspaceAuditPolicy.revision
+  ) {
+    issues.push({
+      kind: "workspace_baseline_policy_mismatch",
+      assignmentId: assignment.assignmentId,
+      policyRevision: assignment.workspaceBaseline.policyRevision,
+    });
+  }
+  if (assignment.missionId !== mission.id) {
+    issues.push({
+      kind: "assignment_mission_mismatch",
+      assignmentId: assignment.assignmentId,
+      missionId: assignment.missionId,
+    });
+  }
+  if (
+    !workstreamByRevision.has(
+      workstreamRevisionKey(assignment.planRevision, assignment.workstreamId),
+    )
+  ) {
+    issues.push(
+      assignment.planRevision === mission.planRevision
+        ? {
+            kind: "unknown_assignment_workstream",
+            assignmentId: assignment.assignmentId,
+            workstreamId: assignment.workstreamId,
+          }
+        : {
+            kind: "unknown_assignment_workstream_revision",
+            assignmentId: assignment.assignmentId,
+            workstreamId: assignment.workstreamId,
+            planRevision: assignment.planRevision,
+          },
+    );
+  }
+  return issues;
+}
+
+function expectedAssignmentMemberId(
+  assignment: MissionAssignmentContract,
+  workstream: MissionWorkstream,
+): string | null {
+  if (assignment.kind === "delivery" && workstream.kind !== "verification") {
+    return workstream.ownerMemberId;
+  }
+  if (
+    assignment.kind === "review" &&
+    workstream.kind !== "verification" &&
+    workstream.reviewGate.kind === "required" &&
+    workstream.reviewGate.selection.kind === "assigned"
+  ) {
+    return workstream.reviewGate.selection.reviewerMemberId;
+  }
+  if (assignment.kind === "verification" && workstream.kind === "verification") {
+    return workstream.finalVerificationGate?.selection.kind === "assigned"
+      ? workstream.finalVerificationGate.selection.verifierMemberId
+      : null;
+  }
+  return null;
+}
+
+function validateAssignmentRole(
+  assignment: MissionAssignmentContract,
+  workstream: MissionWorkstream | undefined,
+  snapshotByRevision: ReadonlyMap<number, MissionRosterSnapshot>,
+): TeamMissionIssue[] {
+  if (!workstream) return [];
+  const expectedMemberId = expectedAssignmentMemberId(assignment, workstream);
+  if (expectedMemberId === null) {
+    return [
+      {
+        kind: "assignment_kind_workstream_mismatch",
+        assignmentId: assignment.assignmentId,
+        workstreamId: assignment.workstreamId,
+      },
+    ];
+  }
+  const snapshot = snapshotByRevision.get(assignment.rosterSnapshotRevision);
+  const expectedMemberExists = snapshot?.members.some(
+    (member) => member.memberId === expectedMemberId,
+  );
+  const assigneeExists = snapshot?.members.some(
+    (member) => member.memberId === assignment.assigneeMemberId,
+  );
+  if (
+    !expectedMemberExists ||
+    !assigneeExists ||
+    assignment.assigneeMemberId === expectedMemberId
+  ) {
+    return [];
+  }
+  return [
+    {
+      kind: "assignment_assignee_role_mismatch",
+      assignmentId: assignment.assignmentId,
+      expectedMemberId,
+      actualMemberId: assignment.assigneeMemberId,
+    },
+  ];
+}
+
+function validateAssignmentReferences(
+  assignment: MissionAssignmentContract,
+  assignmentIds: ReadonlySet<string>,
+): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  for (const dependencyAssignmentId of assignment.dependencyAssignmentIds) {
+    if (assignmentIds.has(dependencyAssignmentId)) continue;
+    issues.push({
+      kind: "unknown_assignment_dependency",
+      assignmentId: assignment.assignmentId,
+      dependencyAssignmentId,
+    });
+  }
+  for (const subjectAssignmentId of assignment.subjectAssignmentIds) {
+    if (assignmentIds.has(subjectAssignmentId)) continue;
+    issues.push({
+      kind: "unknown_subject_assignment",
+      assignmentId: assignment.assignmentId,
+      subjectAssignmentId,
+    });
+  }
+  if (assignment.supersededBy !== null && !assignmentIds.has(assignment.supersededBy)) {
+    issues.push({
+      kind: "unknown_superseding_assignment",
+      assignmentId: assignment.assignmentId,
+      supersededBy: assignment.supersededBy,
+    });
+  }
+  return issues;
+}
+
+function validateAssignmentRuntimeBinding(
+  mission: TeamMission,
+  assignment: MissionAssignmentContract,
+  canResolveAssignmentBindings: boolean,
+): TeamMissionIssue[] {
+  if (!canResolveAssignmentBindings || assignment.runtimeAgentId === null) return [];
+  const binding = mission.participants.find(
+    (participant) =>
+      participant.memberId === assignment.assigneeMemberId &&
+      participant.agentId === assignment.runtimeAgentId &&
+      participant.bindingEpoch === assignment.bindingEpoch,
+  );
+  if (!binding) {
+    return [
+      {
+        kind: "assignment_runtime_participant_mismatch",
+        assignmentId: assignment.assignmentId,
+        memberId: assignment.assigneeMemberId,
+        runtimeAgentId: assignment.runtimeAgentId,
+      },
+    ];
+  }
+  if (assignment.semanticState === "running" && binding.archivedAt !== null) {
+    return [
+      {
+        kind: "running_assignment_bound_to_archived_participant",
+        assignmentId: assignment.assignmentId,
+      },
+    ];
+  }
+  return [];
+}
+
+function validateAssignments(
+  mission: TeamMission,
+  snapshotByRevision: ReadonlyMap<number, MissionRosterSnapshot>,
+  workstreamByRevision: WorkstreamRevisionIndex,
+  canResolveAssignmentBindings: boolean,
+  context: ValidateTeamMissionContext,
+): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  const duplicateAssignmentIds = duplicateValues(
+    mission.assignments.map((assignment) => assignment.assignmentId),
+  );
+  for (const assignmentId of duplicateAssignmentIds) {
+    issues.push({ kind: "duplicate_assignment_id", assignmentId });
+  }
+  const assignmentIds = new Set(mission.assignments.map((assignment) => assignment.assignmentId));
+  for (const assignment of mission.assignments) {
+    const workstream = workstreamByRevision.get(
+      workstreamRevisionKey(assignment.planRevision, assignment.workstreamId),
+    );
+    issues.push(...validateAssignmentHeader(mission, assignment, workstreamByRevision));
+    issues.push(...validateAssignmentRole(assignment, workstream, snapshotByRevision));
+    issues.push(...validateAssignmentReferences(assignment, assignmentIds));
+    issues.push(
+      ...validateAssignmentRuntimeBinding(mission, assignment, canResolveAssignmentBindings),
+    );
+    if (workstream) {
+      if (assignment.kind === "review" && assignment.mutableScope.kind !== "read_only") {
+        issues.push({ kind: "writable_review_assignment", assignmentId: assignment.assignmentId });
+      }
+      if (!isMutableScopeContainedBy(assignment.mutableScope, workstream.mutableScope)) {
+        issues.push({
+          kind: "assignment_scope_exceeds_workstream",
+          assignmentId: assignment.assignmentId,
+          workstreamId: workstream.workstreamId,
+        });
+      }
+    }
+    const acceptedTurn =
+      assignment.acceptedTurnId === null
+        ? null
+        : (context.acceptedTurnsById.get(assignment.acceptedTurnId) ?? null);
+    const contractValidation = validateAssignmentContract({
+      assignment,
+      acceptedTurn,
+      expectedWorkspaceId: mission.workspaceId,
+    });
+    if (!contractValidation.ok) {
+      for (const issue of contractValidation.issues) {
+        issues.push({
+          kind: "invalid_assignment_contract",
+          assignmentId: issue.assignmentId,
+          violations: issue.violations,
+        });
+      }
+    }
+  }
+  if (duplicateAssignmentIds.length === 0) {
+    const cycle = findAssignmentDependencyCycle(mission.assignments);
+    if (cycle) issues.push({ kind: "assignment_dependency_cycle", assignmentIds: cycle });
+  }
+  return issues;
+}
+
+function hasCompletedTurnFact(
+  assignment: MissionAssignmentContract,
+  context: ValidateTeamMissionContext,
+): boolean {
+  if (assignment.acceptedTurnId === null || assignment.runtimeAgentId === null) return false;
+  const fact = context.acceptedTurnsById.get(assignment.acceptedTurnId);
+  return (
+    fact?.assignmentId === assignment.assignmentId &&
+    fact.turnId === assignment.acceptedTurnId &&
+    fact.runtimeAgentId === assignment.runtimeAgentId &&
+    fact.outcome === "completed"
+  );
+}
+
+function isCompletedAssignment(
+  assignment: MissionAssignmentContract,
+  kind: MissionAssignmentContract["kind"],
+  verdict: "approved" | null,
+  context: ValidateTeamMissionContext,
+): boolean {
+  return (
+    assignment.kind === kind &&
+    assignment.semanticState === "completed" &&
+    assignment.dispatchState === "settled" &&
+    assignment.report?.status === "completed" &&
+    assignment.report.verdict === verdict &&
+    hasCompletedTurnFact(assignment, context)
+  );
+}
+
+function sameReusableWorkstreamContract(
+  previous: MissionWorkstream,
+  current: MissionWorkstream,
+  assignmentKind: MissionAssignmentContract["kind"],
+): boolean {
+  const previousContract = {
+    kind: previous.kind,
+    objective: previous.objective,
+    deliverables: previous.deliverables,
+    acceptanceCriteria: previous.acceptanceCriteria,
+    requiredSkillIds: previous.requiredSkillIds,
+    preferredSkillIds: previous.preferredSkillIds,
+    requiredRuntimeCapabilityIds: previous.requiredRuntimeCapabilityIds,
+    minimumLevel: previous.minimumLevel,
+    dependencyWorkstreamIds: previous.dependencyWorkstreamIds,
+    mutableScope: previous.mutableScope,
+    methodologySnapshotRevision: previous.methodologySnapshotRevision,
+    ...(assignmentKind === "review"
+      ? {
+          reviewGateKind: previous.reviewGate.kind,
+          reviewerRequirements:
+            previous.reviewGate.kind === "required" ? previous.reviewGate.requirements : null,
+        }
+      : {}),
+  };
+  const currentContract = {
+    kind: current.kind,
+    objective: current.objective,
+    deliverables: current.deliverables,
+    acceptanceCriteria: current.acceptanceCriteria,
+    requiredSkillIds: current.requiredSkillIds,
+    preferredSkillIds: current.preferredSkillIds,
+    requiredRuntimeCapabilityIds: current.requiredRuntimeCapabilityIds,
+    minimumLevel: current.minimumLevel,
+    dependencyWorkstreamIds: current.dependencyWorkstreamIds,
+    mutableScope: current.mutableScope,
+    methodologySnapshotRevision: current.methodologySnapshotRevision,
+    ...(assignmentKind === "review"
+      ? {
+          reviewGateKind: current.reviewGate.kind,
+          reviewerRequirements:
+            current.reviewGate.kind === "required" ? current.reviewGate.requirements : null,
+        }
+      : {}),
+  };
+  return sameValue(previousContract, currentContract);
+}
+
+function assignmentCanSatisfyWorkstream(
+  assignment: MissionAssignmentContract,
+  currentWorkstream: MissionWorkstream,
+  workstreamByRevision: WorkstreamRevisionIndex,
+): boolean {
+  const assignmentWorkstream = workstreamByRevision.get(
+    workstreamRevisionKey(assignment.planRevision, assignment.workstreamId),
+  );
+  return (
+    assignmentWorkstream !== undefined &&
+    sameReusableWorkstreamContract(assignmentWorkstream, currentWorkstream, assignment.kind)
+  );
+}
+
+export function findWorkstreamsMissingAssignmentContracts(
+  mission: TeamMission,
+  context: ValidateTeamMissionContext,
+): string[] {
+  return resolveMissionAssignmentCoverage(mission, context).missingWorkstreamIds;
+}
+
+export interface MissionAssignmentCoverage {
+  assignmentIdsByWorkstreamId: ReadonlyMap<string, string>;
+  completedDeliveryAssignmentIds: ReadonlySet<string>;
+  approvedReviewAssignmentIdsByWorkstreamId: ReadonlyMap<string, string>;
+  missingWorkstreamIds: string[];
+  ambiguousWorkstreamIds: string[];
+}
+
+export function resolveMissionAssignmentCoverage(
+  mission: TeamMission,
+  context: ValidateTeamMissionContext,
+): MissionAssignmentCoverage {
+  const workstreamByRevision = buildWorkstreamRevisionIndex(mission);
+
+  const assignmentIdsByWorkstreamId = new Map<string, string>();
+  const completedDeliveryAssignmentIds = new Set<string>();
+  const approvedReviewAssignmentIdsByWorkstreamId = new Map<string, string>();
+  const missingWorkstreamIds: string[] = [];
+  const ambiguousWorkstreamIds: string[] = [];
+  const executableWorkstreams = mission.workstreams.filter(
+    (workstream) => workstream.kind === "delivery" || workstream.kind === "integration",
+  );
+  const executableWorkstreamById = new Map(
+    executableWorkstreams.map((workstream) => [workstream.workstreamId, workstream]),
+  );
+  const resolvedWorkstreamIds = new Set<string>();
+  const resolvingWorkstreamIds = new Set<string>();
+
+  function resolveWorkstream(workstream: MissionWorkstream): void {
+    if (resolvedWorkstreamIds.has(workstream.workstreamId)) return;
+    if (resolvingWorkstreamIds.has(workstream.workstreamId)) {
+      if (!missingWorkstreamIds.includes(workstream.workstreamId)) {
+        missingWorkstreamIds.push(workstream.workstreamId);
+      }
+      return;
+    }
+    resolvingWorkstreamIds.add(workstream.workstreamId);
+    for (const dependencyWorkstreamId of workstream.dependencyWorkstreamIds) {
+      const dependencyWorkstream = executableWorkstreamById.get(dependencyWorkstreamId);
+      if (dependencyWorkstream) resolveWorkstream(dependencyWorkstream);
+    }
+    const assignments = mission.assignments.filter(
+      (assignment) =>
+        assignment.kind === "delivery" && assignment.workstreamId === workstream.workstreamId,
+    );
+    const currentAssignments = assignments.filter(
+      (assignment) =>
+        assignment.planRevision === mission.planRevision && assignment.semanticState !== "canceled",
+    );
+    const selectedDependencyAssignmentIds = workstream.dependencyWorkstreamIds.map(
+      (dependencyWorkstreamId) => assignmentIdsByWorkstreamId.get(dependencyWorkstreamId),
+    );
+    const hasCompleteDependencyLineage = selectedDependencyAssignmentIds.every(
+      (assignmentId): assignmentId is string => assignmentId !== undefined,
+    );
+    const reusableAssignments = assignments
+      .filter(
+        (assignment) =>
+          isCompletedAssignment(assignment, "delivery", null, context) &&
+          assignmentCanSatisfyWorkstream(assignment, workstream, workstreamByRevision) &&
+          hasCompleteDependencyLineage &&
+          assignment.dependencyAssignmentIds.length === selectedDependencyAssignmentIds.length &&
+          assignment.dependencyAssignmentIds.every(
+            (assignmentId, index) => assignmentId === selectedDependencyAssignmentIds[index],
+          ),
+      )
+      .toSorted(
+        (left, right) =>
+          right.planRevision - left.planRevision ||
+          left.assignmentId.localeCompare(right.assignmentId),
+      );
+    const candidates =
+      currentAssignments.length > 0
+        ? currentAssignments
+        : reusableAssignments.filter(
+            (assignment) => assignment.planRevision === reusableAssignments[0]?.planRevision,
+          );
+    if (candidates.length === 0) {
+      missingWorkstreamIds.push(workstream.workstreamId);
+    } else if (candidates.length > 1) {
+      ambiguousWorkstreamIds.push(workstream.workstreamId);
+    } else {
+      const candidate = candidates[0];
+      if (candidate) {
+        assignmentIdsByWorkstreamId.set(workstream.workstreamId, candidate.assignmentId);
+      }
+    }
+    resolvingWorkstreamIds.delete(workstream.workstreamId);
+    resolvedWorkstreamIds.add(workstream.workstreamId);
+  }
+
+  for (const workstream of executableWorkstreams) resolveWorkstream(workstream);
+  const assignmentsById = new Map(
+    mission.assignments.map((assignment) => [assignment.assignmentId, assignment]),
+  );
+  for (const workstream of executableWorkstreams) {
+    const deliveryAssignmentId = assignmentIdsByWorkstreamId.get(workstream.workstreamId);
+    const deliveryAssignment = deliveryAssignmentId
+      ? assignmentsById.get(deliveryAssignmentId)
+      : undefined;
+    if (
+      !deliveryAssignment ||
+      !isCompletedAssignment(deliveryAssignment, "delivery", null, context)
+    ) {
+      continue;
+    }
+    completedDeliveryAssignmentIds.add(deliveryAssignment.assignmentId);
+    if (workstream.reviewGate.kind !== "required") continue;
+    const reviewGate = workstream.reviewGate;
+    const approvedReview = mission.assignments
+      .filter(
+        (assignment) =>
+          assignment.kind === "review" &&
+          assignment.workstreamId === workstream.workstreamId &&
+          assignment.subjectAssignmentIds.length === 1 &&
+          assignment.subjectAssignmentIds[0] === deliveryAssignment.assignmentId &&
+          assignment.dependencyAssignmentIds.length === 1 &&
+          assignment.dependencyAssignmentIds[0] === deliveryAssignment.assignmentId &&
+          assignment.reviewGateFingerprint ===
+            (reviewGate.outcome.kind === "approved"
+              ? (reviewGate.outcome.inheritedFromGateFingerprint ?? reviewGate.gateKeyFingerprint)
+              : reviewGate.gateKeyFingerprint) &&
+          assignment.reviewSubjectFingerprint === reviewGate.subjectFingerprint &&
+          isCompletedAssignment(assignment, "review", "approved", context) &&
+          assignmentCanSatisfyWorkstream(assignment, workstream, workstreamByRevision),
+      )
+      .toSorted(
+        (left, right) =>
+          right.planRevision - left.planRevision ||
+          left.assignmentId.localeCompare(right.assignmentId),
+      )[0];
+    if (
+      approvedReview &&
+      reviewGate.outcome.kind === "approved" &&
+      reviewGate.outcome.reviewAssignmentId === approvedReview.assignmentId
+    ) {
+      approvedReviewAssignmentIdsByWorkstreamId.set(
+        workstream.workstreamId,
+        approvedReview.assignmentId,
+      );
+    }
+  }
+  return {
+    assignmentIdsByWorkstreamId,
+    completedDeliveryAssignmentIds,
+    approvedReviewAssignmentIdsByWorkstreamId,
+    missingWorkstreamIds,
+    ambiguousWorkstreamIds,
+  };
+}
+
+function validateAssignmentCoverage(
+  mission: TeamMission,
+  context: ValidateTeamMissionContext,
+): TeamMissionIssue[] {
+  const requiresCompleteCoverage =
+    mission.status === "active" ||
+    mission.status === "verifying" ||
+    mission.status === "completed" ||
+    (mission.status === "needs_attention" && mission.suspendedStatus !== "planning");
+  const coverage = resolveMissionAssignmentCoverage(mission, context);
+  const issues: TeamMissionIssue[] = [
+    ...(requiresCompleteCoverage
+      ? coverage.missingWorkstreamIds.map((workstreamId) => ({
+          kind: "missing_assignment_contract" as const,
+          workstreamId,
+        }))
+      : []),
+    ...coverage.ambiguousWorkstreamIds.map((workstreamId) => ({
+      kind: "ambiguous_assignment_contract" as const,
+      workstreamId,
+    })),
+  ];
+  for (const workstream of mission.workstreams) {
+    if (workstream.reviewGate.kind !== "required") continue;
+    const assignmentId = coverage.assignmentIdsByWorkstreamId.get(workstream.workstreamId);
+    if (!assignmentId && mission.status === "planning") continue;
+    if (
+      !assignmentId ||
+      !sameCanonicalValue(workstream.reviewGate.gateKey.subject.subjectAssignmentIds, [
+        assignmentId,
+      ])
+    ) {
+      issues.push({ kind: "invalid_review_gate", workstreamId: workstream.workstreamId });
+    }
+  }
+  const assignmentsById = new Map(
+    mission.assignments.map((assignment) => [assignment.assignmentId, assignment]),
+  );
+  for (const workstream of mission.workstreams) {
+    if (workstream.kind !== "delivery" && workstream.kind !== "integration") continue;
+    const assignmentId = coverage.assignmentIdsByWorkstreamId.get(workstream.workstreamId);
+    const assignment = assignmentId ? assignmentsById.get(assignmentId) : undefined;
+    if (!assignment) continue;
+    const expectedDependencyIds = workstream.dependencyWorkstreamIds.map((dependencyWorkstreamId) =>
+      coverage.assignmentIdsByWorkstreamId.get(dependencyWorkstreamId),
+    );
+    if (expectedDependencyIds.some((dependencyId) => dependencyId === undefined)) continue;
+    if (
+      assignment.dependencyAssignmentIds.length === expectedDependencyIds.length &&
+      assignment.dependencyAssignmentIds.every(
+        (dependencyId, index) => dependencyId === expectedDependencyIds[index],
+      )
+    ) {
+      continue;
+    }
+    issues.push({
+      kind: "assignment_dependency_workstream_mismatch",
+      assignmentId: assignment.assignmentId,
+      workstreamId: workstream.workstreamId,
+    });
+  }
+  return issues;
+}
+
+function validateAcceptedWorkstreams(
+  mission: TeamMission,
+  context: ValidateTeamMissionContext,
+): TeamMissionIssue[] {
+  const issues: TeamMissionIssue[] = [];
+  const coverage = resolveMissionAssignmentCoverage(mission, context);
+  for (const workstream of mission.workstreams) {
+    if (workstream.status !== "accepted") continue;
+    const assignments = mission.assignments.filter(
+      (assignment) => assignment.workstreamId === workstream.workstreamId,
+    );
+    const currentPlanAssignments = assignments.filter(
+      (assignment) => assignment.planRevision === mission.planRevision,
+    );
+    for (const assignment of assignments) {
+      if (assignment.semanticState === "completed" || assignment.semanticState === "canceled") {
+        continue;
+      }
+      issues.push({
+        kind: "accepted_workstream_has_unresolved_assignment",
+        workstreamId: workstream.workstreamId,
+        assignmentId: assignment.assignmentId,
+      });
+    }
+    if (workstream.kind === "verification") {
+      if (
+        !currentPlanAssignments.some((assignment) =>
+          isCompletedAssignment(assignment, "verification", "approved", context),
+        )
+      ) {
+        issues.push({
+          kind: "accepted_verification_missing_approval",
+          workstreamId: workstream.workstreamId,
+        });
+      }
+      continue;
+    }
+    const deliveryAssignmentId = coverage.assignmentIdsByWorkstreamId.get(workstream.workstreamId);
+    if (
+      !deliveryAssignmentId ||
+      !coverage.completedDeliveryAssignmentIds.has(deliveryAssignmentId)
+    ) {
+      issues.push({
+        kind: "accepted_workstream_missing_delivery",
+        workstreamId: workstream.workstreamId,
+      });
+    }
+    if (
+      workstream.reviewGate.kind === "required" &&
+      workstream.reviewGate.outcome.kind === "pending"
+    ) {
+      issues.push({
+        kind: "accepted_workstream_missing_approved_review",
+        workstreamId: workstream.workstreamId,
+      });
+    }
+  }
+  return issues;
+}
+
+function hasExactUniqueAssignmentIds(
+  actualAssignmentIds: ReadonlyArray<string>,
+  expectedAssignmentIds: ReadonlyArray<string>,
+): boolean {
+  const actualIds = new Set(actualAssignmentIds);
+  const expectedIds = new Set(expectedAssignmentIds);
+  return (
+    actualIds.size === actualAssignmentIds.length &&
+    expectedIds.size === expectedAssignmentIds.length &&
+    actualIds.size === expectedIds.size &&
+    [...expectedIds].every((assignmentId) => actualIds.has(assignmentId))
+  );
+}
+
+function validateMissionCompletion(
+  mission: TeamMission,
+  finalVerifications: ReadonlyArray<MissionWorkstream>,
+  context: ValidateTeamMissionContext,
+): TeamMissionIssue[] {
+  const finalVerification = finalVerifications.length === 1 ? finalVerifications[0] : null;
+  if (mission.status !== "completed" || !finalVerification) return [];
+  const issues: TeamMissionIssue[] = [];
+  if (mission.completedAt === null) issues.push({ kind: "completed_at_required" });
+  for (const workstream of mission.workstreams) {
+    if (workstream.status === "accepted") continue;
+    issues.push({
+      kind: "unaccepted_workstream_at_completion",
+      workstreamId: workstream.workstreamId,
+      status: workstream.status,
+    });
+  }
+  const currentVerifications = currentFinalVerificationAssignments(mission, finalVerification);
+  const completedVerification =
+    currentVerifications.length === 1 &&
+    isCompletedAssignment(currentVerifications[0]!, "verification", "approved", context)
+      ? currentVerifications[0]
+      : null;
+  if (!completedVerification) {
+    issues.push({
+      kind: "missing_completed_final_verification_assignment",
+      workstreamId: finalVerification.workstreamId,
+    });
+    return issues;
+  }
+  const currentWorkstreamById = new Map(
+    mission.workstreams.map((workstream) => [workstream.workstreamId, workstream]),
+  );
+  const coverage = resolveMissionAssignmentCoverage(mission, context);
+  const requiredSubjectIds = [...currentWorkstreamById.values()].flatMap((workstream) => {
+    if (workstream.kind === "verification") return [];
+    const deliveryAssignmentId = coverage.assignmentIdsByWorkstreamId.get(workstream.workstreamId);
+    if (
+      !deliveryAssignmentId ||
+      !coverage.completedDeliveryAssignmentIds.has(deliveryAssignmentId)
+    ) {
+      return [];
+    }
+    const reviewAssignmentId = coverage.approvedReviewAssignmentIdsByWorkstreamId.get(
+      workstream.workstreamId,
+    );
+    return reviewAssignmentId ? [deliveryAssignmentId, reviewAssignmentId] : [deliveryAssignmentId];
+  });
+  for (const assignmentId of requiredSubjectIds) {
+    if (completedVerification.subjectAssignmentIds.includes(assignmentId)) continue;
+    issues.push({
+      kind: "uncovered_final_verification_assignment",
+      verificationAssignmentId: completedVerification.assignmentId,
+      assignmentId,
+    });
+  }
+  const hasExactSubjectCoverage = hasExactUniqueAssignmentIds(
+    completedVerification.subjectAssignmentIds,
+    requiredSubjectIds,
+  );
+  const hasExactDependencyCoverage = hasExactUniqueAssignmentIds(
+    completedVerification.dependencyAssignmentIds,
+    requiredSubjectIds,
+  );
+  const hasMissingSubject = requiredSubjectIds.some(
+    (assignmentId) => !completedVerification.subjectAssignmentIds.includes(assignmentId),
+  );
+  if ((!hasExactSubjectCoverage || !hasExactDependencyCoverage) && !hasMissingSubject) {
+    issues.push({
+      kind: "invalid_final_verification_assignment_coverage",
+      verificationAssignmentId: completedVerification.assignmentId,
+      expectedAssignmentIds: requiredSubjectIds.toSorted(),
+      subjectAssignmentIds: completedVerification.subjectAssignmentIds.toSorted(),
+      dependencyAssignmentIds: completedVerification.dependencyAssignmentIds.toSorted(),
+    });
+  }
+  return issues;
+}
+
+export function validateTeamMission(
+  mission: TeamMission,
+  context: ValidateTeamMissionContext,
+): TeamMissionValidation {
+  const planValidation = validateMissionWorkstreams(mission.workstreams);
+  const issues: TeamMissionIssue[] = planValidation.ok ? [] : [...planValidation.issues];
+  const finalVerifications = mission.workstreams.filter(
+    (workstream) => workstream.kind === "verification",
+  );
+  for (const pathPrefix of mission.workspaceAuditPolicy.excludedPathPrefixes) {
+    if (isNormalizedWorkspacePathPrefix(pathPrefix)) continue;
+    issues.push({ kind: "invalid_audit_excluded_path_prefix", pathPrefix });
+  }
+  if (
+    !mission.workspaceAuditPolicy.includeTrackedPaths ||
+    !mission.workspaceAuditPolicy.includeNonIgnoredUntrackedPaths ||
+    !mission.workspaceAuditPolicy.includeDeclaredArtifactPaths ||
+    !mission.workspaceAuditPolicy.excludeGitignoredPathsByDefault
+  ) {
+    issues.push({ kind: "invalid_workspace_audit_policy" });
+  }
+  issues.push(...validateAttentionState(mission));
+  issues.push(...validateWorkstreamAttentionState(mission));
+  issues.push(...validateFinalVerificationPlan(mission.workstreams, finalVerifications));
+  issues.push(...validateFinalVerificationAssignments(mission, finalVerifications));
+  const snapshotByRevision = new Map(
+    mission.rosterSnapshots.map((snapshot) => [snapshot.revision, snapshot]),
+  );
+  issues.push(...validateRosterSnapshots(mission));
+  issues.push(
+    ...validateWorkstreamSelections(
+      mission.workstreams,
+      mission.planRevision,
+      snapshotByRevision,
+      mission.methodologySnapshot.hardPolicy.review.writableWorkstreams === "independent_required",
+    ),
+  );
+  const workstreamPlanValidation = validateWorkstreamPlanSnapshots(mission, snapshotByRevision);
+  issues.push(...workstreamPlanValidation.issues);
+  issues.push(...validateReviewWaiverAggregate(mission));
+  issues.push(
+    ...validateReviewGateOutcomes(mission, workstreamPlanValidation.workstreamByRevision, context),
+  );
+  issues.push(...validateAssignmentSnapshotReferences(mission, snapshotByRevision));
+  const participantValidation = validateParticipantBindings(mission);
+  issues.push(...participantValidation.issues);
+  issues.push(
+    ...validateAssignments(
+      mission,
+      snapshotByRevision,
+      workstreamPlanValidation.workstreamByRevision,
+      participantValidation.canResolveAssignmentBindings,
+      context,
+    ),
+  );
+  issues.push(...validateAssignmentCoverage(mission, context));
+  issues.push(...validateAcceptedWorkstreams(mission, context));
+  issues.push(...validateMissionCompletion(mission, finalVerifications, context));
+  return issues.length > 0 ? { ok: false, issues } : { ok: true };
+}

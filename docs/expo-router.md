@@ -17,7 +17,8 @@ Each layout owns only the routes directly inside its directory.
   `h/[serverId]/index`.
 - `packages/app/src/app/h/[serverId]/_layout.tsx` owns the host leaves with
   relative screen names: `index`, `workspace/[workspaceId]/index`,
-  `agent/[agentId]`, `sessions`, `open-project`, and `settings`.
+  `agent/[agentId]`, `team/[teamId]`, `sessions`, `open-project`, and
+  `settings`.
 
 Expo Router warns with `[Layout children]: No route named ...` when a layout
 registers grandchildren. Treat that warning as a route-tree bug. On native, that
@@ -32,10 +33,12 @@ leaf.
 - Good: `/` -> `/h/[serverId]`
 - Bad: `/` -> `/h/[serverId]/workspace/[workspaceId]`
 
-`/h/[serverId]` is the host home route. The host index restores the last
-remembered workspace for that host after the remembered selection has hydrated
-and the workspace has not been proven missing. If there is no restorable
-workspace, it goes to global `/open-project`.
+`/h/[serverId]` is the host home route. The host index restores a remembered,
+live workspace first. Without one, it waits for the physical host connection and
+its capability handshake. A host missing any of `teamMissions`,
+`globalTeamProfiles`, or `teamMethodologies` uses Open Project; a host advertising
+all three enters `/h/[serverId]/teams`, independent of Team count or replica
+state. The host index chooses a route and never owns the Team list.
 
 This restore is based on the last navigated workspace, not current connection
 status. Do not redirect to another online host just because the remembered host
@@ -83,9 +86,22 @@ targets.
 - Agent URLs carry only `serverId` and `agentId`. Route them through
   `/h/[serverId]/agent/[agentId]`; that route waits for the named host, resolves
   the agent's workspace from the host, and then opens the agent there.
+- Team URLs work the same way through `/h/[serverId]/team/[teamId]`. Check the
+  host before the feature: whether a daemon has teams comes from a handshake
+  that lands after the connection, so before then it reads as false for every
+  daemon — answering "too old to have teams" there is wrong while it connects
+  and permanently wrong for a host that never does. An active Team resolves only
+  through its hydrated Mission workspace and opens the Mission Task room. A
+  terminal Mission keeps that route as read-only replay. An idle Team uses a live creation
+  workspace. Only a daemon advertising `globalTeamProfiles` may fall back to the
+  first stable live workspace or, when none remain, render the Team on its host
+  route. Workspace placement never changes host-global Team ownership. Keep
+  Team settings on its host-owned route; settings is not a second Team list owner.
 
-Both paths converge on `navigateToAgent()`. Do not make notification routing
-guess a workspace, and do not add a workspace to the stable agent URL format.
+Agent paths converge on `navigateToAgent()`. Team paths either converge on
+`navigateToWorkspace()` or remain host-level. Do not make notification routing
+guess a workspace, and do not add a workspace to the stable agent or Team URL
+format.
 
 ## Params
 
@@ -144,7 +160,13 @@ The pure policy tests should still enforce the boundary split:
 - root startup with a saved workspace returns `/h/[serverId]`;
 - host index with the same saved workspace returns
   `/h/[serverId]/workspace/[workspaceId]`;
-- host index with no restorable workspace returns `/open-project`.
+- host index with no restorable workspace waits while the host or handshake is
+  unknown, returns `/open-project` when any Team V1 capability is absent, and
+  returns `/h/[serverId]/teams` when all three are present, regardless of Team
+  count or Team replica failure;
+- `/h/[serverId]/teams` stays statically registered, and the workspace sidebar
+  links it only from the active workspace's physical session when all three
+  capabilities are present.
 
 ## Checklist
 

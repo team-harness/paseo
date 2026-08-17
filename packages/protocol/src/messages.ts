@@ -22,6 +22,45 @@ import {
   ChatWaitResponseSchema,
 } from "./chat/rpc-schemas.js";
 import {
+  TeamMethodologyGetRequestSchema,
+  TeamMethodologyGetResponseSchema,
+  TeamMethodologyListRequestSchema,
+  TeamMethodologyListResponseSchema,
+  TeamMissionAttentionResolveRequestSchema,
+  TeamMissionAttentionResolveResponseSchema,
+  TeamMissionCapabilityRefreshRequestSchema,
+  TeamMissionCapabilityRefreshResponseSchema,
+  TeamMissionCancelRequestSchema,
+  TeamMissionCancelResponseSchema,
+  TeamMissionInspectRequestSchema,
+  TeamMissionInspectResponseSchema,
+  TeamMissionListRequestSchema,
+  TeamMissionListResponseSchema,
+  TeamMissionMessagePostedSchema,
+  TeamMissionMessagePostRequestSchema,
+  TeamMissionMessagePostResponseSchema,
+  TeamMissionRoomSubscribeRequestSchema,
+  TeamMissionRoomSubscribeResponseSchema,
+  TeamMissionRoomUnsubscribeRequestSchema,
+  TeamMissionRoomUnsubscribeResponseSchema,
+  TeamMissionSnapshotMessageSchema,
+  TeamMissionStartRequestSchema,
+  TeamMissionStartResponseSchema,
+  TeamProfileArchiveRequestSchema,
+  TeamProfileArchiveResponseSchema,
+  TeamProfileCreateRequestSchema,
+  TeamProfileCreateResponseSchema,
+  TeamProfileInspectRequestSchema,
+  TeamProfileInspectResponseSchema,
+  TeamProfileListRequestSchema,
+  TeamProfileListResponseSchema,
+  TeamProfileMemberExecutionRefreshRequestSchema,
+  TeamProfileMemberExecutionRefreshResponseSchema,
+  TeamProfileSnapshotMessageSchema,
+  TeamProfileUpdateRequestSchema,
+  TeamProfileUpdateResponseSchema,
+} from "./team/v2-rpc-schemas.js";
+import {
   ScheduleCreateRequestSchema,
   ScheduleListRequestSchema,
   ScheduleInspectRequestSchema,
@@ -2884,6 +2923,8 @@ export const HubExecutionControlRequestSchema = z.object({
 export type HubExecutionControlRequest = z.infer<typeof HubExecutionControlRequestSchema>;
 
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+  TeamMethodologyListRequestSchema,
+  TeamMethodologyGetRequestSchema,
   HubExecutionAgentCreateRequestSchema,
   HubExecutionAgentValidateRequestSchema,
   HubExecutionControlRequestSchema,
@@ -3056,6 +3097,21 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ChatPostRequestSchema,
   ChatReadRequestSchema,
   ChatWaitRequestSchema,
+  TeamProfileCreateRequestSchema,
+  TeamProfileListRequestSchema,
+  TeamProfileInspectRequestSchema,
+  TeamProfileUpdateRequestSchema,
+  TeamProfileMemberExecutionRefreshRequestSchema,
+  TeamProfileArchiveRequestSchema,
+  TeamMissionStartRequestSchema,
+  TeamMissionListRequestSchema,
+  TeamMissionInspectRequestSchema,
+  TeamMissionCancelRequestSchema,
+  TeamMissionAttentionResolveRequestSchema,
+  TeamMissionCapabilityRefreshRequestSchema,
+  TeamMissionMessagePostRequestSchema,
+  TeamMissionRoomSubscribeRequestSchema,
+  TeamMissionRoomUnsubscribeRequestSchema,
   ScheduleCreateRequestSchema,
   ScheduleListRequestSchema,
   ScheduleInspectRequestSchema,
@@ -3371,6 +3427,10 @@ export const ServerInfoStatusPayloadSchema = z
         agentProfiles: z.boolean().optional(),
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: z.boolean().optional(),
+        teamMissions: z.boolean().optional(),
+        globalTeamProfiles: z.boolean().optional(),
+        teamMethodologies: z.boolean().optional(),
+        teamProfileUpgrades: z.boolean().optional(),
       })
       .optional(),
   })
@@ -6116,6 +6176,8 @@ export const PluginRpcInvokeResponseSchema = z.object({
 });
 
 export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+  TeamMethodologyListResponseSchema,
+  TeamMethodologyGetResponseSchema,
   HubExecutionAgentCreateResponseSchema,
   HubExecutionAgentValidateResponseSchema,
   HubExecutionControlResponseSchema,
@@ -6300,6 +6362,24 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ChatPostResponseSchema,
   ChatReadResponseSchema,
   ChatWaitResponseSchema,
+  TeamProfileCreateResponseSchema,
+  TeamProfileListResponseSchema,
+  TeamProfileInspectResponseSchema,
+  TeamProfileUpdateResponseSchema,
+  TeamProfileMemberExecutionRefreshResponseSchema,
+  TeamProfileArchiveResponseSchema,
+  TeamMissionStartResponseSchema,
+  TeamMissionListResponseSchema,
+  TeamMissionInspectResponseSchema,
+  TeamMissionCancelResponseSchema,
+  TeamMissionAttentionResolveResponseSchema,
+  TeamMissionCapabilityRefreshResponseSchema,
+  TeamMissionMessagePostResponseSchema,
+  TeamMissionRoomSubscribeResponseSchema,
+  TeamMissionRoomUnsubscribeResponseSchema,
+  TeamProfileSnapshotMessageSchema,
+  TeamMissionSnapshotMessageSchema,
+  TeamMissionMessagePostedSchema,
   ScheduleCreateResponseSchema,
   ScheduleListResponseSchema,
   ScheduleInspectResponseSchema,
@@ -6319,6 +6399,37 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;
+
+export type TeamProfileCreateResponse = z.infer<typeof TeamProfileCreateResponseSchema>;
+export type TeamMethodologyListResponse = z.infer<typeof TeamMethodologyListResponseSchema>;
+export type TeamMethodologyGetResponse = z.infer<typeof TeamMethodologyGetResponseSchema>;
+export type TeamProfileListResponse = z.infer<typeof TeamProfileListResponseSchema>;
+export type TeamProfileInspectResponse = z.infer<typeof TeamProfileInspectResponseSchema>;
+export type TeamProfileUpdateResponse = z.infer<typeof TeamProfileUpdateResponseSchema>;
+export type TeamProfileMemberExecutionRefreshResponse = z.infer<
+  typeof TeamProfileMemberExecutionRefreshResponseSchema
+>;
+export type TeamProfileArchiveResponse = z.infer<typeof TeamProfileArchiveResponseSchema>;
+export type TeamMissionStartResponse = z.infer<typeof TeamMissionStartResponseSchema>;
+export type TeamMissionListResponse = z.infer<typeof TeamMissionListResponseSchema>;
+export type TeamMissionInspectResponse = z.infer<typeof TeamMissionInspectResponseSchema>;
+export type TeamMissionCancelResponse = z.infer<typeof TeamMissionCancelResponseSchema>;
+export type TeamMissionAttentionResolveResponse = z.infer<
+  typeof TeamMissionAttentionResolveResponseSchema
+>;
+export type TeamMissionCapabilityRefreshResponse = z.infer<
+  typeof TeamMissionCapabilityRefreshResponseSchema
+>;
+export type TeamMissionMessagePostResponse = z.infer<typeof TeamMissionMessagePostResponseSchema>;
+export type TeamMissionRoomSubscribeResponse = z.infer<
+  typeof TeamMissionRoomSubscribeResponseSchema
+>;
+export type TeamMissionRoomUnsubscribeResponse = z.infer<
+  typeof TeamMissionRoomUnsubscribeResponseSchema
+>;
+export type TeamProfileSnapshotMessage = z.infer<typeof TeamProfileSnapshotMessageSchema>;
+export type TeamMissionSnapshotMessage = z.infer<typeof TeamMissionSnapshotMessageSchema>;
+export type TeamMissionMessagePosted = z.infer<typeof TeamMissionMessagePostedSchema>;
 
 // Type exports for individual message types
 export type ActivityLogMessage = z.infer<typeof ActivityLogMessageSchema>;
@@ -6584,6 +6695,31 @@ export type ChatDeleteRequest = z.infer<typeof ChatDeleteRequestSchema>;
 export type ChatPostRequest = z.infer<typeof ChatPostRequestSchema>;
 export type ChatReadRequest = z.infer<typeof ChatReadRequestSchema>;
 export type ChatWaitRequest = z.infer<typeof ChatWaitRequestSchema>;
+export type TeamProfileCreateRequest = z.infer<typeof TeamProfileCreateRequestSchema>;
+export type TeamMethodologyListRequest = z.infer<typeof TeamMethodologyListRequestSchema>;
+export type TeamMethodologyGetRequest = z.infer<typeof TeamMethodologyGetRequestSchema>;
+export type TeamProfileListRequest = z.infer<typeof TeamProfileListRequestSchema>;
+export type TeamProfileInspectRequest = z.infer<typeof TeamProfileInspectRequestSchema>;
+export type TeamProfileUpdateRequest = z.infer<typeof TeamProfileUpdateRequestSchema>;
+export type TeamProfileMemberExecutionRefreshRequest = z.infer<
+  typeof TeamProfileMemberExecutionRefreshRequestSchema
+>;
+export type TeamProfileArchiveRequest = z.infer<typeof TeamProfileArchiveRequestSchema>;
+export type TeamMissionStartRequest = z.infer<typeof TeamMissionStartRequestSchema>;
+export type TeamMissionListRequest = z.infer<typeof TeamMissionListRequestSchema>;
+export type TeamMissionInspectRequest = z.infer<typeof TeamMissionInspectRequestSchema>;
+export type TeamMissionCancelRequest = z.infer<typeof TeamMissionCancelRequestSchema>;
+export type TeamMissionAttentionResolveRequest = z.infer<
+  typeof TeamMissionAttentionResolveRequestSchema
+>;
+export type TeamMissionCapabilityRefreshRequest = z.infer<
+  typeof TeamMissionCapabilityRefreshRequestSchema
+>;
+export type TeamMissionMessagePostRequest = z.infer<typeof TeamMissionMessagePostRequestSchema>;
+export type TeamMissionRoomSubscribeRequest = z.infer<typeof TeamMissionRoomSubscribeRequestSchema>;
+export type TeamMissionRoomUnsubscribeRequest = z.infer<
+  typeof TeamMissionRoomUnsubscribeRequestSchema
+>;
 export type ScheduleCreateRequest = z.infer<typeof ScheduleCreateRequestSchema>;
 export type ScheduleListRequest = z.infer<typeof ScheduleListRequestSchema>;
 export type ScheduleInspectRequest = z.infer<typeof ScheduleInspectRequestSchema>;
@@ -6832,6 +6968,7 @@ export const WSHelloMessageSchema = z.object({
       [CLIENT_CAPS.providerSubagents]: z.boolean().optional(),
       [CLIENT_CAPS.projectUpdates]: z.boolean().optional(),
       [CLIENT_CAPS.compactProviderSnapshots]: z.boolean().optional(),
+      [CLIENT_CAPS.teamMissions]: z.boolean().optional(),
       [CLIENT_CAPS.browserHost]: BrowserAutomationHostCapabilitySchema.optional(),
     })
     .passthrough()

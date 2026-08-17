@@ -59,6 +59,9 @@ import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
 import { encodeImages } from "@/utils/encode-images";
 import { DirectorySync, type RefreshAgentDirectoryResult } from "@/runtime/directory-sync";
+import { TeamMissionsSync } from "@/runtime/team-missions-sync";
+import { MethodologyCatalogSync } from "@/runtime/methodology-catalog-sync";
+import { hostSupportsFeature } from "@/runtime/host-features";
 import { ReplicaCache } from "@/runtime/replica-cache";
 import { replicaCacheStorage } from "@/runtime/replica-cache/storage";
 import { projectIconCache } from "@/projects/icon-cache";
@@ -1363,6 +1366,10 @@ export class HostRuntimeStore {
   private directoryBootstrapInFlight = new Map<string, Promise<void>>();
   private queuedAgentDrainInFlight = new Set<string>();
   private directorySyncByServer = new Map<string, DirectorySync>();
+  private teamMissionsSyncByServer = new Map<string, TeamMissionsSync>();
+  private teamMissionsSupportSubscriptions = new Map<string, () => void>();
+  private methodologyCatalogSupportSubscriptions = new Map<string, () => void>();
+  private methodologyCatalogSyncByServer = new Map<string, MethodologyCatalogSync>();
   private configuredOverrideBootstrapInFlight: Promise<void> | null = null;
   private bootPromise: Promise<void> | null = null;
   private storage: HostRuntimeStorage;
@@ -1616,6 +1623,10 @@ export class HostRuntimeStore {
     projectIconCache.reconcileServerId(oldServerId, newServerId);
     this.directorySyncByServer.get(oldServerId)?.dispose();
     this.directorySyncByServer.delete(oldServerId);
+    this.disposeTeamMissionsSync(oldServerId);
+    this.disposeMethodologyCatalogSync(oldServerId);
+    this.registerTeamMissionsSync(newServerId);
+    this.registerMethodologyCatalogSync(newServerId);
     const directory = new DirectorySync(
       newServerId,
       {
@@ -1639,6 +1650,8 @@ export class HostRuntimeStore {
         connectionEpoch: snapshot.connectionEpoch,
       },
     });
+    this.syncTeamMissionsConnection(newServerId, snapshot);
+    this.syncMethodologyCatalogConnection(newServerId, snapshot);
 
     const listeners = this.serverListeners.get(oldServerId);
     if (listeners) {
@@ -1990,6 +2003,8 @@ export class HostRuntimeStore {
       this.directoryBootstrapInFlight.delete(serverId);
       this.directorySyncByServer.get(serverId)?.dispose();
       this.directorySyncByServer.delete(serverId);
+      this.disposeTeamMissionsSync(serverId);
+      this.disposeMethodologyCatalogSync(serverId);
       this.clearHostReplica(serverId);
       void controller.stop();
       this.emit(serverId);
@@ -2027,6 +2042,8 @@ export class HostRuntimeStore {
           this.replicaCache,
         ),
       );
+      this.registerTeamMissionsSync(host.serverId);
+      this.registerMethodologyCatalogSync(host.serverId);
       const initialSnapshot = controller.getSnapshot();
       this.lastConnectionStatusByServer.set(host.serverId, initialSnapshot.connectionStatus);
       this.connectionStatusStartedAtByServer.set(host.serverId, Date.now());
@@ -2052,6 +2069,83 @@ export class HostRuntimeStore {
     }
   }
 
+  private registerTeamMissionsSync(serverId: string): void {
+    const sync = new TeamMissionsSync({
+      commit: (replica) => useSessionStore.getState().setTeamMissionsReplica(serverId, replica),
+    });
+    this.teamMissionsSyncByServer.set(serverId, sync);
+    this.teamMissionsSupportSubscriptions.set(
+      serverId,
+      useSessionStore.subscribe(
+        (state) => state.sessions[serverId]?.serverInfo,
+        () => {
+          const controller = this.controllers.get(serverId);
+          if (controller) this.syncTeamMissionsConnection(serverId, controller.getSnapshot());
+        },
+      ),
+    );
+  }
+
+  private disposeTeamMissionsSync(serverId: string): void {
+    this.teamMissionsSyncByServer.get(serverId)?.dispose();
+    this.teamMissionsSyncByServer.delete(serverId);
+    this.teamMissionsSupportSubscriptions.get(serverId)?.();
+    this.teamMissionsSupportSubscriptions.delete(serverId);
+  }
+
+  private registerMethodologyCatalogSync(serverId: string): void {
+    this.methodologyCatalogSyncByServer.set(
+      serverId,
+      new MethodologyCatalogSync((replica) =>
+        useSessionStore.getState().setMethodologyCatalogReplica(serverId, replica),
+      ),
+    );
+    this.methodologyCatalogSupportSubscriptions.set(
+      serverId,
+      useSessionStore.subscribe(
+        (state) => state.sessions[serverId]?.serverInfo,
+        () => {
+          const controller = this.controllers.get(serverId);
+          if (controller) this.syncMethodologyCatalogConnection(serverId, controller.getSnapshot());
+        },
+      ),
+    );
+  }
+
+  private disposeMethodologyCatalogSync(serverId: string): void {
+    this.methodologyCatalogSyncByServer.get(serverId)?.dispose();
+    this.methodologyCatalogSyncByServer.delete(serverId);
+    this.methodologyCatalogSupportSubscriptions.get(serverId)?.();
+    this.methodologyCatalogSupportSubscriptions.delete(serverId);
+  }
+
+  private syncMethodologyCatalogConnection(serverId: string, snapshot: HostRuntimeSnapshot): void {
+    const serverInfo = useSessionStore.getState().sessions[serverId]?.serverInfo;
+    this.methodologyCatalogSyncByServer.get(serverId)?.connectionChanged({
+      client: snapshot.client,
+      status: snapshot.connectionStatus === "online" ? "online" : "offline",
+      source: {
+        clientGeneration: snapshot.clientGeneration,
+        connectionEpoch: snapshot.connectionEpoch,
+      },
+      supported: serverInfo == null ? null : hostSupportsFeature(serverInfo, "teamMethodologies"),
+    });
+  }
+
+  private syncTeamMissionsConnection(serverId: string, snapshot: HostRuntimeSnapshot): void {
+    const serverInfo = useSessionStore.getState().sessions[serverId]?.serverInfo;
+    this.teamMissionsSyncByServer.get(serverId)?.connectionChanged({
+      client: snapshot.client,
+      status: snapshot.connectionStatus === "online" ? "online" : "offline",
+      source: {
+        clientGeneration: snapshot.clientGeneration,
+        connectionEpoch: snapshot.connectionEpoch,
+      },
+      supportsTeamMissions:
+        serverInfo == null ? null : hostSupportsFeature(serverInfo, "teamMissions"),
+    });
+  }
+
   private syncSessionReplica(serverId: string, snapshot: HostRuntimeSnapshot): void {
     if (!snapshot.client) {
       return;
@@ -2059,6 +2153,23 @@ export class HostRuntimeStore {
     const sessionStore = useSessionStore.getState();
     sessionStore.initializeSession(serverId, snapshot.client, snapshot.clientGeneration);
     sessionStore.updateSessionClient(serverId, snapshot.client, snapshot.clientGeneration);
+    // The client becomes "online" only after server_info has arrived. Copy its
+    // cached handshake here so capability consumers cannot mount in the gap
+    // before SessionProvider attaches its status listener.
+    const serverInfo = snapshot.client.getLastServerInfoMessage();
+    if (serverInfo) {
+      sessionStore.updateSessionServerInfo(serverId, {
+        serverId: serverInfo.serverId,
+        hostname: serverInfo.hostname,
+        version: serverInfo.version,
+        ...(serverInfo.desktopManaged !== undefined
+          ? { desktopManaged: serverInfo.desktopManaged }
+          : {}),
+        ...(serverInfo.capabilities ? { capabilities: serverInfo.capabilities } : {}),
+        ...(serverInfo.chatShare ? { chatShare: serverInfo.chatShare } : {}),
+        ...(serverInfo.features ? { features: serverInfo.features } : {}),
+      });
+    }
   }
 
   private clearHostReplica(serverId: string): void {
@@ -2084,6 +2195,8 @@ export class HostRuntimeStore {
           connectionEpoch: snapshot.connectionEpoch,
         },
       }) ?? false;
+    this.syncTeamMissionsConnection(serverId, snapshot);
+    this.syncMethodologyCatalogConnection(serverId, snapshot);
     const previousStatus = this.lastConnectionStatusByServer.get(serverId);
     const statusChanged = previousStatus !== snapshot.connectionStatus;
     const isUnavailable =
@@ -2286,6 +2399,24 @@ export class HostRuntimeStore {
     const directory = this.directorySyncByServer.get(serverId);
     if (!directory) throw new Error(`Unknown host runtime for serverId ${serverId}`);
     await directory.refreshAll();
+  }
+
+  async refreshTeamMissions(serverId: string): Promise<void> {
+    const sync = this.teamMissionsSyncByServer.get(serverId);
+    if (!sync) throw new Error(`Unknown host runtime for serverId ${serverId}`);
+    await sync.refresh();
+  }
+
+  refreshMethodologyCatalog(serverId: string): void {
+    const sync = this.methodologyCatalogSyncByServer.get(serverId);
+    if (!sync) throw new Error(`Unknown host runtime for serverId ${serverId}`);
+    sync.refresh();
+  }
+
+  async readTeamMissionHistory(serverId: string, teamId: string): Promise<void> {
+    const sync = this.teamMissionsSyncByServer.get(serverId);
+    if (!sync) throw new Error(`Unknown host runtime for serverId ${serverId}`);
+    await sync.readHistory(teamId);
   }
 
   fetchAgentTimeline(

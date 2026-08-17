@@ -27,6 +27,7 @@ export interface StartAgentRunOptions {
   replaceRunning?: boolean;
   activeTurnBehavior?: ActiveTurnBehavior;
   runOptions?: AgentRunOptions;
+  onProviderBoundary?: () => void;
 }
 
 export type PromptDispatchDisposition = "out_of_band" | "steered" | "turn_started";
@@ -66,10 +67,15 @@ async function startOrReplaceRun(
   iterator: AsyncGenerator<import("./agent-sdk-types.js").AgentStreamEvent>;
   replaced: boolean;
 }> {
-  const replaced = Boolean(options?.replaceRunning && agentManager.hasInFlightRun(agentId));
+  const hasInFlightRun = agentManager.hasInFlightRun(agentId);
+  if (hasInFlightRun && !options?.replaceRunning) {
+    throw new Error(`Agent ${agentId} already has an active run`);
+  }
+  const replaced = Boolean(options?.replaceRunning && hasInFlightRun);
   const iterator = replaced
     ? await agentManager.replaceAgentRun(agentId, prompt, options?.runOptions)
     : agentManager.streamAgent(agentId, prompt, options?.runOptions);
+  options?.onProviderBoundary?.();
   return { iterator, replaced };
 }
 
@@ -183,6 +189,8 @@ export interface SendPromptToAgentParams {
   /** Prompt to dispatch to the provider (may include image blocks or wrapped text). */
   prompt: AgentPromptInput;
   messageId?: string;
+  /** Fence retries after the provider boundary until an accepted turn is persisted. */
+  fenceUnknownAcceptance?: boolean;
   activeTurnBehavior?: ActiveTurnBehavior;
   runOptions?: AgentRunOptions;
   /** Optional mode to set on the agent before the run starts. */
@@ -193,6 +201,8 @@ export interface SendPromptToAgentParams {
    * schedule fires, notify-on-finish).
    */
   unarchive?: boolean;
+  /** Default true. False rejects rather than interrupting an active run. */
+  replaceRunning?: boolean;
   logger: Logger;
 }
 
@@ -206,6 +216,41 @@ export interface StartCreatedAgentInitialPromptParams {
 }
 
 const AGENT_RUN_START_TIMEOUT_MS = 15_000;
+
+interface SendPromptToAgentResult {
+  disposition: PromptDispatchDisposition;
+  outOfBand: boolean;
+  turnId: string | null;
+}
+
+async function claimPromptDispatch(
+  params: SendPromptToAgentParams,
+): Promise<{ replay: SendPromptToAgentResult | null; token: string | null }> {
+  if (!params.fenceUnknownAcceptance || !params.messageId) {
+    return { replay: null, token: null };
+  }
+
+  const claim = await params.agentStorage.claimPromptDispatch(params.agentId, params.messageId);
+  if (!claim) throw new Error(`Agent ${params.agentId} not found`);
+  if (claim.kind === "accepted") {
+    return {
+      replay: { disposition: "turn_started", outOfBand: false, turnId: claim.turnId },
+      token: null,
+    };
+  }
+  if (claim.kind === "unknown") throw new UnknownAgentRunAcceptanceError();
+  return { replay: null, token: claim.token };
+}
+
+export class UnknownAgentRunAcceptanceError extends Error {
+  constructor(options?: { cause?: unknown }) {
+    super(
+      "Dispatch acceptance is unknown; automatic retry is fenced and manual Mission resolution is required",
+      { cause: options?.cause },
+    );
+    this.name = "UnknownAgentRunAcceptanceError";
+  }
+}
 
 export async function waitForAgentRunStartWithTimeout(
   agentManager: AgentManager,
@@ -234,36 +279,83 @@ export async function waitForAgentRunStartWithTimeout(
  */
 export async function sendPromptToAgent(
   params: SendPromptToAgentParams,
-): Promise<{ disposition: PromptDispatchDisposition }> {
+): Promise<SendPromptToAgentResult> {
   const unarchive = params.unarchive ?? true;
 
   const record = await params.agentStorage.get(params.agentId);
   if (record?.archivedAt) {
     if (!unarchive) {
-      return { disposition: "turn_started" };
+      return { disposition: "turn_started", outOfBand: false, turnId: null };
     }
     await unarchiveAgentState(params.agentStorage, params.agentManager, params.agentId);
   }
 
-  await ensureAgentLoaded(params.agentId, {
-    agentManager: params.agentManager,
-    agentStorage: params.agentStorage,
-    logger: params.logger,
-  });
+  const dispatchClaim = await claimPromptDispatch(params);
+  if (dispatchClaim.replay) return dispatchClaim.replay;
+  const dispatchClaimToken = dispatchClaim.token;
 
-  if (params.sessionMode) {
-    await params.agentManager.setAgentMode(params.agentId, params.sessionMode);
+  let crossedProviderBoundary = false;
+  try {
+    await ensureAgentLoaded(params.agentId, {
+      agentManager: params.agentManager,
+      agentStorage: params.agentStorage,
+      logger: params.logger,
+    });
+
+    if (params.sessionMode) {
+      await params.agentManager.setAgentMode(params.agentId, params.sessionMode);
+    }
+
+    const runOptions = params.messageId
+      ? { ...params.runOptions, clientMessageId: params.messageId }
+      : params.runOptions;
+    const result = await startAgentRun(
+      params.agentManager,
+      params.agentId,
+      params.prompt,
+      params.logger,
+      {
+        replaceRunning: params.replaceRunning ?? true,
+        activeTurnBehavior: params.activeTurnBehavior,
+        runOptions,
+        onProviderBoundary: () => {
+          crossedProviderBoundary = true;
+        },
+      },
+    );
+
+    if (dispatchClaimToken && result.disposition === "turn_started") {
+      await waitForAgentRunStartWithTimeout(params.agentManager, params.agentId);
+    }
+    const turnId = params.messageId
+      ? await params.agentManager.getAcceptedTurnId(params.agentId, params.messageId)
+      : null;
+    if (dispatchClaimToken && !crossedProviderBoundary) {
+      await params.agentStorage.releasePromptDispatchClaim(
+        params.agentId,
+        params.messageId!,
+        dispatchClaimToken,
+      );
+    }
+    return { ...result, outOfBand: result.disposition === "out_of_band", turnId };
+  } catch (error) {
+    if (dispatchClaimToken && !crossedProviderBoundary) {
+      await params.agentStorage.releasePromptDispatchClaim(
+        params.agentId,
+        params.messageId!,
+        dispatchClaimToken,
+      );
+      throw error;
+    }
+    if (dispatchClaimToken && !(error instanceof UnknownAgentRunAcceptanceError)) {
+      params.logger.warn(
+        { err: error, agentId: params.agentId, messageId: params.messageId },
+        "Agent prompt acceptance is unknown",
+      );
+      throw new UnknownAgentRunAcceptanceError({ cause: error });
+    }
+    throw error;
   }
-
-  const runOptions = params.messageId
-    ? { ...params.runOptions, clientMessageId: params.messageId }
-    : params.runOptions;
-
-  return await startAgentRun(params.agentManager, params.agentId, params.prompt, params.logger, {
-    replaceRunning: true,
-    activeTurnBehavior: params.activeTurnBehavior,
-    runOptions,
-  });
 }
 
 export async function startCreatedAgentInitialPrompt(

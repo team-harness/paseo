@@ -65,6 +65,34 @@ Permission requests are notification checkpoints, not the end of that subscripti
 The permission notification includes the normalized request plus the child and request IDs, so the caller can inspect it and respond without fetching agent status.
 A watched child that closes before its finish event also notifies the caller so delegated work cannot disappear silently during archive or workspace teardown.
 
+## Teams
+
+A Team is a reusable host-global profile, not a group of permanently running agents. Its Member
+profiles carry a Role, Level, Skills, execution profile, and stable mention handle. The Lead uses those
+facts plus the Mission objective to create dynamic Workstreams and Assignment ownership. There is no
+stored responsibility field. The Team's creation workspace is only a default Mission context.
+
+Starting a Mission selects one active workspace and freezes the Team roster and provider capabilities.
+The daemon provisions the Lead Participant in that workspace first, then provisions assignees and
+reviewers there only when their Assignment becomes ready. Each Participant binding records
+`(memberId, bindingEpoch, agentId)` so a replacement cannot inherit an accepted turn or report from the
+previous binding. Mission tools resolve identity from that snapshot on every call.
+
+A missing, archived, or hard-deleted Participant suspends affected work through durable Attention. The
+Lead can replan or bind a replacement; already accepted work keeps its original binding and evidence.
+Completing, canceling, or failing a Mission archives its Participants after terminal turn and workspace
+evidence settles. The Team profile remains available for another Mission. Archiving the Team is a
+separate explicit action and first converges any active Mission.
+
+Archiving a workspace first converges every Mission bound to it, archives their Participants, and
+releases workspace leases. It does not archive the reusable Team profile. Mission start and workspace
+archive use the same workspace-first lifecycle fence, so a new Participant cannot appear after archive
+cleanup has started.
+
+Closing a Team tab or a Team-owned Participant tab is layout-only. It does not cancel a Mission,
+archive the Team, or archive the Participant. Use the Mission and Team lifecycle controls for those
+changes.
+
 ## Provider-managed child agents
 
 Some providers can create their own child sessions inside one provider runtime. OMP's task tool reports these with `child_session` events; `AgentManager` imports the live provider handle, stamps `paseo.parent-agent-id`, and surfaces the result as a normal subagent in the parent's subagents track.
@@ -122,6 +150,10 @@ These are two distinct concepts that used to be conflated:
 Closing a tab on a **root agent** still archives — the tab is the agent's home, so closing it means "I'm done with this agent." A confirm dialog protects against archiving a running agent by accident.
 
 Closing a tab on a **subagent** (any agent with `parentAgentId`) is **layout-only**. The app clears the current client's open-tab label before removing the tab. Another client's open tab remains protected. The agent stays unarchived and stays in its parent's track, so a later parent archive cascades to it when no client still has it open. The user can re-open the tab from the track at any time. Single and bulk tab close apply the same policy.
+
+Closing a tab on a **team lead** is layout-only too. A lead is a root agent, so the default would archive it — and archiving a lead ends its whole team. The team panel is where a team ends, because it is the only surface that can say what ending one costs. `creating` counts as live: mid-creation the daemon's own deletion guard refuses to remove the lead, so a close that archived it would fail anyway.
+
+The rule lives in one place, `resolveCloseAgentTabPolicy` (`packages/app/src/subagents/close-tab-policy.ts`); single close and bulk close both ask it. Bulk close asks because it is the same question — an agent archived in a batch is archived just as thoroughly, and more quietly.
 
 The asymmetry is intentional: a subagent's persistent relationship lives in the parent's track. Same-workspace subagents are not auto-opened as tabs; the user opens one from that track when needed. A cross-workspace subagent is also auto-opened as a tab in its own workspace so opening that workspace does not appear empty. It remains in the parent's track until it is actually detached.
 

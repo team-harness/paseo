@@ -38,6 +38,7 @@ import {
 import type { ComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload } from "@/composer/types";
 import { focusWithRetries } from "@/utils/web-focus";
+import { getTextInputNativeElement, setTextInputSelection } from "@/utils/text-input-selection";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
 import {
@@ -418,12 +419,6 @@ function handleDesktopKeyPressImpl(
   if (ctx.isSubmitDisabled || ctx.isSubmitLoading || ctx.disabled) return;
   event.preventDefault();
   ctx.handleDefaultSendAction();
-}
-
-function getTextInputNativeElement(current: ComposerTextInputHandle | null): HTMLElement | null {
-  if (!current) return null;
-  const native = typeof current.getNativeRef === "function" ? current.getNativeRef() : current;
-  return native instanceof HTMLElement ? native : null;
 }
 
 interface PasteImagesEffectArgs {
@@ -1248,9 +1243,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         textInputRef.current?.blur();
       },
       setSelection: (selection) => {
-        const input = textInputRef.current;
-        if (!input) return;
-        input.replaceText(input.getText(), selection);
+        setTextInputSelection(textInputRef.current, selection);
       },
       getText: () => textInputRef.current?.getText() ?? valueRef.current,
       getInputSnapshot: () =>

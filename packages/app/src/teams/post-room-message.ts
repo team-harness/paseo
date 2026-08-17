@@ -1,0 +1,90 @@
+import type { TeamRoomMessage } from "@getpaseo/protocol/team/v2-types";
+
+export type PostRoomMessageState =
+  | { status: "pending" }
+  | { status: "idle"; message?: TeamRoomMessage }
+  | { status: "failure"; message: string };
+
+export interface PostRoomMessageGateway {
+  postTeamMissionMessage(options: {
+    requestId: string;
+    missionId: string;
+    body: string;
+    replyToMessageId?: string;
+  }): Promise<{ message: TeamRoomMessage | null; error: string | null }>;
+}
+
+export interface RoomMessageIntent {
+  requestId: string;
+  body: string;
+  replyToMessageId: string | null;
+}
+
+export function freezeRoomMessageIntent(
+  current: RoomMessageIntent | null,
+  bodyInput: string,
+  replyToMessageId: string | null,
+  createRequestId: () => string,
+): RoomMessageIntent | null {
+  const body = bodyInput.trim();
+  if (!body) return null;
+  if (current?.body === body && current.replyToMessageId === replyToMessageId) return current;
+  return { requestId: createRequestId(), body, replyToMessageId };
+}
+
+export interface PostRoomMessageLabels {
+  /** The daemon refused and said nothing about why. */
+  refused: string;
+  /** There is no host to send to. */
+  offline: string;
+}
+
+/**
+ * Says something in a team's room, as a person.
+ *
+ * There is no local "sent" state and no optimistic message: the daemon
+ * broadcasts the post back over the room subscription, so the timeline learns
+ * about it the same way it learns about everyone else's. A locally-appended
+ * copy would sit next to the real one when it arrived.
+ */
+export async function postRoomMessage(
+  input: {
+    missionId: string;
+    requestId: string;
+    body: string;
+    replyToMessageId?: string | null;
+    client: PostRoomMessageGateway | null;
+  },
+  labels: PostRoomMessageLabels,
+  onState: (state: PostRoomMessageState) => void,
+): Promise<void> {
+  const body = input.body.trim();
+  // Whitespace is not a message. Reporting a failure for it would be noise.
+  if (!body) return;
+
+  if (!input.client) {
+    // Clearing the composer over a post that went nowhere loses what was typed.
+    onState({ status: "failure", message: labels.offline });
+    return;
+  }
+
+  onState({ status: "pending" });
+  try {
+    const answer = await input.client.postTeamMissionMessage({
+      requestId: input.requestId,
+      missionId: input.missionId,
+      body,
+      ...(input.replyToMessageId ? { replyToMessageId: input.replyToMessageId } : {}),
+    });
+    if (!answer.message) {
+      onState({ status: "failure", message: answer.error ?? labels.refused });
+      return;
+    }
+    onState({ status: "idle", message: answer.message });
+  } catch (cause) {
+    onState({
+      status: "failure",
+      message: cause instanceof Error ? cause.message : labels.refused,
+    });
+  }
+}

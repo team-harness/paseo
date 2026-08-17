@@ -3,6 +3,7 @@ import {
   resolveStartupBlocker,
   resolveStartupNavigationReady,
   resolveHostIndexRoute,
+  resolveHostIndexRouteDecision,
   resolveStartupRoute,
   shouldRunStartupGiveUpTimer,
   startHostRuntimeBootstrap,
@@ -391,5 +392,84 @@ describe("resolveHostIndexRoute", () => {
         workspaceSelectionStatus: "unknown",
       }),
     ).toEqual("/open-project");
+  });
+});
+
+describe("resolveHostIndexRouteDecision", () => {
+  const supported = { teamMissions: true, globalTeamProfiles: true, teamMethodologies: true };
+
+  it("redirects a supported zero-workspace host to Team Hub", () => {
+    expect(
+      resolveHostIndexRouteDecision({
+        serverId: "server-saved",
+        workspaceSelection: null,
+        workspaceSelectionStatus: "missing",
+        connectionStatus: "online",
+        features: supported,
+      }),
+    ).toEqual({ kind: "redirect", href: "/h/server-saved/teams" });
+  });
+
+  it("redirects a supported host with live workspaces but no selection to Team Hub", () => {
+    expect(
+      resolveHostIndexRouteDecision({
+        serverId: "server-saved",
+        workspaceSelection: null,
+        workspaceSelectionStatus: "missing",
+        connectionStatus: "online",
+        features: supported,
+      }),
+    ).toEqual({ kind: "redirect", href: "/h/server-saved/teams" });
+  });
+
+  it("does not depend on a failed Team replica", () => {
+    expect(
+      resolveHostIndexRouteDecision({
+        serverId: "server-saved",
+        workspaceSelection: null,
+        workspaceSelectionStatus: "missing",
+        connectionStatus: "online",
+        features: supported,
+      }),
+    ).toEqual({ kind: "redirect", href: "/h/server-saved/teams" });
+  });
+
+  it("loads while an online host handshake is unknown", () => {
+    expect(
+      resolveHostIndexRouteDecision({
+        serverId: "server-saved",
+        workspaceSelection: null,
+        workspaceSelectionStatus: "missing",
+        connectionStatus: "online",
+        features: null,
+      }),
+    ).toEqual({ kind: "loading" });
+  });
+
+  it("uses Open Project when Team V1 capability is absent", () => {
+    expect(
+      resolveHostIndexRouteDecision({
+        serverId: "server-saved",
+        workspaceSelection: null,
+        workspaceSelectionStatus: "missing",
+        connectionStatus: "online",
+        features: { teamMissions: true, globalTeamProfiles: true },
+      }),
+    ).toEqual({ kind: "redirect", href: "/open-project" });
+  });
+
+  it("still restores a remembered workspace before hydration", () => {
+    expect(
+      resolveHostIndexRouteDecision({
+        serverId: "server-saved",
+        workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
+        workspaceSelectionStatus: "unknown",
+        connectionStatus: "online",
+        features: supported,
+      }),
+    ).toEqual({
+      kind: "redirect",
+      href: "/h/server-saved/workspace/workspace-a",
+    });
   });
 });

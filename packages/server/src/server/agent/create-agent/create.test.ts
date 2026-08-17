@@ -76,6 +76,7 @@ test("session create forwards clientMessageId to the initial prompt run options"
     agentStorage: {} as Parameters<typeof createAgentCommand>[0]["agentStorage"],
     logger: createTestLogger(),
     providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+    runInWorkspaceLifecycle: async (_workspaceId, operation) => operation(),
   };
 
   await createAgentCommand(dependencies, {
@@ -114,6 +115,7 @@ test("session create validates the requested mode against the provider's modes",
     agentStorage: {} as Parameters<typeof createAgentCommand>[0]["agentStorage"],
     logger: createTestLogger(),
     providerSnapshotManager: stub.manager,
+    runInWorkspaceLifecycle: async (_workspaceId, operation) => operation(),
   };
 
   await expect(
@@ -159,6 +161,7 @@ test("session create applies the resolved mode from the provider create config",
     agentStorage: {} as Parameters<typeof createAgentCommand>[0]["agentStorage"],
     logger: createTestLogger(),
     providerSnapshotManager: stub.manager,
+    runInWorkspaceLifecycle: async (_workspaceId, operation) => operation(),
   };
 
   await createAgentCommand(dependencies, {
@@ -179,6 +182,37 @@ test("session create applies the resolved mode from the provider create config",
     undefined,
     expect.anything(),
   );
+});
+
+test("does not register an agent when the workspace lifecycle fence rejects", async () => {
+  const createAgent = vi.fn();
+  const runInWorkspaceLifecycle = vi.fn(async () => {
+    throw new Error("workspace archive in progress");
+  });
+  const dependencies: Parameters<typeof createAgentCommand>[0] = {
+    agentManager: {
+      createAgent,
+    } as unknown as Parameters<typeof createAgentCommand>[0]["agentManager"],
+    agentStorage: {} as Parameters<typeof createAgentCommand>[0]["agentStorage"],
+    logger: createTestLogger(),
+    providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+    runInWorkspaceLifecycle,
+  };
+
+  await expect(
+    createAgentCommand(dependencies, {
+      kind: "session",
+      config: { provider: "codex", cwd: "/tmp/paseo-create-test" },
+      workspaceId: "ws-create-test",
+      labels: {},
+      provisionalTitle: null,
+      firstAgentContext: { attachments: [] },
+      buildSessionConfig: async (config) => ({ sessionConfig: config }),
+    }),
+  ).rejects.toThrow("workspace archive in progress");
+
+  expect(runInWorkspaceLifecycle).toHaveBeenCalledWith("ws-create-test", expect.any(Function));
+  expect(createAgent).not.toHaveBeenCalled();
 });
 
 test("mcp create accepts provider-only internal input and leaves model undefined", async () => {
@@ -202,6 +236,7 @@ test("mcp create accepts provider-only internal input and leaves model undefined
         return {};
       }),
     } as Parameters<typeof createAgentCommand>[0]["providerSnapshotManager"],
+    runInWorkspaceLifecycle: async (_workspaceId, operation) => operation(),
   };
 
   await createAgentCommand(dependencies, {
@@ -239,6 +274,7 @@ test("session create stamps the requested workspaceId when no worktree setup run
         agentStorage: storage,
         logger,
         providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+        runInWorkspaceLifecycle: async (_workspaceId, operation) => operation(),
       },
       {
         kind: "session",
@@ -270,6 +306,7 @@ test("session create stamps the new worktree's workspaceId when a setup continua
         agentStorage: storage,
         logger,
         providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+        runInWorkspaceLifecycle: async (_workspaceId, operation) => operation(),
       },
       {
         kind: "session",
@@ -301,7 +338,13 @@ test("mcp create stamps the new worktree's workspaceId, not the parent's", async
 
   try {
     const { snapshot: parent } = await createAgentCommand(
-      { agentManager, agentStorage: storage, logger, providerSnapshotManager },
+      {
+        agentManager,
+        agentStorage: storage,
+        logger,
+        providerSnapshotManager,
+        runInWorkspaceLifecycle: async (_workspaceId, operation) => operation(),
+      },
       {
         kind: "session",
         config: { provider: "codex", cwd: workdir },
@@ -319,6 +362,7 @@ test("mcp create stamps the new worktree's workspaceId, not the parent's", async
         agentStorage: storage,
         logger,
         providerSnapshotManager,
+        runInWorkspaceLifecycle: async (_workspaceId, operation) => operation(),
         createPaseoWorktree: fakeWorktreeCreator({
           repoRoot: workdir,
           createdWorkspaceId: "ws-new-worktree",
@@ -370,6 +414,7 @@ test("mcp create exposes the created worktree before dispatching the initial pro
             return {};
           },
         },
+        runInWorkspaceLifecycle: async (_workspaceId, operation) => operation(),
         createPaseoWorktree: async () => createdWorktree,
       },
       {
@@ -409,6 +454,7 @@ test("session create keeps the prompt title after the initial prompt settles", a
         agentStorage: storage,
         logger,
         providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+        runInWorkspaceLifecycle: async (_workspaceId, operation) => operation(),
       },
       {
         kind: "session",
@@ -447,6 +493,7 @@ test("session create keeps an explicit title after the initial prompt settles", 
         agentStorage: storage,
         logger,
         providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+        runInWorkspaceLifecycle: async (_workspaceId, operation) => operation(),
       },
       {
         kind: "session",

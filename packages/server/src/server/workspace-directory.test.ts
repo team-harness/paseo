@@ -582,7 +582,7 @@ describe("WorkspaceDirectory empty projects", () => {
     });
   }
 
-  function project(input: Partial<PersistedProjectRecord> & { projectId: string }) {
+  function projectRecord(input: Partial<PersistedProjectRecord> & { projectId: string }) {
     return {
       rootPath: `/workspace/${input.projectId}`,
       kind: "non_git",
@@ -598,7 +598,7 @@ describe("WorkspaceDirectory empty projects", () => {
 
   test("surfaces a project with no active workspaces through the compatibility projection", async () => {
     const directory = makeDirectory({
-      projects: [project({ projectId: "empty", customName: "Renamed" })],
+      projects: [projectRecord({ projectId: "empty", customName: "Renamed" })],
       workspaces: [],
     });
 
@@ -622,7 +622,7 @@ describe("WorkspaceDirectory empty projects", () => {
 
   test("excludes projects that still have an active workspace", async () => {
     const directory = makeDirectory({
-      projects: [project({ projectId: "with-ws" }), project({ projectId: "empty" })],
+      projects: [projectRecord({ projectId: "with-ws" }), projectRecord({ projectId: "empty" })],
       workspaces: [
         {
           workspaceId: "ws-1",
@@ -643,5 +643,35 @@ describe("WorkspaceDirectory empty projects", () => {
     });
 
     expect(result.emptyProjects.map((p) => p.projectId)).toEqual(["empty"]);
+  });
+
+  test("hides a workspace with a durable archive intent and exposes its project as empty", async () => {
+    const directory = makeDirectory({
+      projects: [projectRecord({ projectId: "archiving" })],
+      workspaces: [
+        {
+          workspaceId: "ws-archiving",
+          projectId: "archiving",
+          cwd: "/workspace/archiving",
+          kind: "directory",
+          displayName: "main",
+          createdAt: NOW,
+          updatedAt: NOW,
+          archivedAt: null,
+          archiveIntent: {
+            requestId: "archive-request",
+            requestedAt: NOW,
+          },
+        },
+      ],
+    });
+
+    const result = await directory.listFetchEntries({
+      type: "fetch_workspaces_request",
+      requestId: "r-archiving",
+    });
+
+    expect(result.entries).toEqual([]);
+    expect(result.emptyProjects.map((entry) => entry.projectId)).toEqual(["archiving"]);
   });
 });

@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   buildHostAgentDetailRoute,
   buildHostRootRoute,
+  buildHostTeamRoute,
+  buildHostTeamSettingsRoute,
+  buildHostTeamsRoute,
   buildHostWorkspaceOpenRoute,
   buildHostWorkspaceRoute,
   buildNewWorkspaceRoute,
   buildOpenProjectRoute,
   resolveKnownHostRoute,
+  resolveNewWorkspaceSuccessRoute,
   buildSessionsRoute,
   buildSettingsAddHostRoute,
   buildProjectSettingsRoute,
@@ -90,6 +94,23 @@ describe("workspace route parsing", () => {
 
   it("builds host root routes", () => {
     expect(buildHostRootRoute("local")).toBe("/h/local");
+  });
+
+  it("builds host-level Team routes without a workspace segment", () => {
+    expect(buildHostTeamRoute("local host", "team/alpha")).toBe(
+      "/h/local%20host/team/team%2Falpha",
+    );
+  });
+
+  it("builds a host-owned Team settings intent", () => {
+    expect(buildHostTeamSettingsRoute("local host", "team/alpha")).toBe(
+      "/h/local%20host/team/team%2Falpha?settings=1",
+    );
+  });
+
+  it("builds the static Team Hub route", () => {
+    expect(buildHostTeamsRoute("local host")).toBe("/h/local%20host/teams");
+    expect(buildHostTeamsRoute(" ")).toBe("/");
   });
 
   it("parses workspace open intent from pathname query", () => {
@@ -219,6 +240,42 @@ describe("global routes", () => {
 
   it("buildNewWorkspaceRoute accepts an initial host", () => {
     expect(buildNewWorkspaceRoute({ serverId: "local" })).toBe("/new?serverId=local");
+  });
+
+  it("buildNewWorkspaceRoute carries a typed one-shot success intent", () => {
+    expect(
+      buildNewWorkspaceRoute({
+        serverId: "host",
+        successIntent: { kind: "host_teams", serverId: "host" },
+      }),
+    ).toBe("/new?serverId=host&success=host_teams&successServerId=host");
+  });
+
+  it("accepts only the same physical host Team Hub success intent", () => {
+    expect(
+      resolveNewWorkspaceSuccessRoute({
+        success: "host_teams",
+        successServerId: "host-a",
+        routeServerId: "host-a",
+        targetServerId: "host-a",
+      }),
+    ).toBe("/h/host-a/teams");
+    expect(
+      resolveNewWorkspaceSuccessRoute({
+        success: "settings",
+        successServerId: "host-a",
+        routeServerId: "host-a",
+        targetServerId: "host-a",
+      }),
+    ).toBeNull();
+    expect(
+      resolveNewWorkspaceSuccessRoute({
+        success: "host_teams",
+        successServerId: "host-b",
+        routeServerId: "host-a",
+        targetServerId: "host-a",
+      }),
+    ).toBeNull();
   });
 
   it("buildNewWorkspaceRoute accepts initial project context", () => {

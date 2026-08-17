@@ -44,6 +44,32 @@ describe("provider subagent tab identity", () => {
   });
 });
 
+describe("team tab identity", () => {
+  test("normalizes, compares, and keys a team target like every other tab", () => {
+    // A tab kind that any of these three misses survives a session and dies on
+    // restore, or opens twice, or restores as a blank tab.
+    const target = normalizeWorkspaceTabTarget({ kind: "team", teamId: " team-a " });
+
+    expect(target).toEqual({ kind: "team", teamId: "team-a" });
+    expect(target && workspaceTabTargetsEqual(target, { kind: "team", teamId: "team-a" })).toBe(
+      true,
+    );
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "team", teamId: "team-a" },
+        { kind: "team", teamId: "team-b" },
+      ),
+    ).toBe(false);
+    expect(buildDeterministicWorkspaceTabId({ kind: "team", teamId: "team-a" })).toBe(
+      buildDeterministicWorkspaceTabId({ kind: "team", teamId: "team-a" }),
+    );
+  });
+
+  test("rejects a team target with no id rather than keeping an unopenable tab", () => {
+    expect(normalizeWorkspaceTabTarget({ kind: "team", teamId: "  " })).toBeNull();
+  });
+});
+
 describe("working diff tab identity", () => {
   const target = {
     kind: "working_diff" as const,

@@ -11,6 +11,7 @@ import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
+import type { TeamRuntimeHostBoundary } from "./team/team-runtime.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
@@ -111,6 +112,10 @@ import {
 } from "./websocket/physical-socket.js";
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
+
+function optionalOrNull<T>(value: T | undefined): T | null {
+  return value ?? null;
+}
 
 export interface ExternalSocketMetadata {
   transport: "relay";
@@ -600,6 +605,7 @@ export class VoiceAssistantWebSocketServer {
   private unsubscribeTerminalActivity: (() => void) | null = null;
   private readonly browserToolsBroker: BrowserToolsBroker | null;
   private readonly hubRelationships: HubRelationshipManagement | null;
+  private readonly teamRuntime: TeamRuntimeHostBoundary | null;
   private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
   private connectionLifecycle: "starting" | "accepting" | "stopping" = "accepting";
   private readonly advertiseDaemonStatusRpc: boolean;
@@ -651,6 +657,7 @@ export class VoiceAssistantWebSocketServer {
     browserToolsBroker?: BrowserToolsBroker | null,
     hubRelationships?: HubRelationshipManagement | null,
     promptLibraryStore?: PromptLibraryStore,
+    teamRuntime?: TeamRuntimeHostBoundary | null,
     workspaceSetupRuntime: WorkspaceSetupRuntime = new WorkspaceSetupRuntime(),
     pluginRuntime?: SessionOptions["pluginRuntime"],
   ) {
@@ -668,6 +675,7 @@ export class VoiceAssistantWebSocketServer {
     this.browserToolsBroker = browserToolsBroker ?? null;
     this.hubRelationships = hubRelationships ?? null;
     this.pluginRuntime = pluginRuntime;
+    this.teamRuntime = optionalOrNull(teamRuntime);
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
@@ -1406,6 +1414,13 @@ export class VoiceAssistantWebSocketServer {
         ? { ...base, lifecycle: "ephemeral-plugin", pluginId: lifecycle.pluginId }
         : { ...base, lifecycle: "reconnectable", externalDisconnectCleanupTimeout: null };
     session.updateClientCapabilities(clientCapabilities, ws);
+    const identity = this.socketIdentities.get(ws);
+    if (identity) {
+      session.updatePhysicalSourceIdentity(ws, {
+        connectionId: identity.connectionId,
+        selfReportedClientLabel: clientId,
+      });
+    }
     return connection;
   }
 
@@ -1438,6 +1453,7 @@ export class VoiceAssistantWebSocketServer {
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
       directorySync: this.directorySync,
+      teamRuntime: this.teamRuntime?.sessionDeps() ?? null,
       scheduleService: this.scheduleService,
       checkoutDiffManager: this.checkoutDiffManager,
       github: this.github,
@@ -1619,6 +1635,10 @@ export class VoiceAssistantWebSocketServer {
     // hello resets membership before server_info so stale retained-session
     // state cannot leak. Remove after 2027-01-12.
     existing.session.updateClientCapabilities(newClientCapabilities, ws);
+    existing.session.updatePhysicalSourceIdentity(ws, {
+      connectionId: pending.identity.connectionId,
+      selfReportedClientLabel: existing.clientId,
+    });
     if (
       JSON.stringify(existing.clientCapabilities ?? null) !==
       JSON.stringify(newClientCapabilities ?? null)
@@ -1718,6 +1738,7 @@ export class VoiceAssistantWebSocketServer {
         statusSummary: true,
         // COMPAT(promptLibrary): added in v0.2.6, remove gate after 2027-02-04.
         promptLibrary: true,
+        ...this.teamRuntime?.serverFeatures(),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
         // COMPAT(agentThinkingUpdate): added in v0.2.4, remove gate after 2027-01-28.

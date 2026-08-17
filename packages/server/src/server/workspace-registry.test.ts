@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 
 import { beforeEach, afterEach, describe, expect, test } from "vitest";
 
@@ -10,6 +10,7 @@ import {
   createPersistedWorkspaceRecord,
   FileBackedProjectRegistry,
   FileBackedWorkspaceRegistry,
+  isWorkspaceRecordArchiveReference,
   resolveWorkspaceDisplayName,
   resolveWorkspaceName,
 } from "./workspace-registry.js";
@@ -40,6 +41,31 @@ describe("resolveWorkspaceName", () => {
     });
     expect(resolveWorkspaceDisplayName(record)).toBe("Renamed");
     expect(resolveWorkspaceDisplayName({ ...record, title: null })).toBe("main");
+  });
+
+  test("keeps a pending archive as a backing-directory reference", () => {
+    const record = createPersistedWorkspaceRecord({
+      workspaceId: "ws-pending-archive",
+      projectId: "proj-1",
+      cwd: "/tmp/repo",
+      kind: "worktree",
+      displayName: "feature",
+      createdAt: "2026-03-01T00:00:00.000Z",
+      updatedAt: "2026-03-02T00:00:00.000Z",
+      archiveIntent: {
+        requestId: "request-archive",
+        requestedAt: "2026-03-02T00:00:00.000Z",
+      },
+    });
+
+    expect(isWorkspaceRecordArchiveReference(record)).toBe(true);
+    expect(
+      isWorkspaceRecordArchiveReference({
+        ...record,
+        archivedAt: "2026-03-03T00:00:00.000Z",
+        archiveIntent: null,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -420,6 +446,152 @@ describe("workspace registries", () => {
     });
   });
 
+  test("persists the first workspace archive intent across registry restarts", async () => {
+    await workspaceRegistry.initialize();
+    await workspaceRegistry.upsert(
+      createPersistedWorkspaceRecord({
+        workspaceId: "workspace-archive-intent",
+        projectId: "project-one",
+        cwd: "/tmp/archive-intent",
+        kind: "local_checkout",
+        displayName: "archive-intent",
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      }),
+    );
+
+    await workspaceRegistry.beginArchive("workspace-archive-intent", {
+      requestId: "request-first",
+      requestedAt: "2026-03-02T00:00:00.000Z",
+    });
+    await workspaceRegistry.beginArchive("workspace-archive-intent", {
+      requestId: "request-retry",
+      requestedAt: "2026-03-03T00:00:00.000Z",
+    });
+
+    const reloaded = new FileBackedWorkspaceRegistry(
+      path.join(tmpDir, "projects", "workspaces.json"),
+      logger,
+    );
+    await reloaded.initialize();
+    expect(await reloaded.get("workspace-archive-intent")).toMatchObject({
+      archivedAt: null,
+      archiveIntent: {
+        requestId: "request-first",
+        requestedAt: "2026-03-02T00:00:00.000Z",
+      },
+    });
+  });
+
+  test("loads workspace records written before archive intents were added", async () => {
+    const registryPath = path.join(tmpDir, "projects", "workspaces.json");
+    mkdirSync(path.dirname(registryPath), { recursive: true });
+    writeFileSync(
+      registryPath,
+      JSON.stringify([
+        {
+          workspaceId: "workspace-legacy-archive",
+          projectId: "project-one",
+          cwd: "/tmp/legacy-archive",
+          kind: "local_checkout",
+          displayName: "legacy-archive",
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          archivedAt: null,
+        },
+      ]),
+    );
+
+    await workspaceRegistry.initialize();
+
+    expect(await workspaceRegistry.list()).toMatchObject([
+      {
+        workspaceId: "workspace-legacy-archive",
+        archiveIntent: null,
+      },
+    ]);
+  });
+
+  test("commits a workspace archive and clears its durable intent atomically", async () => {
+    await workspaceRegistry.initialize();
+    await workspaceRegistry.upsert(
+      createPersistedWorkspaceRecord({
+        workspaceId: "workspace-archive-commit",
+        projectId: "project-one",
+        cwd: "/tmp/archive-commit",
+        kind: "local_checkout",
+        displayName: "archive-commit",
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      }),
+    );
+    await workspaceRegistry.beginArchive("workspace-archive-commit", {
+      requestId: "request-commit",
+      requestedAt: "2026-03-02T00:00:00.000Z",
+    });
+
+    await workspaceRegistry.archive("workspace-archive-commit", "2026-03-03T00:00:00.000Z");
+
+    const reloaded = new FileBackedWorkspaceRegistry(
+      path.join(tmpDir, "projects", "workspaces.json"),
+      logger,
+    );
+    await reloaded.initialize();
+    expect(await reloaded.get("workspace-archive-commit")).toMatchObject({
+      archivedAt: "2026-03-03T00:00:00.000Z",
+      updatedAt: "2026-03-03T00:00:00.000Z",
+      archiveIntent: null,
+    });
+  });
+
+  test("retains the durable archive intent when the final record write fails", async () => {
+    const registryPath = path.join(tmpDir, "projects", "workspaces.json");
+    await workspaceRegistry.initialize();
+    await workspaceRegistry.upsert(
+      createPersistedWorkspaceRecord({
+        workspaceId: "workspace-archive-failure",
+        projectId: "project-one",
+        cwd: "/tmp/archive-failure",
+        kind: "local_checkout",
+        displayName: "archive-failure",
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      }),
+    );
+    await workspaceRegistry.beginArchive("workspace-archive-failure", {
+      requestId: "request-failure",
+      requestedAt: "2026-03-02T00:00:00.000Z",
+    });
+
+    const persistedRegistryDir = path.join(tmpDir, "persisted-projects");
+    renameSync(path.dirname(registryPath), persistedRegistryDir);
+    writeFileSync(path.dirname(registryPath), "blocks atomic persistence");
+
+    await expect(
+      workspaceRegistry.archive("workspace-archive-failure", "2026-03-03T00:00:00.000Z"),
+    ).rejects.toThrow();
+    expect(await workspaceRegistry.get("workspace-archive-failure")).toMatchObject({
+      archivedAt: null,
+      archiveIntent: {
+        requestId: "request-failure",
+        requestedAt: "2026-03-02T00:00:00.000Z",
+      },
+    });
+
+    const reloaded = new FileBackedWorkspaceRegistry(
+      path.join(persistedRegistryDir, "workspaces.json"),
+      logger,
+    );
+    await reloaded.initialize();
+    expect(await reloaded.get("workspace-archive-failure")).toMatchObject({
+      archivedAt: null,
+      archiveIntent: {
+        requestId: "request-failure",
+        requestedAt: "2026-03-02T00:00:00.000Z",
+      },
+    });
+  });
+
   test("persists the consumed change request with the workspace archive", async () => {
     await workspaceRegistry.initialize();
     await workspaceRegistry.upsert(
@@ -484,6 +656,39 @@ describe("workspace registries", () => {
     expect(await reloadedRegistry.get("ws-1")).toMatchObject({
       title: "Payments work",
       pinnedAt: "2026-03-03T00:00:00.000Z",
+    });
+  });
+
+  test("does not let stale upserts clear workspace archive lifecycle fields", async () => {
+    await workspaceRegistry.initialize();
+    const original = createPersistedWorkspaceRecord({
+      workspaceId: "ws-stale-upsert",
+      projectId: "proj-1",
+      cwd: "/tmp/repo",
+      kind: "local_checkout",
+      displayName: "main",
+      createdAt: "2026-03-01T00:00:00.000Z",
+      updatedAt: "2026-03-01T00:00:00.000Z",
+    });
+    await workspaceRegistry.upsert(original);
+
+    await workspaceRegistry.beginArchive("ws-stale-upsert", {
+      requestId: "request-archive",
+      requestedAt: "2026-03-02T00:00:00.000Z",
+    });
+    await workspaceRegistry.upsert({ ...original, title: "stale metadata" });
+    expect(await workspaceRegistry.get("ws-stale-upsert")).toMatchObject({
+      archivedAt: null,
+      archiveIntent: { requestId: "request-archive" },
+      title: "stale metadata",
+    });
+
+    await workspaceRegistry.archive("ws-stale-upsert", "2026-03-03T00:00:00.000Z");
+    await workspaceRegistry.upsert({ ...original, title: "later stale metadata" });
+    expect(await workspaceRegistry.get("ws-stale-upsert")).toMatchObject({
+      archivedAt: "2026-03-03T00:00:00.000Z",
+      archiveIntent: null,
+      title: "later stale metadata",
     });
   });
 });

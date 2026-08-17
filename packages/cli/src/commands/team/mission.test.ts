@@ -1,0 +1,238 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  runMissionCancelCommand,
+  runMissionInspectCommand,
+  runMissionListCommand,
+  runMissionRefreshCapabilitiesCommand,
+  runMissionStartCommand,
+  runMissionWaiveReviewCommand,
+} from "./mission.js";
+
+const { connectToDaemon, client, serverFeatures } = vi.hoisted(() => ({
+  connectToDaemon: vi.fn(),
+  serverFeatures: {
+    teamMissions: true,
+    globalTeamProfiles: true,
+    teamMethodologies: true,
+  } as {
+    teamMissions: boolean;
+    globalTeamProfiles?: boolean;
+    teamMethodologies: boolean;
+  },
+  client: {
+    getLastServerInfoMessage: () => ({ features: serverFeatures }),
+    supportsGlobalTeamProfiles: () => serverFeatures.globalTeamProfiles === true,
+    inspectTeamProfile: vi.fn(),
+    startTeamMission: vi.fn(),
+    listTeamMissions: vi.fn(),
+    inspectTeamMission: vi.fn(),
+    cancelTeamMission: vi.fn(),
+    resolveTeamMissionAttention: vi.fn(),
+    refreshTeamMissionCapabilities: vi.fn(),
+    close: vi.fn(async () => {}),
+  },
+}));
+
+vi.mock("../../utils/client.js", () => ({
+  connectToDaemon,
+  getDaemonHost: () => "127.0.0.1:6767",
+}));
+
+const mission = {
+  id: "mission-1",
+  teamId: "team-1",
+  workspaceId: "workspace-1",
+  objective: "Ship the CLI",
+  constraints: ["No fallback"],
+  acceptanceCriteria: ["CLI tests pass"],
+  status: "planning",
+  revision: 2,
+  planRevision: 0,
+  activeRosterSnapshotRevision: 1,
+  capabilityReplanRequests: [],
+  participants: [],
+  workstreams: [],
+  assignments: [],
+  attentionItems: [],
+  chatRoomId: "room-1",
+  updatedAt: "2026-08-09T08:00:00.000Z",
+  completedAt: null,
+};
+
+const team = {
+  id: "team-1",
+  revision: 4,
+  methodologyBinding: {
+    ref: {
+      bundleId: "paseo/standard",
+      version: "1",
+      digest: "sha256:d5001287a60f868bcef21ecd3c4debb5a5237db002c5b9d0f7b0b78e98969697",
+    },
+  },
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  serverFeatures.globalTeamProfiles = true;
+  serverFeatures.teamMethodologies = true;
+  connectToDaemon.mockResolvedValue(client);
+  client.inspectTeamProfile.mockResolvedValue({ team, error: null, errorCode: null });
+});
+
+describe("Mission commands", () => {
+  it("starts a Mission with repeated constraints and acceptance criteria", async () => {
+    client.startTeamMission.mockResolvedValue({ mission, error: null, errorCode: null });
+
+    await runMissionStartCommand(
+      "team-1",
+      {
+        expectedTeamRevision: "4",
+        workspace: "workspace-1",
+        objective: "Ship the CLI",
+        constraint: ["No fallback"],
+        acceptance: ["CLI tests pass", "Typecheck passes"],
+        idempotencyKey: "start-key",
+      },
+      null as never,
+    );
+
+    expect(client.startTeamMission).toHaveBeenCalledWith({
+      idempotencyKey: "start-key",
+      teamId: "team-1",
+      expectedTeamRevision: 4,
+      expectedMethodologyRef: team.methodologyBinding.ref,
+      workspaceId: "workspace-1",
+      objective: "Ship the CLI",
+      constraints: ["No fallback"],
+      acceptanceCriteria: ["CLI tests pass", "Typecheck passes"],
+    });
+  });
+
+  it("requires an explicit workspace when the daemon exposes global Team profiles", async () => {
+    await expect(
+      runMissionStartCommand(
+        "team-1",
+        {
+          expectedTeamRevision: "4",
+          objective: "Ship the CLI",
+          acceptance: ["CLI tests pass"],
+        },
+        null as never,
+      ),
+    ).rejects.toMatchObject({ code: "MISSING_OPTION", message: "--workspace is required" });
+    expect(client.startTeamMission).not.toHaveBeenCalled();
+  });
+
+  it("rejects a daemon without the complete Team V1 capability set", async () => {
+    delete serverFeatures.globalTeamProfiles;
+
+    await expect(
+      runMissionStartCommand(
+        "team-1",
+        {
+          expectedTeamRevision: "4",
+          objective: "Ship the CLI",
+          acceptance: ["CLI tests pass"],
+        },
+        null as never,
+      ),
+    ).rejects.toMatchObject({ code: "DAEMON_UPDATE_REQUIRED" });
+    expect(client.startTeamMission).not.toHaveBeenCalled();
+  });
+
+  it("lists, inspects and cancels through the v2 SDK", async () => {
+    client.listTeamMissions.mockResolvedValue({
+      missions: [mission],
+      error: null,
+      errorCode: null,
+    });
+    client.inspectTeamMission.mockResolvedValue({ mission, error: null, errorCode: null });
+    client.cancelTeamMission.mockResolvedValue({ mission, error: null, errorCode: null });
+
+    await runMissionListCommand("team-1", { all: true }, null as never);
+    await runMissionInspectCommand("mission-1", {}, null as never);
+    await runMissionCancelCommand(
+      "mission-1",
+      { expectedRevision: "2", reason: "Stopped by user", idempotencyKey: "cancel-key" },
+      null as never,
+    );
+
+    expect(client.listTeamMissions).toHaveBeenCalledWith({
+      teamId: "team-1",
+      includeTerminal: true,
+    });
+    expect(client.inspectTeamMission).toHaveBeenCalledWith({ missionId: "mission-1" });
+    expect(client.cancelTeamMission).toHaveBeenCalledWith({
+      idempotencyKey: "cancel-key",
+      missionId: "mission-1",
+      expectedRevision: 2,
+      reason: "Stopped by user",
+    });
+  });
+
+  it("waives a review through the capability-gated controller RPC", async () => {
+    client.resolveTeamMissionAttention.mockResolvedValue({ mission, error: null, errorCode: null });
+    await runMissionWaiveReviewCommand(
+      "mission-1",
+      {
+        attention: "attention-review",
+        expectedRevision: "2",
+        gateFingerprint: `sha256:${"a".repeat(64)}`,
+        subjectFingerprint: `sha256:${"b".repeat(64)}`,
+        reason: "No eligible reviewer remains.",
+        idempotencyKey: "waive-key",
+      },
+      null as never,
+    );
+
+    expect(client.resolveTeamMissionAttention).toHaveBeenCalledWith({
+      idempotencyKey: "waive-key",
+      missionId: "mission-1",
+      attentionId: "attention-review",
+      expectedRevision: 2,
+      resolution: {
+        kind: "waive_review",
+        gateKeyFingerprint: `sha256:${"a".repeat(64)}`,
+        subjectFingerprint: `sha256:${"b".repeat(64)}`,
+        reason: "No eligible reviewer remains.",
+      },
+    });
+  });
+
+  it("reports a pending Lead replan after refreshing structural capabilities", async () => {
+    client.refreshTeamMissionCapabilities.mockResolvedValue({
+      result: {
+        disposition: "replan_requested",
+        missionRevision: 3,
+        rosterSnapshotRevision: 2,
+        requestId: "request-refresh",
+        sourceAttentionIds: ["attention-review"],
+      },
+      error: null,
+      errorCode: null,
+    });
+
+    const result = await runMissionRefreshCapabilitiesCommand(
+      "mission-1",
+      {
+        attention: "attention-review",
+        expectedRevision: "2",
+        idempotencyKey: "refresh-key",
+      },
+      null as never,
+    );
+
+    expect(result.data).toMatchObject({
+      disposition: "replan_requested",
+      rosterSnapshotRevision: 2,
+      requestState: "pending",
+    });
+    expect(client.refreshTeamMissionCapabilities).toHaveBeenCalledWith({
+      missionId: "mission-1",
+      attentionId: "attention-review",
+      expectedRevision: 2,
+      idempotencyKey: "refresh-key",
+    });
+  });
+});

@@ -25,6 +25,7 @@ export const CLIENT_CAPS = {
   // Remove the legacy snapshot encoding after 2027-02-04.
   compactProviderSnapshots: "compact_provider_snapshots",
   browserHost: "browser_host",
+  teamMissions: "team_missions",
 } as const;
 
 export type ClientCapability = (typeof CLIENT_CAPS)[keyof typeof CLIENT_CAPS];
