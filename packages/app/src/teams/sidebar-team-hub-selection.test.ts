@@ -24,4 +24,8 @@ describe("selectSidebarTeamHubServerId", () => {
   it("does not substitute another host when there is no active workspace selection", () => {
     expect(selectSidebarTeamHubServerId(null, supported)).toBeNull();
   });
+
+  it("keeps the entry on the current host-owned Team Hub route", () => {
+    expect(selectSidebarTeamHubServerId(null, supported, "host-a")).toBe("host-a");
+  });
 });

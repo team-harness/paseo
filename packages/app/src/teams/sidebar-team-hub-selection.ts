@@ -11,9 +11,11 @@ export interface SidebarTeamHubFeatures {
 export function selectSidebarTeamHubServerId(
   selection: SidebarTeamHubSelection | null,
   features: SidebarTeamHubFeatures | null,
+  routeServerId: string | null = null,
 ): string | null {
+  const serverId = selection?.serverId ?? routeServerId;
   if (
-    !selection ||
+    !serverId ||
     features?.teamMissions !== true ||
     features.globalTeamProfiles !== true ||
     features.teamMethodologies !== true
@@ -21,5 +23,5 @@ export function selectSidebarTeamHubServerId(
     return null;
   }
 
-  return selection.serverId;
+  return serverId;
 }

@@ -72,6 +72,7 @@ import {
   buildSessionsRoute,
   buildSettingsAddHostRoute,
   buildSettingsRoute,
+  parseServerIdFromPathname,
 } from "@/utils/host-routes";
 import { openHostOverview } from "@/navigation/settings-navigation";
 import type { ShortcutKey } from "@/utils/format-shortcut";
@@ -136,21 +137,21 @@ interface DesktopSidebarProps extends SidebarSharedProps {
 }
 
 export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boolean }) {
+  const pathname = usePathname();
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const isCompactLayout = useIsCompactFormFactor();
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
-  const activeWorkspaceServerId = activeWorkspaceSelection?.serverId ?? null;
+  const sidebarServerId = activeWorkspaceSelection?.serverId ?? parseServerIdFromPathname(pathname);
   const activeServerFeatures = useSessionStore((state) =>
-    activeWorkspaceServerId
-      ? (state.sessions[activeWorkspaceServerId]?.serverInfo?.features ?? null)
-      : null,
+    sidebarServerId ? (state.sessions[sidebarServerId]?.serverInfo?.features ?? null) : null,
   );
   const teamHubServerId = selectSidebarTeamHubServerId(
     activeWorkspaceSelection,
     activeServerFeatures,
+    sidebarServerId,
   );
 
   const {
