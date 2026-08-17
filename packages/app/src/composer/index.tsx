@@ -1926,7 +1926,7 @@ function ComposerContentImpl({
       event.preventDefault();
       messageHistoryIndexRef.current = navigation.index;
       historyAppliedValueRef.current = navigation.value;
-      setUserInput(navigation.value);
+      replaceUserInput(navigation.value, navigation.selection);
       setCursorIndex(navigation.selection.start);
       textSelectionRef.current = navigation.selection;
       requestAnimationFrame(() => {
@@ -1934,7 +1934,7 @@ function ComposerContentImpl({
       });
       return true;
     },
-    [messageHistory, setUserInput, userInput],
+    [messageHistory, replaceUserInput, userInput],
   );
 
   const cancelButtonStyle = useMemo(
