@@ -2198,7 +2198,7 @@ function ComposerContentImpl({
               prompt: content,
               selection: textSelection,
             });
-      setUserInput(result.value);
+      replaceUserInput(result.value, result.selection);
       setCursorIndex(result.selection.start);
       textSelectionRef.current = result.selection;
       requestAnimationFrame(() => {
@@ -2206,7 +2206,7 @@ function ComposerContentImpl({
         messageInputRef.current?.setSelection(result.selection);
       });
     },
-    [setUserInput, userInput],
+    [replaceUserInput, userInput],
   );
 
   useEffect(() => {

@@ -543,7 +543,7 @@ test("copying an assistant selection preserves Markdown structure and links", as
     await expect(quoteButton).toBeVisible();
     await quoteButton.click();
 
-    const quotedDraft = "Before \n> 7. Seventh item\n> 8. Eighth item\n\n";
+    const quotedDraft = "Before \n> Seventh item\n>\n> 8. Eighth item\n\n";
     await expect(composer).toHaveValue(quotedDraft);
     await expect
       .poll(() =>
