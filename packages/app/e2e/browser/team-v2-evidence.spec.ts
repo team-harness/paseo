@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page } from "@playwright/test";
 
+import type { AgentProfile } from "@getpaseo/protocol/messages";
 import type {
   MissionAssignmentContract,
   MissionWorkstream,
@@ -28,8 +29,32 @@ const DESKTOP_VIEWPORT = { width: 1440, height: 960 };
 const COMPACT_VIEWPORT = { width: 420, height: 900 };
 const VALIDATION_WORKSTREAM_ID = "service-port-validation";
 const TESTS_WORKSTREAM_ID = "focused-regression-tests";
+const TEAM_AGENT_PROFILES = [
+  {
+    id: "ttr_team_lead",
+    name: "Team lead",
+    provider: "mock",
+    model: "five-minute-stream",
+    modeId: "load-test",
+  },
+  {
+    id: "ttr_delivery",
+    name: "Delivery",
+    provider: "mock",
+    model: "five-minute-stream",
+    modeId: "load-test",
+  },
+  {
+    id: "ttr_reviewer",
+    name: "Reviewer",
+    provider: "mock",
+    model: "five-minute-stream",
+    modeId: "load-test",
+  },
+] satisfies AgentProfile[];
 
 interface TeamMissionsSeedClient extends SeedDaemonClient {
+  patchDaemonConfig(config: { agentProfiles: AgentProfile[] }): Promise<unknown>;
   listTeamProfiles(options?: { includeArchived?: boolean }): Promise<{
     teams: TeamV2[];
     error: string | null;
@@ -494,12 +519,35 @@ async function shoot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: path.join(EVIDENCE_DIR, `${name}.png`), fullPage: false });
 }
 
-async function configureMemberModel(page: Page, index: number): Promise<void> {
-  const member = page.getByTestId(`team-profile-member-${index}`);
-  await member.getByTestId("combined-model-selector").click();
-  const modelSearch = page.getByRole("textbox", { name: /search all models/i });
-  await modelSearch.fill("Five minute stream");
-  await page.getByRole("button", { name: /^Five minute stream/ }).click({ force: true });
+async function selectMemberAgentProfile(
+  page: Page,
+  index: number,
+  profileName: string,
+): Promise<void> {
+  await page
+    .getByTestId(`team-profile-member-${index}-execution-source`)
+    .getByRole("button")
+    .click();
+  await page.getByRole("button", { name: profileName, exact: true }).click();
+}
+
+function expectTeamAgentProfileSources(team: TeamV2, expectedProfileIds: string[]): void {
+  expect(team.members.map((member) => member.executionProfileSource?.profileId)).toEqual(
+    expectedProfileIds,
+  );
+}
+
+async function expectFullTemplateTeam(client: TeamMissionsSeedClient): Promise<void> {
+  const fullTeam = (await client.listTeamProfiles()).teams.find(
+    (candidate) => candidate.name === "Full delivery evidence",
+  );
+  expect(fullTeam).toBeDefined();
+  if (!fullTeam) throw new Error("The full delivery Team was not persisted");
+  expect(fullTeam.methodologyBinding.presetId).toBe("full-stack-delivery");
+  expect(fullTeam.members).toHaveLength(5);
+  expect(
+    new Set(fullTeam.members.map((member) => member.executionProfileSource?.profileId)),
+  ).toEqual(new Set(TEAM_AGENT_PROFILES.map((profile) => profile.id)));
 }
 
 async function openSettingsPage(
@@ -530,6 +578,7 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
   try {
     workspace = await seedWorkspace({ repoPrefix: "team-v2-ui-", port: daemon.port });
     const client = workspace.client as TeamMissionsSeedClient;
+    await client.patchDaemonConfig({ agentProfiles: TEAM_AGENT_PROFILES });
     secondRepo = await createTempGitRepo("team-v2-ui-second-");
     const secondWorkspaceResult = await client.createWorkspace({
       source: { kind: "directory", path: secondRepo.path },
@@ -584,10 +633,21 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     await expect(page.getByText("精简交付", { exact: true })).toBeVisible();
     await expect(page.getByText("完整交付", { exact: true })).toBeVisible();
     await shoot(page, "00a-compact-team-templates");
-    await page.getByText("精简交付", { exact: true }).click();
-    await expect(page.getByText("完整交付", { exact: true })).toBeHidden();
+    await page.getByRole("button", { name: "完整交付", exact: true }).click();
+    await expect(page.getByRole("button", { name: "完整交付", exact: true })).toBeHidden();
+    await expect(page.getByTestId("team-profile-member-4")).toBeVisible();
     await expect(page.getByTestId("team-profile-member-0-responsibility")).toBeVisible();
     await expect(page.getByTestId("team-profile-advanced-toggle")).toBeVisible();
+    await page.getByTestId("team-profile-member-0-execution-source").getByRole("button").click();
+    for (const profile of TEAM_AGENT_PROFILES) {
+      await expect(page.getByRole("button", { name: profile.name, exact: true })).toBeVisible();
+    }
+    await page.getByRole("button", { name: "Team lead", exact: true }).click();
+    await selectMemberAgentProfile(page, 1, "Delivery");
+    await selectMemberAgentProfile(page, 2, "Reviewer");
+    await selectMemberAgentProfile(page, 3, "Delivery");
+    await selectMemberAgentProfile(page, 4, "Reviewer");
+    await page.getByTestId("team-profile-name").fill("Full delivery evidence");
     await expect
       .poll(() =>
         page.evaluate(
@@ -596,8 +656,10 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
       )
       .toBe(true);
     await shoot(page, "00b-compact-team-setup");
-    await page.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByTestId("team-profile-submit")).toBeEnabled();
+    await page.getByTestId("team-profile-submit").click();
     await expect(page.getByTestId("team-profile-form-sheet")).toBeHidden();
+    await expectFullTemplateTeam(client);
 
     await page.setViewportSize(DESKTOP_VIEWPORT);
     await page.goto(`/h/${serverId}/workspace/${workspace.workspaceId}`);
@@ -616,8 +678,8 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     await page.getByTestId("team-profile-advanced-toggle").click();
     await expect(page.getByTestId("team-profile-member-0-level")).toBeVisible();
     await expect(page.getByTestId("team-profile-team-capabilities")).toContainText("交付实现");
-    await configureMemberModel(page, 0);
-    await configureMemberModel(page, 1);
+    await selectMemberAgentProfile(page, 0, "Delivery");
+    await selectMemberAgentProfile(page, 1, "Team lead");
     await expect(page.getByTestId("team-profile-submit")).toBeEnabled();
     await page.getByTestId("team-profile-name").scrollIntoViewIfNeeded();
     await shoot(page, "01-desktop-create-team");
@@ -630,6 +692,7 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     const team = profiles.teams.find((candidate) => candidate.name === "Release engineering");
     expect(team).toBeDefined();
     expect(team?.members.map((member) => member.role)).toEqual(["交付成员", "负责人"]);
+    expectTeamAgentProfileSources(team!, ["ttr_delivery", "ttr_team_lead"]);
     expect(new Set(team?.members.map((member) => member.mentionHandle)).size).toBe(2);
     expect((await client.fetchAgents({ scope: "active" })).entries).toHaveLength(
       activeAgentsBefore,
@@ -746,14 +809,14 @@ test("Team v2 creation, Mission chat, settings, and responsive evidence", async 
     await expect(page.getByTestId("mission-workroom-inspector")).toHaveCount(0);
     await page.getByTestId("mission-workroom-inspector-trigger").click();
     await expect(page.getByTestId("mission-workroom-inspector-sheet")).toBeVisible();
+    await page.getByTestId("mission-workroom-inspector-tab-people").click();
     await expect(page.getByTestId("mission-workroom-inspector-sheet-content")).toContainText(
       "交付成员",
     );
-    const compactResults = page
-      .getByTestId("mission-workroom-inspector-sheet-content")
-      .getByText("Results", { exact: true });
-    await compactResults.scrollIntoViewIfNeeded();
-    await expect(compactResults).toBeInViewport();
+    await page.getByTestId("mission-workroom-inspector-tab-results").click();
+    await expect(page.getByTestId("mission-workroom-inspector-sheet-content")).toContainText(
+      "No results yet",
+    );
     await shoot(page, "06a-compact-mission-workroom");
     await page.getByRole("button", { name: "Close" }).click();
     await expect(page.getByTestId("mission-workroom-inspector-sheet")).toBeHidden();

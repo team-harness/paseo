@@ -14,6 +14,10 @@ Team Agent 与 Methodology 代码优先放在独立的 feature-owned 模块中�
   `packages/app/src/components/teams/` 拥有。不要为了少一个文件而把这些逻辑搬进 upstream 的热核心模块。
 - upstream-owned 文件只保留窄接入：协议分发、route 或 panel 注册、capability 投影、façade 调用和
   Paseo adapter wiring。核心接入不能反向成为 Team 状态或策略的事实源。
+- 任务室继续复用 Mission snapshot、`MissionRoomStore` 与 Mission recovery outbox。UI 只组合读模型；不要把
+  Team 消息接入通用 Chat store、增加统一事件总线、复制 recipient delivery engine，或创建跨 Mission 的永久群聊。
+- `Session` 只拥有 physical-source Room subscription 与 wire fanout；收件人解析、幂等冻结、Lead fallback、
+  `@team` 和 reply binding 都留在 `packages/server/src/server/team/`。upstream 同步时按此边界重放接线。
 - 通用 Agent、Chat、Workspace 或 UI 修复与 Team 功能提交分开。能够独立贡献给 upstream 的修复不应依赖
   Team 类型、Team capability 或 fork-only 配置。
 - 每个 Team Agent 子项的 change review 都列出 feature-owned 改动和 upstream-owned 接入补丁。若核心改动

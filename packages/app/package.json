@@ -22,6 +22,7 @@
     "test": "vitest run",
     "test:browser": "vitest run --project browser",
     "test:e2e": "playwright test --project=browser",
+    "test:e2e:electron-task-room": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix ../.. run build:desktop -- --dir && playwright test --config=playwright.electron.config.ts --project=electron-packaged",
     "test:e2e:real": "cross-env E2E_FORK_PASEO_HOME_FROM=../../.dev/paseo-home playwright test --project=real-provider",
     "test:e2e:relay-deployment": "npm --prefix ../.. run build:server && npm --prefix ../.. run build:daemon-web-ui && cross-env E2E_FORK_PASEO_HOME_FROM=../../.dev/paseo-home playwright test --project=relay-deployment e2e/browser/relay-deployment-reconnect.real.spec.ts",
     "test:e2e:ui": "playwright test --ui",

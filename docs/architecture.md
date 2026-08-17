@@ -276,6 +276,12 @@ display text and may repeat, while a persisted mention handle is the stable addr
 show handles instead of agent ids when the roster identity is known, and render human messages with the
 localized `You` label.
 
+Room data has three owners. The Mission snapshot owns work state and evidence, the room store owns
+ordered conversation, and the Mission recovery outbox owns recipient delivery, retry, acknowledgment,
+and binding successors. The App combines read models but does not infer Mission state from prose or
+delivery state from the transcript. Keep the process-wide room notification as a storage signal; socket
+fanout remains a physical-source Session concern, not a Team event bus.
+
 Agent snapshots optionally carry the daemon-owned active turn identity, and turn lifecycle stream events
 optionally carry the same `turnId`. New clients use these fields when present and normalize an old daemon's
 status once at the directory boundary rather than maintaining a second activity model.
@@ -386,7 +392,7 @@ membership, plans, work state, or completion.
 | `team_message`        | Post a durable directed room message by Member id or mention handle                  |
 | `team_member_history` | Read one current participant's curated history                                       |
 | `chat_read`           | Read a room page immediately and advance the caller's durable cursor                 |
-| `chat_post`           | Reply to a human room message without notifying another Member                       |
+| `chat_post`           | Post a room reply or progress update, with optional explicit Member mentions         |
 
 Independent, non-overlapping scopes may run in parallel. The workspace-level lease registry serializes
 overlapping scopes across every Team and Mission sharing the workspace. Accepted work is never replayed.
@@ -402,16 +408,24 @@ the scheduler never waits in a polling loop. The composer receipt means delivere
 Attention items preserve provider, participant, report, notification, and workspace ownership failures
 until an explicit resume, replan, recovery, attribution, exclusion, or cancellation action resolves them.
 
+A human post without a recipient notifies the active Lead. A human reply follows the historical Agent
+back to its Member's current Participant binding. `@team` expands to active Participants. Agent posts do
+not implicitly notify the Lead, and an Agent broadcast excludes its author. When the Lead is unavailable,
+the message remains durable without claiming a delivery; the Task room directs the user to replace the
+Lead. A completed Mission keeps the transcript as read-only replay.
+
 ### App surface
 
-The Team tab is the Mission room. It contains the conversation and composer, without a roster header or
-task switcher. The settings button beside the composer opens a centered sheet on wide layouts and an
-upward sheet on compact layouts. Its five pages are **Team**, **Members**, **Mission**, **Plan &
-Assignments**, and **Attention & Lifecycle**. Profile and Member edits happen there; plan and Assignment
-facts remain read-only. Creating a Team from the workspace Tab `+` adds only the profile, so no Member
-Agent tabs open until the Mission scheduler provisions participants. Active Teams appear under their
-Mission workspace. Idle Teams prefer their creation workspace, then the first live workspace, and also
-remain reachable from the host-level Team surface when the host has no live workspace.
+The host-global Team Hub is the primary list and work entry. Team settings is the secondary management
+surface for the reusable profile, Members, Methodology, and execution choices. Creating a Team adds only
+the profile, so no Member Agent tabs open until a Mission provisions Participants.
+
+An active Team opens its Mission Task room: conversation and composer stay primary, while **Work**,
+**Members**, and **Results** form a read-only inspector. Attention rows link to the existing controller
+actions in settings. Wide layouts pin the inspector beside the transcript; compact layouts open it as a
+sheet. Terminal Missions keep the same surface as read-only replay. Idle Teams show profile and launch
+actions instead of an empty room. Workspace placement presents the current or selected Mission and never
+changes host-global Team ownership.
 
 ## Agent lifecycle
 

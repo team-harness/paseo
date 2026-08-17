@@ -477,9 +477,16 @@ finishes every non-terminal Mission in that workspace before the workspace recor
 Team profile remains active.
 
 The room file is Mission-owned. Team message RPCs address it by `missionId`; generic Chat and Loop
-storage are not part of the Team feature. The room stores ordered messages plus the cursors needed
-for recipient notification recovery. Mission state changes only through structured Mission and
+storage are not part of the Team feature. One Team may run later Missions in other workspaces, but each
+Mission has a separate room and there is no permanent Team conversation. The room stores ordered
+messages and participant read cursors. Mission state changes only through structured Mission and
 Assignment operations, never by interpreting room prose.
+
+Mission snapshot, room message, and recipient delivery are separate persisted facts. The Mission file's
+recovery outbox freezes recipients and owns retry, acknowledgment, cancellation, and binding successor
+state. The room message records what was said and its resolved mention identities; it is not a delivery
+receipt. Retries reuse the persisted recipient intents, while a zero-recipient post uses the durable room
+message as its replay freeze point.
 
 `MissionRoomStore.onMessage` is a process-wide notification that a durable message was appended. It
 does not know about sockets or client capabilities. `Session` owns physical-socket subscriptions and
