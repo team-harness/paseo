@@ -5,6 +5,7 @@ import { defineConfig, devices } from "@playwright/test";
 const baseURL =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_METRO_PORT ?? "8081"}`;
 const relayDeploymentSpec = "**/relay-deployment-reconnect.real.spec.ts";
+const electronPackagedSpec = "**/*.electron.real.spec.ts";
 
 export default defineConfig({
   testDir: "./e2e/browser",
@@ -34,7 +35,7 @@ export default defineConfig({
     {
       name: "real-provider",
       testMatch: ["**/*.real.spec.ts"],
-      testIgnore: [relayDeploymentSpec],
+      testIgnore: [relayDeploymentSpec, electronPackagedSpec],
       use: { ...devices["Desktop Chrome"] },
     },
     {

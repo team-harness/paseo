@@ -1,9 +1,9 @@
 ---
 epic: ../epics/team-task-room.md
-phase: executing
-approved_revision: c4ed2ac22cf7962a6693746aebef75198f9469c3783ac5a083235788d481ff1c
-current_item: TTR-ITEM-9
-next_action: 执行 TTR-ITEM-9，闭合跨平台、重启/mixed socket、真实协作与权威文档验收
+phase: acceptance
+approved_revision: ed4a7f17b29ce9280fa2392c2724968af546ce63f5b4153f7a4bca5e2abcd0ee
+current_item: null
+next_action: 对全部 TTR-ITEM-1..9 与最新批准契约执行 fresh final acceptance review
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -20,7 +20,7 @@ remote_publish: final
 - [x] TTR-ITEM-6 · 闭合回复界面与 Room 历史
 - [x] TTR-ITEM-7 · 让 Agent 在任务室报告协作进展
 - [x] TTR-ITEM-8 · 把任务、成员、结果和 Attention 收敛到 inspector
-- [ ] TTR-ITEM-9 · 完成跨平台与真实协作验收
+- [x] TTR-ITEM-9 · 完成跨平台与真实协作验收
 
 ## 决策记录
 
@@ -29,6 +29,9 @@ remote_publish: final
 - 2026-08-16：owner 确认 human 无 mention 时默认通知 Mission Lead。
 - 2026-08-16：借鉴 Hermes Studio 的任务室表现层，不采用 Crew 广播/session 聚合领域模型。
 - 2026-08-16：新增硬约束：UI、Team Protocol 和事件链分层，小步复用现有 snapshot、Room 与 outbox，禁止大重构。
+- 2026-08-17：owner 明确批准 TTR-ITEM-9 的一次性 native 平台证据豁免；当前机器不安装大型 iOS/Android SDK，
+  不用 JSDOM/mock 冒充 native；首次对外发布包含 Team Task Room 功能的 iOS 或 Android 构建前，仍须补对应平台的
+  真实证据。
 
 ## 执行策略
 
@@ -197,3 +200,39 @@ review lineage、checkpoint、测试和残余风险只写本游标；永久 Epic
   `/root/ttr_item8_review` Round 1 为 `1 blocking / 2 important / 1 minor`；修复后 Round 2 在 staged diff
   `47e8f14e10abac5c46cb4c6725be8119f2b3243bf925d34f6adfa0f97a5f99fa` 上为
   `0 blocking / 0 important / 0 minor`、可合。里程碑主题为 `feat(team): add Mission inspector views`。
+- 2026-08-17：TTR-ITEM-9 browser 验收在隔离 daemon、随机端口与隔离 `PASEO_HOME` 下通过 `1/1`
+  （49.8 秒）。同一真实 UI 流程提交精简/完整两种模板，完整模板持久化 5 个建议成员并覆盖 3 个 Agent Profile，
+  精简模板持久化 2 个 Profile binding，随后覆盖 active Task room、compact inspector、Attention、final verification、
+  terminal replay，以及同一 Team 在第二个 workspace 启动后续 Mission。`420×900` compact 截图无横向溢出。
+- 2026-08-17：TTR-ITEM-9 新增真实 packaged Electron 验收。`CSC_IDENTITY_AUTO_DISCOVERY=false npm run
+build:desktop -- --dir` 生成 ad-hoc signed `packages/desktop/release/mac-arm64/Paseo.app`；测试以隔离 user data、
+  随机 CDP 端口和隔离 daemon 冷启动两次，验证 host registry 持久化、Team Hub、Task room 发帖及工作/成员/结果
+  inspector。独立项目重新构建并启动 packaged app，`1/1` 通过（9.6 秒）；普通 browser `489` 条与 real-provider
+  `19` 条均不收集该 spec，Electron 项目恰好收集 `1` 条。截图为
+  `dogfood-output/team-task-room/electron/real-electron-task-room.png`；测试显式阻断 6767，未重启主 daemon。
+- 2026-08-17：TTR-ITEM-9 复用已冻结的 TTR-ITEM-1 mixed physical socket/restart 证据与 TTR-ITEM-7 两份真实
+  provider 证据。两次真实协作均由负责人在 Mission 完成前总结，final verifier 读取该总结后才提交报告；Mission
+  completed、score 8、Room audit valid，重启后 Room 消息无重复。
+- 2026-08-17：TTR-ITEM-9 更新 `docs/glossary.md`、`docs/architecture.md`、`docs/data-model.md`、
+  `docs/expo-router.md` 与 `docs/changes-by-me.md` 的 owner 段落，删除旧五页设置面描述，冻结 Team Hub / Team
+  settings / Mission Task room 信息架构与 snapshot / message / recipient delivery 三层边界。code-deep 全树 review
+  因既有未跟踪审计输出省略 119 文件，随后定向追踪 `SegmentedControlOption.icon` 与 Electron 生命周期；修复真实
+  Electron icon renderer 崩溃及 E2E 早期失败清理泄漏。
+- 2026-08-17：TTR-ITEM-9 平台探测确认本机无 `simctl`、iOS simulator runtime、Android AVD 或已连接设备；
+  未用 JSDOM/mock 冒充 native。owner 已明确接受该一次性证据缺口；首次对外发布包含 Team Task Room 功能的 iOS
+  或 Android 构建前，仍须补对应平台的真实证据。
+- 2026-08-17：TTR-ITEM-9 独立 change review `/root/ttr_item9_final_review` Round 1 为
+  `2 blocking / 1 important`：packaged Electron spec 会被普通 Linux/browser shard 收集、native 证据缺失、完整模板
+  未断言持久化 Agent Profile source。修复后 Electron spec 由独立 `playwright.electron.config.ts` 单独收集，普通
+  browser 与 real-provider 项目均排除；完整模板现真实提交并断言 5 个成员的 Profile ID，精简模板断言两个 Profile
+  ID。独立 Electron 项目在真实 packaged app 上 `1/1` 通过（11.3 秒）。native finding 由上述 owner waiver 处置。
+- 2026-08-17：同一 change reviewer Round 2 在 staged diff
+  `925fef95a7883a9f7b6ce45cec49b2ebc64f17464aabb11fded77fd798dab5f5` 上确认三项 finding 全部 resolved，终态为
+  `0 blocking / 0 important / 0 minor`、ACCEPT。fresh contract reviewer `/root/ttr_item9_waiver_contract_review`
+  Round 1 为 `1 blocking / 1 important`；同步消除旧 native 全通过断言并收窄发布前补测范围后，Round 2 在 Epic
+  `ed4a7f17b29ce9280fa2392c2724968af546ce63f5b4153f7a4bca5e2abcd0ee` 上为 `0/0/0`、ACCEPT。
+- 2026-08-17：TTR-ITEM-9 完成。最终候选的真实 packaged Electron 全脚本 `1/1`（9.6 秒）、browser 完整流程
+  `1/1`（49.8 秒）、Mission workroom 组件 `5/5`；全仓 lint 与 format-check、双 diff-check 通过。全仓 typecheck
+  只命中未修改的既有基线 `packages/app/src/components/draggable-list.native.tsx:122`。code-deep 全树 review 受既有
+  未跟踪证据干扰省略 124 文件，定向追踪 Playwright ownership 未产生具体 finding；测试收集清单机械证明普通
+  browser 与 real-provider 均不包含 packaged Electron spec。

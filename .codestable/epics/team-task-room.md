@@ -415,7 +415,8 @@ Attention 计算。Team settings 保留 profile 编辑、Methodology 升级、�
    timeline 乱序合并、catalog/replica 独立失败。
 4. **真实 UI：** browser 与 Electron 覆盖创建 Team、启动 Mission、human 普通消息默认 Lead、reply、`@team`、
    任务室 inspector、终态回放；compact browser 加截图与重叠检查。
-5. **Native / provider：** iOS 与 Android 各运行 Team Hub、创建表单和任务室核心路径；真实 provider 证明 Lead
+5. **Native / provider：** 本轮 iOS/Android 记录为 owner-waived evidence gap，不计作通过；首次对外发布包含 Team
+   Task Room 功能的 iOS 或 Android 构建前，各运行 Team Hub、创建表单和任务室核心路径。真实 provider 证明 Lead
    和 Member 在 Room 留下开始/进展/阻塞或交付更新，同时 Mission 只由结构化工具收敛。
 
 不得用 JSDOM/mock 代替真实浏览器、Electron 或 native 证据。不得重跑全仓测试；每个子项运行 owning tests、
@@ -554,9 +555,15 @@ evidence 和 inactive Member 均有投影测试；聊天消息内容变化不会
 `docs/changes-by-me.md` 的 owner 段落，删除被新契约取代的旧 Team UI 描述。最终验收确认没有跨 Mission chat、
 统一事件总线、第二套 delivery engine 或 upstream 热文件中的 Team 领域规则。
 
+本次首发允许一个由 owner 于 2026-08-17 明确批准的平台证据例外：执行机器没有 iOS simulator runtime、Android
+AVD 或已连接设备，因此不伪造 native 证据，也不为此安装大型 SDK。该例外只关闭本 Epic 的执行门，不等价于
+native 已通过；首次对外发布包含 Team Task Room 功能的 iOS 或 Android 构建前，仍须补对应平台的 Team Hub、
+创建表单和任务室核心路径证据。
+
 **验收：** 两种 Team 模板、至少三个 Agent Profile、两个 workspace 的同 Team 后续 Mission、默认 Lead/reply/
-`@team`、Room history、Attention、final verification、终态回放和真实平台证据全部通过；独立 reviewer 给出
-0 blocking / 0 important 后才进入 owner final acceptance。
+`@team`、Room history、Attention、final verification 与终态回放通过；browser、compact 和真实 packaged Electron
+证据通过，iOS/Android 记录为上述 owner-waived evidence gap；独立 reviewer 给出 0 blocking / 0 important 后才进入
+owner final acceptance。
 
 ## 依赖顺序
 
@@ -596,7 +603,8 @@ TTR-ITEM-8 在各自依赖满足后可并行；TTR-ITEM-6 与 TTR-ITEM-8 都消�
 - Agent 在 Room 发布开始、实质进展、阻塞、交付和审查摘要，但不镜像 transcript 或工具流水。
 - Room prose 永远不能完成 Assignment、批准 gate、解决 Attention 或完成 Mission。
 - inspector 只读 Mission facts；聊天内容变化不会改变其任务、成员或结果状态。
-- desktop、compact、Electron、iOS 与 Android 均有真实执行证据；不以 JSDOM/mock 冒充平台证据。
+- desktop、compact 与 Electron 有真实执行证据；iOS/Android 若缺本地 runtime，只能按 TTR-ITEM-9 的一次性 owner
+  例外进入验收，且不得以 JSDOM/mock 冒充平台证据。
 - Team-owned 逻辑留在 feature capsule；upstream-owned 文件只有 source routing、route/sidebar 注册和 façade 接线。
 - 无 Team migration、dual-write、legacy UI、`@everyone` fallback、统一 event bus 或第二套通知引擎。
 
@@ -608,5 +616,7 @@ TTR-ITEM-8 在各自依赖满足后可并行；TTR-ITEM-6 与 TTR-ITEM-8 都消�
   已读状态；UI 不应使用 Slack 的“已读”措辞。
 - 真实 provider 是否稳定遵守公开汇报约定必须用多次 Mission 证据验证。Prompt 测试只能证明指令存在，不能证明
   模型行为。
-- native 与 Electron 的风险主要来自同一 UI 原语的新组合。TTR-ITEM-9 必须补真实平台证据，不能再次把它留到
-  final acceptance 才由 owner 豁免。
+- native 与 Electron 的风险主要来自同一 UI 原语的新组合。Electron 已由真实 packaged app 闭合；owner 于
+  2026-08-17 明确接受当前机器缺少 iOS simulator runtime、Android AVD 与已连接设备的 native 证据缺口。该豁免
+  不得复用于后续 native 发布；首次对外发布包含 Team Task Room 功能的 iOS 或 Android 构建前，必须补对应平台的
+  真实证据。

@@ -143,19 +143,25 @@ function MissionWorkroomInspector({
       {
         value: "work" as const,
         label: t("teams.workroom.work"),
-        icon: ListChecks,
+        icon: ({ color, size }: { color: string; size: number }) => (
+          <ListChecks color={color} size={size} />
+        ),
         testID: "mission-workroom-inspector-tab-work",
       },
       {
         value: "people" as const,
         label: t("teams.workroom.members"),
-        icon: Users,
+        icon: ({ color, size }: { color: string; size: number }) => (
+          <Users color={color} size={size} />
+        ),
         testID: "mission-workroom-inspector-tab-people",
       },
       {
         value: "results" as const,
         label: t("teams.workroom.results"),
-        icon: FileCheck2,
+        icon: ({ color, size }: { color: string; size: number }) => (
+          <FileCheck2 color={color} size={size} />
+        ),
         testID: "mission-workroom-inspector-tab-results",
       },
     ],

@@ -29,10 +29,10 @@ vi.mock("react-native-unistyles", () => ({
 }));
 
 vi.mock("lucide-react-native", () => ({
-  FileCheck2: () => null,
-  ListChecks: () => null,
-  ListTree: () => null,
-  Users: () => null,
+  FileCheck2: React.forwardRef(() => null),
+  ListChecks: React.forwardRef(() => null),
+  ListTree: React.forwardRef(() => null),
+  Users: React.forwardRef(() => null),
 }));
 
 vi.mock("@/constants/layout", () => ({
@@ -91,7 +91,12 @@ vi.mock("@/components/ui/segmented-control", () => ({
     onValueChange,
     testID,
   }: {
-    options: { value: string; label: string; testID?: string }[];
+    options: {
+      value: string;
+      label: string;
+      icon?: (props: { color: string; size: number }) => React.ReactNode;
+      testID?: string;
+    }[];
     value: string;
     onValueChange: (value: string) => void;
     testID?: string;
@@ -108,6 +113,7 @@ vi.mock("@/components/ui/segmented-control", () => ({
             "data-testid": option.testID,
             onClick: () => onValueChange(option.value),
           },
+          option.icon?.({ color: "currentColor", size: 16 }),
           option.label,
         ),
       ),
