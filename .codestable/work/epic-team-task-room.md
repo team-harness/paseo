@@ -3,7 +3,7 @@ epic: ../epics/team-task-room.md
 phase: acceptance
 approved_revision: ed4a7f17b29ce9280fa2392c2724968af546ce63f5b4153f7a4bca5e2abcd0ee
 current_item: null
-next_action: 对全部 TTR-ITEM-1..9 与最新批准契约执行 fresh final acceptance review
+next_action: owner 确认以 force-with-lease 发布已 rebase 的最终分支，然后执行最终接受与游标清理
 blocked_by: null
 item_progression: continuous
 milestone_commit: authorized
@@ -236,3 +236,10 @@ build:desktop -- --dir` 生成 ad-hoc signed `packages/desktop/release/mac-arm64
   只命中未修改的既有基线 `packages/app/src/components/draggable-list.native.tsx:122`。code-deep 全树 review 受既有
   未跟踪证据干扰省略 124 文件，定向追踪 Playwright ownership 未产生具体 finding；测试收集清单机械证明普通
   browser 与 real-provider 均不包含 packaged Electron spec。
+- 2026-08-17：fresh final acceptance reviewer `/root/team_task_room_final_acceptance` 核对 HEAD `f2711e10e`、
+  Epic `ed4a7f17b29ce9280fa2392c2724968af546ce63f5b4153f7a4bca5e2abcd0ee` 与全部 TTR-ITEM-1..9，终态为
+  `0 blocking / 0 important / 0 minor`、ACCEPT。审查独立核对 physical-source 隔离、recipient 幂等、reply/current
+  binding、Agent `@team` 排除自身，以及负责人总结早于完成、verifier 读总结后报告的真实 provider 证据。
+- 2026-08-17：final publish 预检刷新 `origin/feat/agent-teams` 后，远端为 `3d46bdda1`，本地为 `f2711e10e`，
+  两侧计数为 `89/152`；这是 upstream rebase 后的历史分叉，普通 push 会拒绝。执行精确
+  `--force-with-lease=refs/heads/feat/agent-teams:3d46bdda1...` 前等待 owner 明确确认。
