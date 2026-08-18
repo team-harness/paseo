@@ -12,8 +12,21 @@ vi.mock("react-native", () => ({
   },
   Pressable: "button",
   Text: "span",
-  View: ({ children, style }: { children?: React.ReactNode; style?: unknown }) => (
-    <div data-style={JSON.stringify(style)}>{children}</div>
+  // The status ring reaches for plain React Native styles rather than Unistyles ones — see the
+  // note on `rotatorStyles` in status-ring/frame.tsx.
+  StyleSheet: { create: <T,>(styles: T): T => styles },
+  View: ({
+    children,
+    style,
+    onLayout,
+  }: {
+    children?: React.ReactNode;
+    style?: unknown;
+    onLayout?: unknown;
+  }) => (
+    <div data-style={JSON.stringify(style)} data-has-layout-handler={Boolean(onLayout)}>
+      {children}
+    </div>
   ),
 }));
 
@@ -49,7 +62,12 @@ vi.mock("@/components/ui/menu", () => ({
 }));
 
 import { ComposerTrackBar } from "./tracks";
-import { COMPOSER_PILL_CLEARANCE, composerPillStyles } from "./pill-styles";
+import {
+  COMPOSER_PILL_CLEARANCE,
+  composerPillStyles,
+  resolveComposerPillClearance,
+  resolveComposerTrackTailClearance,
+} from "./pill-styles";
 
 describe("ComposerTrackBar", () => {
   let root: Root | null = null;
@@ -85,8 +103,16 @@ describe("ComposerTrackBar", () => {
       right: 0,
       bottom: 0,
       paddingHorizontal: 16,
+      paddingBottom: { xs: 16, md: 10 },
     });
     expect(style).not.toHaveProperty("backgroundColor");
+    expect(container.firstElementChild?.getAttribute("data-has-layout-handler")).toBe("false");
+
+    const trackStyle = JSON.parse(
+      container.firstElementChild?.firstElementChild?.getAttribute("data-style") ?? "{}",
+    );
+    expect(trackStyle).toMatchObject({ flexDirection: "row" });
+    expect(trackStyle).not.toHaveProperty("flexWrap");
   });
 
   it("matches the composer's corner tangent without radius clamping", () => {
@@ -96,6 +122,10 @@ describe("ComposerTrackBar", () => {
       borderRadius: 16,
     });
     expect(composerPillStyles.label).toMatchObject({ fontSize: 12 });
-    expect(COMPOSER_PILL_CLEARANCE).toBe(16);
+    expect(resolveComposerPillClearance(true)).toBe(16);
+    expect(resolveComposerPillClearance(false)).toBe(10);
+    expect(resolveComposerTrackTailClearance(true)).toBe(64);
+    expect(resolveComposerTrackTailClearance(false)).toBe(52);
+    expect(COMPOSER_PILL_CLEARANCE).toEqual({ compact: 16, wide: 10 });
   });
 });

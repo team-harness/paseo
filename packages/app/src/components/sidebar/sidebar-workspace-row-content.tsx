@@ -30,6 +30,7 @@ import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 import { StatusRing } from "@/components/status-ring";
 import { resolveSidebarWorkspacePrimaryLabel } from "@/components/sidebar/sidebar-workspace-title";
 import { TrailingActionScrim } from "@/components/ui/trailing-action-scrim";
+import { useWorkspaceLabelDefinitions } from "@/workspace-labels";
 
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const needsInputColorMapping = (theme: Theme) => ({
@@ -130,6 +131,9 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
     ? t("sidebar.workspace.status.creating")
     : t("sidebar.workspace.actions.archiving");
   const workspaceLabel = resolveSidebarWorkspacePrimaryLabel({ workspace, workspaceTitleSource });
+  // The workspace carries label names; their colors live in its host's catalog, so the row is
+  // where the two meet — the meta line is handed finished definitions.
+  const labels = useWorkspaceLabelDefinitions(workspace.serverId, workspace.labels);
   const workspaceBranchTextStyle = useMemo(
     () => [
       styles.workspaceBranchText,
@@ -175,6 +179,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
             hostBadge={hostBadge ?? null}
             prHint={workspace.prHint}
             serviceSummary={serviceSummary}
+            labels={labels}
           />
         </View>
       </View>

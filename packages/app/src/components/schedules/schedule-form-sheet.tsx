@@ -9,7 +9,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Text, View, type NativeSyntheticEvent, type TextInputChangeEventData } from "react-native";
+import { Text, View } from "react-native";
 import { Bot, Brain, Folder, GitBranch } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
@@ -78,13 +78,6 @@ interface ScheduleAgentOptions {
 function parseMaxRuns(raw: string): number | null {
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function readCommittedTextInputValue(
-  event: NativeSyntheticEvent<TextInputChangeEventData>,
-): string | null {
-  const nativeEvent = event.nativeEvent as TextInputChangeEventData & { isComposing?: boolean };
-  return nativeEvent.isComposing ? null : nativeEvent.text;
 }
 
 function buildAgentOptionKey(agent: Pick<AggregatedAgent, "serverId" | "id">): string {
@@ -581,28 +574,6 @@ function ScheduleFormFields({
   cadenceError,
   mutationServerId,
 }: ScheduleFormFieldsProps): ReactElement {
-  const handleNameChange = useCallback(
-    (event: NativeSyntheticEvent<TextInputChangeEventData>) => {
-      const value = readCommittedTextInputValue(event);
-      if (value !== null) model.setName(value);
-    },
-    [model],
-  );
-  const handlePromptChange = useCallback(
-    (event: NativeSyntheticEvent<TextInputChangeEventData>) => {
-      const value = readCommittedTextInputValue(event);
-      if (value !== null) model.setPrompt(value);
-    },
-    [model],
-  );
-  const handleMaxRunsChange = useCallback(
-    (event: NativeSyntheticEvent<TextInputChangeEventData>) => {
-      const value = readCommittedTextInputValue(event);
-      if (value !== null) model.setMaxRuns(value);
-    },
-    [model],
-  );
-
   return (
     <>
       <Field label="Name">
@@ -611,8 +582,7 @@ function ScheduleFormFields({
           testID="schedule-name-input"
           accessibilityLabel="Schedule name"
           initialValue={state.name}
-          value={state.name}
-          onChange={handleNameChange}
+          onChangeText={model.setName}
           placeholder="Optional"
           autoCapitalize="none"
           autoCorrect={false}
@@ -625,8 +595,7 @@ function ScheduleFormFields({
           testID="schedule-prompt-input"
           accessibilityLabel="Prompt"
           initialValue={state.prompt}
-          value={state.prompt}
-          onChange={handlePromptChange}
+          onChangeText={model.setPrompt}
           placeholder="What should the agent do each run?"
           style={styles.multilineInput}
           multiline
@@ -662,8 +631,7 @@ function ScheduleFormFields({
           testID="schedule-max-runs-input"
           accessibilityLabel="Max runs"
           initialValue={state.maxRuns}
-          value={state.maxRuns}
-          onChange={handleMaxRunsChange}
+          onChangeText={model.setMaxRuns}
           placeholder="Unlimited"
           keyboardType="number-pad"
         />

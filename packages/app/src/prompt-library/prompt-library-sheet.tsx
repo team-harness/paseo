@@ -7,19 +7,14 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import {
-  Pressable,
-  Text,
-  View,
-  type PressableStateCallbackType,
-  type TextInput,
-} from "react-native";
+import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { BookOpen, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react-native";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
+import type { EditingTextInputHandle } from "@/components/ui/text-input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -350,7 +345,7 @@ export function PromptLibrarySheet({
   const [resetError, setResetError] = useState<string | null>(null);
   const [isMigrating, setIsMigrating] = useState(false);
   const draftRef = useRef<SavedPromptDraft>({ title: "", content: "" });
-  const titleInputRef = useRef<TextInput>(null);
+  const titleInputRef = useRef<EditingTextInputHandle>(null);
   const deleteFlowRef = useRef(false);
   const resetFlowRef = useRef(false);
 

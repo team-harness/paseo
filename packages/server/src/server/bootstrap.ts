@@ -118,6 +118,7 @@ export async function fanOutReconciledWorkspaceUpdates(input: {
 
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
 import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
+import { createWorkspaceLabelService } from "./workspace-labels/index.js";
 import { createGitHubService } from "../services/github-service.js";
 import { createPaseoWorktree as createRegisteredPaseoWorktree } from "./paseo-worktree-service.js";
 import { createWorkspaceProvisioningService } from "./session/workspace-provisioning/workspace-provisioning-service.js";
@@ -151,6 +152,7 @@ import {
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { ScheduleService } from "./schedule/service.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
+import { createOrchestrationSkills } from "./orchestration-skills/index.js";
 import { resolveConfigFromPersisted, type CliConfigOverrides } from "./config.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
@@ -175,6 +177,7 @@ import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type {
   AgentProfile,
+  AgentSkillSelection,
   FirstAgentContext,
   PluginSource,
   TerminalProfile,
@@ -409,6 +412,7 @@ export interface PaseoDaemonConfig {
   appendSystemPrompt?: string;
   terminalProfiles?: TerminalProfile[];
   agentProfiles?: AgentProfile[];
+  skillSelection?: AgentSkillSelection;
   pluginsEnabled?: boolean;
   plugins?: Record<string, PluginSource>;
   staticDir: string;
@@ -557,6 +561,7 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
     appendSystemPrompt: config.appendSystemPrompt ?? "",
     pluginsEnabled: config.pluginsEnabled ?? false,
     plugins: config.plugins ?? {},
+    skills: { selection: config.skillSelection },
   };
 
   if (config.terminalProfiles !== undefined) {
@@ -597,6 +602,10 @@ export async function createPaseoDaemon(
         };
       },
     },
+  });
+  const orchestrationSkills = createOrchestrationSkills(daemonConfigStore);
+  void orchestrationSkills.autoUpdate().catch((error) => {
+    logger.error({ err: error }, "Failed to maintain orchestration skills at startup");
   });
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
   const browserToolsBroker = new BrowserToolsBroker({});
@@ -861,6 +870,10 @@ export async function createPaseoDaemon(
     path.join(config.paseoHome, "projects", "workspaces.json"),
     logger,
   );
+  const workspaceLabelService = createWorkspaceLabelService({
+    paseoHome: config.paseoHome,
+    workspaceRegistry,
+  });
   const github = createGitHubService();
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger,
@@ -940,6 +953,7 @@ export async function createPaseoDaemon(
     workspaceGitService,
     logger,
   });
+  await workspaceLabelService.initialize();
   logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
   const teardownArchivedWorkspaceRuntime = (workspaceId: string): void => {
     scriptRuntimeStore.removeForWorkspace(workspaceId);
@@ -1658,6 +1672,8 @@ export async function createPaseoDaemon(
               promptLibraryStore,
               workspaceSetupRuntime,
               pluginRuntime,
+              orchestrationSkills,
+              workspaceLabelService,
             );
             pluginRuntime.bindPaseoSessionHost(wsServer);
             await pluginRuntime.start();
@@ -1729,7 +1745,7 @@ export async function createPaseoDaemon(
     await agentStorage.flush().catch(() => undefined);
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();
-    speechService.stop();
+    await speechService.stop();
     await scheduleService.stop().catch(() => undefined);
     await relayRuntime?.stop().catch(() => undefined);
     if (wsServer) {

@@ -1,8 +1,20 @@
 import { StyleSheet } from "react-native-unistyles";
 import { SPACING } from "@/styles/theme";
 
-export const COMPOSER_PILL_CLEARANCE = SPACING[4];
+export const COMPOSER_PILL_CLEARANCE = {
+  compact: SPACING[4],
+  wide: 10,
+} as const;
 export const COMPOSER_PILL_MIN_HEIGHT = 32;
+
+export function resolveComposerPillClearance(isCompact: boolean): number {
+  return isCompact ? COMPOSER_PILL_CLEARANCE.compact : COMPOSER_PILL_CLEARANCE.wide;
+}
+
+export function resolveComposerTrackTailClearance(isCompact: boolean): number {
+  const clearance = resolveComposerPillClearance(isCompact);
+  return clearance + COMPOSER_PILL_MIN_HEIGHT + clearance;
+}
 
 /** Shared visual contract for the compact pills immediately above the composer. */
 export const composerPillStyles = StyleSheet.create((theme) => ({

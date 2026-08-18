@@ -351,10 +351,8 @@ export interface AgentStreamViewProps {
   turnPresentation: TurnPresentation;
   routeBottomAnchorRequest?: BottomAnchorRouteRequest | null;
   isAuthoritativeHistoryReady?: boolean;
-  /** Measured transparent overlay at the bottom edge, rendered by the owning panel. */
-  bottomOverlayHeight?: number;
-  /** Visible space kept between the final content and that overlay. */
-  bottomOverlayClearance?: number;
+  /** Tail space required by a transparent overlay rendered at the bottom edge. */
+  bottomOverlayTailClearance?: number;
   toast?: ToastApi | null;
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
   onQuoteSelection?: (markdown: string) => void;
@@ -406,8 +404,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       turnPresentation,
       routeBottomAnchorRequest = null,
       isAuthoritativeHistoryReady = true,
-      bottomOverlayHeight = 0,
-      bottomOverlayClearance = 0,
+      bottomOverlayTailClearance = 0,
       toast,
       onOpenWorkspaceFile,
       onQuoteSelection,
@@ -1218,8 +1215,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       const existingTailSpacing =
         auxiliary.turnFooter && !auxiliary.pendingPermissions ? TURN_FOOTER_BOTTOM_SPACING : 0;
       const bottomOverlayInset = resolveBottomOverlayTailInset({
-        overlayHeight: bottomOverlayHeight,
-        clearance: bottomOverlayClearance,
+        requiredTailClearance: bottomOverlayTailClearance,
         existingTailSpacing,
       });
       return renderLiveAuxiliaryNode({
@@ -1227,12 +1223,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         turnFooter: auxiliary.turnFooter,
         bottomOverlayInset,
       });
-    }, [
-      auxiliary.pendingPermissions,
-      auxiliary.turnFooter,
-      bottomOverlayClearance,
-      bottomOverlayHeight,
-    ]);
+    }, [auxiliary.pendingPermissions, auxiliary.turnFooter, bottomOverlayTailClearance]);
 
     const renderers = useMemo<StreamSegmentRenderers>(
       () => ({

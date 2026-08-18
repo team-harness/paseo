@@ -1,4 +1,4 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const fr: TranslationResources = {
@@ -273,7 +273,8 @@ export const fr: TranslationResources = {
       notFound: "Agentintrouvable",
       failedToLoad: "Échec du chargement de l'agent",
       reconnecting: "Reconnexion",
-      timelineSyncFailed: "Impossible d’actualiser l’historique de l’agent. Nouvelle tentative…",
+      timelineSyncFailed: "Impossible d’actualiser l’historique de l’agent.",
+      timelineSyncRetrying: "Nouvelle tentative…",
       archivingTitle: "Agent d'archivage...",
       archivingSubtitle: "Veuillez patienter pendant que nous archivons cet agent.",
     },
@@ -1123,6 +1124,54 @@ export const fr: TranslationResources = {
       },
     },
   },
+  workspaceLabels: {
+    title: "Étiquettes",
+    unlabelled: "Sans étiquette",
+    create: "Créer une étiquette",
+    createConfirm: "Créer",
+    creating: "Création…",
+    name: "Nom de l’étiquette",
+    updateHostUse: "Mettez à jour cet hôte pour utiliser les étiquettes.",
+    errors: {
+      update: "Impossible de mettre à jour l’étiquette",
+      load: "Impossible de charger les étiquettes",
+    },
+    colors: {
+      violet: "Violet",
+      sky: "Ciel",
+      emerald: "Émeraude",
+      orange: "Orange",
+      pink: "Rose",
+      indigo: "Indigo",
+      teal: "Sarcelle",
+      red: "Rouge",
+      amber: "Ambre",
+      blue: "Bleu",
+    },
+    filter: {
+      clear: "Effacer le filtre",
+      noMatchesTitle: "Aucun espace de travail ne correspond",
+      noMatchesDescription:
+        "Modifiez ou effacez le filtre d’étiquettes pour afficher les espaces de travail.",
+    },
+    manage: {
+      open: "Gérer les étiquettes…",
+      title: "Gérer les étiquettes",
+      search: "Rechercher des étiquettes",
+      empty: "Aucune étiquette sur cet hôte.",
+      edit: "Modifier l’étiquette",
+      editLabel: "Modifier {{name}}",
+      name: "Nom",
+      color: "Couleur",
+      save: "Enregistrer",
+      delete: "Supprimer",
+      deleteTitle: "Supprimer {{name}} ?",
+      deleteMessage_one: "Cela retire l’étiquette de {{count}} espace de travail sur cet hôte.",
+      deleteMessage_other: "Cela retire l’étiquette de {{count}} espaces de travail sur cet hôte.",
+      offline: "Cet hôte est hors ligne.",
+      updateHost: "Mettez à jour cet hôte pour gérer les étiquettes.",
+    },
+  },
   sidebar: {
     display: {
       trigger: "Préférences d'affichage",
@@ -1131,6 +1180,7 @@ export const fr: TranslationResources = {
         label: "Regroupement",
         project: "Projet",
         status: "Statut",
+        labels: "Libellés",
       },
       titleSource: {
         label: "Titre",
@@ -1145,6 +1195,7 @@ export const fr: TranslationResources = {
         changeRequest: "Pull request",
         checks: "Vérifications",
         services: "Services",
+        labels: "Libellés",
         diff: "Statistiques de diff",
         timestamp: "Dernière activité",
       },
@@ -1474,14 +1525,6 @@ export const fr: TranslationResources = {
         statusFailed: "Impossible de vérifier l'état de l'installation deCLI.",
         installFailed: "Impossible d'installer lePaseoCLI.",
       },
-      skills: {
-        statusFailed: "Impossible de vérifier l'état des compétences d'orchestration.",
-        installFailed: "Impossible d'installer les compétences d'orchestration.",
-        updateFailed: "Impossible de mettre à jour les compétences d'orchestration.",
-        uninstallFailed: "Impossible de désinstaller les compétences d'orchestration.",
-        saveSelectionFailed:
-          "Impossible d'enregistrer la sélection des compétences d'orchestration.",
-      },
     },
   },
   rootError: {
@@ -1805,6 +1848,11 @@ export const fr: TranslationResources = {
     title: "Sous-agents",
     pillLabelOne: "1 sous-agent",
     pillLabelMany: "{{count}} sous-agents",
+    pillLabelWorking: "{{count}} en cours",
+    pillLabelFailed: "{{count}} en échec",
+    pillLabelNeedsInputOne: "1 attend une réponse",
+    pillLabelNeedsInputMany: "{{count}} attendent une réponse",
+    pillLabelReadyToReview: "{{count}} à relire",
     detachAction: "Detacher {{label}}",
     detachTooltip: "Detacher le sous-agent",
     archiveAction: "Archiver{{label}}",
@@ -2301,49 +2349,16 @@ export const fr: TranslationResources = {
       title: "Intégrations",
       docs: {
         cli: "DocumentsCLI",
-        skills: "Documents de compétences",
         openCli: "Ouvrir la documentationCLI",
-        openSkills: "Documentation des compétences ouvertes",
       },
       commandLine: {
         title: "Ligne de commande",
         description: "Agents de contrôle et de script depuis votre terminal",
       },
-      skills: {
-        title: "Compétences en orchestration",
-        description: "Apprenez à vos agents à orchestrer via leCLI",
-        updateAvailable: "Mise à jour disponible",
-        updateTitle: "Mettre à jour les compétencesPaseo?",
-        updateFallback: "Synchronisez les compétences regroupées sur votre machine.",
-        uninstallTitle: "Désinstaller les compétencesPaseo?",
-        uninstallMessage:
-          "Supprime toutes les compétences d'orchestrationPaseode ~/.agents, ~/.claude, ~/.codex.",
-        choose: "Choisir les compétences",
-        chooseAll: "Toutes les compétences",
-        chooseAllHint:
-          "Gardez installées toutes les compétences fournies, y compris celles ajoutées plus tard.",
-        chooseList: "Compétences fournies",
-        chooseEmpty: "Cette version ne fournit aucune compétence.",
-        removeTitle: "Supprimer les compétences décochées ?",
-        removeMessage:
-          "{{skills}} seront supprimées de ~/.agents, ~/.claude et ~/.codex. Tout ce que vous avez ajouté dans ces dossiers de compétences est également supprimé.",
-        saveFailed: "Impossible d'enregistrer votre sélection de compétences.",
-      },
       actions: {
         install: "Installer",
         installing: "Installation...",
         installed: "Installé",
-        update: "Mise à jour",
-        working: "Fonctionnement...",
-        remove: "Supprimer",
-        uninstall: "Désinstaller",
-        save: "Enregistrer",
-        saving: "Enregistrement...",
-      },
-      operations: {
-        add: "Ajouter une compétence",
-        update: "Mettre à jour la compétence",
-        delete: "Supprimer la compétence",
       },
     },
     permissions: {
@@ -2412,6 +2427,50 @@ export const fr: TranslationResources = {
         title: "Associer des appareils",
         rowTitle: "Associer un appareil",
         rowHint: "Scannez un codeQRou copiez un lien pour connecter votre téléphone à cet hôte",
+      },
+      skills: {
+        ...en.settings.host.skills,
+        sectionTitle: "Compétences en orchestration",
+        title: "Compétences en orchestration",
+        description: "Apprenez à vos agents à orchestrer via leCLI",
+        updateAvailable: "Mise à jour disponible",
+        updateTitle: "Mettre à jour les compétencesPaseo?",
+        updateFallback: "Synchronisez les compétences regroupées sur votre machine.",
+        uninstallTitle: "Désinstaller les compétencesPaseo?",
+        uninstallMessage:
+          "Supprime toutes les compétences d'orchestrationPaseode ~/.agents, ~/.claude, ~/.codex.",
+        choose: "Choisir les compétences",
+        chooseAll: "Toutes les compétences",
+        chooseAllHint:
+          "Gardez installées toutes les compétences fournies, y compris celles ajoutées plus tard.",
+        chooseList: "Compétences fournies",
+        chooseEmpty: "Cette version ne fournit aucune compétence.",
+        removeTitle: "Supprimer les compétences décochées ?",
+        removeMessage:
+          "{{skills}} seront supprimées de ~/.agents, ~/.claude et ~/.codex. Tout ce que vous avez ajouté dans ces dossiers de compétences est également supprimé.",
+        saveFailed: "Impossible d'enregistrer votre sélection de compétences.",
+        statusFailed: "Impossible de vérifier l'état des compétences d'orchestration.",
+        updateFailed: "Impossible de mettre à jour les compétences d'orchestration.",
+        uninstallFailed: "Impossible de désinstaller les compétences d'orchestration.",
+        saveSelectionFailed:
+          "Impossible d'enregistrer la sélection des compétences d'orchestration.",
+        actions: {
+          install: "Installer",
+          installing: "Installation...",
+          installed: "Installé",
+          update: "Mise à jour",
+          working: "Fonctionnement...",
+          remove: "Supprimer",
+          uninstall: "Désinstaller",
+          save: "Enregistrer",
+          saving: "Enregistrement...",
+          cancel: "Annuler",
+        },
+        operations: {
+          add: "Ajouter une compétence",
+          update: "Mettre à jour la compétence",
+          delete: "Supprimer la compétence",
+        },
       },
       orchestration: {
         title: "Orchestration",

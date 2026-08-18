@@ -5,10 +5,10 @@ import {
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
   type PressableStateCallbackType,
 } from "react-native";
+import { EditingTextInput as TextInput } from "@/components/ui/text-input";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -115,7 +115,6 @@ import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-p
 import ProjectsScreen from "@/screens/projects-screen";
 import ProjectSettingsScreen from "@/screens/project-settings-screen";
 import { SETTINGS_DESKTOP_SIDEBAR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
-import { isNative } from "@/constants/platform";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
   type EnableBuiltInDaemonOption,
@@ -129,6 +128,7 @@ import {
 } from "@/utils/host-routes";
 import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { returnFromSettings, type SettingsView } from "@/navigation/settings-navigation";
+import { isNative, isWeb } from "@/constants/platform";
 
 // ---------------------------------------------------------------------------
 // View model
@@ -139,12 +139,13 @@ interface SidebarSectionItem {
   labelKey: string;
   icon: ComponentType<{ size: number; color: string }>;
   desktopOnly?: boolean;
+  webOnly?: boolean;
 }
 
 const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
   { id: "general", labelKey: "settings.sections.general", icon: Settings },
   { id: "appearance", labelKey: "settings.sections.appearance", icon: Palette },
-  { id: "editor", labelKey: "settings.sections.editor", icon: Code2 },
+  { id: "editor", labelKey: "settings.sections.editor", icon: Code2, webOnly: true },
   { id: "shortcuts", labelKey: "settings.sections.shortcuts", icon: Keyboard, desktopOnly: true },
   {
     id: "integrations",
@@ -448,7 +449,7 @@ function GeneralSection({
             </Text>
           </View>
           <TextInput
-            value={terminalScrollbackValue}
+            initialValue={terminalScrollbackValue}
             onChangeText={handleTerminalScrollbackChangeText}
             onBlur={commitTerminalScrollback}
             onSubmitEditing={commitTerminalScrollback}
@@ -1005,7 +1006,9 @@ function SettingsSidebar({
   const hasHosts = sortedHosts.length > 0;
   const enableBuiltInDaemonOption = useEnableBuiltInDaemonOption();
   const isDesktopApp = isElectronRuntime();
-  const items = SIDEBAR_SECTION_ITEMS.filter((item) => !item.desktopOnly || isDesktopApp);
+  const items = SIDEBAR_SECTION_ITEMS.filter(
+    (item) => (!item.desktopOnly || isDesktopApp) && (!item.webOnly || isWeb),
+  );
   const insets = useSafeAreaInsets();
   const isDesktop = layout === "desktop";
   const outerContainerStyle = useMemo(
@@ -1110,7 +1113,11 @@ function SettingsSidebar({
               testID="settings-back-to-workspace"
             />
           </View>
-          <ScrollView style={sidebarStyles.scrollBody} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={sidebarStyles.scrollBody}
+            showsVerticalScrollIndicator={false}
+            testID="settings-sidebar-scroll-body"
+          >
             {sidebarBody}
           </ScrollView>
         </View>
@@ -1425,7 +1432,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
         case "appearance":
           return <AppearanceSection />;
         case "editor":
-          return <EditorSection />;
+          return isWeb ? <EditorSection /> : null;
         case "shortcuts":
           return isDesktopApp ? <KeyboardShortcutsSection /> : null;
         case "integrations":

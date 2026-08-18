@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `75ccae13b`（完整 SHA 以 Git 为准），同步于 2026-08-18。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `75ccae13b`）。
+- 最近同步基线：`upstream/main` = `f1eeef32a`（完整 SHA 以 Git 为准），同步于 2026-08-19。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `f1eeef32a`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-08-19: `upstream/main` `f1eeef32a` / post-`v0.4.0`
+
+- 合入上游 workspace labels、Host 级 orchestration skills、Composer/计划与系统通知默认 steer、统一 IME-safe 文本输入、timeline 同步重试、工作区 pane/tab 稳定性、Claude interrupt/steer 修复和 Composer track pills 等 39 个提交。
+- 计划表单采用上游平台原生编辑权威和 composition 提交模型，继续保留 fork 的既有 Agent 目标、名称/Prompt/最大运行次数编辑语义。Agent 面板采用上游 track tail clearance 与 timeline retry，同时保留对话选区引用到 Composer。Session dispatcher 同时保留 fork 的 Status Summary/Prompt Library 和上游 orchestration skills；侧边栏 meta row 同时展示 fork 的脱组项目名与上游 workspace labels。
+- 完成通知采用上游 `activeTurnBehavior: "steer"`，并继续保留 fork 的同一 `child → caller` 监听去重和 replacement 失败状态恢复。上游新增 autonomous turn steering 不替代这两个保护；provider 仍持有 turn 时继续要求中断确认。
+- 保留 fork 的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨 File/Changes Review Comments、Assistant 时间、Threadshare 分享、计划任务既有 Agent 目标、bounded canonical timeline `limit: 100`、固定签名 DMG、Web Server tar、独立 Android APK 和 Haseo TestFlight 身份；本轮没有下线 fork 能力。
 
 ### 2026-08-18: `upstream/main` `75ccae13b` / post-`v0.4.0`
 
@@ -588,6 +595,25 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
 **同步规则**：这是只能更新客户端时的止血路径。必须在 `DirectorySync.fetchTimeline` 中统一覆盖三种方向，不能只改 tail plan；改写后的 canonical 页面固定为 100 条，cursor、mergeWindow、requestId 等其余请求字段保持不变。等受支持 Host 的 projected timeline 具备 canonical coverage 和响应字节上限后，删除 `COMPAT(bounded-projected-timeline)` 改写并恢复 projected 请求。
 
 **验证**：`directory-sync/index.test.ts`、`npm run typecheck`、`npm run lint`。
+
+### 15. Agent replacement 卡死恢复
+
+**状态**：fork 修复。主要提交：`95f727124`。
+
+**行为**：同一 `child → caller` 的完成通知只保留一个监听，避免重复终态通知并发替换父 Agent。替换失败时，若 provider 仍持有活动 turn/run，Agent 继续保持 `running` 并要求真实中断确认；若活动身份已经全部终止，则清除 `pendingReplacement` 并恢复为 `idle` 或 `error`，后续用户消息可以正常启动新 turn。仅残留 `lifecycle: running`、但没有 `activeForegroundTurnId`、`activeTurnId` 或 tracked run 时，发送消息不会再中断一个不存在的 provider turn。
+
+**关键文件**：
+
+- `packages/server/src/server/agent/agent-manager.ts`
+- `packages/server/src/server/agent/agent-manager.test.ts`
+- `packages/server/src/server/agent/agent-prompt.ts`
+- `packages/server/src/server/agent/agent-prompt.test.ts`
+
+**同步规则**：中断确认保护不能放宽，也不能在父 Agent 进入终态时取消仍异步运行的子 Agent。上游调整 steer/replacement admission 时，继续以真实 turn/run 身份判定活动状态，并保留重复完成监听去重与 replacement 失败后的条件状态恢复。
+
+**验证**：`agent-manager.test.ts`、`agent-prompt.test.ts`、`npm run typecheck`、`npm run lint`。
+
+**最近同步判断**：2026-08-19 的上游 `f1eeef32a` 增加了 autonomous turn steering、默认 steer 和系统通知 steer，但没有处理重复完成监听或 replacement 失败后残留的伪 `running` 状态，保留本修复。
 
 ## 同步上游操作清单
 

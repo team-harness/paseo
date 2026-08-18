@@ -16,6 +16,10 @@ import {
   type SettingsDeps,
 } from "./storage";
 import { createFakeDesktopBridge, createInMemoryKeyValueStorage } from "./fakes";
+import {
+  DEFAULT_SIDEBAR_ROW_ITEMS,
+  SIDEBAR_ROW_ITEMS,
+} from "@/components/sidebar/display-preferences/row-items";
 import { THEME_OPTIONS } from "@/styles/theme";
 
 const LEGACY_SETTINGS_KEY = "@paseo:settings";
@@ -44,6 +48,37 @@ describe("loadAppSettingsFromStorage", () => {
     });
     expect((await loadAppSettingsFromStorage(deps)).sendBehavior).toBe("steer");
   });
+  it("migrates a stored interrupt to steer and persists it", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ sendBehavior: "interrupt" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.sendBehavior).toBe("steer");
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "{}").sendBehavior).toBe(
+      "steer",
+    );
+  });
+
+  it("keeps an interrupt the user picked after the migration ran", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ sendBehavior: "interrupt" }),
+      }),
+    });
+    await loadAppSettingsFromStorage(deps);
+    await saveAppSettings({
+      queryClient: new QueryClient(),
+      updates: { sendBehavior: "interrupt" },
+      deps,
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).sendBehavior).toBe("interrupt");
+  });
+
   it("defaults theme to auto when storage is empty", async () => {
     const deps = makeDeps();
 
@@ -366,6 +401,18 @@ describe("saveAppSettings", () => {
       theme: "light",
       toolCallDetailLevel: "overview",
     });
+  });
+
+  // The row items are written as one object through one strict schema, so an item the schema
+  // does not know does not just fail to persist itself — it takes every sibling toggle with it.
+  it.each(SIDEBAR_ROW_ITEMS)("persists the %s row item being switched off", async (item) => {
+    const deps = makeDeps();
+    const queryClient = new QueryClient();
+    const sidebarRowItems = { ...DEFAULT_SIDEBAR_ROW_ITEMS, [item]: false };
+
+    await saveAppSettings({ queryClient, updates: { sidebarRowItems }, deps });
+
+    expect((await loadAppSettingsFromStorage(deps)).sidebarRowItems).toEqual(sidebarRowItems);
   });
 });
 
