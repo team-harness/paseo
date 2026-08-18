@@ -132,7 +132,12 @@ function StatusBarReadyContent({
       })),
     [hostServerIds, workspacePinningByServerId],
   );
-  const historyHostServerIds = isMultiHost ? hostServerIds : undefined;
+  const historyUsesScopedHosts =
+    isMultiHost ||
+    (view.hostSummaries !== undefined &&
+      hostServerIds[0] !== undefined &&
+      hostServerIds[0] !== serverId);
+  const historyHostServerIds = historyUsesScopedHosts ? hostServerIds : undefined;
   let rows = view.primaryRows.filter(
     (row) => row.id !== "running" && row.id !== "attention" && row.id !== "errors",
   );
@@ -159,7 +164,7 @@ function StatusBarReadyContent({
       />
       <StatusBarSessionHistoryTrigger
         serverId={serverId}
-        showAllHosts={isMultiHost}
+        showAllHosts={historyUsesScopedHosts}
         hostServerIds={historyHostServerIds}
         workspacePinSources={workspacePinSources}
       />
