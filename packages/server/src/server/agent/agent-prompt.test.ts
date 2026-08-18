@@ -59,7 +59,7 @@ interface FinishNotificationScenario {
 function createFinishNotificationScenario(
   options?: FinishNotificationScenarioOptions,
 ): FinishNotificationScenario {
-  let subscriber: ((event: AgentManagerEvent) => void) | null = null;
+  const subscribers = new Set<(event: AgentManagerEvent) => void>();
   let resolveParentPrompt: ((prompt: string) => void) | null = null;
   let parentPrompted = false;
   const parentPrompts: string[] = [];
@@ -86,9 +86,9 @@ function createFinishNotificationScenario(
     return null;
   });
   Reflect.set(agentManager, "subscribe", (callback: (event: AgentManagerEvent) => void) => {
-    subscriber = callback;
+    subscribers.add(callback);
     return () => {
-      subscriber = null;
+      subscribers.delete(callback);
     };
   });
   Reflect.set(agentManager, "getLastAssistantMessage", async () => {
@@ -144,64 +144,76 @@ function createFinishNotificationScenario(
           content: "PASEO_PERMISSION_NOTIFY_QA_OK\n",
         },
       });
-      subscriber?.({
-        type: "agent_state",
-        agent: childAgent,
-      });
-      subscriber?.({
-        type: "agent_stream",
-        agentId: "child-agent",
-        event: {
-          type: "permission_requested",
-          provider: "codex",
-          request: childAgent.pendingPermissions.get(requestId)!,
-        },
-      });
+      for (const subscriber of subscribers) {
+        subscriber({
+          type: "agent_state",
+          agent: childAgent,
+        });
+        subscriber({
+          type: "agent_stream",
+          agentId: "child-agent",
+          event: {
+            type: "permission_requested",
+            provider: "codex",
+            request: childAgent.pendingPermissions.get(requestId)!,
+          },
+        });
+      }
     },
     resolveChildPermission(requestId = "permission-1") {
       childAgent.pendingPermissions.delete(requestId);
-      subscriber?.({
-        type: "agent_stream",
-        agentId: "child-agent",
-        event: {
-          type: "permission_resolved",
-          provider: "codex",
-          requestId,
-          resolution: { behavior: "allow" },
-        },
-      });
+      for (const subscriber of subscribers) {
+        subscriber({
+          type: "agent_stream",
+          agentId: "child-agent",
+          event: {
+            type: "permission_resolved",
+            provider: "codex",
+            requestId,
+            resolution: { behavior: "allow" },
+          },
+        });
+      }
     },
     resolveChildPermissionFromState(requestId = "permission-1") {
       childAgent.pendingPermissions.delete(requestId);
-      subscriber?.({ type: "agent_state", agent: childAgent });
+      for (const subscriber of subscribers) {
+        subscriber({ type: "agent_state", agent: childAgent });
+      }
     },
     resolveChildPermissionWhileIdle(requestId = "permission-1") {
       childAgent.pendingPermissions.delete(requestId);
       childAgent.lifecycle = "idle";
-      subscriber?.({ type: "agent_state", agent: childAgent });
-      subscriber?.({
-        type: "agent_stream",
-        agentId: "child-agent",
-        event: {
-          type: "permission_resolved",
-          provider: "codex",
-          requestId,
-          resolution: { behavior: "allow" },
-        },
-      });
+      for (const subscriber of subscribers) {
+        subscriber({ type: "agent_state", agent: childAgent });
+        subscriber({
+          type: "agent_stream",
+          agentId: "child-agent",
+          event: {
+            type: "permission_resolved",
+            provider: "codex",
+            requestId,
+            resolution: { behavior: "allow" },
+          },
+        });
+      }
     },
     finishChild() {
       childAgent.lifecycle = "running";
-      subscriber?.({
-        type: "agent_state",
-        agent: childAgent,
-      });
+      for (const subscriber of subscribers) {
+        subscriber({
+          type: "agent_state",
+          agent: childAgent,
+        });
+      }
 
       childAgent.lifecycle = "idle";
-      subscriber?.({
-        type: "agent_state",
-        agent: childAgent,
-      });
+      for (const subscriber of subscribers) {
+        subscriber({
+          type: "agent_state",
+          agent: childAgent,
+        });
+      }
     },
     async finishChildAndReadParentPrompt() {
       const parentPrompt = new Promise<string>((resolve) => {
@@ -217,16 +229,20 @@ function createFinishNotificationScenario(
       });
 
       childAgent.lifecycle = "running";
-      subscriber?.({
-        type: "agent_state",
-        agent: childAgent,
-      });
+      for (const subscriber of subscribers) {
+        subscriber({
+          type: "agent_state",
+          agent: childAgent,
+        });
+      }
 
       childAgent.lifecycle = "closed";
-      subscriber?.({
-        type: "agent_state",
-        agent: childAgent,
-      });
+      for (const subscriber of subscribers) {
+        subscriber({
+          type: "agent_state",
+          agent: childAgent,
+        });
+      }
 
       return parentPrompt;
     },
@@ -257,6 +273,17 @@ test("finish notifications tell the parent the child's last assistant message", 
       "Agent child-agent (Child Agent) finished.\n\n<agent-response>\nImplemented the cleanup and all checks pass.\n</agent-response>",
     ),
   );
+});
+
+test("re-arming a finish notification replaces the existing child-to-caller watcher", async () => {
+  const scenario = createFinishNotificationScenario();
+
+  scenario.startWatchingChild();
+  scenario.startWatchingChild();
+  scenario.finishChild();
+
+  await vi.waitFor(() => expect(scenario.parentPrompts()).toHaveLength(1));
+  expect(scenario.parentPrompts()[0]).toContain("Agent child-agent (Child Agent) finished.");
 });
 
 test("finish notifications truncate oversized child responses", async () => {

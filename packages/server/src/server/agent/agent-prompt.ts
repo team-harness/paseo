@@ -311,6 +311,7 @@ export interface SetupFinishNotificationParams {
 type FinishNotificationReason = "finished" | "errored" | "needs permission" | "was closed";
 
 const FINISH_NOTIFICATION_MESSAGE_LIMIT = 4000;
+const finishNotificationStops = new WeakMap<AgentManager, Map<string, () => void>>();
 
 interface FinishNotificationBodyInput {
   childAgentId: string;
@@ -362,6 +363,14 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
     requireParentOwnership = false,
     logger,
   } = params;
+  const existingRegisteredStops = finishNotificationStops.get(agentManager);
+  const registeredStops = existingRegisteredStops ?? new Map<string, () => void>();
+  if (!existingRegisteredStops) {
+    finishNotificationStops.set(agentManager, registeredStops);
+  }
+  const registrationKey = `${childAgentId}\0${callerAgentId}`;
+  registeredStops.get(registrationKey)?.();
+
   let hasSeenRunning = false;
   let stopped = false;
   const notifiedPermissionRequestIds = new Set<string>();
@@ -372,7 +381,15 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
     if (stopped) return;
     stopped = true;
     unsubscribe?.();
+    if (registeredStops.get(registrationKey) === stop) {
+      registeredStops.delete(registrationKey);
+      if (registeredStops.size === 0) {
+        finishNotificationStops.delete(agentManager);
+      }
+    }
   }
+
+  registeredStops.set(registrationKey, stop);
 
   async function notify(
     reason: FinishNotificationReason,

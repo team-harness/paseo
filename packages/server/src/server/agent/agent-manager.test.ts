@@ -7145,6 +7145,93 @@ test("failed replacement cancellation preserves an autonomous running state", as
   }
 });
 
+test("replaceAgentRun recovers a stale running lifecycle with no active provider turn", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-stale-running-replace-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+
+  class StaleRunningSession extends TestAgentSession {
+    public interruptCount = 0;
+
+    override async interrupt(): Promise<void> {
+      this.interruptCount += 1;
+      throw new Error("there is no provider turn to interrupt");
+    }
+  }
+
+  class StaleRunningClient extends TestAgentClient {
+    readonly session = new StaleRunningSession({ provider: "codex", cwd: workdir });
+
+    override async createSession(): Promise<AgentSession> {
+      return this.session;
+    }
+  }
+
+  const client = new StaleRunningClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+    rescueTimeouts: { interruptSessionMs: 10 },
+  });
+
+  try {
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    const managedAgents = Reflect.get(manager, "agents") as Map<string, ManagedAgent>;
+    managedAgents.get(agent.id)!.lifecycle = "running";
+
+    const replacement = await manager.replaceAgentRun(agent.id, "replacement prompt");
+    for await (const _event of replacement) {
+      // Drain the replacement through its terminal event.
+    }
+
+    expect(client.session.interruptCount).toBe(0);
+    expect(manager.getAgent(agent.id)).toMatchObject({
+      lifecycle: "idle",
+      activeForegroundTurnId: null,
+    });
+  } finally {
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
+test("failed replacement clears a running lifecycle after the active turn settles", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-settled-replace-failure-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+
+  try {
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    const managedAgents = Reflect.get(manager, "agents") as Map<string, ManagedAgent>;
+    const managedAgent = managedAgents.get(agent.id)!;
+    managedAgent.lifecycle = "running";
+    managedAgent.activeTurnId = "settling-turn";
+
+    Reflect.set(manager, "cancelAgentRunBefore", async () => {
+      managedAgent.activeTurnId = null;
+      throw new Error("replacement cancellation raced with terminal settlement");
+    });
+
+    await expect(manager.replaceAgentRun(agent.id, "replacement prompt")).rejects.toThrow(
+      "replacement cancellation raced with terminal settlement",
+    );
+    expect(manager.getAgent(agent.id)).toMatchObject({
+      lifecycle: "idle",
+      activeForegroundTurnId: null,
+      pendingReplacement: false,
+    });
+  } finally {
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
 test("waitForAgentEvent waitForActive resolves for autonomous live-event run", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-wait-"));
   const storagePath = join(workdir, "agents");

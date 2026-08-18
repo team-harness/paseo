@@ -2373,11 +2373,7 @@ export class AgentManager {
     options?: AgentRunOptions,
   ): Promise<AsyncGenerator<AgentStreamEvent>> {
     const snapshot = this.requireAgent(agentId);
-    if (
-      snapshot.lifecycle !== "running" &&
-      !snapshot.activeForegroundTurnId &&
-      !this.runs.hasRun(agentId)
-    ) {
+    if (!snapshot.activeForegroundTurnId && !snapshot.activeTurnId && !this.runs.hasRun(agentId)) {
       return this.streamAgent(agentId, prompt, options);
     }
 
@@ -2391,12 +2387,23 @@ export class AgentManager {
       await this.cancelAgentRunBefore(agentId, "replace");
       return this.streamAgent(agentId, prompt, options);
     } catch (error) {
-      const latest = this.agents.get(agentId);
-      if (latest) {
-        latest.pendingReplacement = false;
-      }
+      this.clearFailedReplacement(agentId);
       throw error;
     }
+  }
+
+  private clearFailedReplacement(agentId: string): void {
+    const agent = this.agents.get(agentId);
+    if (!agent) return;
+
+    agent.pendingReplacement = false;
+    if (agent.activeForegroundTurnId || agent.activeTurnId || this.runs.hasRun(agentId)) {
+      return;
+    }
+
+    agent.lifecycle = agent.lastError ? "error" : "idle";
+    this.touchUpdatedAt(agent);
+    this.emitState(agent);
   }
 
   async steerAgentRun(
@@ -2529,10 +2536,7 @@ export class AgentManager {
       await this.cancelAgentRunBefore(agent.id, "replace");
       return this.streamAgent(agent.id, prompt, options);
     } catch (error) {
-      const latest = this.agents.get(agent.id);
-      if (latest) {
-        latest.pendingReplacement = false;
-      }
+      this.clearFailedReplacement(agent.id);
       throw error;
     }
   }
