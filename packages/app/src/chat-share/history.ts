@@ -8,7 +8,7 @@ import type {
 import { fetchAgentTimelineOnce } from "@/timeline/fetch-agent-timeline-once";
 import { processTimelineResponse, type TimelineCursor } from "@/timeline/session-stream-reducers";
 import { planTimelineOlderFetch, planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
-import { applyStreamEvent, type StreamItem, type TodoEntry } from "@/types/stream";
+import { applyStreamEvent, type StreamItem } from "@/types/stream";
 
 // Canonical schema is owned by https://github.com/team-harness/threadshare.
 export const THREADSHARE_HISTORY_FORMAT = "threadshare-history@v1" as const;
@@ -33,7 +33,12 @@ export type SharedChatEntry =
       error?: unknown;
     }
   | { id: string; createdAt: string; kind: "thought"; text: string; status: "loading" | "ready" }
-  | { id: string; createdAt: string; kind: "todo"; items: TodoEntry[] }
+  | {
+      id: string;
+      createdAt: string;
+      kind: "todo";
+      items: Array<{ text: string; completed: boolean }>;
+    }
   | {
       id: string;
       createdAt: string;
@@ -474,7 +479,10 @@ function exportItem(item: StreamItem): SharedChatEntry {
       return {
         ...base,
         kind: "todo",
-        items: item.items.map((todo) => ({ ...todo, text: redactSecrets(todo.text) })),
+        items: item.items.map((todo) => ({
+          text: redactSecrets(todo.text),
+          completed: todo.completed,
+        })),
       };
     case "activity_log":
       return {

@@ -380,6 +380,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - 2026-08-06：Android Metro 将 `jsonc-parser` 定向到可静态分析的 ESM 入口。该包的 UMD 工厂会遮蔽 `require`，导致 release bundle 漏掉 `impl/*` 并在恢复工作区时原生崩溃；本地 APK 构建在 Gradle 前验证实际 Android Metro 图，禁止 UMD 入口并要求完整 ESM 依赖。
 - 2026-08-06：Review Comments 与 Host 项目匹配排序不使用 Hermes 尚未实现的 `Array.prototype.toSorted()`；复制数组后使用 `sort()`，保留非变异语义并避免 Android 工作区恢复进入错误边界。
 - 2026-08-06：普通 Agent 的分享起点直接读取 daemon 的完整 prompt index，并按 timeline `seq` 对齐已加载的权威完整历史；不再从当前客户端窗口临时枚举用户消息。Provider 子 Agent 没有普通 Agent prompt index，继续使用其专用完整 timeline。
+- 2026-08-19：任务列表的内部 `id`、`status`、`activeForm` 字段不得透传到 Threadshare；导出边界固定投影为协议允许的 `text` 与 `completed`，避免上游扩展 `TodoEntry` 后触发 `Unsupported Threadshare history`。
 
 **关键文件**：
 

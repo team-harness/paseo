@@ -237,6 +237,42 @@ describe("exportChatHistory", () => {
     ]);
   });
 
+  it("projects task metadata to the portable Threadshare todo contract", () => {
+    const timestamp = new Date("2026-08-19T00:00:00.000Z");
+    const history = exportChatHistory({
+      agentId: "agent-1",
+      title: "Task review",
+      exportedAt: timestamp,
+      items: [
+        {
+          kind: "todo_list",
+          id: "todo-1",
+          provider: "codex",
+          items: [
+            {
+              text: "Inspect sharing",
+              completed: false,
+              id: "task-1",
+              status: "in_progress",
+              activeForm: "Inspecting sharing",
+            },
+          ],
+          activity: { type: "created", count: 1 },
+          timestamp,
+        },
+      ],
+    });
+
+    expect(history.entries).toEqual([
+      {
+        id: "todo-1",
+        createdAt: "2026-08-19T00:00:00.000Z",
+        kind: "todo",
+        items: [{ text: "Inspect sharing", completed: false }],
+      },
+    ]);
+  });
+
   it("redacts credentials from exported tool data without hiding token metrics", () => {
     const items: StreamItem[] = [
       {
