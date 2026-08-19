@@ -17,7 +17,7 @@ const RELEASE_WORKSPACES = [
   { workspace: "relay", name: "@getpaseo/relay" },
   { workspace: "protocol", name: "@getpaseo/protocol" },
   { workspace: "client", name: "@getpaseo/client" },
-  { workspace: "plugin", name: "@paseo/plugin" },
+  { workspace: "plugin", name: "@getpaseo/plugin" },
   { workspace: "server", name: "@getpaseo/server" },
   { workspace: "cli", name: "@getpaseo/cli" },
 ];

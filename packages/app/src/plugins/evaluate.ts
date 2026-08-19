@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
-// eslint-disable-next-line no-restricted-imports -- the plugin runtime replaces raw TextInput with Paseo's editing primitive below.
+// eslint-disable-next-line no-restricted-imports -- plugin client runtime injects host ReactNative.
 import * as ReactNative from "react-native";
 // eslint-disable-next-line no-restricted-imports -- plugin bundles receive TanStack's real runtime, not Paseo's query wrappers.
 import * as ReactQuery from "@tanstack/react-query";
@@ -17,14 +17,11 @@ import {
   useAgent,
   useWorkspace,
   useRpc,
-} from "@paseo/plugin";
-import { createPluginContext, type PluginRegistrationCollector } from "@paseo/plugin/host";
+} from "@getpaseo/plugin";
+import { createPluginContext, type PluginRegistrationCollector } from "@getpaseo/plugin/host";
 import type { EvaluatedPlugin } from "./types";
 import type { ComponentType } from "react";
 import { resolvePluginIcon } from "./icons";
-import { EditingTextInput } from "@/components/ui/text-input";
-
-const PluginReactNative = { ...ReactNative, TextInput: EditingTextInput };
 
 const CONTRIBUTION_ID = /^[a-z][a-z0-9-]*$/;
 
@@ -151,8 +148,8 @@ export function evaluatePluginClientBundle(id: string, bundle: string): Evaluate
   const runtimeRequire = (name: string): unknown => {
     if (name === "react") return React;
     if (name === "react/jsx-runtime") return ReactJsxRuntime;
-    if (name === "react-native") return PluginReactNative;
-    if (name === "@paseo/plugin") {
+    if (name === "react-native") return ReactNative;
+    if (name === "@getpaseo/plugin") {
       return {
         defineAttachmentSource,
         defineRpc,
@@ -161,6 +158,9 @@ export function evaluatePluginClientBundle(id: string, bundle: string): Evaluate
         useWorkspace,
         useRpc,
       };
+    }
+    if (name === "@getpaseo/plugin/server") {
+      return { defineAttachmentSource, defineRpc };
     }
     if (name === "@tanstack/react-query") return ReactQuery;
     if (name === "zod") return Zod;

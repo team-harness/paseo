@@ -27,7 +27,8 @@ import { useMutation } from "@tanstack/react-query";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, ChevronDown, X } from "lucide-react-native";
 import * as Clipboard from "expo-clipboard";
-import { usePanelStore } from "@/stores/panel-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import { openExplorerSurface } from "@/workspace-tabs/explorer-surface";
 import {
   AssistantMessage,
   SpeakMessage,
@@ -445,8 +446,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
     const sharingAssistantTurnRef = useRef(false);
     const shareStartSelectionRef = useRef<ChatShareStartSelection | null>(null);
-    const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
-    const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
@@ -559,15 +558,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           setCurrentPath: false,
         });
 
-        const checkout = {
-          serverId: resolvedServerId,
-          cwd: context.cwd,
-          isGit: context.projectPlacement?.checkout?.isGit ?? true,
-        };
-        setExplorerTabForCheckout({ ...checkout, tab: "files" });
-        openFileExplorerForCheckout({
+        openExplorerSurface({
           isCompact: isMobile,
-          checkout,
+          workspaceKey: buildWorkspaceTabPersistenceKey({
+            serverId: resolvedServerId,
+            workspaceId: context.workspaceId ?? "",
+          }),
+          checkout: {
+            serverId: resolvedServerId,
+            cwd: context.cwd,
+            isGit: context.projectPlacement?.checkout?.isGit ?? true,
+          },
+          view: "files",
         });
       },
     );
