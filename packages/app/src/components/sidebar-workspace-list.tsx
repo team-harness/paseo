@@ -118,7 +118,7 @@ import {
 } from "@/components/sidebar/sidebar-workspace-row-content";
 import { useOpenKebabMenuVisibility } from "@/components/sidebar/use-open-kebab-menu-visibility";
 import {
-  SidebarLabelFilterEmptyState,
+  SidebarFilterEmptyState,
   SidebarProjectEmptyState,
 } from "@/components/sidebar/empty-states";
 import { selectWorkspaceServiceSummary } from "@/components/sidebar/workspace-meta-row";
@@ -245,7 +245,9 @@ interface SidebarWorkspaceListProps {
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
   projects: SidebarProjectEntry[];
-  hasProjectsBeforeLabelFilter: boolean;
+  hasProjectsBeforeFilter: boolean;
+  /** Whether a project filter is actually being applied — the resolved list, not the stored one. */
+  hasActiveProjectFilter: boolean;
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
   collapsedProjectKeys: ReadonlySet<string>;
   onToggleProjectCollapsed: (projectViewKey: string) => void;
@@ -1936,7 +1938,8 @@ export function SidebarWorkspaceList({
   projectIconTargets,
   pinnedGroups,
   projects,
-  hasProjectsBeforeLabelFilter,
+  hasProjectsBeforeFilter,
+  hasActiveProjectFilter,
   workspaceEntriesByKey,
   collapsedProjectKeys,
   onToggleProjectCollapsed,
@@ -2000,8 +2003,12 @@ export function SidebarWorkspaceList({
   // A filter that matches nothing swaps the list's body and nothing above it. It used to replace
   // this whole subtree, which unmounted the header — and the header is where the display menu's
   // trigger lives, so filtering the last row away closed the menu you were filtering from.
-  const labelFilterEmpty =
-    hasActiveLabelFilter && hasProjectsBeforeLabelFilter && projects.length === 0;
+  //
+  // Only the label filter can get here. The project filter resolves against the projects it can
+  // see and falls back to "all projects" when nothing matches, so it either keeps at least one
+  // project or is not applied at all — it can narrow this list but never empty it.
+  const sidebarFilterEmpty =
+    hasActiveLabelFilter && hasProjectsBeforeFilter && projects.length === 0;
 
   // Project mode is the one that keeps its project headers; every other grouping mode is a flat
   // list of grouped rows, so a new mode lands in the grouped branch rather than silently in this
@@ -2020,7 +2027,7 @@ export function SidebarWorkspaceList({
         onToggleWorkspacePin={onToggleWorkspacePin}
         onPinnedWorkspaceReorder={handlePinnedWorkspaceReorder}
         listHeaderComponent={listHeaderComponent}
-        labelFilterEmpty={labelFilterEmpty}
+        sidebarFilterEmpty={sidebarFilterEmpty}
         parentGestureRef={parentGestureRef}
         dragGestureHostPresented={dragGestureHostPresented}
       />
@@ -2037,7 +2044,8 @@ export function SidebarWorkspaceList({
         onAddProject={onAddProject}
         listFooterComponent={listFooterComponent}
         listHeaderComponent={listHeaderComponent}
-        labelFilterEmpty={labelFilterEmpty}
+        sidebarFilterEmpty={sidebarFilterEmpty}
+        hasActiveProjectFilter={hasActiveProjectFilter}
         parentGestureRef={parentGestureRef}
         dragGestureHostPresented={dragGestureHostPresented}
         pathname={pathname}
@@ -2070,7 +2078,7 @@ function SidebarGroupedModeList({
   onToggleWorkspacePin,
   onPinnedWorkspaceReorder,
   listHeaderComponent,
-  labelFilterEmpty,
+  sidebarFilterEmpty,
   parentGestureRef,
   dragGestureHostPresented,
 }: {
@@ -2085,7 +2093,7 @@ function SidebarGroupedModeList({
   onToggleWorkspacePin: ToggleSidebarWorkspacePin;
   onPinnedWorkspaceReorder: (workspaces: SidebarWorkspacePlacement[]) => void;
   listHeaderComponent?: ReactElement | null;
-  labelFilterEmpty: boolean;
+  sidebarFilterEmpty: boolean;
   parentGestureRef?: MutableRefObject<GestureType | undefined>;
   dragGestureHostPresented?: boolean;
 }) {
@@ -2112,7 +2120,7 @@ function SidebarGroupedModeList({
       onToggleWorkspacePin={onToggleWorkspacePin}
       onPinnedWorkspaceReorder={onPinnedWorkspaceReorder}
       listHeaderComponent={listHeaderComponent}
-      labelFilterEmpty={labelFilterEmpty}
+      sidebarFilterEmpty={sidebarFilterEmpty}
       parentGestureRef={parentGestureRef}
       dragGestureHostPresented={dragGestureHostPresented}
     />
@@ -2131,7 +2139,8 @@ function ProjectModeList({
   onAddProject,
   listFooterComponent,
   listHeaderComponent,
-  labelFilterEmpty,
+  sidebarFilterEmpty,
+  hasActiveProjectFilter,
   parentGestureRef,
   dragGestureHostPresented,
   pathname,
@@ -2145,12 +2154,12 @@ function ProjectModeList({
   | "workspaceGroups"
   | "projectIconTargets"
   | "groupMode"
-  | "hasProjectsBeforeLabelFilter"
+  | "hasProjectsBeforeFilter"
   | "isRefreshing"
   | "onRefresh"
 > & {
   /** Swaps the list body for the label filter's empty state. Never the header above it. */
-  labelFilterEmpty: boolean;
+  sidebarFilterEmpty: boolean;
   projectIconByProjectViewKey: ReadonlyMap<string, string | null>;
   pathname: string;
   hostBadgeByServerId: ReadonlyMap<string, HostBadgeModel>;
@@ -2488,11 +2497,17 @@ function ProjectModeList({
       ) : null}
       {/* The header carries the display menu, which is the only way back out of a filter, so it
         stays for as long as a filter is what emptied the list. It is absent only when the
-        sidebar is genuinely empty, where a section heading would sit over nothing. */}
-      {unpinnedProjects.length > 0 || hasActiveHostFilter || labelFilterEmpty
+        sidebar is genuinely empty, where a section heading would sit over nothing.
+        Every filter that can empty this branch needs a term here: a project filter pinned to a
+        project whose chats are all pinned leaves `unpinnedProjects` empty, and without its term
+        the header would go with it, taking the only route back to the filter page. */}
+      {unpinnedProjects.length > 0 ||
+      hasActiveHostFilter ||
+      hasActiveProjectFilter ||
+      sidebarFilterEmpty
         ? listHeaderComponent
         : null}
-      {labelFilterEmpty ? <SidebarLabelFilterEmptyState /> : projectBody}
+      {sidebarFilterEmpty ? <SidebarFilterEmptyState /> : projectBody}
       {listFooterComponent}
     </>
   );

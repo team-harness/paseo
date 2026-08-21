@@ -69,6 +69,7 @@ import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Button } from "@/components/ui/button";
 import {
   PaneContentToolbar,
   paneContentToolbarIconSize,
@@ -80,6 +81,7 @@ import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { isWeb } from "@/constants/platform";
 import { usePublishWorkingDiffAttachment, useWorkingDiff } from "@/git/use-working-diff";
+import type { CheckoutStatusPayload } from "@/git/use-status-query";
 import { DiffTooLargeState } from "@/git/diff-too-large-state";
 import { ReviewSummaryTrigger } from "@/review/summary-trigger";
 import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
@@ -166,6 +168,7 @@ interface ChangesSurfaceProps {
   cwd: string;
   enabled?: boolean;
   host: "explorer" | "panel";
+  modeScope: string;
   focusPath?: string;
   focusRequestId?: number;
   onOpenFile?: (path: string) => void;
@@ -609,6 +612,7 @@ interface DiffBodyContentProps {
   diffTooLarge: boolean;
   hasChanges: boolean;
   emptyMessage: string;
+  emptyAction: ChangesEmptyAction | null;
   children: ReactElement;
   checkingRepositoryLabel: string;
   notRepositoryLabel: string;
@@ -623,6 +627,7 @@ function DiffBodyContent({
   diffTooLarge,
   hasChanges,
   emptyMessage,
+  emptyAction,
   children,
   checkingRepositoryLabel,
   notRepositoryLabel,
@@ -670,6 +675,16 @@ function DiffBodyContent({
     return (
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyText}>{emptyMessage}</Text>
+        {emptyAction ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            testID="changes-empty-switch-mode"
+            onPress={emptyAction.onPress}
+          >
+            {emptyAction.label}
+          </Button>
+        ) : null}
       </View>
     );
   }
@@ -690,6 +705,32 @@ function computeCommittedDiffDescription(
     return undefined;
   }
   return branchLabel === baseRefLabel ? undefined : `${branchLabel} -> ${baseRefLabel}`;
+}
+
+interface ChangesEmptyAction {
+  label: string;
+  onPress: () => void;
+}
+
+function computeChangesEmptyAction(input: {
+  hideWhitespace: boolean;
+  diffMode: "uncommitted" | "base";
+  status: CheckoutStatusPayload | null;
+  seeUncommittedLabel: string;
+  seeCommittedLabel: string;
+  selectUncommitted: () => void;
+  selectBase: () => void;
+}): ChangesEmptyAction | null {
+  if (input.hideWhitespace || !input.status?.isGit) {
+    return null;
+  }
+  if (input.diffMode === "base" && input.status.isDirty) {
+    return { label: input.seeUncommittedLabel, onPress: input.selectUncommitted };
+  }
+  if (input.diffMode === "uncommitted" && (input.status.aheadBehind?.ahead ?? 0) > 0) {
+    return { label: input.seeCommittedLabel, onPress: input.selectBase };
+  }
+  return null;
 }
 
 function computePrErrorMessage(
@@ -1014,6 +1055,7 @@ export function ChangesSurface({
   cwd,
   enabled,
   host,
+  modeScope,
   focusPath,
   focusRequestId,
   onOpenFile,
@@ -1061,11 +1103,6 @@ export function ChangesSurface({
       layout: instanceState.layout === "unified" ? "split" : "unified",
     });
   }, [instanceState, updateState]);
-  const handleDiffModeChange = useCallback(
-    (mode: "uncommitted" | "base") => updateState({ ...instanceState, mode }),
-    [instanceState, updateState],
-  );
-
   const codeFontSize = appSettings.codeFontSize;
 
   const overflowToggleStyle = useMemo(() => buildOverflowButtonStyle(isMobile), [isMobile]);
@@ -1129,9 +1166,7 @@ export function ChangesSurface({
     cwd,
     ignoreWhitespace: instanceState.hideWhitespace,
     enabled: enabled !== false,
-    mode: instanceState.mode,
-    baseRef: instanceState.baseRef,
-    onModeChange: handleDiffModeChange,
+    modeScope,
   });
   usePublishWorkingDiffAttachment({
     serverId,
@@ -1334,6 +1369,15 @@ export function ChangesSurface({
     uncommitted: t("workspace.git.diff.emptyUncommitted"),
     againstBase: (label) => t("workspace.git.diff.emptyAgainstBase", { baseRef: label }),
   });
+  const emptyAction = computeChangesEmptyAction({
+    hideWhitespace: instanceState.hideWhitespace,
+    diffMode,
+    status,
+    seeUncommittedLabel: t("workspace.git.diff.seeUncommittedChanges"),
+    seeCommittedLabel: t("workspace.git.diff.seeCommittedChanges"),
+    selectUncommitted: handleSelectUncommitted,
+    selectBase: handleSelectBase,
+  });
 
   const diffContent: ReactElement = (
     <DiffBodyContent
@@ -1345,6 +1389,7 @@ export function ChangesSurface({
       diffTooLarge={diffTooLarge}
       hasChanges={hasChanges}
       emptyMessage={emptyMessage}
+      emptyAction={emptyAction}
       checkingRepositoryLabel={t("workspace.git.diff.checkingRepository")}
       notRepositoryLabel={t("workspace.git.diff.notRepository")}
     >
@@ -1551,6 +1596,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     paddingTop: theme.spacing[16],
+    gap: theme.spacing[2],
   },
   emptyText: {
     fontSize: theme.fontSize.base,

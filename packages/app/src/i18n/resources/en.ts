@@ -1016,6 +1016,8 @@ export const en = {
         failedRefresh: "Failed to refresh git state.",
         emptyHiddenWhitespace: "No visible changes after hiding whitespace",
         emptyUncommitted: "No uncommitted changes",
+        seeUncommittedChanges: "See uncommitted changes",
+        seeCommittedChanges: "See committed changes",
         emptyAgainstBase: "No changes vs {{baseRef}}",
         checkingRepository: "Checking repository...",
         notRepository: "Not a git repository",
@@ -1127,8 +1129,6 @@ export const en = {
     },
     filter: {
       clear: "Clear filter",
-      noMatchesTitle: "No workspaces match",
-      noMatchesDescription: "Change or clear the label filter to see workspaces.",
     },
     manage: {
       open: "Manage labels…",
@@ -1184,6 +1184,15 @@ export const en = {
         label: "Host",
         all: "All hosts",
       },
+      projectFilter: {
+        label: "Project",
+        all: "All projects",
+      },
+    },
+    filterEmpty: {
+      title: "No workspaces match",
+      description: "Change or clear the sidebar filters to see workspaces.",
+      clear: "Clear filters",
     },
     pinned: {
       title: "Pinned",
@@ -2273,13 +2282,18 @@ export const en = {
         interfaceFont: "Interface font",
         interfaceFontHint: "Used across the app. Leave empty for the system default",
         interfaceFontAccessibility: "Interface font family",
-        baseSize: "Base size",
-        baseSizeAccessibility: "Base font size",
+        interfaceSize: "Interface size",
+        interfaceSizeHint: "Used for navigation, controls, and labels",
+        interfaceSizeAccessibility: "Interface font size",
+        contentSize: "Content size",
+        contentSizeHint: "Used for chat text and rendered Markdown",
+        contentSizeAccessibility: "Content font size",
         codeFont: "Code font",
         codeFontHint:
           "Used in code, diffs, and the terminal output. Leave empty for the system default",
         codeFontAccessibility: "Code font family",
         codeSize: "Code size",
+        codeSizeHint: "Used for code, diffs, and terminal output",
         codeSizeAccessibility: "Code font size",
       },
       syntax: {
@@ -2287,7 +2301,8 @@ export const en = {
         highlightTheme: "Highlight theme",
         highlightThemeHint: "Colors for code, independent of the app theme",
         highlightThemeAccessibility: "Highlight theme: {{value}}",
-        previewAccessibility: "Live preview of the syntax theme and code font",
+        previewAccessibility: "Live preview of content typography, syntax theme, and code font",
+        previewContent: "Readable content and code preview",
       },
     },
     shortcuts: {

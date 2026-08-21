@@ -1006,6 +1006,8 @@ export const ar: TranslationResources = {
         failedRefresh: "فشل تحديث حالة git.",
         emptyHiddenWhitespace: "لا توجد تغييرات مرئية بعد إخفاء المسافة البيضاء",
         emptyUncommitted: "لا توجد تغييرات غير ملتزم بها",
+        seeUncommittedChanges: "عرض التغييرات غير الملتزم بها",
+        seeCommittedChanges: "عرض التغييرات الملتزم بها",
         emptyAgainstBase: "لا توجد تغييرات مقابل{{baseRef}}",
         checkingRepository: "فحص المستودع...",
         notRepository: "ليس مستودع جيت",
@@ -1117,8 +1119,6 @@ export const ar: TranslationResources = {
     },
     filter: {
       clear: "مسح عامل التصفية",
-      noMatchesTitle: "لا توجد مساحات عمل مطابقة",
-      noMatchesDescription: "غيّر عامل تصفية التسميات أو امسحه لعرض مساحات العمل.",
     },
     manage: {
       open: "إدارة التسميات…",
@@ -1174,6 +1174,15 @@ export const ar: TranslationResources = {
         label: "المضيف",
         all: "كل المضيفين",
       },
+      projectFilter: {
+        label: "المشروع",
+        all: "كل المشاريع",
+      },
+    },
+    filterEmpty: {
+      title: "لا توجد مساحات عمل مطابقة",
+      description: "غيّر عوامل تصفية الشريط الجانبي أو امسحها لعرض مساحات العمل.",
+      clear: "مسح عوامل التصفية",
     },
     pinned: {
       title: "المثبتة",
@@ -2208,13 +2217,18 @@ export const ar: TranslationResources = {
         interfaceFont: "خط الواجهة",
         interfaceFontHint: "تستخدم عبر التطبيق. اتركه فارغًا للإعداد الافتراضي للنظام",
         interfaceFontAccessibility: "عائلة خطوط الواجهة",
-        baseSize: "الحجم الأساسي",
-        baseSizeAccessibility: "حجم الخط الأساسي",
+        interfaceSize: "حجم الواجهة",
+        interfaceSizeHint: "يُستخدم للتنقل وعناصر التحكم والتسميات",
+        interfaceSizeAccessibility: "حجم خط الواجهة",
+        contentSize: "حجم المحتوى",
+        contentSizeHint: "يُستخدم لنص الدردشة وملفات Markdown المعروضة",
+        contentSizeAccessibility: "حجم خط المحتوى",
         codeFont: "خط الكود",
         codeFontHint:
           "تستخدم في الكود والاختلافات والمخرجات الطرفية. اتركه فارغًا للإعداد الافتراضي للنظام",
         codeFontAccessibility: "عائلة خطوط الكود",
         codeSize: "حجم الكود",
+        codeSizeHint: "يُستخدم للكود والفروقات ومخرجات الطرفية",
         codeSizeAccessibility: "حجم خط الكود",
       },
       syntax: {
@@ -2222,7 +2236,9 @@ export const ar: TranslationResources = {
         highlightTheme: "تسليط الضوء على الموضوع",
         highlightThemeHint: "ألوان التعليمات البرمجية، مستقلة عن سمة التطبيق",
         highlightThemeAccessibility: "تسليط الضوء على الموضوع:{{value}}",
-        previewAccessibility: "معاينة مباشرة لموضوع بناء الجملة وخط التعليمات البرمجية",
+        previewAccessibility:
+          "معاينة مباشرة لطباعة المحتوى وموضوع بناء الجملة وخط التعليمات البرمجية",
+        previewContent: "معاينة المحتوى والرمز",
       },
     },
     shortcuts: {
