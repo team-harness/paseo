@@ -459,6 +459,46 @@ export function selectChatHistoryFromUserMessage(
   return startIndex === -1 ? null : items.slice(startIndex);
 }
 
+function selectChatHistoryRange(
+  items: readonly StreamItem[],
+  isStart: (item: StreamItem) => boolean,
+  isEnd: (item: StreamItem) => boolean,
+): StreamItem[] | null {
+  const startIndex = items.findIndex(isStart);
+  const endIndex = items.findIndex(isEnd);
+  if (startIndex === -1 || endIndex < startIndex) {
+    return null;
+  }
+  const nextTurnIndex = items.findIndex(
+    (item, index) => index > endIndex && item.kind === "user_message",
+  );
+  return items.slice(startIndex, nextTurnIndex === -1 ? undefined : nextTurnIndex);
+}
+
+export function selectChatHistoryPromptRange(
+  items: readonly StreamItem[],
+  startPromptSeq: number,
+  endPromptSeq: number,
+): StreamItem[] | null {
+  return selectChatHistoryRange(
+    items,
+    (item) => item.kind === "user_message" && item.timelineCursor?.seq === startPromptSeq,
+    (item) => item.kind === "user_message" && item.timelineCursor?.seq === endPromptSeq,
+  );
+}
+
+export function selectChatHistoryUserMessageRange(
+  items: readonly StreamItem[],
+  startUserMessageId: string,
+  endUserMessageId: string,
+): StreamItem[] | null {
+  return selectChatHistoryRange(
+    items,
+    (item) => item.kind === "user_message" && item.id === startUserMessageId,
+    (item) => item.kind === "user_message" && item.id === endUserMessageId,
+  );
+}
+
 function normalizeToolStatus(
   status: "executing" | "running" | "completed" | "failed" | "canceled",
 ): "running" | "completed" | "failed" | "canceled" {

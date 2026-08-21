@@ -417,6 +417,7 @@ export const zhCN: TranslationResources = {
       shareUnavailable: "请更新主机以使用聊天分享功能。",
       shareNotConfigured: "请配置 daemon.chatShare.baseUrl 后再分享聊天。",
       shareStartTitle: "从此消息开始分享",
+      shareEndTitle: "分享到此消息",
       shareStartUntitled: "消息",
       forkMenu: "分叉消息",
       forkInNewTab: "分叉到新标签页",

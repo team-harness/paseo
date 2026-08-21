@@ -115,8 +115,8 @@ import { formatMessageTimestamp } from "@/utils/time";
 import {
   exportChatHistory,
   loadCompleteChatHistory,
-  selectChatHistoryFromPrompt,
-  selectChatHistoryFromUserMessage,
+  selectChatHistoryPromptRange,
+  selectChatHistoryUserMessageRange,
 } from "@/chat-share/history";
 import { shareChatHistory } from "@/chat-share/upload";
 import { formatChatShareErrorMessage } from "@/chat-share/error-message";
@@ -234,7 +234,7 @@ function renderStreamItemWithTurnFooter(input: {
   );
 }
 
-type ChatShareStartOption =
+type ChatShareBoundaryOption =
   | {
       source: "prompt_index";
       prompt: AgentTimelinePromptIndexPayload["prompts"][number];
@@ -244,27 +244,73 @@ type ChatShareStartOption =
       item: Extract<StreamItem, { kind: "user_message" }>;
     };
 
-interface ChatShareStartSelection {
+interface ChatShareRangeSelection {
   items: StreamItem[];
-  startOptions: ChatShareStartOption[];
+  boundaryOptions: ChatShareBoundaryOption[];
+  startOption: ChatShareBoundaryOption | null;
 }
 
-function ChatShareStartMessageRow({
+function chatShareBoundaryOptionKey(option: ChatShareBoundaryOption): string {
+  return option.source === "prompt_index" ? `prompt-${option.prompt.seq}` : option.item.id;
+}
+
+function chatShareEndOptions(selection: ChatShareRangeSelection): ChatShareBoundaryOption[] {
+  if (!selection.startOption) {
+    return selection.boundaryOptions;
+  }
+  const startKey = chatShareBoundaryOptionKey(selection.startOption);
+  const startIndex = selection.boundaryOptions.findIndex(
+    (option) => chatShareBoundaryOptionKey(option) === startKey,
+  );
+  return startIndex === -1 ? [] : selection.boundaryOptions.slice(startIndex);
+}
+
+function selectChatHistoryForBoundaries(
+  items: readonly StreamItem[],
+  startOption: ChatShareBoundaryOption,
+  endOption: ChatShareBoundaryOption,
+): StreamItem[] | null {
+  if (startOption.source === "prompt_index" && endOption.source === "prompt_index") {
+    return selectChatHistoryPromptRange(items, startOption.prompt.seq, endOption.prompt.seq);
+  }
+  if (startOption.source === "provider_history" && endOption.source === "provider_history") {
+    return selectChatHistoryUserMessageRange(items, startOption.item.id, endOption.item.id);
+  }
+  return null;
+}
+
+function chatShareBoundaryPreview(option: ChatShareBoundaryOption, fallback: string): string {
+  return (
+    (option.source === "prompt_index" ? option.prompt.preview : option.item.text.trim()) || fallback
+  );
+}
+
+function chatShareBoundary(selection: ChatShareRangeSelection): "start" | "end" {
+  return selection.startOption ? "end" : "start";
+}
+
+function chatShareSheetTestId(selection: ChatShareRangeSelection): string {
+  return `chat-share-${chatShareBoundary(selection)}-sheet`;
+}
+
+function ChatShareBoundaryMessageRow({
   option,
+  boundary,
   onSelect,
 }: {
-  option: ChatShareStartOption;
-  onSelect: (option: ChatShareStartOption) => void;
+  option: ChatShareBoundaryOption;
+  boundary: "start" | "end";
+  onSelect: (option: ChatShareBoundaryOption) => void;
 }) {
   const { t } = useTranslation();
-  const preview =
-    (option.source === "prompt_index" ? option.prompt.preview : option.item.text.trim()) ||
-    t("message.actions.shareStartUntitled");
+  const preview = chatShareBoundaryPreview(option, t("message.actions.shareStartUntitled"));
   const timestamp = formatMessageTimestamp(
     option.source === "prompt_index" ? new Date(option.prompt.timestamp) : option.item.timestamp,
   );
-  const optionKey =
-    option.source === "prompt_index" ? `prompt-${option.prompt.seq}` : option.item.id;
+  const optionKey = chatShareBoundaryOptionKey(option);
+  const actionLabel = t(
+    boundary === "start" ? "message.actions.shareStartTitle" : "message.actions.shareEndTitle",
+  );
   const handlePress = useCallback(() => onSelect(option), [onSelect, option]);
   const rowStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -278,16 +324,49 @@ function ChatShareStartMessageRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${t("message.actions.shareStartTitle")}: ${preview}`}
+      accessibilityLabel={`${actionLabel}: ${preview}`}
       onPress={handlePress}
       style={rowStyle}
-      testID={`chat-share-start-${optionKey}`}
+      testID={`chat-share-${boundary}-${optionKey}`}
     >
       <Text style={stylesheet.shareStartRowPreview} numberOfLines={2}>
         {preview}
       </Text>
       <Text style={stylesheet.shareStartRowTimestamp}>{timestamp}</Text>
     </Pressable>
+  );
+}
+
+function renderChatShareRangeSheet(input: {
+  selection: ChatShareRangeSelection | null;
+  header: SheetHeader;
+  onClose: () => void;
+  onSelect: (option: ChatShareBoundaryOption) => void;
+}): ReactNode {
+  if (!input.selection) {
+    return null;
+  }
+  const boundary = chatShareBoundary(input.selection);
+  return (
+    <AdaptiveModalSheet
+      header={input.header}
+      visible
+      onClose={input.onClose}
+      snapPoints={["55%", "85%"]}
+      desktopMaxWidth={560}
+      testID={chatShareSheetTestId(input.selection)}
+    >
+      <View style={stylesheet.shareStartList}>
+        {chatShareEndOptions(input.selection).map((option) => (
+          <ChatShareBoundaryMessageRow
+            key={chatShareBoundaryOptionKey(option)}
+            option={option}
+            boundary={boundary}
+            onSelect={input.onSelect}
+          />
+        ))}
+      </View>
+    </AdaptiveModalSheet>
   );
 }
 
@@ -442,11 +521,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       new Set(),
     );
     const [isSharingAssistantTurn, setIsSharingAssistantTurn] = useState(false);
-    const [shareStartSelection, setShareStartSelection] = useState<ChatShareStartSelection | null>(
+    const [shareRangeSelection, setShareRangeSelection] = useState<ChatShareRangeSelection | null>(
       null,
     );
     const sharingAssistantTurnRef = useRef(false);
-    const shareStartSelectionRef = useRef<ChatShareStartSelection | null>(null);
+    const shareRangeSelectionRef = useRef<ChatShareRangeSelection | null>(null);
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
@@ -516,8 +595,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
       setExpandedToolCallGroupIds(new Set());
-      shareStartSelectionRef.current = null;
-      setShareStartSelection(null);
+      shareRangeSelectionRef.current = null;
+      setShareRangeSelection(null);
     }, [agentId]);
 
     const handleInlinePathPress = useStableEvent(
@@ -617,16 +696,32 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const effectiveStreamItems = useRetainedValue(streamItems, isActive);
     const effectiveStreamHead = useRetainedValue(streamHead, isActive);
     const effectiveTurnPresentation = useRetainedValue(turnPresentation, isActive);
-    const shareStartHeader = useMemo<SheetHeader>(
-      () => ({ title: t("message.actions.shareStartTitle") }),
-      [t],
-    );
-    const closeShareStartSelection = useStableEvent(() => {
-      shareStartSelectionRef.current = null;
-      setShareStartSelection(null);
+    const closeShareRangeSelection = useStableEvent(() => {
+      shareRangeSelectionRef.current = null;
+      setShareRangeSelection(null);
     });
+    const resetShareRangeStart = useStableEvent(() => {
+      const selection = shareRangeSelectionRef.current;
+      if (!selection?.startOption) {
+        return;
+      }
+      const nextSelection = { ...selection, startOption: null };
+      shareRangeSelectionRef.current = nextSelection;
+      setShareRangeSelection(nextSelection);
+    });
+    const shareRangeHeader = useMemo<SheetHeader>(() => {
+      const startOption = shareRangeSelection?.startOption;
+      if (!startOption) {
+        return { title: t("message.actions.shareStartTitle") };
+      }
+      return {
+        title: t("message.actions.shareEndTitle"),
+        subtitle: chatShareBoundaryPreview(startOption, t("message.actions.shareStartUntitled")),
+        back: { onPress: resetShareRangeStart },
+      };
+    }, [resetShareRangeStart, shareRangeSelection?.startOption, t]);
     const handleShareAssistantTurn = useStableEvent(async () => {
-      if (sharingAssistantTurnRef.current || shareStartSelectionRef.current) {
+      if (sharingAssistantTurnRef.current || shareRangeSelectionRef.current) {
         return;
       }
       if (!supportsChatShare) {
@@ -652,25 +747,27 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               localTail: effectiveStreamItems,
               liveHead: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
             });
-        let startOptions: ChatShareStartOption[];
+        let boundaryOptions: ChatShareBoundaryOption[];
         if (!loadCompleteHistory && supportsChatOutline) {
-          startOptions = (await client.listAgentTimelinePrompts(agentId)).prompts.map((prompt) => ({
-            source: "prompt_index" as const,
-            prompt,
-          }));
+          boundaryOptions = (await client.listAgentTimelinePrompts(agentId)).prompts.map(
+            (prompt) => ({
+              source: "prompt_index" as const,
+              prompt,
+            }),
+          );
         } else {
           // COMPAT(chatSharePromptIndex): keep provider and old-host sharing until daemon floor includes v0.2.X.
-          startOptions = items.flatMap((item) =>
+          boundaryOptions = items.flatMap((item) =>
             item.kind === "user_message" ? [{ source: "provider_history" as const, item }] : [],
           );
         }
-        if (startOptions.length === 0) {
+        if (boundaryOptions.length === 0) {
           toast?.error(t("message.actions.shareFailed"));
           return;
         }
-        const selection = { items, startOptions };
-        shareStartSelectionRef.current = selection;
-        setShareStartSelection(selection);
+        const selection = { items, boundaryOptions, startOption: null };
+        shareRangeSelectionRef.current = selection;
+        setShareRangeSelection(selection);
       } catch (error) {
         toast?.error(toErrorMessage(error) || t("message.actions.shareFailed"));
       } finally {
@@ -678,21 +775,24 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         setIsSharingAssistantTurn(false);
       }
     });
-    const handleShareStartSelected = useStableEvent(async (option: ChatShareStartOption) => {
-      const selection = shareStartSelectionRef.current;
+    const handleShareBoundarySelected = useStableEvent(async (option: ChatShareBoundaryOption) => {
+      const selection = shareRangeSelectionRef.current;
       if (!selection || sharingAssistantTurnRef.current) {
         return;
       }
-      const items =
-        option.source === "prompt_index"
-          ? selectChatHistoryFromPrompt(selection.items, option.prompt.seq)
-          : selectChatHistoryFromUserMessage(selection.items, option.item.id);
+      if (!selection.startOption) {
+        const nextSelection = { ...selection, startOption: option };
+        shareRangeSelectionRef.current = nextSelection;
+        setShareRangeSelection(nextSelection);
+        return;
+      }
+      const items = selectChatHistoryForBoundaries(selection.items, selection.startOption, option);
       if (!items) {
         toast?.error(t("message.actions.shareFailed"));
         return;
       }
 
-      closeShareStartSelection();
+      closeShareRangeSelection();
       sharingAssistantTurnRef.current = true;
       setIsSharingAssistantTurn(true);
       try {
@@ -1112,14 +1212,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           onShareAssistantTurn:
             readOnly && !loadCompleteHistory ? undefined : handleShareAssistantTurn,
           isSharingAssistantTurn,
-          isShareStartSelectionOpen: shareStartSelection !== null,
+          isShareStartSelectionOpen: shareRangeSelection !== null,
         });
       },
       [
         handleForkAssistantTurn,
         handleShareAssistantTurn,
         isSharingAssistantTurn,
-        shareStartSelection,
+        shareRangeSelection,
         loadCompleteHistory,
         readOnly,
         renderStreamItemContent,
@@ -1155,7 +1255,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               readOnly && !loadCompleteHistory ? undefined : handleShareAssistantTurn
             }
             isSharingAssistantTurn={isSharingAssistantTurn}
-            isShareStartSelectionOpen={shareStartSelection !== null}
+            isShareStartSelectionOpen={shareRangeSelection !== null}
             onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
           />
         ) : null,
@@ -1163,7 +1263,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         handleForkAssistantTurn,
         handleShareAssistantTurn,
         isSharingAssistantTurn,
-        shareStartSelection,
+        shareRangeSelection,
         loadCompleteHistory,
         handleForkInFlightTurn,
         readOnly,
@@ -1336,30 +1436,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             </View>
           )}
         </AssistantSelectionCopySurface>
-        {shareStartSelection ? (
-          <AdaptiveModalSheet
-            header={shareStartHeader}
-            visible
-            onClose={closeShareStartSelection}
-            snapPoints={["55%", "85%"]}
-            desktopMaxWidth={560}
-            testID="chat-share-start-sheet"
-          >
-            <View style={stylesheet.shareStartList}>
-              {shareStartSelection.startOptions.map((option) => (
-                <ChatShareStartMessageRow
-                  key={
-                    option.source === "prompt_index"
-                      ? `prompt-${option.prompt.seq}`
-                      : option.item.id
-                  }
-                  option={option}
-                  onSelect={handleShareStartSelected}
-                />
-              ))}
-            </View>
-          </AdaptiveModalSheet>
-        ) : null}
+        {renderChatShareRangeSheet({
+          selection: shareRangeSelection,
+          header: shareRangeHeader,
+          onClose: closeShareRangeSelection,
+          onSelect: handleShareBoundarySelected,
+        })}
       </ToolCallSheetProvider>
     );
   },

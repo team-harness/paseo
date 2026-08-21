@@ -422,6 +422,7 @@ export const ko: TranslationResources = {
       shareUnavailable: "채팅 공유를 사용하려면 호스트를 업데이트하세요.",
       shareNotConfigured: "채팅 공유를 사용하려면 daemon.chatShare.baseUrl을 설정하세요.",
       shareStartTitle: "여기부터 공유",
+      shareEndTitle: "이 메시지까지 공유",
       shareStartUntitled: "메시지",
       forkMenu: "여기에서 채팅 분기",
       forkInNewTab: "새 탭으로 분기",

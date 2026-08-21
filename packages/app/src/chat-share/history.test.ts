@@ -9,6 +9,8 @@ import {
   loadCompleteChatHistory,
   loadCompleteProviderSubagentChatHistory,
   selectChatHistoryFromPrompt,
+  selectChatHistoryPromptRange,
+  selectChatHistoryUserMessageRange,
 } from "./history";
 import type { StreamItem } from "@/types/stream";
 
@@ -477,6 +479,114 @@ describe("exportChatHistory", () => {
       "assistant-2",
     ]);
     expect(selectChatHistoryFromPrompt(items, 99)).toBeNull();
+  });
+
+  it("shares complete turns between selected prompt boundaries", () => {
+    const items: StreamItem[] = [
+      {
+        kind: "user_message",
+        id: "user-1",
+        timelineCursor: { epoch: "epoch-1", seq: 1 },
+        text: "First request",
+        timestamp: new Date("2026-07-28T00:00:00.000Z"),
+      },
+      {
+        kind: "assistant_message",
+        id: "assistant-1",
+        text: "First response",
+        timestamp: new Date("2026-07-28T00:00:01.000Z"),
+      },
+      {
+        kind: "user_message",
+        id: "user-2",
+        timelineCursor: { epoch: "epoch-1", seq: 3 },
+        text: "Second request",
+        timestamp: new Date("2026-07-28T00:00:02.000Z"),
+      },
+      {
+        kind: "assistant_message",
+        id: "assistant-2",
+        text: "Second response",
+        timestamp: new Date("2026-07-28T00:00:03.000Z"),
+      },
+      {
+        kind: "tool_call",
+        id: "tool-2",
+        timestamp: new Date("2026-07-28T00:00:03.500Z"),
+        payload: {
+          source: "orchestrator",
+          data: {
+            toolCallId: "call-2",
+            toolName: "read_file",
+            arguments: {},
+            result: { ok: true },
+            status: "completed",
+          },
+        },
+      },
+      {
+        kind: "user_message",
+        id: "user-3",
+        timelineCursor: { epoch: "epoch-1", seq: 5 },
+        text: "Third request",
+        timestamp: new Date("2026-07-28T00:00:04.000Z"),
+      },
+      {
+        kind: "assistant_message",
+        id: "assistant-3",
+        text: "Third response",
+        timestamp: new Date("2026-07-28T00:00:05.000Z"),
+      },
+    ];
+
+    expect(selectChatHistoryPromptRange(items, 1, 3)?.map((item) => item.id)).toEqual([
+      "user-1",
+      "assistant-1",
+      "user-2",
+      "assistant-2",
+      "tool-2",
+    ]);
+    expect(selectChatHistoryPromptRange(items, 3, 1)).toBeNull();
+  });
+
+  it("shares complete turns between selected user-message boundaries", () => {
+    const items: StreamItem[] = [
+      {
+        kind: "user_message",
+        id: "user-1",
+        text: "First request",
+        timestamp: new Date("2026-07-28T00:00:00.000Z"),
+      },
+      {
+        kind: "assistant_message",
+        id: "assistant-1",
+        text: "First response",
+        timestamp: new Date("2026-07-28T00:00:01.000Z"),
+      },
+      {
+        kind: "user_message",
+        id: "user-2",
+        text: "Second request",
+        timestamp: new Date("2026-07-28T00:00:02.000Z"),
+      },
+      {
+        kind: "assistant_message",
+        id: "assistant-2",
+        text: "Second response",
+        timestamp: new Date("2026-07-28T00:00:03.000Z"),
+      },
+      {
+        kind: "user_message",
+        id: "user-3",
+        text: "Third request",
+        timestamp: new Date("2026-07-28T00:00:04.000Z"),
+      },
+    ];
+
+    expect(
+      selectChatHistoryUserMessageRange(items, "user-1", "user-2")?.map((item) => item.id),
+    ).toEqual(["user-1", "assistant-1", "user-2", "assistant-2"]);
+    expect(selectChatHistoryUserMessageRange(items, "user-2", "user-1")).toBeNull();
   });
 
   it("loads every older projected page before exporting", async () => {

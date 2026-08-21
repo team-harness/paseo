@@ -418,6 +418,7 @@ export const en = {
       shareUnavailable: "Update the host to use chat sharing.",
       shareNotConfigured: "Configure daemon.chatShare.baseUrl to enable chat sharing.",
       shareStartTitle: "Share from",
+      shareEndTitle: "Share through",
       shareStartUntitled: "Message",
       forkMenu: "Fork chat from here",
       forkInNewTab: "Fork in a new tab",

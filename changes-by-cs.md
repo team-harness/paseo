@@ -382,7 +382,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 
 **状态**：fork 功能。主要提交：`7c9a99eb3`、`1ecfe1612`、`6f6d0f18d`、`425fda60e`。
 
-**行为**：聊天消息菜单支持异步分享，用户可选择从任一用户消息开始导出完整历史；客户端上传 JSON 后复制只读访问链接。Threadshare 是独立仓库 `team-harness/threadshare`，拥有 `threadshare-history@v1` 协议、受限 History API、只读 Viewer、Codex/Claude CLI 适配和云部署模板。Paseo 只是该协议的生产者，不再承载服务端、Web 或云凭证。
+**行为**：聊天消息菜单支持异步分享，用户依次选择起点和终点，客户端按完整对话轮次导出该范围，上传 JSON 后复制只读访问链接。Threadshare 是独立仓库 `team-harness/threadshare`，拥有 `threadshare-history@v1` 协议、受限 History API、只读 Viewer、Codex/Claude CLI 适配和云部署模板。Paseo 只是该协议的生产者，不再承载服务端、Web 或云凭证。
 
 - 2026-07-30：新版 Paseo 与 Threadshare CLI 输出通用的 `threadshare-history@v1`；Threadshare 新服务部署在 `https://cloud-thread.team-harness.com`，服务端单向兼容旧 Paseo v1 JSON。原 `https://paseo-share.team-harness.com` 服务保持原版本，不作为新协议端点。
 - 2026-07-30：Threadshare CLI 以公开 npm 包 `@team-harness/threadshare` 发布；默认服务为 `https://cloud-thread.team-harness.com`，也可通过 `--url` 或 `THREADSHARE_URL` 覆盖。独立仓库随包提供 Codex、Codex Cloud（`CODEX_HOME`）和 Claude 使用 Skill。
@@ -393,6 +393,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - 2026-08-06：Review Comments 与 Host 项目匹配排序不使用 Hermes 尚未实现的 `Array.prototype.toSorted()`；复制数组后使用 `sort()`，保留非变异语义并避免 Android 工作区恢复进入错误边界。
 - 2026-08-06：普通 Agent 的分享起点直接读取 daemon 的完整 prompt index，并按 timeline `seq` 对齐已加载的权威完整历史；不再从当前客户端窗口临时枚举用户消息。Provider 子 Agent 没有普通 Agent prompt index，继续使用其专用完整 timeline。
 - 2026-08-19：任务列表的内部 `id`、`status`、`activeForm` 字段不得透传到 Threadshare；导出边界固定投影为协议允许的 `text` 与 `completed`，避免上游扩展 `TodoEntry` 后触发 `Unsupported Threadshare history`。
+- 2026-08-21：分享改为先选起点、再选终点；终点包含该用户消息对应的完整 assistant、thought 和工具调用，下一条用户消息及后续内容不进入导出。终点列表从已选起点开始，返回按钮可重新选择起点。
 
 **关键文件**：
 

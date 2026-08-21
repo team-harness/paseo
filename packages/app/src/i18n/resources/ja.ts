@@ -425,6 +425,7 @@ export const ja: TranslationResources = {
       shareUnavailable: "Update the host to use chat sharing.",
       shareNotConfigured: "Configure daemon.chatShare.baseUrl to enable chat sharing.",
       shareStartTitle: "このメッセージから共有",
+      shareEndTitle: "このメッセージまで共有",
       shareStartUntitled: "メッセージ",
       forkMenu: "メッセージをフォーク",
       forkInNewTab: "新しいタブにフォーク",
