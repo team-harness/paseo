@@ -56,6 +56,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useComposerHeightMirror } from "./height-mirror";
+import { resolveComposerInputHeightStyle, shouldScrollComposerInput } from "./height-style";
 import { resolveComposerInputMode, type ComposerInputMode } from "@/composer/input-mode";
 import type { NativePastedFile } from "@/composer/native-pasted-image";
 import {
@@ -991,20 +992,6 @@ function resolveMaxInputHeight(windowHeight: number): number {
   return Math.max(DEFAULT_MAX_INPUT_HEIGHT, Math.floor(windowHeight * MAX_INPUT_VIEWPORT_RATIO));
 }
 
-function computeTextInputHeightStyle(inputHeight: number, maxInputHeight: number) {
-  if (isWeb) {
-    return {
-      height: inputHeight,
-      minHeight: MIN_INPUT_HEIGHT,
-      maxHeight: maxInputHeight,
-    };
-  }
-  return {
-    minHeight: MIN_INPUT_HEIGHT,
-    maxHeight: maxInputHeight,
-  };
-}
-
 function isTextAreaLike(v: unknown): v is TextAreaHandle {
   return typeof v === "object" && v !== null && "scrollHeight" in v;
 }
@@ -1770,7 +1757,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       () => [
         styles.textInput,
         mode.isMonospace && styles.textInputMonospace,
-        computeTextInputHeightStyle(inputHeight, maxInputHeight),
+        resolveComposerInputHeightStyle({
+          inputHeight,
+          minInputHeight: MIN_INPUT_HEIGHT,
+          maxInputHeight,
+          applyMeasuredHeight: isWeb,
+        }),
       ],
       [inputHeight, maxInputHeight, mode.isMonospace],
     );
@@ -1844,7 +1836,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               onFocus={handleInputFocus}
               onBlur={handleInputBlur}
               editable={!isDictating && !isRealtimeVoiceForCurrentAgent && !disabled}
-              scrollEnabled={isWeb ? inputHeight >= maxInputHeight : true}
+              scrollEnabled={shouldScrollComposerInput({ inputHeight, maxInputHeight })}
               autoFocus={false}
               onContentSizeChange={handleContentSizeChange}
               onKeyPress={shouldHandleWebKeyPress ? handleDesktopKeyPress : undefined}

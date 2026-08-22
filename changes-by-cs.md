@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `956f6ea7a`（完整 SHA 以 Git 为准），同步于 2026-08-22。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `956f6ea7a`）。
+- 最近同步基线：`upstream/main` = `28df3f259`（完整 SHA 以 Git 为准），同步于 2026-08-23。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `28df3f259`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-08-23: `upstream/main` `28df3f259` / post-`v0.5.0-beta.4`
+
+- 合入上游浏览器式 New Tab、紧凑稳定的聊天时间线、工作区面板与 Changes 快捷操作、原生 Composer 自动增高、大文件 Source 响应式预览、Relay 握手密钥校验、Provider 启动预算和 Hub 引导式初始化等 19 个提交。
+- Source 预览采用上游 CodeMirror/虚拟化实现，并继续包裹 fork 的 Review Selection Surface；Web 源码行保留可定位的评论行号。Agent 面板同时采用上游 workspace diff stat、底部控件避让和 fork 的选区引用插入、Threadshare 起止范围分享。
+- 保留 fork 的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨 File/Changes Review Comments、Assistant 时间、Threadshare 起止范围分享、计划任务既有 Agent 目标、bounded canonical timeline `limit: 100`、固定签名 DMG、Web Server tar、独立 Android APK 和 Haseo TestFlight 身份；本轮没有下线 fork 能力。
 
 ### 2026-08-22: `upstream/main` `956f6ea7a` / `v0.5.0-beta.4`
 
