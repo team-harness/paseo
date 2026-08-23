@@ -858,6 +858,14 @@ function isDefinitiveCodexSteerRejection(error: unknown): boolean {
   );
 }
 
+function isCodexAlreadyIdleInterrupt(error: unknown): boolean {
+  return (
+    error instanceof CodexAppServerRpcError &&
+    error.code === -32600 &&
+    error.message === "no active turn to interrupt"
+  );
+}
+
 // Codex app-server API response types
 interface CodexReasoningEffortEntry {
   reasoningEffort?: string;
@@ -3477,6 +3485,11 @@ export class CodexAppServerAgentSession implements AgentSession {
     promise: Promise<string | null>;
     resolve: (turnId: string | null) => void;
   } | null = null;
+  private pendingForegroundStart: {
+    promise: Promise<void>;
+    resolve: () => void;
+    cancelRequested: boolean;
+  } | null = null;
   private client: CodexAppServerClient | null = null;
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private activeForegroundTurnId: string | null = null;
@@ -4332,9 +4345,19 @@ export class CodexAppServerAgentSession implements AgentSession {
     prompt: AgentPromptInput,
     options?: AgentRunOptions,
   ): Promise<{ turnId: string }> {
-    if (this.activeForegroundTurnId) {
+    if (this.activeForegroundTurnId || this.pendingForegroundStart) {
       throw new Error("A foreground turn is already active");
     }
+
+    let resolveStart!: () => void;
+    const pendingStart = {
+      promise: new Promise<void>((resolve) => {
+        resolveStart = resolve;
+      }),
+      resolve: () => resolveStart(),
+      cancelRequested: false,
+    };
+    this.pendingForegroundStart = pendingStart;
 
     this.dismissPendingPlanApprovals("Dismissed by a new prompt");
 
@@ -4380,6 +4403,9 @@ export class CodexAppServerAgentSession implements AgentSession {
         hasDeveloperInstructions: turnStart.hasDeveloperInstructions,
         hasCodexConfig: turnStart.hasCodexConfig,
       });
+      if (pendingStart.cancelRequested) {
+        throw new Error("Codex turn start was interrupted before reaching Codex");
+      }
       await this.client.request("turn/start", turnStart.params, TURN_START_TIMEOUT_MS);
       return { turnId };
     } catch (error) {
@@ -4388,6 +4414,11 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.activeForegroundTurnId = null;
       this.activeClientMessageId = null;
       throw error;
+    } finally {
+      if (this.pendingForegroundStart === pendingStart) {
+        this.pendingForegroundStart = null;
+      }
+      pendingStart.resolve();
     }
   }
 
@@ -4868,7 +4899,19 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   async interrupt(): Promise<void> {
+    const pendingStart = this.pendingForegroundStart;
+    if (pendingStart) {
+      pendingStart.cancelRequested = true;
+      await pendingStart.promise;
+    }
     if (!this.client || !this.currentThreadId) {
+      if (
+        !this.activeForegroundTurnId &&
+        !this.currentTurnId &&
+        !this.pendingForegroundTurnIdentification
+      ) {
+        return;
+      }
       throw new Error("Cannot interrupt Codex before the active thread is initialized");
     }
     let turnId = this.currentTurnId;
@@ -4883,17 +4926,31 @@ export class CodexAppServerAgentSession implements AgentSession {
     ) {
       turnId = await pendingIdentification.promise;
     }
+    if (!turnId && !this.activeForegroundTurnId && !this.currentTurnId) {
+      return;
+    }
     if (!turnId || (foregroundTurnId && this.activeForegroundTurnId !== foregroundTurnId)) {
       throw new Error("Cannot interrupt Codex before turn/started identifies the active turn");
     }
-    await this.client.request(
-      "turn/interrupt",
-      {
-        threadId: this.currentThreadId,
-        turnId,
-      },
-      INTERRUPT_TIMEOUT_MS,
-    );
+    try {
+      await this.client.request(
+        "turn/interrupt",
+        {
+          threadId: this.currentThreadId,
+          turnId,
+        },
+        INTERRUPT_TIMEOUT_MS,
+      );
+    } catch (error) {
+      if (!isCodexAlreadyIdleInterrupt(error)) {
+        throw error;
+      }
+      this.activeForegroundTurnId = null;
+      this.activeClientMessageId = null;
+      this.currentTurnId = null;
+      this.pendingForegroundTurnIdentification?.resolve(null);
+      this.pendingForegroundTurnIdentification = null;
+    }
   }
 
   async close(): Promise<void> {
