@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `4f796181b`（完整 SHA 以 Git 为准），同步于 2026-08-24。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `4f796181b`）。
+- 最近同步基线：`upstream/main` = `54299a2e6`（完整 SHA 以 Git 为准），同步于 2026-08-25。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `54299a2e6`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-08-25: `upstream/main` `54299a2e6` / `v0.5.2`
+
+- 合入上游 `v0.5.2`，包括 Android 平板 workspace retained panel 崩溃修复、跨应用版本的设置持久化与旧字体 fallback、OpenCode event-stream 启动单次恢复，以及 Windows Playwright harness 进程启动兼容等 10 个提交；Claude bypass permission 改动已由上游自行回滚，最终行为不变。
+- Workspace panel、设置存储和 OpenCode provider 采用上游实现；本轮未触及 fork 的 Status Bar、Prompt Library、Review Comments、Threadshare 或发布身份实现。
+- 保留 fork 的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨 File/Changes Review Comments、Assistant 时间、Threadshare 起止范围分享、计划任务既有 Agent 目标、bounded canonical timeline `limit: 100`、固定签名 DMG、Web Server tar、独立 Android APK 和 Haseo TestFlight 身份；本轮没有下线 fork 能力。
 
 ### 2026-08-24: `upstream/main` `4f796181b` / `v0.5.1`
 
