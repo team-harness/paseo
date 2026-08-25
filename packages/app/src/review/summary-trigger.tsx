@@ -254,26 +254,31 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
   );
 
   const sendToExistingAgent = useCallback(
-    async (agent: Agent, entries: readonly WorkspaceReviewSummaryEntry[], operationId: string) => {
+    async (
+      agentId: string,
+      entries: readonly WorkspaceReviewSummaryEntry[],
+      operationId: string,
+    ) => {
       if (!client || entries.length === 0) {
-        throw new Error(t("review.summary.agentUnavailable"));
+        throw new Error(t("review.summary.agentUnavailable", { agentId }));
       }
       const text = buildAgentPrompt(entries, Boolean(deliverySession));
       const session = useSessionStore.getState().sessions[props.serverId];
-      const isRunning = selectAgentTurnPresentation(session, agent.id).isActive;
+      const isRunning = selectAgentTurnPresentation(session, agentId).isActive;
       const result = await submitReviewMessageViaComposer({
         message: text,
         sendBehavior: appSettings.sendBehavior,
         isAgentRunning: isRunning,
         queueMessage: (queuedText) => {
           const queued = queueComposerMessage({
-            agentId: agent.id,
+            agentId,
             text: queuedText,
             attachments: [],
             queue: {
-              read: (agentId) =>
-                useSessionStore.getState().sessions[props.serverId]?.queuedMessages.get(agentId) ??
-                [],
+              read: (queuedAgentId) =>
+                useSessionStore
+                  .getState()
+                  .sessions[props.serverId]?.queuedMessages.get(queuedAgentId) ?? [],
               write: (updater) => setQueuedMessages(props.serverId, updater),
             },
           });
@@ -284,7 +289,7 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
         submitMessage: async (submitText) => {
           await dispatchComposerAgentMessage({
             client,
-            agentId: agent.id,
+            agentId,
             text: submitText,
             attachments: [],
             encodeImages,
@@ -293,14 +298,14 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
         },
         failedToSendMessage: t("composer.errors.failedToSend"),
       });
-      finishDelivery(operationId, agent.id, entries);
+      finishDelivery(operationId, agentId, entries);
       toast.show(
         result === "queued"
           ? t("review.summary.queued", { count: entries.length })
           : t("review.summary.sent", { count: entries.length }),
         { variant: "success" },
       );
-      openAgent(agent.id);
+      openAgent(agentId);
     },
     [
       appSettings.sendBehavior,
@@ -317,13 +322,13 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
   );
 
   const handleAgentPress = useCallback(
-    (agent: Agent) => {
+    (agentId: string) => {
       if (isDelivering || deliveryInFlight || !client) return;
-      const operationId = beginDelivery(agent.id);
+      const operationId = beginDelivery(agentId);
       if (!operationId) return;
       setIsDelivering(true);
       void sendToExistingAgent(
-        agent,
+        agentId,
         deliverySession ? pendingEntries : review.entries,
         operationId,
       )
@@ -408,10 +413,10 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
       setSelectingAgent(true);
       return;
     }
-    if (availableAssociatedAgent && pendingEntries.length > 0) {
-      handleAgentPress(availableAssociatedAgent);
+    if (deliverySession && pendingEntries.length > 0) {
+      handleAgentPress(deliverySession.agentId);
     }
-  }, [availableAssociatedAgent, deliverySession, handleAgentPress, pendingEntries.length]);
+  }, [deliverySession, handleAgentPress, pendingEntries.length]);
   const handleAssociatedAgentPress = useCallback(() => {
     if (availableAssociatedAgent) {
       openAgent(availableAssociatedAgent.id);
@@ -469,8 +474,7 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
             disabled={
               !client ||
               deliveryInFlight ||
-              (Boolean(deliverySession) &&
-                (!availableAssociatedAgent || pendingEntries.length === 0))
+              (Boolean(deliverySession) && pendingEntries.length === 0)
             }
             testID="review-summary-send"
           >
@@ -480,7 +484,6 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
       </View>
     ),
     [
-      availableAssociatedAgent,
       client,
       count,
       deliveredCount,
@@ -602,7 +605,7 @@ function ReviewAgentPicker({
   agents: readonly Agent[];
   isDelivering: boolean;
   canCreateAgent: boolean;
-  onAgentPress: (agent: Agent) => void;
+  onAgentPress: (agentId: string) => void;
   onCreateAgent: () => void;
 }) {
   const { t } = useTranslation();
@@ -645,10 +648,10 @@ function ReviewAgentPickerRow({
 }: {
   agent: Agent;
   disabled: boolean;
-  onPress: (agent: Agent) => void;
+  onPress: (agentId: string) => void;
 }) {
   const { t } = useTranslation();
-  const handlePress = useCallback(() => onPress(agent), [agent, onPress]);
+  const handlePress = useCallback(() => onPress(agent.id), [agent.id, onPress]);
   return (
     <Pressable
       onPress={handlePress}
