@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `54299a2e6`（完整 SHA 以 Git 为准），同步于 2026-08-25。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `54299a2e6`）。
+- 最近同步基线：`upstream/main` = `996d4ec52`（完整 SHA 以 Git 为准），同步于 2026-08-26。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `996d4ec52`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-08-26: `upstream/main` `996d4ec52` / `v0.6.1`
+
+- 合入上游 `v0.6.0`、`v0.6.1`，包括 Explorer 一等 pane host、桌面窗口控件、Command Center 分词搜索排序、持久化 Explorer 布局一次性迁移、当前 Pull Request 防误归档，以及 Playwright 反馈时间优化等 15 个提交。
+- File/Changes 采用上游新的 Explorer sidebar、panel registry 和双行 Changes toolbar；删除上游已替代的 File `TreeRail` 与 `FileTreeToggle` 路径，同时继续向 File preview 传递 `workspaceId`，并在 File toolbar 及 Changes tree/diff/combined 三种展示中保留 fork 的 Review Comments 汇总入口。
+- 保留 fork 的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨 File/Changes Review Comments、Assistant 时间、Threadshare 起止范围分享、计划任务既有 Agent 目标、bounded canonical timeline `limit: 100`、固定签名 DMG、Web Server tar、独立 Android APK 和 Haseo TestFlight 身份；本轮没有下线其他 fork 能力。
 
 ### 2026-08-25: `upstream/main` `54299a2e6` / `v0.5.2`
 
@@ -498,7 +504,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 
 **状态**：fork 功能。提交：`044802203`。
 
-**行为**：对话中的用户或 Assistant 文本可以按原 Markdown 引用到 Composer，替换当前选区、恢复焦点且不自动发送。每个已完成 turn 只在最后一条 Assistant 回复的最后一个 Markdown 段落末尾内联展示一次弱化的本地化时间；运行中的回复和工具调用不展示时间，时间元数据也不进入复制或引用内容。文件 Markdown 预览、代码预览和 Source 视图支持对选区留评论；代码与 Source 使用精确行号，Markdown 预览在没有可靠源码映射时只记录选中文字。评论按 workspace 隔离并持久化，File 与 Changes 共用 Review summary，汇总选区评论和 diff 行评论，支持一键复制、逐条删除，以及确认后删除当前汇总中的全部评论。用户首次把汇总交给 Agent 时选择当前 workspace 的既有 Agent 或按最近 Agent 配置新建一个；首次成功投递后，该 workspace 永久绑定同一 Agent，后续只追加新增或修改过的评论。评论投递复用 Composer 的发送策略：`interrupt` 直接提交，`queue` 在 Agent 运行时加入同一队列；队列接收成功即更新投递记录并释放 Review 操作锁。Android 原生选择保留系统复制/翻译菜单，并在选区末字下方显示 fork 的引用或评论按钮；下方空间被键盘压缩时自动翻到上方。
+**行为**：对话中的用户或 Assistant 文本可以按原 Markdown 引用到 Composer，替换当前选区、恢复焦点且不自动发送。每个已完成 turn 只在最后一条 Assistant 回复的最后一个 Markdown 段落末尾内联展示一次弱化的本地化时间；运行中的回复和工具调用不展示时间，时间元数据也不进入复制或引用内容。文件 Markdown 预览、代码预览和 Source 视图支持对选区留评论；代码与 Source 使用精确行号，Markdown 预览在没有可靠源码映射时只记录选中文字。评论按 workspace 隔离并持久化，File 与 Changes 共用 Review summary，汇总选区评论和 diff 行评论，支持一键复制、逐条删除，以及确认后删除当前汇总中的全部评论。用户首次把汇总交给 Agent 时选择当前 workspace 的既有 Agent 或按最近 Agent 配置新建一个；首次成功投递后，该 workspace 永久绑定同一 Agent，后续只追加新增或修改过的评论。后续投递直接使用持久化的关联 `agentId`，不以 Agent 是否运行、是否仍在当前客户端列表或是否归档作为发送按钮门槛；服务端和 Composer 负责处理真实可投递性。评论投递复用 Composer 的发送策略：`interrupt` 直接提交，`queue` 在 Agent 运行时加入同一队列；队列接收成功即更新投递记录并释放 Review 操作锁。Android 原生选择保留系统复制/翻译菜单，并在选区末字下方显示 fork 的引用或评论按钮；下方空间被键盘压缩时自动翻到上方。
 
 **关键文件**：
 
@@ -522,6 +528,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - 删除全部必须同时清理 selection 和 diff 两类 store，取消确认时不能改变数据；清空后关闭 summary，并确保刷新后评论不会恢复。
 - 首次成功投递后，workspace review 必须固定到同一 Agent；多个 Review summary 入口使用共享 operation token，发送副作用发生前完成原子占用，不能把同一批评论发给两个 Agent。
 - 投递账本按评论 `updatedAt` 记录 revision；后续只发送新增或更新的评论。Review 不自行阻止运行中 Agent 的投递；它复用 Composer 的 `interrupt` / `queue` 设置，并在消息直接提交或成功进入队列后记录 revision。
+- 已关联 Review 的发送资格只依赖连接、待发送评论和 operation lock；客户端 Agent 列表中的缺失或归档状态不能禁用发送，最终可投递性由发送请求结果决定。
 - 没有 AST 级源码映射时，Markdown 预览不得猜测行号；代码预览和 Source 选区继续保留精确范围。
 - Web/Electron 与 Android 的操作按钮都锚定选区最后一个可见字符，优先放在下方；可视区域不足时翻到上方并限制在屏幕横向边界内。
 - Android 必须保留系统复制/翻译 ActionMode；打开评论编辑器前结束当前系统选区，避免 ActionMode、软键盘和评论面板同时争抢空间。原生无法可靠映射源码时仍只保存选中文字，不猜测行号。
@@ -529,7 +536,7 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 
 **验证**：`quote.test.ts`、`workspace-comments.test.ts`、`delivery.test.ts`、`composer/actions.test.ts`、`store.test.ts`、`resources.test.ts`、`assistant-selection-copy.spec.ts`、`file-review-comments.spec.ts`、`npm run typecheck`、`npm run lint`。
 
-**最近同步判断**：2026-08-06 的上游 `fb5cfb9fb` 仍只有基础选区复制，没有直接引用到 Composer、文件选区 Review Comments、Android 原生选区操作或跨预览与 diff 的 Review summary，保留 fork 实现。
+**最近同步判断**：2026-08-26 的上游 `996d4ec52` 仍没有直接引用到 Composer、文件选区 Review Comments、Android 原生选区操作或跨 File/Changes 的 Review summary；保留 fork 实现，并接入上游 Explorer sidebar 与 Changes toolbar。
 
 ### 11. 工作区内聊天标签切回跟随最新消息
 

@@ -28,7 +28,7 @@ import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, ChevronDown, X } from "lucide-react-native";
 import * as Clipboard from "expo-clipboard";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
-import { openSidePanelView } from "@/workspace-tabs/side-panel";
+import { openExplorerSidebarView } from "@/workspace-tabs/explorer-sidebar";
 import {
   AssistantMessage,
   SpeakMessage,
@@ -650,7 +650,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           setCurrentPath: false,
         });
 
-        openSidePanelView({
+        openExplorerSidebarView({
           isCompact: isMobile,
           workspaceKey: buildWorkspaceTabPersistenceKey({
             serverId: resolvedServerId,
@@ -667,7 +667,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const handleToolCallOpenFile = useStableEvent((filePath: string) => {
-      handleInlinePathPress({ raw: filePath, path: filePath }, "side");
+      handleInlinePathPress({ raw: filePath, path: filePath }, "preferred");
     });
 
     const handleForkAssistantTurn: AssistantTurnForkHandler = useStableEvent(

@@ -1,4 +1,5 @@
-import { writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { appendFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test, type Page } from "../support/fixtures";
 import {
@@ -6,6 +7,7 @@ import {
   openFileExplorer,
   openFileFromExplorer,
 } from "../support/helpers/file-explorer";
+import { openChangesPanel } from "../support/helpers/workspace-tabs";
 
 async function selectPreviewText(page: Page, text: string, occurrence = 0): Promise<void> {
   const filePane = page.getByTestId("workspace-file-pane").filter({ visible: true });
@@ -71,6 +73,28 @@ async function addVisibleReviewComment(page: Page, body: string): Promise<void> 
   await expect(input).not.toBeVisible();
 }
 
+async function startReviewOnFirstChangedLine(page: Page): Promise<void> {
+  const body = page.getByTestId("diff-file-0-body");
+  const canvas = page.getByTestId("git-diff-canvas");
+  const [bodyBounds, fontSize] = await Promise.all([
+    body.boundingBox(),
+    canvas.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+  ]);
+  if (!bodyBounds) throw new Error("Expanded diff body has no bounds");
+  const lineHeight = Math.round(fontSize * 1.5);
+  const addComment = page.getByRole("button", { name: "Add review comment" });
+  const visibleRowCount = Math.min(12, Math.ceil(bodyBounds.height / lineHeight));
+  for (let row = 0; row < visibleRowCount; row += 1) {
+    await page.mouse.move(bodyBounds.x + 20, bodyBounds.y + lineHeight * (row + 0.5));
+    await page.waitForTimeout(20);
+    if (await addComment.isVisible()) {
+      await addComment.click();
+      return;
+    }
+  }
+  throw new Error("No reviewable diff line was found in the visible file body");
+}
+
 test("file selection comments persist and remain available from Changes", async ({
   context,
   page,
@@ -89,6 +113,8 @@ test("file selection comments persist and remain available from Changes", async 
     `# Review fixture\n\n${previewQuote}\n\n${repeatedQuote}\n\n**Repeated** visible phrase.\n`,
     "utf8",
   );
+  execFileSync("git", ["add", fileName], { cwd: workspace.repoPath });
+  execFileSync("git", ["commit", "-m", "Add review fixture"], { cwd: workspace.repoPath });
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 
   await workspace.navigateTo();
@@ -148,14 +174,16 @@ test("file selection comments persist and remain available from Changes", async 
   await addVisibleReviewComment(page, sourceComment);
   await expect(summaryTrigger).toHaveAccessibleName("Open review comments (3)");
 
+  await appendFile(path.join(workspace.repoPath, fileName), "\nA new line to review.\n", "utf8");
+
   await page.reload();
+  await workspace.navigateTo();
   await expectFileTabOpen(page, fileName);
   await expect(
     page.getByTestId("review-summary-trigger").filter({ visible: true }).first(),
   ).toHaveAccessibleName("Open review comments (3)");
 
-  await page.getByTestId("explorer-tab-changes").click();
-  await expect(page.getByTestId("git-diff-scroll")).toBeVisible({ timeout: 30_000 });
+  await openChangesPanel(page);
   const visibleSummaryTriggers = page
     .getByTestId("review-summary-trigger")
     .filter({ visible: true });
@@ -171,8 +199,7 @@ test("file selection comments persist and remain available from Changes", async 
     await page.getByTestId("diff-file-0").click();
   }
   await expect(diffBody).toBeVisible();
-  const addDiffComment = page.getByLabel("Add review comment").filter({ visible: true }).first();
-  await addDiffComment.click();
+  await startReviewOnFirstChangedLine(page);
   const inlineEditor = page.getByTestId("inline-review-editor-input");
   await inlineEditor.fill(diffComment);
   await page.getByTestId("inline-review-editor-save").click();
@@ -205,5 +232,6 @@ test("file selection comments persist and remain available from Changes", async 
   await expect(page.getByTestId("review-summary-trigger").filter({ visible: true })).toHaveCount(0);
 
   await page.reload();
+  await workspace.navigateTo();
   await expect(page.getByTestId("review-summary-trigger").filter({ visible: true })).toHaveCount(0);
 });
