@@ -92,7 +92,6 @@ import {
   toolbarLabelTriggerStyle,
 } from "@/components/ui/toolbar-label-trigger";
 import { FOCUSED_PANE_PLACEMENT, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { usePanelStore } from "@/stores/panel-store";
 import type { WorkspaceTabPlacement } from "@/stores/workspace-layout-actions";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
@@ -104,8 +103,8 @@ import { ReviewSummaryTrigger } from "@/review/summary-trigger";
 import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
 import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
 import { openExternalUrl } from "@/utils/open-external-url";
-import { openPreferredWorkspaceTarget } from "@/workspace-tabs/open-beside";
-import type { OpenInSidePanePreferences } from "@/hooks/use-settings";
+import { openWorkspacePullRequest } from "@/workspace-tabs/open-supporting-view";
+import type { PullRequestOpenLocation } from "@/hooks/use-settings";
 
 export type { GitActionId, GitAction, GitActions } from "@/git/policy";
 
@@ -1529,13 +1528,13 @@ function useDiffTabNavigation({
   workspaceId,
   cwd,
   isMobile,
-  openInSidePane,
+  pullRequestOpenLocation,
 }: {
   serverId: string;
   workspaceId?: string | null;
   cwd: string;
   isMobile: boolean;
-  openInSidePane: OpenInSidePanePreferences;
+  pullRequestOpenLocation: PullRequestOpenLocation;
 }) {
   const openTab = useWorkspaceLayoutStore((state) => state.openTab);
   const openWorkspaceTab = useCallback(
@@ -1547,7 +1546,6 @@ function useDiffTabNavigation({
     () => buildWorkspaceTabPersistenceKey({ serverId, workspaceId: workspaceId ?? cwd }),
     [cwd, serverId, workspaceId],
   );
-  const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
   const openDiff = useCallback(() => {
     if (!persistenceKey || isMobile) {
       return;
@@ -1564,15 +1562,13 @@ function useDiffTabNavigation({
   );
   const openPullRequest = useCallback(() => {
     if (!persistenceKey) return;
-    openPreferredWorkspaceTarget({
+    openWorkspacePullRequest({
       isCompact: isMobile,
       workspaceKey: persistenceKey,
-      target: { kind: "pull_request" },
-      source: "pullRequests",
-      preferences: openInSidePane,
+      checkout: { serverId, cwd, isGit: true },
+      destination: pullRequestOpenLocation,
     });
-    if (isMobile) showMobileAgent();
-  }, [isMobile, openInSidePane, persistenceKey, showMobileAgent]);
+  }, [cwd, isMobile, persistenceKey, pullRequestOpenLocation, serverId]);
   return {
     openDiff,
     openCommit,
@@ -1653,7 +1649,7 @@ export function ChangesSurface({
     workspaceId,
     cwd,
     isMobile,
-    openInSidePane: appSettings.openInSidePane,
+    pullRequestOpenLocation: appSettings.pullRequestOpenLocation,
   });
   const refreshSupported = useSessionStore(
     (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutRefresh === true,

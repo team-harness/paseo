@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `996d4ec52`（完整 SHA 以 Git 为准），同步于 2026-08-26。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `996d4ec52`）。
+- 最近同步基线：`upstream/main` = `4de913fb8`（完整 SHA 以 Git 为准），同步于 2026-08-27。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `4de913fb8`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-08-27: `upstream/main` `4de913fb8` / post-`v0.6.1`
+
+- 合入上游长时间线 rewind 原子替换、Assistant 文本平滑呈现、行级 replica cache 与冷启动即时绘制、Forge checks/GitLab/Gitea 语义、移动端 Changes/PR Explorer 路由、取消权限请求收敛、桌面更新保留和插件 daemon provider 可见性等 22 个提交。
+- Session Context 采用上游新的 timeline owner 和目录缓存归属，继续保留 fork 的 Status Summary 首次加载、恢复刷新与 push 更新；Directory Sync 同时保留 fork 的 canonical `limit: 100` 兼容策略和上游 agent row cache revision 持久化。
+- 保留 fork 的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨 File/Changes Review Comments、Assistant 时间、Threadshare 起止范围分享、计划任务既有 Agent 目标、固定签名 DMG、Web Server tar、独立 Android APK 和 Haseo TestFlight 身份；本轮没有下线 fork 能力。
 
 ### 2026-08-26: `upstream/main` `996d4ec52` / `v0.6.1`
 
