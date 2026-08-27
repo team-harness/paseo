@@ -275,6 +275,42 @@ describe("exportChatHistory", () => {
     ]);
   });
 
+  it("omits host-specific plugin timeline projections", () => {
+    const timestamp = new Date("2026-08-28T00:00:00.000Z");
+    const history = exportChatHistory({
+      agentId: "agent-1",
+      title: "Plugin timeline",
+      exportedAt: timestamp,
+      items: [
+        {
+          kind: "plugin",
+          id: "plugin-1",
+          pluginId: "reports",
+          itemKind: "test-report",
+          version: 1,
+          data: { apiKey: "private-plugin-value" },
+          timestamp,
+        },
+        {
+          kind: "assistant_message",
+          id: "assistant-1",
+          text: "Portable response",
+          timestamp,
+        },
+      ],
+    });
+
+    expect(history.entries).toEqual([
+      {
+        id: "assistant-1",
+        createdAt: "2026-08-28T00:00:00.000Z",
+        kind: "message",
+        role: "assistant",
+        markdown: "Portable response",
+      },
+    ]);
+  });
+
   it("redacts credentials from exported tool data without hiding token metrics", () => {
     const items: StreamItem[] = [
       {

@@ -57,7 +57,7 @@ import {
 import { PromptLibraryTrigger } from "@/prompt-library/prompt-library-trigger";
 import { insertSavedPrompt, type TextSelection } from "@/prompt-library/model";
 import { insertComposerQuote } from "@/assistant-selection-copy/quote";
-import type { ImageAttachment, MessagePayload } from "./types";
+import type { ImageAttachment, MessagePayload, TextReplacement } from "./types";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
@@ -942,7 +942,7 @@ interface ComposerProps {
   blurOnSubmit?: boolean;
   value: string;
   onChangeText: (text: string) => void;
-  textReplacementKey: string;
+  textReplacement: TextReplacement;
   attachments: UserComposerAttachment[];
   attachmentScopeKeys?: readonly string[];
   onOpenWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => void;
@@ -1165,7 +1165,7 @@ function ComposerContentImpl({
   blurOnSubmit = false,
   value,
   onChangeText,
-  textReplacementKey,
+  textReplacement,
   attachments,
   attachmentScopeKeys = EMPTY_ATTACHMENT_SCOPE_KEYS,
   onOpenWorkspaceAttachment,
@@ -2465,7 +2465,7 @@ function ComposerContentImpl({
                   attachmentSlot={attachmentTray}
                   inputMode={inputMode}
                   readOnly={readOnly}
-                  textReplacementKey={textReplacementKey}
+                  textReplacement={textReplacement}
                   submitLabel={submitLabel}
                 />
               </RenderProfile>

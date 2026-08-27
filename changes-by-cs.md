@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `4de913fb8`（完整 SHA 以 Git 为准），同步于 2026-08-27。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `4de913fb8`）。
+- 最近同步基线：`upstream/main` = `1fc525054`（完整 SHA 以 Git 为准），同步于 2026-08-28。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `1fc525054`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-08-28: `upstream/main` `1fc525054` / `v0.7.0-beta.1`
+
+- 合入上游插件 Git source 安装与更新、插件自定义 timeline 转换和渲染、Host 渲染图标与语义主题 token、公开 SDK 项目列表，以及把子目录直接作为项目打开等 21 个提交；项目版本升级为 `0.7.0-beta.1`，许可证切换为 Apache-2.0。
+- Composer 采用上游 Native TextInput replacement 和 iOS rewind prompt 即时恢复，同时保留 fork 的 Host Prompt Library、完整消息历史和选区引用；桌面设置前向兼容、窗口 owner、浏览器 capture、Changes 顺序和 Provider JSONL 解码采用上游实现。
+- 保留 fork 的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨 File/Changes Review Comments、Assistant 时间、Threadshare 起止范围分享、计划任务既有 Agent 目标、canonical `limit: 100`、固定签名 DMG、Web Server tar、独立 Android APK 和 Haseo TestFlight 身份；本轮没有下线 fork 能力。
 
 ### 2026-08-27: `upstream/main` `4de913fb8` / post-`v0.6.1`
 

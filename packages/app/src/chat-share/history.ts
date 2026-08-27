@@ -505,7 +505,7 @@ function normalizeToolStatus(
   return status === "executing" ? "running" : status;
 }
 
-function exportItem(item: StreamItem): SharedChatEntry {
+function exportItem(item: StreamItem): SharedChatEntry | null {
   const base = { id: item.id, createdAt: iso(item.timestamp) };
 
   switch (item.kind) {
@@ -539,6 +539,8 @@ function exportItem(item: StreamItem): SharedChatEntry {
         ...(item.trigger ? { trigger: item.trigger } : {}),
         ...(item.preTokens === undefined ? {} : { preTokens: item.preTokens }),
       };
+    case "plugin":
+      return null;
     case "tool_call": {
       if (item.payload.source === "agent") {
         const { data } = item.payload;
@@ -577,6 +579,8 @@ export function exportChatHistory(input: ExportChatHistoryInput): PaseoChatHisto
       ...(input.provider ? { provider: input.provider } : {}),
       ...(input.model ? { model: input.model } : {}),
     },
-    entries: input.items.map(exportItem),
+    entries: input.items
+      .map(exportItem)
+      .filter((entry): entry is SharedChatEntry => entry !== null),
   };
 }
