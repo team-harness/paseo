@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `1fc525054`（完整 SHA 以 Git 为准），同步于 2026-08-28。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `1fc525054`）。
+- 最近同步基线：`upstream/main` = `3c6e4e39e`（完整 SHA 以 Git 为准），同步于 2026-08-29。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `3c6e4e39e`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-08-29: `upstream/main` `3c6e4e39e` / post-`v0.7.0-beta.1`
+
+- 合入上游 SSH 连接远端 daemon、Command Center 工作区操作与 PR/MR 编号搜索、插件 Composer pill 和 Host Modal/Icon/Toast、Astro 高亮，以及公开 SDK Agent snapshot/commands 等 14 个提交。
+- Git 调度、GitHub PR 状态轮询、workspace replica cache、Markdown 原文渲染和 dictation 尾部提交采用上游实现；Sidebar 工作区操作采用上游共享 clipboard/rename 组件，同时保留 fork 的运行状态分组与跳转语义。
+- 保留 fork 的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨 File/Changes Review Comments、Assistant 时间、Threadshare 起止范围分享、计划任务既有 Agent 目标、canonical `limit: 100`、固定签名 DMG、Web Server tar、独立 Android APK 和 Haseo TestFlight 身份；本轮没有下线 fork 能力。
 
 ### 2026-08-28: `upstream/main` `1fc525054` / `v0.7.0-beta.1`
 
