@@ -100,6 +100,11 @@ import {
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
 import type { DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import { DirectorySyncService } from "./directory-sync/index.js";
+import {
+  OWNER_PERMISSIONS,
+  permissionsForLegacyHubScopes,
+  type DaemonPermission,
+} from "./authorization/index.js";
 import type { WorkspaceLabelService } from "./workspace-labels/index.js";
 import {
   APPLICATION_SOCKET_LEASE_CHECK_INTERVAL_MS,
@@ -481,7 +486,7 @@ interface SocketSessionOptions {
   clientId: string;
   appVersion: string | null;
   clientCapabilities: Record<string, unknown> | null;
-  scopes: readonly string[];
+  permissions: readonly DaemonPermission[];
   connectionLogger: pino.Logger;
   onMessage: (message: SessionOutboundMessage) => void;
   onMessageToSource?: (source: object, message: SessionOutboundMessage) => void;
@@ -1046,7 +1051,7 @@ export class VoiceAssistantWebSocketServer {
       clientId: `hub:${options.daemonId}`,
       appVersion: null,
       clientCapabilities: null,
-      scopes: options.scopes,
+      permissions: permissionsForLegacyHubScopes(options.scopes),
       connectionLogger,
       onMessage: (message) => this.sendToClient(ws, wrapSessionMessage(message)),
       hubExecutionAgents: options.agents,
@@ -1368,7 +1373,7 @@ export class VoiceAssistantWebSocketServer {
       clientId,
       appVersion,
       clientCapabilities,
-      scopes: ["*"],
+      permissions: OWNER_PERMISSIONS,
       connectionLogger,
       onMessage: (msg) => {
         if (!connection) {
@@ -1438,7 +1443,7 @@ export class VoiceAssistantWebSocketServer {
       clientId: options.clientId,
       appVersion: options.appVersion,
       clientCapabilities: options.clientCapabilities,
-      scopes: options.scopes,
+      permissions: options.permissions,
       onMessage: options.onMessage,
       onMessageToSource: options.onMessageToSource,
       onBinaryMessage: options.onBinaryMessage,

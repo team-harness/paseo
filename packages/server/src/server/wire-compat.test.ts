@@ -15,6 +15,7 @@ import {
   asStatusSummaryService,
   createProviderSnapshotManagerStub,
 } from "./test-utils/session-stubs.js";
+import { OWNER_PERMISSIONS } from "./authorization/index.js";
 import { DirectorySyncService } from "./directory-sync/index.js";
 import type { AgentTimelineRow } from "./agent/agent-manager.js";
 import { InMemoryAgentTimelineStore } from "./agent/agent-timeline-store.js";
@@ -209,7 +210,7 @@ function createSessionForWireCompatTest(options?: {
 
   const session = new Session({
     clientId: "wire-compat-client",
-    scopes: ["*"],
+    permissions: OWNER_PERMISSIONS,
     clientCapabilities: options?.clientCapabilities ?? null,
     onMessage: (message) => messages.push(message),
     logger: pino({ level: "silent" }),

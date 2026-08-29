@@ -5,6 +5,7 @@ import type { TFunction } from "i18next";
 import { SquarePen } from "lucide-react-native";
 import React, {
   memo,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -14,7 +15,6 @@ import React, {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet as RNStyleSheet, Text, View } from "react-native";
-import ReanimatedAnimated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
@@ -22,6 +22,7 @@ import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
+import { KeyboardDock } from "@/components/keyboard-dock";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { Composer, type ComposerTextInsertion } from "@/composer";
@@ -57,7 +58,6 @@ import {
   useAgentScreenStateMachine,
 } from "@/hooks/use-agent-screen-state-machine";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
-import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { reconcileMissingAgentStateWithPresentAgent } from "@/panels/agent-panel-load-state";
 import {
@@ -886,9 +886,6 @@ function ChatAgentContent({
     clearOnAgentBlurRef.current = attentionController.clearOnAgentBlur;
   }, [attentionController.clearOnAgentBlur]);
 
-  const { style: animatedKeyboardStyle } = useKeyboardShiftStyle({
-    mode: "translate",
-  });
   const shouldPresentReconnectToast =
     isPaneVisible && connectionStatus !== "online" && connectionStatus !== "idle";
 
@@ -1170,11 +1167,6 @@ function ChatAgentContent({
     visibilityCatchUpStatus,
   ]);
 
-  const animatedContentStyle = useMemo(
-    () => [animatedStaticStyles.content, animatedKeyboardStyle],
-    [animatedKeyboardStyle],
-  );
-
   const nonReadyView = renderChatAgentNonReadyView({
     viewState,
     effectiveAgent,
@@ -1211,7 +1203,6 @@ function ChatAgentContent({
       toast={toastState}
       dismiss={dismissToast}
       streamViewRef={streamViewRef}
-      animatedContentStyle={animatedContentStyle}
       handleComposerHeightChange={handleComposerHeightChange}
       handleMessageSent={handleMessageSent}
       handleRewindComplete={handleRewindComplete}
@@ -1241,7 +1232,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   toast,
   dismiss,
   streamViewRef,
-  animatedContentStyle,
   handleComposerHeightChange,
   handleMessageSent,
   handleRewindComplete,
@@ -1267,7 +1257,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   toast: ToastState | null;
   dismiss: () => void;
   streamViewRef: React.RefObject<AgentStreamViewHandle | null>;
-  animatedContentStyle: object[];
   handleComposerHeightChange: (height: number) => void;
   handleMessageSent: () => void;
   handleRewindComplete: () => void;
@@ -1382,7 +1371,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     </RenderProfile>
   );
   const streamContent = (
-    <ReanimatedAnimated.View style={animatedContentStyle}>
+    <View style={animatedStaticStyles.content}>
       <RenderProfile id={`AgentStreamSection:${agentId}`}>
         <AgentStreamSection
           streamViewRef={streamViewRef}
@@ -1412,7 +1401,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
           hasPluginComposerPills={hasPluginComposerPills}
         />
       ) : null}
-    </ReanimatedAnimated.View>
+    </View>
   );
   const contentContainer = <View style={styles.contentContainer}>{streamContent}</View>;
 
@@ -1423,7 +1412,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       onRewindComplete={handleRewindComplete}
     >
       <View style={styles.root}>
-        <FileDropZone style={styles.container} disabled={isArchivingCurrentAgent}>
+        <DockedChatSurface disabled={isArchivingCurrentAgent}>
           {contentContainer}
 
           {showHistorySyncError ? (
@@ -1458,7 +1447,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
           ) : null}
 
           <ToastViewport toast={toast} onDismiss={dismiss} placement="panel" />
-        </FileDropZone>
+        </DockedChatSurface>
 
         {isArchivingCurrentAgent ? (
           <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
@@ -1471,6 +1460,16 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     </RewindComposerRestoreProvider>
   );
 });
+
+function DockedChatSurface({ children, disabled }: { children: ReactNode; disabled: boolean }) {
+  return (
+    <KeyboardDock style={styles.container}>
+      <FileDropZone style={styles.container} disabled={disabled}>
+        {children}
+      </FileDropZone>
+    </KeyboardDock>
+  );
+}
 
 const AgentStreamSection = memo(function AgentStreamSection({
   streamViewRef,
@@ -1731,27 +1730,21 @@ function ActiveAgentComposer({
     ],
   );
 
-  const { style: composerKeyboardStyle } = useKeyboardShiftStyle({
-    mode: "translate",
-  });
   const effectiveBottomInset = useHostBottomChromeInset(insets.bottom);
 
   const inputAreaStyle = useMemo(
-    () => [
-      animatedStaticStyles.inputAreaWrapper,
-      { paddingBottom: effectiveBottomInset },
-      composerKeyboardStyle,
-    ],
-    [effectiveBottomInset, composerKeyboardStyle],
+    () => [animatedStaticStyles.inputAreaWrapper, { paddingBottom: effectiveBottomInset }],
+    [effectiveBottomInset],
   );
 
   return (
-    <ReanimatedAnimated.View style={inputAreaStyle} onLayout={onInputAreaLayout}>
+    <View style={inputAreaStyle} onLayout={onInputAreaLayout}>
       <Composer
         agentId={agentId}
         serverId={serverId}
         workspaceId={workspaceId}
         externalKeyboardShift
+        blurOnSubmit
         isPaneFocused={isPaneFocused}
         value={agentInputDraft.text}
         onChangeText={agentInputDraft.editText}
@@ -1773,7 +1766,7 @@ function ActiveAgentComposer({
         isCompactLayout={isCompactComposerLayout}
         textInsertion={textInsertion}
       />
-    </ReanimatedAnimated.View>
+    </View>
   );
 }
 
