@@ -445,7 +445,6 @@ describe("translation resources", () => {
       added: "Added",
       started: "Started",
       completed: "Completed",
-      reopened: "Reopened",
     });
   });
 
