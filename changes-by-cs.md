@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `ecec33265`（完整 SHA 以 Git 为准），同步于 2026-09-01。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `ecec33265`）。
+- 最近同步基线：`upstream/main` = `3e59adb4d`（完整 SHA 以 Git 为准），同步于 2026-09-02。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `3e59adb4d`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-02: `upstream/main` `3e59adb4d` / `v0.7.1`
+
+- 合入上游 `v0.7.1`，包括 Claude Fable 5.1 模型目录、超长 Assistant 消息安全截断、Codex 分页会话 rewind、Git 插件显式准备命令、OMP ready timeout、图片查看器 Escape 路由、Windows daemon 优雅退出，以及跨平台测试稳定性修复。
+- Provider、插件安装协议和时间线渲染采用上游实现；Assistant 消息继续保留 fork 的轻量时间展示与 Threadshare 分享入口，协议继续保留 Status Summary、Host Prompt Library、Composer 历史和聊天分享字段。项目版本随上游从 `0.7.0` 升至 `0.7.1`。
+- upstream 未提供与 fork 等价的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨文件 Review Comments、Threadshare 起止范围分享、计划任务既有 Agent 目标、canonical `limit: 100`、固定签名 DMG、Web Server tar、独立 Android APK 或 Haseo TestFlight 身份；本轮没有下线 fork 能力。
 
 ### 2026-09-01: `upstream/main` `ecec33265` / `v0.7.0`
 

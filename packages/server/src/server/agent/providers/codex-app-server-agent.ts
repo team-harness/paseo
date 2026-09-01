@@ -430,6 +430,7 @@ interface CodexConfiguredDefaults {
 interface PersistedTimelineEntry {
   item: AgentTimelineItem;
   timestamp?: string;
+  providerTurnId?: string;
 }
 
 interface PersistedSubAgentRoute {
@@ -2233,6 +2234,9 @@ async function loadCodexThreadHistoryTimeline(params: {
         timeline.push({
           item: settledTimelineItem,
           timestamp: timestamp ?? undefined,
+          ...(timelineItem.type === "user_message" && typeof turn.id === "string"
+            ? { providerTurnId: turn.id }
+            : {}),
         });
         for (const childThreadId of readCodexHistoricalSubAgentThreadIds(item)) {
           subAgentTimelineIndexByThreadId.set(childThreadId, timeline.length - 1);
@@ -2406,6 +2410,7 @@ const ItemTextDeltaNotificationSchema = z
 const ItemLifecycleNotificationSchema = z
   .object({
     threadId: z.string().optional(),
+    turnId: z.string().optional(),
     item: z
       .object({
         id: z.string().optional(),
@@ -2427,12 +2432,25 @@ const CodexEventThreadIdFields = {
   thread_id: z.string().optional(),
 };
 
+const CodexEventTurnIdFields = {
+  turnId: z.string().optional(),
+  turn_id: z.string().optional(),
+};
+
 function getCodexEventThreadId(params: {
   threadId?: string;
   thread_id?: string;
   msg: { threadId?: string; thread_id?: string };
 }): string | null {
   return params.threadId ?? params.thread_id ?? params.msg.threadId ?? params.msg.thread_id ?? null;
+}
+
+function getCodexEventTurnId(params: {
+  turnId?: string;
+  turn_id?: string;
+  msg: { turnId?: string; turn_id?: string };
+}): string | null {
+  return params.turnId ?? params.turn_id ?? params.msg.turnId ?? params.msg.turn_id ?? null;
 }
 
 const CodexEventTurnAbortedNotificationSchema = z
@@ -2463,9 +2481,11 @@ const CodexEventTaskCompleteNotificationSchema = z
 const CodexEventItemLifecycleNotificationSchema = z
   .object({
     ...CodexEventThreadIdFields,
+    ...CodexEventTurnIdFields,
     msg: z
       .object({
         ...CodexEventThreadIdFields,
+        ...CodexEventTurnIdFields,
         type: z.enum(["item_started", "item_completed"]),
         item: z
           .object({
@@ -2651,12 +2671,14 @@ type ParsedCodexNotification =
       kind: "item_completed";
       source: "item" | "codex_event";
       threadId: string | null;
+      turnId: string | null;
       item: { id?: string; type?: string; [key: string]: unknown };
     }
   | {
       kind: "item_started";
       source: "item" | "codex_event";
       threadId: string | null;
+      turnId: string | null;
       item: { id?: string; type?: string; [key: string]: unknown };
     }
   | {
@@ -2914,6 +2936,7 @@ const CodexNotificationSchema = z.union([
         kind: "item_completed",
         source: "item",
         threadId: params.threadId ?? null,
+        turnId: params.turnId ?? null,
         item: params.item,
       }),
     ),
@@ -2931,6 +2954,7 @@ const CodexNotificationSchema = z.union([
         kind: "item_started",
         source: "item",
         threadId: params.threadId ?? null,
+        turnId: params.turnId ?? null,
         item: params.item,
       }),
     ),
@@ -2951,6 +2975,7 @@ const CodexNotificationSchema = z.union([
         kind: "item_started",
         source: "codex_event",
         threadId: getCodexEventThreadId(params),
+        turnId: getCodexEventTurnId(params),
         item: params.msg.item,
       }),
     ),
@@ -2971,6 +2996,7 @@ const CodexNotificationSchema = z.union([
         kind: "item_completed",
         source: "codex_event",
         threadId: getCodexEventThreadId(params),
+        turnId: getCodexEventTurnId(params),
         item: params.msg.item,
       }),
     ),
@@ -3568,6 +3594,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   private latestPlanResult: { callId: string; text: string; turnId: string | null } | null = null;
   private readonly userMessageTurnIndexes = new Map<string, number>();
   private readonly userMessageTurnIds: string[] = [];
+  private readonly userMessageProviderTurnIds = new Map<string, string>();
   private pendingManualCompactionStarts = 0;
   private compactionTriggerByItemId = new Map<string, "auto" | "manual">();
   private pendingRootCompactionItemIds = new Set<string>();
@@ -4012,7 +4039,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.resetCodexUserMessageTurns();
     for (const entry of timeline) {
       if (entry.item.type === "user_message") {
-        this.rememberCodexUserMessageTurn(entry.item.messageId);
+        this.rememberCodexUserMessageTurn(entry.item.messageId, entry.providerTurnId);
       }
     }
     this.persistedHistory = timeline;
@@ -4501,28 +4528,42 @@ export class CodexAppServerAgentSession implements AgentSession {
     );
   }
 
-  private rememberCodexUserMessageTurn(messageId: string | null | undefined): boolean {
+  private rememberCodexUserMessageTurn(
+    messageId: string | null | undefined,
+    providerTurnId?: string | null,
+  ): boolean {
     if (typeof messageId !== "string" || messageId.length === 0) {
       return false;
     }
     if (this.userMessageTurnIndexes.has(messageId)) {
+      if (providerTurnId) {
+        this.userMessageProviderTurnIds.set(messageId, providerTurnId);
+      }
       return false;
     }
     this.userMessageTurnIndexes.set(messageId, this.userMessageTurnIds.length);
     this.userMessageTurnIds.push(messageId);
+    if (providerTurnId) {
+      this.userMessageProviderTurnIds.set(messageId, providerTurnId);
+    }
     return true;
   }
 
   private resetCodexUserMessageTurns(): void {
     this.userMessageTurnIndexes.clear();
     this.userMessageTurnIds.length = 0;
+    this.userMessageProviderTurnIds.clear();
   }
 
   private truncateCodexUserMessageTurns(numTurns: number): void {
     if (numTurns <= 0) {
       return;
     }
-    this.userMessageTurnIds.length = Math.max(0, this.userMessageTurnIds.length - numTurns);
+    const retainedCount = Math.max(0, this.userMessageTurnIds.length - numTurns);
+    const removedMessageIds = this.userMessageTurnIds.splice(retainedCount);
+    for (const messageId of removedMessageIds) {
+      this.userMessageProviderTurnIds.delete(messageId);
+    }
     this.userMessageTurnIndexes.clear();
     this.userMessageTurnIds.forEach((messageId, index) => {
       this.userMessageTurnIndexes.set(messageId, index);
@@ -4531,7 +4572,12 @@ export class CodexAppServerAgentSession implements AgentSession {
 
   private codexUserMessageTurns(): CodexUserMessageTurnIndex {
     return {
-      resolve: (messageId) => this.userMessageTurnIndexes.get(messageId) ?? null,
+      resolve: (messageId) => {
+        const index = this.userMessageTurnIndexes.get(messageId);
+        return index === undefined
+          ? null
+          : { index, turnId: this.userMessageProviderTurnIds.get(messageId) ?? null };
+      },
       count: () => this.userMessageTurnIds.length,
     };
   }
@@ -6737,7 +6783,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.emitSubAgentActivityUpdate(childSubAgentCallId, "running");
       return;
     }
-    if (!this.rememberCodexUserMessageTurn(timelineItem.messageId)) {
+    if (!this.rememberCodexUserMessageTurn(timelineItem.messageId, parsed.turnId)) {
       return;
     }
     const clientMessageId = timelineItem.clientMessageId ?? this.activeClientMessageId;

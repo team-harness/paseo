@@ -105,6 +105,10 @@ interface CollaborationModeRecord {
 }
 
 interface CodexSessionTestAccess {
+  codexUserMessageTurns(): {
+    resolve(messageId: string): { index: number; turnId: string | null } | null;
+    count(): number;
+  };
   ensureThreadLoaded(): Promise<void>;
   handleToolApprovalRequest(params: unknown): Promise<unknown>;
   handleNotification(method: string, params: unknown): void;
@@ -526,13 +530,14 @@ function markdownImageSource(markdown: string): string {
 
 function emitCodexUserMessage(
   appServer: FakeCodexAppServer,
-  input: { id: string; text: string; threadId?: string },
+  input: { id: string; text: string; threadId?: string; turnId?: string },
 ): void {
   appServer.child.stdout.write(
     `${JSON.stringify({
       method: "item/started",
       params: {
         threadId: input.threadId ?? "thread-1",
+        ...(input.turnId ? { turnId: input.turnId } : {}),
         item: {
           type: "userMessage",
           id: input.id,
@@ -1716,6 +1721,62 @@ describe("Codex app-server provider", () => {
     await session.revertConversation({ messageId: "codex-first" });
 
     expect(appServer.recordedRollbacks).toEqual([{ threadId: "forked-thread", numTurns: 2 }]);
+    await expect(session.getRuntimeInfo()).resolves.toMatchObject({
+      sessionId: "forked-thread",
+    });
+    appServer.assertNoErrors();
+    await session.close();
+  });
+
+  test("rewinds a paginated conversation through the public session capability", async () => {
+    const appServer = createFakeCodexAppServer({
+      "thread/read": () => ({
+        thread: { id: "thread-1", historyMode: "paginated", turns: [] },
+      }),
+      "thread/rollback": () => {
+        throw new Error("paginated threads do not support thread/rollback");
+      },
+    });
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+
+    await session.startTurn("remember first");
+    emitCodexUserMessage(appServer, {
+      id: "codex-first",
+      text: "remember first",
+      turnId: "turn-first",
+    });
+    appServer.completeTurn();
+    await session.startTurn("remember second");
+    emitCodexUserMessage(appServer, {
+      id: "codex-second",
+      text: "remember second",
+      turnId: "turn-second",
+    });
+    appServer.completeTurn();
+
+    await session.revertConversation({ messageId: "codex-first" });
+
+    const forkRequests = appServer
+      .requests()
+      .filter((request) => request.method === "thread/fork")
+      .map((request) => request.params);
+    expect(forkRequests).toEqual([
+      {
+        threadId: "thread-1",
+        beforeTurnId: "turn-first",
+        cwd: "/workspace/project",
+        model: "gpt-5.4",
+        serviceTier: null,
+        excludeTurns: false,
+        persistExtendedHistory: true,
+      },
+    ]);
+    expect(appServer.recordedRollbacks).toEqual([]);
     await expect(session.getRuntimeInfo()).resolves.toMatchObject({
       sessionId: "forked-thread",
     });
@@ -3869,6 +3930,35 @@ describe("Codex app-server provider", () => {
         },
       },
     ]);
+  });
+
+  test("retains native turn ids from persisted user messages", async () => {
+    const session = createSession();
+    session.client = {
+      request: vi.fn(async () => ({
+        thread: {
+          turns: [
+            {
+              id: "native-turn-1",
+              items: [
+                {
+                  type: "userMessage",
+                  id: "message-history",
+                  content: [{ type: "text", text: "History prompt" }],
+                },
+              ],
+            },
+          ],
+        },
+      })),
+    };
+
+    await asInternals(session).loadPersistedHistory();
+
+    expect(asInternals(session).codexUserMessageTurns().resolve("message-history")).toEqual({
+      index: 0,
+      turnId: "native-turn-1",
+    });
   });
 
   test("loads mixed legacy and MultiAgentV2 sub-agent history", async () => {
