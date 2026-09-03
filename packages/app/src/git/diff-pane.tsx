@@ -188,7 +188,6 @@ interface ChangesSurfaceProps {
   cwd: string;
   enabled?: boolean;
   presentation?: ChangesPresentation;
-  modeScope: string;
   focusPath?: string;
   focusRequestId?: number;
   onOpenFile?: (path: string) => void;
@@ -1582,7 +1581,6 @@ export function ChangesSurface({
   cwd,
   enabled,
   presentation = "combined",
-  modeScope,
   focusPath,
   focusRequestId,
   onOpenFile,
@@ -1696,7 +1694,6 @@ export function ChangesSurface({
     cwd,
     ignoreWhitespace: preferences.hideWhitespace,
     enabled: enabled !== false,
-    modeScope,
   });
   usePublishWorkingDiffAttachment({
     serverId,

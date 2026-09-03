@@ -120,7 +120,10 @@ interface SessionTestAccess {
     listAgents(): unknown[];
     getAgent(agentId: string): unknown;
     reloadAgentSession(agentId: string, overrides?: unknown, options?: unknown): Promise<unknown>;
-    listImportableSessions(options?: unknown): Promise<unknown[]>;
+    listImportableSessions(options?: unknown): Promise<{
+      sessions: unknown[];
+      providerErrors: Array<{ provider: string; message: string }>;
+    }>;
     importProviderSession(input: unknown): Promise<unknown>;
     resumeAgentFromPersistence(
       handle: unknown,
@@ -3168,9 +3171,12 @@ test("fetch_recent_provider_sessions_request lists importable provider sessions 
   session.agentManager.listImportableSessions = async (options?: unknown) => {
     const providerFilter = (options as { providerFilter?: Set<string> } | undefined)
       ?.providerFilter;
-    return providerFilter
-      ? importableSessions.filter((entry) => providerFilter.has(entry.provider))
-      : importableSessions;
+    return {
+      sessions: providerFilter
+        ? importableSessions.filter((entry) => providerFilter.has(entry.provider))
+        : importableSessions,
+      providerErrors: [],
+    };
   };
   session.agentStorage.list = async () => [
     {
@@ -3242,7 +3248,10 @@ test("fetch_recent_provider_sessions_request forwards providerFilter to agent ma
   session.agentStorage.list = async () => [];
   session.agentManager.listImportableSessions = async (options?: unknown) => {
     capturedOptions = options as { providerFilter?: Set<string>; limit?: number };
-    return [];
+    return {
+      sessions: [],
+      providerErrors: [{ provider: "claude", message: "Claude listing failed" }],
+    };
   };
 
   await session.handleMessage({
@@ -3260,6 +3269,7 @@ test("fetch_recent_provider_sessions_request forwards providerFilter to agent ma
       payload: {
         requestId: "req-provider-filter",
         entries: [],
+        providerErrors: [{ provider: "claude", message: "Claude listing failed" }],
       },
     },
   ]);
@@ -3281,17 +3291,20 @@ test("fetch_recent_provider_sessions_request reports filteredAlreadyImportedCoun
     },
   ];
   session.agentStorage.list = async () => [];
-  session.agentManager.listImportableSessions = async () => [
-    {
-      provider: "codex",
-      providerHandleId: "live-handle",
-      cwd: "/tmp/recent",
-      title: "Already live",
-      firstPromptPreview: "live prompt",
-      lastPromptPreview: "live prompt",
-      lastActivityAt: new Date("2026-04-30T12:01:00.000Z"),
-    },
-  ];
+  session.agentManager.listImportableSessions = async () => ({
+    sessions: [
+      {
+        provider: "codex",
+        providerHandleId: "live-handle",
+        cwd: "/tmp/recent",
+        title: "Already live",
+        firstPromptPreview: "live prompt",
+        lastPromptPreview: "live prompt",
+        lastActivityAt: new Date("2026-04-30T12:01:00.000Z"),
+      },
+    ],
+    providerErrors: [],
+  });
 
   await session.handleMessage({
     type: "fetch_recent_provider_sessions_request",

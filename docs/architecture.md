@@ -355,14 +355,14 @@ Two workspaces can share the same `cwd` (e.g. a `directory` workspace and a `loc
 
 | State                          | Key builder / store                                | Source                                                        |
 | ------------------------------ | -------------------------------------------------- | ------------------------------------------------------------- |
-| Diff-line review drafts        | `buildReviewDraftKey` / `buildReviewDraftScopeKey` | `packages/app/src/review/store.ts`                            |
+| Diff-line review drafts        | `buildReviewDraftKey`                              | `packages/app/src/review/store.ts`                            |
 | File selection review comments | `buildWorkspaceReviewKey`                          | `packages/app/src/review/workspace-comments-store.ts`         |
-| Diff mode override             | review-draft scope key (in-memory)                 | `packages/app/src/review/state.ts`                            |
+| Working diff comparison        | `workingDiffComparisonKey` (in-memory)             | `packages/app/src/git/working-diff-comparison/state.ts`       |
 | Composer attachments           | `buildWorkspaceAttachmentScopeKey`                 | `packages/app/src/attachments/workspace-attachments-store.ts` |
 | File explorer nav/open state   | `fileExplorer` map keyed `workspace:{workspaceId}` | `packages/app/src/hooks/use-file-explorer-actions.ts`         |
 | File explorer expanded paths   | `expandedPathsByWorkspace[workspaceStateKey]`      | `packages/app/src/stores/panel-store/state.ts`                |
 
-`diff-pane.tsx` is the canonical wiring site for diff review state: it passes `{ serverId, cwd }` to the git queries and `{ serverId, workspaceId, cwd }` to the draft/override/attachment scope keys. `file-pane/pane.tsx` passes the same workspace identity to selected-text comments. The review summary reads both stores through that shared identity.
+`diff-pane.tsx` is the canonical wiring site for diff review state: it passes `{ serverId, cwd }` to the git queries and `{ serverId, workspaceId, cwd }` to the draft/comparison/attachment scope keys. `file-pane/pane.tsx` passes the same workspace identity to selected-text comments. The review summary reads both stores through that shared identity.
 
 Selected-text quote and file-comment actions require the DOM Selection API, so they are available in browsers and Electron. Native keeps the platform text-selection and copy menu; diff-line comments and review summaries remain available there.
 

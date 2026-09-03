@@ -74,6 +74,11 @@ import {
 } from "./lifecycle-reasons.js";
 import { DirectorySyncService } from "./directory-sync/index.js";
 import {
+  assertWorkspaceAutomationAllowedForWorkspace,
+  clearWorkspaceAutomationBlock,
+  formatWorkspaceAutomationBlockedMessage,
+} from "./workspace-automation-gate.js";
+import {
   WorkspaceLabelError,
   WorkspaceLabelStorageUncertainError,
   type WorkspaceLabelService,
@@ -108,6 +113,8 @@ import {
   appendTimelineItemIfAgentKnown,
   emitLiveTimelineItemIfAgentKnown,
 } from "./agent/timeline-append.js";
+import { assertPluginTimelineDataSize } from "./agent/agent-timeline-content.js";
+import { parsePluginClientId } from "./plugins/plugin-session-identity.js";
 import {
   projectTimelineRows,
   selectProjectedTimelinePage,
@@ -246,6 +253,7 @@ import {
   handlePaseoWorktreeArchiveRequest as handleWorktreeArchiveRequest,
   handlePaseoWorktreeListRequest as handleWorktreeListRequest,
   handleWorkspaceSetupStatusRequest as handleWorkspaceSetupStatusRequestMessage,
+  handleWorkspaceSetupRunRequest as handleWorkspaceSetupRunRequestMessage,
 } from "./worktree-session.js";
 import { archiveByScope, type ActiveWorkspaceRef } from "./workspace-archive-service.js";
 import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
@@ -1070,6 +1078,8 @@ export class Session {
       logger: this.sessionLogger,
       emit: (message) => this.emit(message),
       spawnWorkspaceScript,
+      assertAutomationAllowed: (workspaceId) =>
+        assertWorkspaceAutomationAllowedForWorkspace(this.workspaceRegistry, workspaceId),
       globalServicePorts: loadPersistedConfig(this.paseoHome).worktrees?.servicePorts,
     });
     this.subscribeToOptionalManagers();
@@ -1174,11 +1184,20 @@ export class Session {
     return true;
   }
 
+  private supportsTimelineNotifications(source?: object): boolean {
+    return source
+      ? this.supportsForSource(CLIENT_CAPS.timelineNotifications, source)
+      : this.supports(CLIENT_CAPS.timelineNotifications);
+  }
+
   private forwardAgentStream(
     event: Extract<AgentManagerEvent, { type: "agent_stream" }>,
     serializedEvent: Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"]["event"],
   ): void {
+    const isNotification =
+      serializedEvent.type === "timeline" && serializedEvent.item.type === "notification";
     if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
+      if (isNotification && !this.supportsTimelineNotifications()) return;
       if (this.usesSelectiveTimelineDelivery() && serializedEvent.type === "attention_required") {
         this.emit({
           type: "agent_attention_required",
@@ -1203,6 +1222,7 @@ export class Session {
     }
 
     for (const [source, capabilities] of this.clientCapabilitiesBySource) {
+      if (isNotification && !capabilities.has(CLIENT_CAPS.timelineNotifications)) continue;
       const supportsSelectiveDelivery = capabilities.has(CLIENT_CAPS.selectiveAgentTimeline);
       if (supportsSelectiveDelivery && serializedEvent.type === "attention_required") {
         this.onMessageToSource(source, {
@@ -1634,6 +1654,57 @@ export class Session {
     }
   }
 
+  private forwardProviderSubagentUpdate(
+    update: Extract<AgentManagerEvent, { type: "provider_subagent" }>["event"],
+  ): void {
+    let message: SessionOutboundMessage;
+    if (update.type === "upsert") {
+      message = {
+        type: "agent.provider_subagents.update",
+        payload: { kind: "upsert", subagent: update.subagent },
+      };
+    } else if (update.type === "timeline") {
+      message = {
+        type: "agent.provider_subagents.update",
+        payload: {
+          kind: "timeline",
+          parentAgentId: update.parentAgentId,
+          subagentId: update.subagentId,
+          provider: update.provider,
+          item: update.row.item,
+          timestamp: update.row.timestamp,
+          seq: update.row.seq,
+          epoch: update.epoch,
+        },
+      };
+    } else {
+      message = {
+        type: "agent.provider_subagents.update",
+        payload: {
+          kind: "remove",
+          parentAgentId: update.parentAgentId,
+          subagentId: update.subagentId,
+        },
+      };
+    }
+
+    const isNotification = update.type === "timeline" && update.row.item.type === "notification";
+    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
+      if (
+        this.supports(CLIENT_CAPS.providerSubagents) &&
+        (!isNotification || this.supportsTimelineNotifications())
+      ) {
+        this.emit(message);
+      }
+      return;
+    }
+    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
+      if (!capabilities.has(CLIENT_CAPS.providerSubagents)) continue;
+      if (isNotification && !capabilities.has(CLIENT_CAPS.timelineNotifications)) continue;
+      this.onMessageToSource(source, message);
+    }
+  }
+
   private subscribeToAgentEvents(): void {
     if (this.unsubscribeAgentEvents) {
       this.unsubscribeAgentEvents();
@@ -1663,39 +1734,7 @@ export class Session {
 
         if (event.type === "provider_subagent") {
           this.emitProviderSubagentWorkspaceUpdate(event.event);
-          if (!this.supports(CLIENT_CAPS.providerSubagents)) {
-            return;
-          }
-          const update = event.event;
-          if (update.type === "upsert") {
-            this.emit({
-              type: "agent.provider_subagents.update",
-              payload: { kind: "upsert", subagent: update.subagent },
-            });
-          } else if (update.type === "timeline") {
-            this.emit({
-              type: "agent.provider_subagents.update",
-              payload: {
-                kind: "timeline",
-                parentAgentId: update.parentAgentId,
-                subagentId: update.subagentId,
-                provider: update.provider,
-                item: update.row.item,
-                timestamp: update.row.timestamp,
-                seq: update.row.seq,
-                epoch: update.epoch,
-              },
-            });
-          } else {
-            this.emit({
-              type: "agent.provider_subagents.update",
-              payload: {
-                kind: "remove",
-                parentAgentId: update.parentAgentId,
-                subagentId: update.subagentId,
-              },
-            });
-          }
+          this.forwardProviderSubagentUpdate(event.event);
           return;
         }
 
@@ -1967,9 +2006,7 @@ export class Session {
       this.dispatchAgentLifecycleMessage(msg) ??
       this.dispatchAgentConfigMessage(msg) ??
       this.dispatchCheckoutMessage(msg) ??
-      this.dispatchWorkspaceRecoveryMessage(msg) ??
-      this.dispatchWorkspaceLabelMessage(msg) ??
-      this.dispatchWorkspaceAndProjectMessage(msg) ??
+      this.dispatchWorkspaceLifecycleMessage(msg) ??
       this.dispatchWorkspaceFileMessage(msg, source) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchExtensionMessage(msg) ??
@@ -1986,6 +2023,15 @@ export class Session {
       this.dispatchOrchestrationSkillsMessage(msg) ??
       this.dispatchPluginDirectoryMessage(msg) ??
       this.dispatchPluginMessage(msg)
+    );
+  }
+
+  private dispatchWorkspaceLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    return (
+      this.dispatchWorkspaceRecoveryMessage(msg) ??
+      this.dispatchWorkspaceLabelMessage(msg) ??
+      this.dispatchWorkspaceSetupMessage(msg) ??
+      this.dispatchWorkspaceAndProjectMessage(msg)
     );
   }
 
@@ -2279,12 +2325,14 @@ export class Session {
     switch (msg.type) {
       case "fetch_agent_timeline_request":
         return this.handleFetchAgentTimelineRequest(msg, source);
+      case "agent.timeline.append.request":
+        return this.handleAgentTimelineAppendRequest(msg);
       case "agent.timeline.list_prompts.request":
         return this.handleAgentTimelineListPromptsRequest(msg, source);
       case "agent.provider_subagents.list.request":
         return this.handleProviderSubagentListRequest(msg);
       case "agent.provider_subagents.timeline.get.request":
-        return this.handleProviderSubagentTimelineRequest(msg);
+        return this.handleProviderSubagentTimelineRequest(msg, source);
       case "agent.timeline.set_subscription.request": {
         const agentIds = [...new Set(msg.agentIds)].sort();
         if (
@@ -2499,8 +2547,6 @@ export class Session {
         return this.handlePaseoWorktreeArchiveRequest(msg);
       case "create_paseo_worktree_request":
         return this.handleCreatePaseoWorktreeRequest(msg);
-      case "workspace_setup_status_request":
-        return this.handleWorkspaceSetupStatusRequest(msg);
       // COMPAT(desktopEditorBridge): added in v0.1.88, remove after 2026-12-03 once old clients no longer call daemon editor RPCs.
       case "list_available_editors_request":
         return this.handleLegacyListAvailableEditorsRequest(msg);
@@ -2531,6 +2577,16 @@ export class Session {
       default:
         return undefined;
     }
+  }
+
+  private dispatchWorkspaceSetupMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    if (msg.type === "workspace_setup_status_request") {
+      return this.handleWorkspaceSetupStatusRequest(msg);
+    }
+    if (msg.type === "workspace.setup.run.request") {
+      return this.handleWorkspaceSetupRunRequest(msg);
+    }
+    return undefined;
   }
 
   private dispatchWorkspaceLabelMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -4079,6 +4135,9 @@ export class Session {
     source?: object,
   ): void {
     for (const row of rows) {
+      if (row.item.type === "notification" && !this.supportsTimelineNotifications(source)) {
+        continue;
+      }
       const event = serializeAgentStreamEvent({
         type: "timeline",
         provider,
@@ -5610,6 +5669,7 @@ export class Session {
           ...(result.filteredAlreadyImportedCount > 0
             ? { filteredAlreadyImportedCount: result.filteredAlreadyImportedCount }
             : {}),
+          ...(result.providerErrors.length > 0 ? { providerErrors: result.providerErrors } : {}),
         },
       });
     } catch (error) {
@@ -6141,6 +6201,13 @@ export class Session {
         requestId: request.requestId,
         workspace: descriptor,
         setupTerminalId: null,
+        ...(result.workspace.untrustedSource
+          ? {
+              setupSkippedReason: formatWorkspaceAutomationBlockedMessage(
+                result.workspace.untrustedSource,
+              ),
+            }
+          : {}),
         error: null,
       },
     });
@@ -6666,6 +6733,8 @@ export class Session {
           }),
         startWorkspaceSetup: (workspaceId, operation) =>
           this.workspaceSetupRuntime.start(workspaceId, operation),
+        assertWorkspaceAutomationAllowed: (workspaceId) =>
+          assertWorkspaceAutomationAllowedForWorkspace(this.workspaceRegistry, workspaceId),
         emitWorkspaceUpdateForWorkspaceId: (workspaceId) =>
           this.emitWorkspaceUpdateForWorkspaceId(workspaceId),
         cacheWorkspaceSetupSnapshot: (workspaceId, snapshot) => {
@@ -6696,6 +6765,39 @@ export class Session {
       {
         emit: (message) => this.emit(message),
         workspaceSetupSnapshots: this.workspaceSetupSnapshots,
+        getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
+      },
+      request,
+    );
+  }
+
+  private async handleWorkspaceSetupRunRequest(
+    request: Extract<SessionInboundMessage, { type: "workspace.setup.run.request" }>,
+  ): Promise<void> {
+    return handleWorkspaceSetupRunRequestMessage(
+      {
+        getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
+        clearAutomationBlock: (workspaceId) =>
+          clearWorkspaceAutomationBlock(this.workspaceRegistry, workspaceId),
+        startWorkspaceSetup: (workspaceId, operation) =>
+          this.workspaceSetupRuntime.start(workspaceId, operation),
+        paseoHome: this.paseoHome,
+        worktreesRoot: this.worktreesRoot,
+        emitWorkspaceUpdateForWorkspaceId: (workspaceId) =>
+          this.emitWorkspaceUpdateForWorkspaceId(workspaceId),
+        cacheWorkspaceSetupSnapshot: (workspaceId, snapshot) =>
+          this.workspaceSetupSnapshots.set(workspaceId, snapshot),
+        emit: (message) => this.emit(message),
+        sessionLogger: this.sessionLogger,
+        terminalManager: this.terminalManager,
+        archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
+        serviceProxy: this.serviceProxy,
+        scriptRuntimeStore: this.scriptRuntimeStore,
+        getDaemonTcpPort: this.getDaemonTcpPort,
+        getDaemonTcpHost: this.getDaemonTcpHost,
+        serviceProxyPublicBaseUrl: this.serviceProxyPublicBaseUrl,
+        onScriptsChanged: (workspaceId, workspaceDirectory) =>
+          this.workspaceScripts.emitStatusUpdate(workspaceId, workspaceDirectory),
       },
       request,
     );
@@ -6727,6 +6829,8 @@ export class Session {
           markWorkspaceArchiving: (workspaceIds, archivingAt) =>
             this.markWorkspaceArchiving(workspaceIds, archivingAt),
           clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
+          assertWorkspaceAutomationAllowed: (workspaceId) =>
+            assertWorkspaceAutomationAllowedForWorkspace(this.workspaceRegistry, workspaceId),
           killTerminalsForWorkspace: (workspaceId) =>
             this.terminalController.killTerminalsForWorkspace(workspaceId),
           stopWorkspaceSetup: (workspaceId) => this.workspaceSetupRuntime.stop(workspaceId),
@@ -7073,6 +7177,9 @@ export class Session {
         selectedTimeline.endSeq !== null
           ? { epoch: selectedTimeline.timeline.epoch, seq: selectedTimeline.endSeq }
           : null;
+      const entries = this.supportsTimelineNotifications(source)
+        ? selectedTimeline.entries
+        : selectedTimeline.entries.filter((entry) => entry.item.type !== "notification");
 
       this.emitForSource(
         {
@@ -7093,7 +7200,7 @@ export class Session {
             hasOlder: selectedTimeline.hasOlder,
             hasNewer: selectedTimeline.hasNewer,
             ...(msg.mergeWindow === true ? { mergeWindow: true } : {}),
-            entries: selectedTimeline.entries.map((entry) => {
+            entries: entries.map((entry) => {
               const payloadEntry = {
                 provider: snapshot.provider,
                 item: entry.item,
@@ -7149,6 +7256,22 @@ export class Session {
         source,
       );
     }
+  }
+
+  private async handleAgentTimelineAppendRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.timeline.append.request" }>,
+  ): Promise<void> {
+    const pluginId = parsePluginClientId(this.clientId);
+    if (!pluginId) throw new Error("Only plugin sessions can append plugin timeline items");
+    assertPluginTimelineDataSize(msg.item.data);
+    const { seq, epoch } = await this.agentManager.appendTimelineItem(msg.agentId, {
+      ...msg.item,
+      pluginId,
+    });
+    this.emit({
+      type: "agent.timeline.append.response",
+      payload: { requestId: msg.requestId, seq, epoch },
+    });
   }
 
   private async handleAgentTimelineListPromptsRequest(
@@ -7233,6 +7356,7 @@ export class Session {
 
   private async handleProviderSubagentTimelineRequest(
     msg: Extract<SessionInboundMessage, { type: "agent.provider_subagents.timeline.get.request" }>,
+    source?: object,
   ): Promise<void> {
     const direction: AgentTimelineFetchDirection = msg.direction ?? (msg.cursor ? "after" : "tail");
     try {
@@ -7254,49 +7378,58 @@ export class Session {
           limit: msg.limit ?? (direction === "after" ? 0 : 200),
         },
       );
-      this.emit({
-        type: "agent.provider_subagents.timeline.get.response",
-        payload: {
-          requestId: msg.requestId,
-          parentAgentId: msg.parentAgentId,
-          subagentId: msg.subagentId,
-          provider: descriptor.provider,
-          direction,
-          epoch: timeline.epoch,
-          reset: timeline.reset,
-          staleCursor: timeline.staleCursor,
-          gap: timeline.gap,
-          window: timeline.window,
-          hasOlder: timeline.hasOlder,
-          hasNewer: timeline.hasNewer,
-          rows: timeline.rows.map((row) => ({
-            item: row.item,
-            timestamp: row.timestamp,
-            seq: row.seq,
-          })),
-          error: null,
+      const rows = this.supportsTimelineNotifications(source)
+        ? timeline.rows
+        : timeline.rows.filter((row) => row.item.type !== "notification");
+      this.emitForSource(
+        {
+          type: "agent.provider_subagents.timeline.get.response",
+          payload: {
+            requestId: msg.requestId,
+            parentAgentId: msg.parentAgentId,
+            subagentId: msg.subagentId,
+            provider: descriptor.provider,
+            direction,
+            epoch: timeline.epoch,
+            reset: timeline.reset,
+            staleCursor: timeline.staleCursor,
+            gap: timeline.gap,
+            window: timeline.window,
+            hasOlder: timeline.hasOlder,
+            hasNewer: timeline.hasNewer,
+            rows: rows.map((row) => ({
+              item: row.item,
+              timestamp: row.timestamp,
+              seq: row.seq,
+            })),
+            error: null,
+          },
         },
-      });
+        source,
+      );
     } catch (error) {
-      this.emit({
-        type: "agent.provider_subagents.timeline.get.response",
-        payload: {
-          requestId: msg.requestId,
-          parentAgentId: msg.parentAgentId,
-          subagentId: msg.subagentId,
-          provider: null,
-          direction,
-          epoch: "",
-          reset: false,
-          staleCursor: false,
-          gap: false,
-          window: { minSeq: 0, maxSeq: 0, nextSeq: 0 },
-          hasOlder: false,
-          hasNewer: false,
-          rows: [],
-          error: error instanceof Error ? error.message : String(error),
+      this.emitForSource(
+        {
+          type: "agent.provider_subagents.timeline.get.response",
+          payload: {
+            requestId: msg.requestId,
+            parentAgentId: msg.parentAgentId,
+            subagentId: msg.subagentId,
+            provider: null,
+            direction,
+            epoch: "",
+            reset: false,
+            staleCursor: false,
+            gap: false,
+            window: { minSeq: 0, maxSeq: 0, nextSeq: 0 },
+            hasOlder: false,
+            hasNewer: false,
+            rows: [],
+            error: error instanceof Error ? error.message : String(error),
+          },
         },
-      });
+        source,
+      );
     }
   }
 

@@ -104,8 +104,9 @@ const StoredTimelineItemSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({
     ...TimelineItemBaseShape,
-    kind: z.literal("activity_log"),
-    activityType: z.enum(["system", "info", "success", "error"]),
+    kind: z.literal("notification"),
+    sourceType: z.enum(["error", "notification"]),
+    level: z.enum(["info", "warning", "error"]),
     message: z.string(),
   }),
   z.strictObject({
@@ -125,6 +126,7 @@ const StoredTimelineItemSchema = z.discriminatedUnion("kind", [
     ...TimelineItemBaseShape,
     kind: z.literal("plugin"),
     pluginId: z.string(),
+    pluginItemId: z.string(),
     itemKind: z.string(),
     version: z.number().int().positive(),
     data: PluginTimelineDataSchema,
@@ -421,11 +423,12 @@ function serializeTimelineItem(item: StreamItem): StoredTimelineItem | null {
         items: item.items,
         activity: item.activity,
       };
-    case "activity_log":
+    case "notification":
       return {
         ...base,
         kind: item.kind,
-        activityType: item.activityType,
+        sourceType: item.sourceType,
+        level: item.level,
         message: item.message,
       };
     case "compaction":
@@ -449,6 +452,7 @@ function serializeTimelineItem(item: StreamItem): StoredTimelineItem | null {
         ...base,
         kind: item.kind,
         pluginId: item.pluginId,
+        pluginItemId: item.pluginItemId,
         itemKind: item.itemKind,
         version: item.version,
         data: item.data,
@@ -457,6 +461,26 @@ function serializeTimelineItem(item: StreamItem): StoredTimelineItem | null {
 }
 
 function deserializeTimelineItem(item: StoredTimelineItem): StreamItem {
+  if (item.kind === "plugin") {
+    return {
+      id: item.id,
+      ...(item.timelineCursor ? { timelineCursor: item.timelineCursor } : {}),
+      ...(item.turnId ? { turnId: item.turnId } : {}),
+      timestamp: new Date(item.timestamp),
+      kind: item.kind,
+      pluginId: item.pluginId,
+      pluginItemId: item.pluginItemId,
+      itemKind: item.itemKind,
+      version: item.version,
+      data: item.data,
+    };
+  }
+  return deserializeBuiltinTimelineItem(item);
+}
+
+function deserializeBuiltinTimelineItem(
+  item: Exclude<StoredTimelineItem, { kind: "plugin" }>,
+): StreamItem {
   const base = {
     id: item.id,
     ...(item.timelineCursor ? { timelineCursor: item.timelineCursor } : {}),
@@ -491,11 +515,12 @@ function deserializeTimelineItem(item: StoredTimelineItem): StreamItem {
         items: item.items,
         activity: item.activity,
       };
-    case "activity_log":
+    case "notification":
       return {
         ...base,
         kind: item.kind,
-        activityType: item.activityType,
+        sourceType: item.sourceType,
+        level: item.level,
         message: item.message,
       };
     case "compaction":
@@ -528,15 +553,6 @@ function deserializeTimelineItem(item: StoredTimelineItem): StreamItem {
         },
       };
     }
-    case "plugin":
-      return {
-        ...base,
-        kind: item.kind,
-        pluginId: item.pluginId,
-        itemKind: item.itemKind,
-        version: item.version,
-        data: item.data,
-      };
   }
 }
 
@@ -668,8 +684,6 @@ function isTimelineItemStoredLosslessly(item: StreamItem): boolean {
   switch (item.kind) {
     case "user_message":
       return (item.images?.length ?? 0) === 0 && (item.attachments?.length ?? 0) === 0;
-    case "activity_log":
-      return item.metadata === undefined;
     case "tool_call":
       return item.payload.source === "agent";
     default:

@@ -524,12 +524,12 @@ function exportItem(item: StreamItem): SharedChatEntry | null {
           completed: todo.completed,
         })),
       };
-    case "activity_log":
+    case "notification":
       return {
         ...base,
         kind: "activity",
         message: redactSecrets(item.message),
-        level: item.activityType,
+        level: item.level === "warning" ? "info" : item.level,
       };
     case "compaction":
       return {
