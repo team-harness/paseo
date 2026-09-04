@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import type { OnResolveResult, Plugin } from "esbuild";
@@ -267,7 +267,7 @@ function createClientNodeImportPlugin(): Plugin {
 
 async function compileTarget(entryPath: string, target: PluginBuildTarget): Promise<string> {
   const { build } = loadEsbuild();
-  const pluginDirectory = path.dirname(entryPath);
+  const pluginDirectory = realpathSync(path.dirname(entryPath));
   const result = await build({
     entryPoints: [entryPath],
     bundle: true,

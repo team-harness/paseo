@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,6 +10,10 @@ import {
 
 const asarEsbuildDir = path.join("Resources", "app.asar", "node_modules", "esbuild");
 const temporaryDirectories: string[] = [];
+
+async function canonicalParentPath(filePath: string): Promise<string> {
+  return path.join(await realpath(path.dirname(filePath)), path.basename(filePath));
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -205,7 +209,7 @@ export default function contribute() { void Surface; return () => undefined; }`,
 export default function contribute() { void value; return () => undefined; }`,
     );
     await expect(compilePlugin(entries)).rejects.toThrow(
-      `Plugin modules belong in client/, server/, or shared/: ${path.join(entries.directory, "helper")}`,
+      `Plugin modules belong in client/, server/, or shared/: ${await canonicalParentPath(path.join(entries.directory, "helper"))}`,
     );
   });
 
@@ -225,7 +229,7 @@ export default function contribute() { void secret; return () => undefined; }`,
     ]);
 
     await expect(compilePlugin({ client: null, server })).rejects.toThrow(
-      `Plugin modules belong in client/, server/, or shared/: ${path.join(parent, "secret")}`,
+      `Plugin modules belong in client/, server/, or shared/: ${await canonicalParentPath(path.join(parent, "secret"))}`,
     );
   });
 
@@ -242,7 +246,7 @@ export default function contribute() { void secret; return () => undefined; }`,
     );
 
     await expect(compilePlugin(entries)).rejects.toThrow(
-      `Plugin modules belong in client/, server/, or shared/: ${outside}`,
+      `Plugin modules belong in client/, server/, or shared/: ${await canonicalParentPath(outside)}`,
     );
   });
 
@@ -263,7 +267,7 @@ export default function contribute() { void secret; return () => undefined; }`,
     ]);
 
     await expect(compilePlugin({ client: null, server })).rejects.toThrow(
-      `Plugin modules belong in client/, server/, or shared/: ${path.join(parent, "node_modules", "secret")}`,
+      `Plugin modules belong in client/, server/, or shared/: ${await canonicalParentPath(path.join(parent, "node_modules", "secret"))}`,
     );
   });
 
@@ -456,7 +460,7 @@ export default function contribute() { void secret; return () => undefined; }`,
     ]);
 
     await expect(compilePlugin(entries)).rejects.toThrow(
-      `Plugin modules belong in client/, server/, or shared/: ${secret}`,
+      `Plugin modules belong in client/, server/, or shared/: ${await canonicalParentPath(secret)}`,
     );
   });
 
