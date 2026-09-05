@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `9e90b86af`（完整 SHA 以 Git 为准），同步于 2026-09-05。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `9e90b86af`）。
+- 最近同步基线：`upstream/main` = `78b285059`（完整 SHA 以 Git 为准），同步于 2026-09-06。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `78b285059`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-06: `upstream/main` `78b285059` / post-`v0.7.2`
+
+- 合入上游 provider 配置热重载状态保留、嵌套 provider 子 Agent 归属、ACP 空会话过滤、公开 SDK 权限响应，以及 active session writer 阻塞恢复。
+- Provider snapshot、嵌套子 Agent 数据模型和 session reload 串行化采用上游实现；上游新增的生命周期测试明确保留父 turn 结束后仍异步运行的 provider 子 Agent，符合 fork 既有约束。
+- fork 的 replacement 失败状态恢复与完成监听去重仍处理不同故障路径，继续保留；Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨文件 Review Comments、Threadshare 起止范围分享、计划任务既有 Agent 目标、canonical `limit: 100` 和独立发布身份也没有上游等价实现，本轮没有下线 fork 能力。
 
 ### 2026-09-05: `upstream/main` `9e90b86af` / post-`v0.7.2`
 
