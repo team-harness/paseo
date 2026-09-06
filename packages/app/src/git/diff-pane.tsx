@@ -1051,25 +1051,6 @@ function ChangesDiffOptions({ options }: { options: ChangesToolbarDiffOptions })
 
 const ThemedRotateCw = withUnistyles(RotateCw);
 
-function computeEmptyMessage(
-  hideWhitespace: boolean,
-  diffMode: "uncommitted" | "base",
-  baseRefLabel: string,
-  labels: {
-    hiddenWhitespace: string;
-    uncommitted: string;
-    againstBase: (baseRefLabel: string) => string;
-  },
-): string {
-  if (hideWhitespace) {
-    return labels.hiddenWhitespace;
-  }
-  if (diffMode === "uncommitted") {
-    return labels.uncommitted;
-  }
-  return labels.againstBase(baseRefLabel);
-}
-
 interface DiffBodyContentProps {
   isStatusLoading: boolean;
   statusErrorMessage: string | null;
@@ -1899,11 +1880,7 @@ export function ChangesSurface({
     () => computeCommittedDiffDescription(branchLabel, baseRefLabel),
     [baseRefLabel, branchLabel],
   );
-  const emptyMessage = computeEmptyMessage(preferences.hideWhitespace, diffMode, baseRefLabel, {
-    hiddenWhitespace: t("workspace.git.diff.emptyHiddenWhitespace"),
-    uncommitted: t("workspace.git.diff.emptyUncommitted"),
-    againstBase: (label) => t("workspace.git.diff.emptyAgainstBase", { baseRef: label }),
-  });
+  const emptyMessage = t("diffViewer.empty");
   const emptyAction = computeChangesEmptyAction({
     hideWhitespace: preferences.hideWhitespace,
     diffMode,

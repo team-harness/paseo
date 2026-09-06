@@ -1,5 +1,5 @@
 import path from "node:path";
-import { stat } from "node:fs/promises";
+import { stat, rm } from "node:fs/promises";
 import type pino from "pino";
 import type { ProviderRegistration } from "@getpaseo/plugin/provider";
 import {
@@ -29,6 +29,7 @@ interface PluginRuntimePort {
   clearLogs(pluginId: string): void;
   getProviderRegistrations?(pluginId: string): readonly PluginProviderMetadata[];
   connectProvider: PluginRuntime["connectProvider"];
+  getProviderCatalogCacheKey?: PluginRuntime["getProviderCatalogCacheKey"];
   validatePlugin?(path: string): Promise<void>;
   startPlugin(pluginId: string, path: string, canPublish: () => boolean): Promise<void>;
   stopPluginById(pluginId: string): Promise<boolean>;
@@ -38,6 +39,7 @@ interface PluginRuntimePort {
 }
 
 interface PluginServiceDependencies {
+  settingsDirectory?: string;
   runtime?: PluginRuntimePort;
   managedSources?: ManagedPluginSources;
 }
@@ -63,21 +65,34 @@ export class PluginService {
   private lifecycle = Promise.resolve();
   private globalStartsBlocked = true;
   private started = false;
+  private readonly settingsListeners = new Set<(pluginId: string, settingsId: string) => void>();
 
   constructor(
     logger: pino.Logger,
     private readonly configStore: DaemonConfigStore,
     daemonVersion: string,
-    dependencies: PluginServiceDependencies = {},
+    private readonly dependencies: PluginServiceDependencies = {},
   ) {
     this.logger = logger.child({ module: "plugin-service" });
-    this.runtime = dependencies.runtime ?? new PluginRuntime(logger, daemonVersion);
+    this.runtime =
+      dependencies.runtime ??
+      new PluginRuntime(logger, daemonVersion, {
+        settingsDirectory: dependencies.settingsDirectory,
+        onSettingsChanged: (pluginId, settingsId) => {
+          for (const listener of this.settingsListeners) listener(pluginId, settingsId);
+        },
+      });
     this.managedSources = dependencies.managedSources ?? null;
     this.runtime.subscribe((pluginId, error) => {
       this.removeProviderRegistrations(pluginId);
       if (error) this.errors.set(pluginId, error);
       this.notify(pluginId);
     });
+  }
+
+  subscribeSettings(listener: (pluginId: string, settingsId: string) => void): () => void {
+    this.settingsListeners.add(listener);
+    return () => this.settingsListeners.delete(listener);
   }
 
   subscribe(listener: (pluginId: string) => void): () => void {
@@ -318,6 +333,11 @@ export class PluginService {
       this.errors.delete(pluginId);
       this.notify(pluginId);
       await this.managedSources?.remove(pluginId);
+      if (this.dependencies.settingsDirectory)
+        await rm(path.join(this.dependencies.settingsDirectory, pluginId), {
+          recursive: true,
+          force: true,
+        });
     });
   }
 
@@ -437,6 +457,13 @@ export class PluginService {
           id: provider.id,
           label: provider.label,
           description: provider.description,
+          getCatalogCacheKey: provider.hasCatalogCacheKey
+            ? (options) => {
+                if (!this.runtime.getProviderCatalogCacheKey)
+                  throw new Error("Plugin runtime cannot resolve catalogue keys");
+                return this.runtime.getProviderCatalogCacheKey(pluginId, provider.id, options);
+              }
+            : undefined,
           icon: provider.iconPath
             ? await readPluginProviderIcon(pluginDirectory, provider.iconPath)
             : undefined,

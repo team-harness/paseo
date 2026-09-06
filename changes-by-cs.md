@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `78b285059`（完整 SHA 以 Git 为准），同步于 2026-09-06。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `78b285059`）。
+- 最近同步基线：`upstream/main` = `b403dea32`（完整 SHA 以 Git 为准），同步于 2026-09-07。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `b403dea32`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-07: `upstream/main` `b403dea32` / post-`v0.7.2`
+
+- 合入上游 App 恢复后的实时会话重建与增量 directory replica、provider snapshot 重构、workspace 维度终端 SDK/CLI、Hub 标准续聊、模型选择记忆、插件设置页与弹窗能力、项目订阅 API，以及 macOS Dock 图标修复。
+- Directory cache、session liveness、provider catalog、插件设置和终端 API 采用上游实现；公开 SDK 同时保留 fork 的 `status` 与上游的 `terminals`，客户端有界 Timeline 兼容继续在重构后的 `DirectorySync.fetchTimeline` 统一改写 projected 请求为 canonical 100 条。
+- upstream 仍未提供与 fork 等价的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨文件 Review Comments、Threadshare 起止范围分享、计划任务既有 Agent 目标、固定签名 DMG、Web Server tar、独立 Android APK 或 Haseo TestFlight 身份；本轮没有下线 fork 能力。
 
 ### 2026-09-06: `upstream/main` `78b285059` / post-`v0.7.2`
 

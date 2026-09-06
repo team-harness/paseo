@@ -233,8 +233,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const setIsPlayingAudio = useSessionStore((state) => state.setIsPlayingAudio);
   const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
   const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead);
-  const applyAgentTurnLiveness = useSessionStore((state) => state.applyAgentTurnLiveness);
-  const clearAgentTurnLiveness = useSessionStore((state) => state.clearAgentTurnLiveness);
   const clearAgentStreamHead = useSessionStore((state) => state.clearAgentStreamHead);
   const setInitializingAgents = useSessionStore((state) => state.setInitializingAgents);
   const bumpHistorySyncGeneration = useSessionStore((state) => state.bumpHistorySyncGeneration);
@@ -439,15 +437,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     }
   }, [flushAgentLastActivity, serverId, isConnected, setInitializingAgents]);
 
-  useEffect(
-    () =>
-      client.subscribeConnectionStatus((connection) => {
-        if (connection.status === "connected") return;
-        clearAgentTurnLiveness(serverId);
-      }),
-    [clearAgentTurnLiveness, client, serverId],
-  );
-
   const applyWorkspaceSetupProgress = useCallback(
     (payload: WorkspaceSetupProgressPayload) => {
       upsertWorkspaceSetupProgress({ serverId, payload });
@@ -571,7 +560,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         { event: streamEvent, seq, epoch, timestamp: parsedTimestamp },
       ]);
       if (turnLiveness.length > 0) {
-        applyAgentTurnLiveness(serverId, agentId, turnLiveness);
+        getHostRuntimeStore().applyAgentTurnLiveness(serverId, agentId, turnLiveness);
       }
       owner.enqueueStreamEvent(agentId, {
         event: streamEvent,
@@ -837,7 +826,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     setIsPlayingAudio,
     setAgentStreamTail,
     setAgentStreamHead,
-    applyAgentTurnLiveness,
     clearAgentStreamHead,
     setInitializingAgents,
     setAgents,

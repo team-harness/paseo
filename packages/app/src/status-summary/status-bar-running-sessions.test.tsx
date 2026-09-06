@@ -466,6 +466,7 @@ function historyAgent(input: Partial<AggregatedAgent> & { id: string; offsetMinu
     serverLabel: input.serverLabel ?? "Host",
     title: input.title ?? input.id,
     status: input.status ?? "idle",
+    turn: input.turn ?? { phase: "idle", cancellationRequestId: null },
     lastActivityAt,
     cwd: input.cwd ?? `/work/${input.id}`,
     workspaceId: input.workspaceId ?? "workspace-1",
