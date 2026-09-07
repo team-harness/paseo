@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `0859a67ab`（完整 SHA 以 Git 为准），同步于 2026-09-08。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `0859a67ab`）。
+- 最近同步基线：`upstream/main` = `1f5b6143d`（完整 SHA 以 Git 为准），同步于 2026-09-08。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `1f5b6143d`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -30,10 +30,10 @@
 
 ## 最近同步判断
 
-### 2026-09-08: `upstream/main` `0859a67ab` / post-`v0.7.2`
+### 2026-09-08: `upstream/main` `1f5b6143d` / post-`v0.7.2`
 
-- 合入上游 Pi 扩展触发的 autonomous turn 收敛、缓存会话恢复后续修正（先恢复缓存会话、再回滚为更窄的重连修复）、插件 Paseo 版本要求与生命周期 hooks、App 底部 sheet 手势协调、Provider usage SDK、OpenCode 2 terminal activity、0.7.2 App 到 0.8 daemon 的兼容、插件 React peer 放宽，以及 Explorer 菜单中的 workspace plugin panels。
-- Pi turn 生命周期、plugin requirements/lifecycle、provider usage、workspace/plugin navigation、OpenCode hook 和 0.7.2/0.8 wire compatibility 采用上游实现；插件版本不满足 `requirements.paseo` 时由 daemon/app 拒绝加载并给出升级提示。上游缓存恢复最终采用窄化后的修复，不改变 fork 的实时会话和增量 directory replica 归属。
+- 合入上游 Pi 扩展触发的 autonomous turn 收敛、缓存会话恢复后续修正、App 退到后台后持续 daemon 重连、插件 Paseo 版本要求与生命周期 hooks、插件 shared/client/server SDK 边界、App 底部 sheet 手势协调、Provider usage SDK、OpenCode 2 terminal activity、0.7.2 App 到 0.8 daemon 的兼容、插件 React peer 放宽，以及 Explorer 菜单中的 workspace plugin panels。
+- Pi turn 生命周期、后台重连、plugin requirements/lifecycle、provider usage、workspace/plugin navigation、OpenCode hook 和 0.7.2/0.8 wire compatibility 采用上游实现；插件版本不满足 `requirements.paseo` 时由 daemon/app 拒绝加载并给出升级提示。插件编译使用上游的原生规范路径与运行时边界检查，继续保留打包桌面端的 asar esbuild 解析。上游缓存恢复最终采用窄化后的修复，不改变 fork 的实时会话和增量 directory replica 归属。
 - 本轮 upstream 未提供与 fork 等价的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨文件 Review Comments、Threadshare 起止范围分享、计划任务既有 Agent 目标或 canonical `limit: 100`；Hub continuation 的标准 daemon API、幂等 request receipts 和 `hub.execute` 权限仍保留。固定签名 DMG、Web Server tar、独立 Android APK、Haseo TestFlight 身份也继续使用 fork 发布链路，本轮没有下线 fork 能力。
 
 ### 2026-09-07: `upstream/main` `b403dea32` / post-`v0.7.2`
