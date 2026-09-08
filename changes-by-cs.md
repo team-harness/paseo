@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `1f5b6143d`（完整 SHA 以 Git 为准），同步于 2026-09-08。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `1f5b6143d`）。
+- 最近同步基线：`upstream/main` = `da8c1b5c9`（完整 SHA 以 Git 为准），同步于 2026-09-09。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `da8c1b5c9`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-09: `upstream/main` `da8c1b5c9` / `v0.8.0-beta.1`
+
+- 合入上游 0.8 beta 的编排 setup/profile/Agent 通信可发现性、默认精简 daemon connection、ACP vendor configuration 原子通知、Windows release runner 修复、插件 prerelease requirements/docs、移动端终端输入时保持键盘，以及 lockfile/release changelog 更新。
+- 上游删除了若干此前未合入上游的 fork 专属实现与发布脚本；本 fork 按既有变更清单恢复 Prompt Library、Review Comments、Status Summary/usage ledger、Composer 历史、选区引用、Threadshare 范围分享、canonical `limit: 100`、固定签名 DMG、Web+Server tar、Android APK 和同步 runbook。上游新增的 client connection、插件协议和移动端键盘行为采用上游实现；fork 的数据与 UI 扩展继续接入，不改变异步子 Agent 生命周期约束。
+- 本轮没有下线 fork 功能；后续若上游为上述能力提供等价实现，再按单能力迁移并删除重复路径。
 
 ### 2026-09-08: `upstream/main` `1f5b6143d` / post-`v0.7.2`
 
