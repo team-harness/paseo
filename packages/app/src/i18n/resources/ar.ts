@@ -1174,6 +1174,16 @@ export const ar: TranslationResources = {
       updateHost: "حدّث هذا المضيف لإدارة التسميات.",
     },
   },
+  changelog: {
+    title: "ما الجديد",
+    installed: "مثبّت",
+    showMore: "عرض المزيد",
+    openWebsite: "سجل التغييرات الكامل",
+    error: {
+      title: "تعذّر تحميل سجل التغييرات",
+      description: "تحقق من اتصالك وحاول مرة أخرى.",
+    },
+  },
   sidebar: {
     display: {
       trigger: "تفضيلات العرض",
@@ -2237,6 +2247,7 @@ export const ar: TranslationResources = {
     about: {
       title: "عن",
       appVersion: "نسخة التطبيق",
+      whatsNewHint: "ملاحظات الإصدار لكل نسخة",
       thisDevice: "هذا الجهاز",
       connectedHosts: "المضيفين المتصلين",
       offline: "غير متصل",
