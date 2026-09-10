@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `726067b43`（完整 SHA 以 Git 为准），同步于 2026-09-10。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `726067b43`）。
+- 最近同步基线：`upstream/main` = `d7c7044df`（完整 SHA 以 Git 为准），同步于 2026-09-11。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `d7c7044df`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-11: `upstream/main` `d7c7044df` / `v0.8.0`
+
+- 合入上游 0.8.0 稳定版、插件 Provider 重载后 stale session 自动恢复、Codex Fast 支持模型收窄、Linux desktop launcher identity 修复，以及 Hub startup timeout、dashboard navigation、scoped credentials 和 release 分支文档。
+- Plugin Provider 会话退休、从持久化重载和 prompt 单次重试采用上游实现；Agent Manager 测试同时保留 fork 的 usage ledger recorder。版本、lockfile 与 Nix hash 跟随上游升级为 `0.8.0`。
+- 上游仍未提供与 fork 等价的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、完整 Composer 消息历史、选区引用、跨文件 Review Comments、Threadshare 起止范围分享、计划任务既有 Agent 目标或 canonical `limit: 100`；固定签名 DMG、Web Server tar、独立 Android APK 和 Haseo TestFlight 身份继续使用 fork 发布链路，本轮没有下线 fork 能力。
 
 ### 2026-09-10: `upstream/main` `726067b43` / post-`v0.8.0-beta.1`
 

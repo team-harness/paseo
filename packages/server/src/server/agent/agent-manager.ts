@@ -78,6 +78,7 @@ import {
 } from "./agent-run-state.js";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
 import { isSystemInjectedEnvelope } from "./agent-prompt.js";
+import { isStaleProviderSessionError } from "./stale-provider-session-error.js";
 import { stripInternalPaseoMcpServer, withRuntimePaseoMcpServer } from "./runtime-mcp-config.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
 import type { PaseoToolCatalogFactory } from "./tools/types.js";
@@ -781,6 +782,7 @@ export class AgentManager {
   updateProviderRegistry(input: {
     providerDefinitions: ProviderEnabledMap;
     clients: ProviderClientMap;
+    retiredProviders?: readonly AgentProvider[];
   }): void {
     this.providerEnabled.clear();
     this.providerDefinitions.clear();
@@ -795,6 +797,18 @@ export class AgentManager {
     for (const [provider, client] of Object.entries(input.clients)) {
       if (client) {
         this.clients.set(provider, client);
+      }
+    }
+
+    for (const provider of input.retiredProviders ?? []) {
+      for (const agent of this.agents.values()) {
+        if (agent.provider !== provider) continue;
+        void this.closeAgent(agent.id).catch((error) => {
+          this.logger.warn(
+            { err: error, agentId: agent.id, provider },
+            "Failed to close agent after provider retirement",
+          );
+        });
       }
     }
   }
@@ -2365,6 +2379,13 @@ export class AgentManager {
       return result.turnId;
     } catch (error) {
       if (pendingRun.settled) {
+        throw error;
+      }
+      if (isStaleProviderSessionError(error)) {
+        pendingRun.start = { status: "failed", error: error.message };
+        agent.pendingReplacement = false;
+        if (!agent.activeForegroundTurnId) agent.lifecycle = "idle";
+        this.runs.settleForegroundRun(agentId, pendingRun.token);
         throw error;
       }
       agent.pendingReplacement = false;
