@@ -7,6 +7,7 @@ export interface UseAgentTimelinePromptIndexInput {
   serverId: string;
   timelineEpoch: string | null;
   enabled: boolean;
+  refreshKey?: number;
 }
 
 export function useAgentTimelinePromptIndex({
@@ -14,6 +15,7 @@ export function useAgentTimelinePromptIndex({
   serverId,
   timelineEpoch,
   enabled,
+  refreshKey,
 }: UseAgentTimelinePromptIndexInput): AgentTimelinePromptIndexPayload | null {
   const [index, setIndex] = useState<AgentTimelinePromptIndexPayload | null>(null);
   const nextRequestIdRef = useRef(0);
@@ -44,21 +46,24 @@ export function useAgentTimelinePromptIndex({
         .catch(() => undefined);
     };
     refresh();
-    const unsubscribe = client.on("agent_stream", (message) => {
-      if (
-        message.type === "agent_stream" &&
-        message.payload.agentId === agentId &&
-        message.payload.event.type === "timeline" &&
-        message.payload.event.item.type === "user_message"
-      ) {
-        refresh();
-      }
-    });
+    const unsubscribe =
+      typeof client.on === "function"
+        ? client.on("agent_stream", (message) => {
+            if (
+              message.type === "agent_stream" &&
+              message.payload.agentId === agentId &&
+              message.payload.event.type === "timeline" &&
+              message.payload.event.item.type === "user_message"
+            ) {
+              refresh();
+            }
+          })
+        : () => undefined;
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [agentId, enabled, serverId, timelineEpoch]);
+  }, [agentId, enabled, refreshKey, serverId, timelineEpoch]);
 
   return index;
 }

@@ -56,12 +56,25 @@ export function useChatOutline({
   visibleItemIds,
   revealLoadedItem,
 }: UseChatOutlineInput): ChatOutline {
-  const index = useAgentTimelinePromptIndex({ agentId, serverId, timelineEpoch, enabled });
+  const loadedItems = useMemo(() => [...tail, ...(head ?? NO_STREAM_ITEMS)], [head, tail]);
+  const latestPromptSeq = loadedItems.reduce(
+    (latest, item) =>
+      item.kind === "user_message" && item.timelineCursor?.epoch === timelineEpoch
+        ? Math.max(latest, item.timelineCursor.seq)
+        : latest,
+    -1,
+  );
+  const index = useAgentTimelinePromptIndex({
+    agentId,
+    serverId,
+    timelineEpoch,
+    enabled,
+    refreshKey: latestPromptSeq,
+  });
   const [pendingJump, setPendingJump] = useState<PendingPromptJump | null>(null);
   const [activePrompt] = useState(createActivePromptPublisher);
   const readingRowIdRef = useRef<string | null>(null);
   const nextJumpRequestIdRef = useRef(0);
-  const loadedItems = useMemo(() => [...tail, ...(head ?? NO_STREAM_ITEMS)], [head, tail]);
   const indexedPrompts = enabled ? (index?.prompts ?? NO_PROMPTS) : NO_PROMPTS;
   const prompts = visible ? indexedPrompts : NO_PROMPTS;
 

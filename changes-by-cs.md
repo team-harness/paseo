@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `d7c7044df`（完整 SHA 以 Git 为准），同步于 2026-09-11。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `d7c7044df`）。
+- 最近同步基线：`upstream/main` = `fa93c4290`（完整 SHA 以 Git 为准），同步于 2026-09-12。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `fa93c4290`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-12: `upstream/main` `fa93c4290` / post-`v0.8.0`
+
+- 合入上游 9 个提交：macOS 版本要求与生成 changelog 更新、移动端触控工作区标题宽度、Linux desktop sandbox 保留、选中 daemon 实例的生命周期操作、应用错误后返回项目选择器、订阅 observer 隔离、冷 diff/换行测量优化，以及隐藏浏览器截图节流。
+- 选中实例生命周期、订阅隔离、移动端标题布局、Linux sandbox 和桌面浏览器节流采用上游实现；本地 fork 的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、Composer 历史、选区引用、Review Comments、Threadshare 范围分享、计划任务既有 Agent 目标、canonical `limit: 100`、固定签名 DMG、Web+Server tar、Android APK、Haseo TestFlight 身份和同步 runbook 均继续保留。
+- 上游本轮没有提供上述 fork 能力的等价实现，不删除本地数据模型、协议扩展或发布脚本。
 
 ### 2026-09-11: `upstream/main` `d7c7044df` / `v0.8.0`
 
