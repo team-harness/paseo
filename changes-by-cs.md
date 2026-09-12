@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `fa93c4290`（完整 SHA 以 Git 为准），同步于 2026-09-12。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `fa93c4290`）。
+- 最近同步基线：`upstream/main` = `d1b705a0c`（完整 SHA 以 Git 为准），同步于 2026-09-13。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `d1b705a0c`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-13: `upstream/main` `d1b705a0c` / post-`v0.8.0`
+
+- 合入上游 6 个提交：归档 Codex workspace 恢复且不抢焦点、流式未闭合 Markdown 保持格式、Cursor 模型独立 thinking options、旧 daemon 工作流与可选 Timeline 恢复、拒绝计划保持对话顺序折叠，以及 Android 剪贴板图片粘贴恢复。
+- Timeline 兼容采用上游连接与恢复策略，同时继续由 fork 的 directory sync 将 canonical 首屏请求限制为最近 100 条；流式 Markdown 与 Assistant 末条消息时间共同生效。Agent 关闭采用上游的 session 成功关闭后再发布快照，并保留 fork 的 usage fallback 缓存清理。
+- 上游本轮没有提供与 fork 等价的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、Composer 历史、选区引用、Review Comments、Threadshare 范围分享、计划任务既有 Agent 目标或独立发布链路；本轮没有下线 fork 能力。
 
 ### 2026-09-12: `upstream/main` `fa93c4290` / post-`v0.8.0`
 
