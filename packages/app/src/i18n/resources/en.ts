@@ -317,7 +317,8 @@ export const en = {
       totalTokens: "Total tokens",
       today: "Today",
       cost: "Total cost",
-      costToday: "Today cost",
+      costToday: "Today estimate",
+      costPartial: "Partially unpriced",
       running: "Running",
       needsAttention: "Needs attention",
       errors: "Errors",
@@ -329,6 +330,7 @@ export const en = {
       offline: "Host is offline.",
     },
     cost: {
+      unpricedNote: "Some usage is unpriced. The amount excludes those records.",
       title: "Cost",
       today: "Today",
       total: "Total",

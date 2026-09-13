@@ -5,8 +5,10 @@ import type { Logger } from "pino";
 import { z } from "zod";
 import { writeJsonFileAtomic } from "../atomic-file.js";
 import type { AgentProvider, AgentUsage } from "../agent/agent-sdk-types.js";
+import { estimateModelCostUsd, MODEL_PRICING_REVISION } from "../model-pricing/pricing.js";
 
 export interface UsageTotalsDelta {
+  unpricedRecords?: number;
   inputTokens?: number;
   cachedInputTokens?: number;
   outputTokens?: number;
@@ -14,6 +16,7 @@ export interface UsageTotalsDelta {
 }
 
 export interface UsageLedgerRecord {
+  costPricingRevision?: string;
   id: string;
   agentId: string;
   provider: AgentProvider;
@@ -85,6 +88,7 @@ interface UsageLedgerStorePayload {
 
 const UsageNumberSchema = z.number().finite().nonnegative();
 const AgentUsageSchema = z.object({
+  pricingServiceTier: z.enum(["default", "priority", "flex"]).optional(),
   inputTokens: UsageNumberSchema.optional(),
   cachedInputTokens: UsageNumberSchema.optional(),
   outputTokens: UsageNumberSchema.optional(),
@@ -101,6 +105,7 @@ const UsageTotalsDeltaSchema = z.object({
 });
 
 const UsageLedgerRecordSchema: z.ZodType<UsageLedgerRecord> = z.object({
+  costPricingRevision: z.string().optional(),
   id: z.string().min(1),
   agentId: z.string().min(1),
   provider: z.string().min(1),
@@ -177,6 +182,59 @@ export class FileBackedUsageLedger implements UsageLedger {
       }
       await this.loadAgentFile(path.join(this.dir, entry));
     }
+    // Serialize with new usage writes, but do not hold daemon readiness for disk backfill.
+    void this.enqueueOperation(() => this.backfillMissingCosts()).catch((error) => {
+      this.logger.error({ err: error }, "Usage cost backfill failed");
+    });
+  }
+
+  private async backfillMissingCosts(): Promise<void> {
+    let updatedRecords = 0;
+    for (const [agentId, records] of this.recordsByAgent) {
+      // A later provider cost snapshot may already include earlier unpriced tokens.
+      const pricedBases = new Set(
+        records
+          .filter((record) => record.usage.totalCostUsd !== undefined)
+          .map((record) => record.basisKey),
+      );
+      const costsByBasis = new Map<string, number>();
+      let changed = false;
+      for (const record of records) {
+        const previousCost = costsByBasis.get(record.basisKey) ?? 0;
+        if (record.usage.totalCostUsd !== undefined) {
+          costsByBasis.set(record.basisKey, record.usage.totalCostUsd);
+          continue;
+        }
+        if (pricedBases.has(record.basisKey)) continue;
+        const cost = estimateMissingRecordCost(record);
+        if (cost === undefined) continue;
+        record.contribution.totalCostUsd = cost;
+        record.usage.totalCostUsd = previousCost + cost;
+        record.costPricingRevision = MODEL_PRICING_REVISION;
+        costsByBasis.set(record.basisKey, previousCost + cost);
+        changed = true;
+        updatedRecords++;
+      }
+      if (!changed) continue;
+      for (const basis of this.basesByKey.values()) {
+        if (basis.agentId !== agentId || basis.lastSnapshot.totalCostUsd !== undefined) continue;
+        const cost = costsByBasis.get(basis.basisKey);
+        if (cost !== undefined) basis.lastSnapshot.totalCostUsd = cost;
+      }
+      try {
+        await this.persistAgent(agentId);
+      } catch (error) {
+        this.logger.error(
+          { err: error, agentId },
+          "Failed to persist cost backfill; continuing with other agents",
+        );
+      }
+    }
+    if (updatedRecords > 0)
+      this.logger.info(
+        { updatedRecords, revision: MODEL_PRICING_REVISION },
+        "Backfilled missing Codex cost estimates",
+      );
   }
 
   enqueueEvent(input: UsageLedgerEventInput): void {
@@ -199,6 +257,12 @@ export class FileBackedUsageLedger implements UsageLedger {
           continue;
         }
         addContribution(totals, contributionWithoutCumulativeCost(record));
+        const hasTokens = TOKEN_CONTRIBUTION_FIELDS.some(
+          (field) => (record.contribution[field] ?? 0) > 0,
+        );
+        if (hasTokens && record.usage.totalCostUsd === undefined) {
+          totals.unpricedRecords = (totals.unpricedRecords ?? 0) + 1;
+        }
       }
     }
     addCumulativeCostContributions(totals, this.recordsByAgent, query);
@@ -401,6 +465,20 @@ export class FileBackedUsageLedger implements UsageLedger {
     this.queue = next.catch(() => undefined);
     return next;
   }
+}
+
+function estimateMissingRecordCost(record: UsageLedgerRecord): number | undefined {
+  if (record.provider !== "codex" || record.contribution.totalCostUsd !== undefined)
+    return undefined;
+  if (record.usage.inputTokens === undefined || record.usage.outputTokens === undefined)
+    return undefined;
+  return estimateModelCostUsd({
+    modelId: record.model,
+    inputTokens: record.contribution.inputTokens ?? 0,
+    cachedInputTokens: record.contribution.cachedInputTokens ?? 0,
+    outputTokens: record.contribution.outputTokens ?? 0,
+    serviceTier: record.usage.pricingServiceTier,
+  });
 }
 
 function buildBasisKey(input: UsageLedgerEventInput): string {

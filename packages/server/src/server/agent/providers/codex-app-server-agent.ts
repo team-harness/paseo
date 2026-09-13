@@ -39,6 +39,7 @@ import {
   type ResolveAgentDefaultModeInput,
 } from "../agent-sdk-types.js";
 import { importSessionFromPersistence } from "../provider-session-import.js";
+import { estimateModelCostUsd } from "../../model-pricing/pricing.js";
 import { runProviderRefreshActivity } from "../provider-refresh-deadline.js";
 import type { Logger } from "pino";
 
@@ -1029,13 +1030,16 @@ function buildAgentUsageForModel(input: {
   modelId: string | null | undefined;
   contextWindowMaxTokens: number | undefined;
   contextWindowUsedTokens: number | undefined;
+  cost?: { totalCostUsd: number | undefined };
 }): AgentUsage {
-  const totalCostUsd = estimateOpenAiModelCostUsd({
-    modelId: input.modelId,
-    inputTokens: input.counts.inputTokens,
-    cachedInputTokens: input.counts.cachedInputTokens,
-    outputTokens: input.counts.outputTokens,
-  });
+  const totalCostUsd = input.cost
+    ? input.cost.totalCostUsd
+    : estimateOpenAiModelCostUsd({
+        modelId: input.modelId,
+        inputTokens: input.counts.inputTokens,
+        cachedInputTokens: input.counts.cachedInputTokens,
+        outputTokens: input.counts.outputTokens,
+      });
   return {
     inputTokens: input.counts.inputTokens,
     cachedInputTokens: input.counts.cachedInputTokens,
@@ -1064,133 +1068,13 @@ export function toAgentUsageForModel(
   });
 }
 
-interface OpenAiModelPricing {
-  inputPerMillionUsd: number;
-  cachedInputPerMillionUsd: number;
-  outputPerMillionUsd: number;
-}
-
-const OPENAI_MODEL_PRICING: Array<{ pattern: RegExp; pricing: OpenAiModelPricing }> = [
-  // Refreshed from sub2api's public model pricing catalogue on 2026-07-30.
-  // Keep exact variants before the family fallback below.
-  {
-    pattern: /^gpt-5\.6-sol(?:$|-)/,
-    pricing: {
-      inputPerMillionUsd: 5,
-      cachedInputPerMillionUsd: 0.5,
-      outputPerMillionUsd: 30,
-    },
-  },
-  {
-    pattern: /^gpt-5\.6-terra(?:$|-)/,
-    pricing: {
-      inputPerMillionUsd: 2.5,
-      cachedInputPerMillionUsd: 0.25,
-      outputPerMillionUsd: 15,
-    },
-  },
-  {
-    pattern: /^gpt-5\.6-luna(?:$|-)/,
-    pricing: {
-      inputPerMillionUsd: 1,
-      cachedInputPerMillionUsd: 0.1,
-      outputPerMillionUsd: 6,
-    },
-  },
-  {
-    pattern: /^gpt-5\.6(?:$|-)/,
-    pricing: {
-      inputPerMillionUsd: 5,
-      cachedInputPerMillionUsd: 0.5,
-      outputPerMillionUsd: 30,
-    },
-  },
-  {
-    pattern: /^gpt-5\.5-pro(?:$|-)/,
-    pricing: {
-      inputPerMillionUsd: 30,
-      cachedInputPerMillionUsd: 3,
-      outputPerMillionUsd: 180,
-    },
-  },
-  {
-    pattern: /^gpt-5\.5(?:$|-)/,
-    pricing: {
-      inputPerMillionUsd: 5,
-      cachedInputPerMillionUsd: 0.5,
-      outputPerMillionUsd: 30,
-    },
-  },
-  {
-    pattern: /^gpt-5\.4-pro(?:$|-)/,
-    pricing: {
-      inputPerMillionUsd: 30,
-      cachedInputPerMillionUsd: 3,
-      outputPerMillionUsd: 180,
-    },
-  },
-  {
-    pattern: /^gpt-5\.4-mini(?:$|-)/,
-    pricing: {
-      inputPerMillionUsd: 0.75,
-      cachedInputPerMillionUsd: 0.075,
-      outputPerMillionUsd: 4.5,
-    },
-  },
-  {
-    pattern: /^gpt-5\.4-nano(?:$|-)/,
-    pricing: {
-      inputPerMillionUsd: 0.2,
-      cachedInputPerMillionUsd: 0.02,
-      outputPerMillionUsd: 1.25,
-    },
-  },
-  {
-    pattern: /^gpt-5\.4(?:$|-)/,
-    pricing: {
-      inputPerMillionUsd: 2.5,
-      cachedInputPerMillionUsd: 0.25,
-      outputPerMillionUsd: 15,
-    },
-  },
-  {
-    pattern: /^gpt-5\.3-codex(?:$|-)/,
-    pricing: {
-      inputPerMillionUsd: 1.75,
-      cachedInputPerMillionUsd: 0.175,
-      outputPerMillionUsd: 14,
-    },
-  },
-];
-
 export function estimateOpenAiModelCostUsd(input: {
   modelId: string | null | undefined;
   inputTokens?: number;
   cachedInputTokens?: number;
   outputTokens?: number;
 }): number | undefined {
-  const modelId = input.modelId?.trim();
-  if (!modelId) {
-    return undefined;
-  }
-  const pricing = OPENAI_MODEL_PRICING.find((entry) => entry.pattern.test(modelId))?.pricing;
-  if (!pricing) {
-    return undefined;
-  }
-  const inputTokens = finiteNonnegativeNumber(input.inputTokens) ?? 0;
-  const cachedInputTokens = finiteNonnegativeNumber(input.cachedInputTokens) ?? 0;
-  const outputTokens = finiteNonnegativeNumber(input.outputTokens) ?? 0;
-  const billableInputTokens = Math.max(0, inputTokens - cachedInputTokens);
-  const cost =
-    (billableInputTokens * pricing.inputPerMillionUsd +
-      cachedInputTokens * pricing.cachedInputPerMillionUsd +
-      outputTokens * pricing.outputPerMillionUsd) /
-    1_000_000;
-  return cost > 0 ? cost : undefined;
-}
-
-function finiteNonnegativeNumber(value: number | undefined): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+  return estimateModelCostUsd(input);
 }
 
 function extractUserText(content: unknown): string | null {
@@ -3610,6 +3494,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   private latestUsage: AgentUsage | undefined;
   private previousThreadTokenCounts: CodexTokenCounts | undefined;
   private currentTurnTokenCounts: CodexTokenCounts | undefined;
+  private currentTurnCostUsd: number | undefined = 0;
   private latestPlanResult: { callId: string; text: string; turnId: string | null } | null = null;
   private readonly userMessageTurnIndexes = new Map<string, number>();
   private readonly userMessageTurnIds: string[] = [];
@@ -6168,6 +6053,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.currentThreadId = parsed.threadId;
     this.previousThreadTokenCounts = undefined;
     this.currentTurnTokenCounts = undefined;
+    this.currentTurnCostUsd = 0;
     this.latestUsage = undefined;
     this.emitEvent({
       type: "thread_started",
@@ -6243,6 +6129,7 @@ export class CodexAppServerAgentSession implements AgentSession {
 
   private resetTurnTrackingState(): void {
     this.currentTurnTokenCounts = undefined;
+    this.currentTurnCostUsd = 0;
     this.latestUsage = undefined;
     this.latestPlanResult = null;
     this.emittedItemStartedIds.clear();
@@ -6312,6 +6199,16 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.previousThreadTokenCounts = tokenUsage.total;
       const safeIncrement = increment ?? tokenUsage.last;
       if (hasCodexTokenCounts(safeIncrement)) {
+        const requestCost = estimateModelCostUsd({
+          modelId: this.config.model,
+          ...safeIncrement,
+          requestInputTokens: tokenUsage.last?.inputTokens,
+          serviceTier: this.serviceTier === "fast" ? "priority" : "default",
+        });
+        this.currentTurnCostUsd =
+          this.currentTurnCostUsd !== undefined && requestCost !== undefined
+            ? this.currentTurnCostUsd + requestCost
+            : undefined;
         this.currentTurnTokenCounts = addCodexTokenCounts(
           this.currentTurnTokenCounts,
           safeIncrement,
@@ -6321,6 +6218,11 @@ export class CodexAppServerAgentSession implements AgentSession {
       // Older app-server payloads did not expose a cumulative total. Preserve
       // their single-snapshot behavior rather than summing possible duplicates.
       this.currentTurnTokenCounts = tokenUsage.last;
+      this.currentTurnCostUsd = estimateModelCostUsd({
+        modelId: this.config.model,
+        ...tokenUsage.last,
+        serviceTier: this.serviceTier === "fast" ? "priority" : "default",
+      });
     }
 
     if (!hasCodexTokenCounts(this.currentTurnTokenCounts)) {
@@ -6328,11 +6230,13 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
     this.latestUsage = buildAgentUsageForModel({
       counts: this.currentTurnTokenCounts,
+      cost: { totalCostUsd: this.currentTurnCostUsd },
       modelId: this.config.model,
       contextWindowMaxTokens: tokenUsage.contextWindowMaxTokens,
       contextWindowUsedTokens: tokenUsage.contextWindowUsedTokens,
     });
     if (this.latestUsage) {
+      if (this.serviceTier === "fast") this.latestUsage.pricingServiceTier = "priority";
       this.notifySubscribers({
         type: "usage_updated",
         provider: CODEX_PROVIDER,

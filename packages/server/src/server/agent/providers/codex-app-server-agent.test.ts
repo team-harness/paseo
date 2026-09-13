@@ -5879,6 +5879,34 @@ describe("Codex app-server provider", () => {
     );
   });
 
+  test("prices requests independently in a long turn and does not charge duplicate snapshots", () => {
+    const session = createSession({ model: "gpt-6-astra" });
+    asInternals(session).serviceTier = "fast";
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    const first = {
+      tokenUsage: {
+        total: { inputTokens: 200_000, cachedInputTokens: 0, outputTokens: 100 },
+        last: { inputTokens: 200_000, cachedInputTokens: 0, outputTokens: 100 },
+      },
+    };
+    const second = {
+      tokenUsage: {
+        ...first.tokenUsage,
+        total: { inputTokens: 400_000, cachedInputTokens: 0, outputTokens: 200 },
+      },
+    };
+    asInternals(session).handleNotification("thread/tokenUsage/updated", first);
+    asInternals(session).handleNotification("thread/tokenUsage/updated", second);
+    asInternals(session).handleNotification("thread/tokenUsage/updated", second);
+    const usage = events.findLast((event) => event.type === "usage_updated")?.usage;
+    expect(usage).toMatchObject({
+      inputTokens: 400_000,
+      pricingServiceTier: "priority",
+      totalCostUsd: 8.02,
+    });
+  });
+
   test("estimates OpenAI model cost from token usage for known Codex models only", () => {
     expect(
       estimateOpenAiModelCostUsd({
@@ -5887,7 +5915,7 @@ describe("Codex app-server provider", () => {
         cachedInputTokens: 5_000,
         outputTokens: 15_000,
       }),
-    ).toBe(0.5775);
+    ).toBe(0.402);
     expect(
       estimateOpenAiModelCostUsd({
         modelId: "gpt-5.6-terra",
@@ -5895,7 +5923,7 @@ describe("Codex app-server provider", () => {
         cachedInputTokens: 5_000,
         outputTokens: 15_000,
       }),
-    ).toBe(0.28875);
+    ).toBe(0.231);
     expect(
       estimateOpenAiModelCostUsd({
         modelId: "gpt-5.6-luna",
@@ -5903,7 +5931,7 @@ describe("Codex app-server provider", () => {
         cachedInputTokens: 5_000,
         outputTokens: 15_000,
       }),
-    ).toBe(0.1155);
+    ).toBe(0.0231);
     expect(
       estimateOpenAiModelCostUsd({
         modelId: "gpt-5.6",
@@ -5911,7 +5939,7 @@ describe("Codex app-server provider", () => {
         cachedInputTokens: 5_000,
         outputTokens: 15_000,
       }),
-    ).toBe(0.5775);
+    ).toBe(0.402);
     expect(
       estimateOpenAiModelCostUsd({
         modelId: "gpt-5.6-codex",
@@ -5919,7 +5947,7 @@ describe("Codex app-server provider", () => {
         cachedInputTokens: 5_000,
         outputTokens: 15_000,
       }),
-    ).toBe(0.5775);
+    ).toBeUndefined();
     expect(
       estimateOpenAiModelCostUsd({
         modelId: "gpt-5.5",
@@ -5935,7 +5963,7 @@ describe("Codex app-server provider", () => {
         cachedInputTokens: 5_000,
         outputTokens: 15_000,
       }),
-    ).toBe(0.5775);
+    ).toBeUndefined();
     expect(
       estimateOpenAiModelCostUsd({
         modelId: "gpt-5.4-mini",

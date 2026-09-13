@@ -451,6 +451,7 @@ describe("toAgentPayload", () => {
         inputTokens: 10,
         outputTokens: 20,
         totalCostUsd: 1.25,
+        pricingServiceTier: "priority",
       },
     });
 
@@ -460,6 +461,7 @@ describe("toAgentPayload", () => {
       inputTokens: 10,
       outputTokens: 20,
       totalCostUsd: 1.25,
+      pricingServiceTier: "priority",
     });
   });
 

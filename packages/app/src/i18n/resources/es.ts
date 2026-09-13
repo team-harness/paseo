@@ -327,7 +327,8 @@ export const es: TranslationResources = {
       totalTokens: "Tokens totales",
       today: "Hoy",
       cost: "Costo total",
-      costToday: "Costo de hoy",
+      costToday: "Estimación de hoy",
+      costPartial: "Precio parcial",
       running: "En ejecución",
       needsAttention: "Requiere atención",
       errors: "Errores",
@@ -339,6 +340,7 @@ export const es: TranslationResources = {
       offline: "El host está sin conexión.",
     },
     cost: {
+      unpricedNote: "Parte del uso no tiene precio y no se incluye en el importe.",
       title: "Costo",
       today: "Hoy",
       total: "Total",

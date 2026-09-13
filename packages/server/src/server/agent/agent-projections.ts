@@ -454,7 +454,7 @@ function sanitizeMetadataArray(value: unknown): AgentMetadata[] | undefined {
   return sanitized.length > 0 ? sanitized : undefined;
 }
 
-type UsageNumericField = Exclude<keyof AgentUsage, never>;
+type UsageNumericField = Exclude<keyof AgentUsage, "pricingServiceTier">;
 
 function assignFiniteNumber(
   source: { [key: string]: JsonValue },
@@ -475,6 +475,9 @@ function sanitizeUsage(value: unknown): AgentUsage | undefined {
     return undefined;
   }
   const result: AgentUsage = {};
+  const tier = sanitized.pricingServiceTier;
+  if (tier === "default" || tier === "priority" || tier === "flex")
+    result.pricingServiceTier = tier;
   const fields: UsageNumericField[] = [
     "inputTokens",
     "cachedInputTokens",

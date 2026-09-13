@@ -14,6 +14,7 @@ export type StatusBarRowId =
   | "errors";
 
 export interface StatusBarRow {
+  hasUnpricedUsage?: boolean;
   id: StatusBarRowId;
   label: string;
   value: string;
@@ -203,6 +204,7 @@ function sumUsageTotals(totals: StatusSummaryUsageTotals[]): StatusSummaryUsageT
     cachedInputTokens: sumOptionalNumbers(totals.map((total) => total.cachedInputTokens)),
     outputTokens: sumOptionalNumbers(totals.map((total) => total.outputTokens)),
     totalCostUsd: sumOptionalNumbers(totals.map((total) => total.totalCostUsd)),
+    unpricedRecords: sumOptionalNumbers(totals.map((total) => total.unpricedRecords)),
     totalTokens: sumNumbers(totals.map((total) => total.totalTokens)),
   };
 }
@@ -228,20 +230,19 @@ export function buildPrimaryRows(summary: HostStatusSummaryPayload): StatusBarRo
 
   const todayCost = summary.usage.today.totalCostUsd;
   const lifetimeCost = summary.usage.lifetime.totalCostUsd;
-  const cost = todayCost ?? lifetimeCost;
+  const cost = todayCost;
+  const hasUnpricedUsage = (summary.usage.today.unpricedRecords ?? 0) > 0;
+  const costTone = cost === undefined ? "default" : "ok";
   rows.push({
     id: "cost",
-    label: todayCost === undefined && lifetimeCost !== undefined ? "Total cost" : "Today cost",
-    value: formatCost(cost),
-    tone: cost === undefined ? "default" : "ok",
-    ...(cost !== undefined
-      ? {
-          details: [
-            { label: "Today", value: formatCost(todayCost) },
-            { label: "Total", value: formatCost(lifetimeCost) },
-          ],
-        }
-      : {}),
+    label: "Today cost",
+    value: hasUnpricedUsage && cost !== undefined ? `${formatCost(cost)}+` : formatCost(cost),
+    tone: hasUnpricedUsage ? "warning" : costTone,
+    hasUnpricedUsage: hasUnpricedUsage || (summary.usage.lifetime.unpricedRecords ?? 0) > 0,
+    details: [
+      { label: "Today", value: formatCost(todayCost) },
+      { label: "Total", value: formatCost(lifetimeCost) },
+    ],
   });
 
   rows.push(

@@ -318,7 +318,8 @@ export const ar: TranslationResources = {
       totalTokens: "إجمالي الرموز",
       today: "اليوم",
       cost: "إجمالي التكلفة",
-      costToday: "تكلفة اليوم",
+      costToday: "تقدير اليوم",
+      costPartial: "تسعير جزئي",
       running: "قيد التشغيل",
       needsAttention: "تحتاج إلى انتباه",
       errors: "أخطاء",
@@ -330,6 +331,7 @@ export const ar: TranslationResources = {
       offline: "المضيف غير متصل.",
     },
     cost: {
+      unpricedNote: "بعض الاستخدام غير مسعّر ولا يُحتسب ضمن المبلغ.",
       title: "التكلفة",
       today: "اليوم",
       total: "الإجمالي",

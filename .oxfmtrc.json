@@ -11,5 +11,10 @@
   "arrowParens": "always",
   "bracketSameLine": false,
   "bracketSpacing": true,
-  "ignorePatterns": ["*.lock", "**/*.gen.ts", "**/*.gen.tsx"]
+  "ignorePatterns": [
+    "packages/server/src/server/model-pricing/model_prices_and_context_window.json",
+    "*.lock",
+    "**/*.gen.ts",
+    "**/*.gen.tsx"
+  ]
 }

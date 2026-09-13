@@ -1,0 +1,6 @@
+{
+  "source": "https://raw.githubusercontent.com/BerriAI/litellm/fbed17d567a62b14b8fc7d9ef13c5cd61a8d1ae0/model_prices_and_context_window.json",
+  "revision": "fbed17d567a62b14b8fc7d9ef13c5cd61a8d1ae0",
+  "sha256": "3df965920d0ccecdf36f477aea971eed52ac1b30a611b68c4776b88a06f9d367",
+  "updatedAt": "2026-09-10T08:35:15.303Z"
+}

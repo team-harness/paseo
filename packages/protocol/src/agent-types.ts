@@ -176,6 +176,7 @@ export interface AgentRunOptions {
 }
 
 export interface AgentUsage {
+  pricingServiceTier?: "default" | "priority" | "flex";
   inputTokens?: number;
   cachedInputTokens?: number;
   outputTokens?: number;

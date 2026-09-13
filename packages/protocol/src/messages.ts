@@ -427,6 +427,7 @@ const AgentCapabilityFlagsSchema: z.ZodType<AgentCapabilityFlags> = z
   .catchall(z.boolean());
 
 const AgentUsageSchema: z.ZodType<AgentUsage> = z.object({
+  pricingServiceTier: z.enum(["default", "priority", "flex"]).optional(),
   inputTokens: z.number().optional(),
   cachedInputTokens: z.number().optional(),
   outputTokens: z.number().optional(),
@@ -6168,6 +6169,7 @@ export const ProviderUsageListResponseMessageSchema = z.object({
 
 export const StatusSummaryUsageTotalsSchema = z
   .object({
+    unpricedRecords: z.number().int().nonnegative().optional(),
     inputTokens: z.number().nonnegative().optional(),
     cachedInputTokens: z.number().nonnegative().optional(),
     outputTokens: z.number().nonnegative().optional(),

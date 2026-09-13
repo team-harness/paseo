@@ -49,7 +49,10 @@ const { theme, runtimeState } = vi.hoisted(() => ({
 }));
 
 vi.mock("react-native", () => ({
-  Platform: { OS: "web" },
+  Platform: {
+    OS: "web",
+    select: (options: { web?: unknown; default?: unknown }) => options.web ?? options.default,
+  },
   Text: ({ children, testID }: { children?: React.ReactNode; testID?: string }) =>
     React.createElement("span", { "data-testid": testID }, children),
   ScrollView: (props: { children?: React.ReactNode; horizontal?: boolean; testID?: string }) =>
@@ -183,7 +186,16 @@ vi.mock("@/contexts/toast-context", () => ({
 }));
 
 vi.mock("@/hooks/use-sidebar-workspaces-list", () => ({
-  useSidebarWorkspacesList: () => ({ projects: [] }),
+  useSidebarWorkspacesList: () => ({ projects: [], workspacePlacements: [] }),
+}));
+
+vi.mock("@/hooks/use-sidebar-workspace-entries", () => ({
+  useSidebarWorkspaceEntries: () => new Map(),
+}));
+
+vi.mock("@/components/sidebar/sidebar-workspace-row-content", () => ({
+  SidebarWorkspaceRowContent: ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("div", null, children),
 }));
 
 vi.mock("@/hooks/use-sidebar-pins", () => ({
@@ -426,6 +438,31 @@ describe("GlobalStatusBar", () => {
     );
   });
 
+  it("shows partial pricing on the chip and explains excluded usage in cost details", () => {
+    const view = readyView();
+    if (view.kind !== "ready") throw new Error("Expected ready view");
+    const cost = view.primaryRows.find((row) => row.id === "cost");
+    if (!cost) throw new Error("Expected cost row");
+    cost.hasUnpricedUsage = true;
+    cost.tone = "warning";
+    cost.value = "$0.1234+";
+    runtimeState.view = view;
+    act(() => {
+      root?.render(<GlobalStatusBar serverId="server-1" chromeState={currentChromeState()} />);
+    });
+    const chip = container?.querySelector<HTMLButtonElement>(
+      '[data-testid="global-status-bar-row-cost"]',
+    );
+    expect(chip?.textContent).toContain("statusBar.rows.costPartial");
+    expect(chip?.textContent).toContain("$0.1234+");
+    act(() => {
+      chip?.click();
+    });
+    expect(
+      container?.querySelector('[data-testid="status-bar-cost-details"]')?.textContent,
+    ).toContain("statusBar.cost.unpricedNote");
+  });
+
   it("shows active workspace branch and worktree beside history", () => {
     runtimeState.view = readyView();
     runtimeState.activeWorkspaceSelection = { serverId: "server-1", workspaceId: "workspace-1" };
@@ -528,7 +565,7 @@ describe("GlobalStatusBar", () => {
     const scroller = container?.querySelector('[data-testid="global-status-bar-scroll"]');
     expect(scroller?.getAttribute("data-horizontal")).toBe("true");
     expect(scroller?.querySelector('[data-testid="status-bar-history-trigger"]')).not.toBeNull();
-    expect(scroller?.querySelector('[data-testid="status-bar-pins-trigger"]')).not.toBeNull();
+    expect(scroller?.querySelector('[data-testid="status-bar-pins-trigger"]')).toBeNull();
   });
 
   it("opens compact cost details in a sheet", () => {

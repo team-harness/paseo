@@ -193,7 +193,7 @@ Each file contains:
 | `records`       | `UsageLedgerRecord[]`  | Contribution records for one agent                                            |
 | `snapshotBases` | `UsageSnapshotBasis[]` | Last accepted turn-scoped provider snapshot used to dedupe and compute deltas |
 
-`UsageLedgerRecord` stores `agentId`, `provider`, `basisScope: "turn"`, `usageTurnKey`, optional `sessionId` / `workspaceId` / `model` / `turnId`, `cwd`, `sourceEventType`, `timestamp`, `basisKey`, raw `usage`, and normalized `contribution`.
+`UsageLedgerRecord` stores `agentId`, `provider`, `basisScope: "turn"`, `usageTurnKey`, optional `sessionId` / `workspaceId` / `model` / `turnId`, `cwd`, `sourceEventType`, `timestamp`, `basisKey`, `usage`, and normalized `contribution`. A historical cost backfill adds `costPricingRevision`; receipt IDs remain unchanged.
 
 `contribution` only accumulates `inputTokens`, `cachedInputTokens`, `outputTokens`, and `totalCostUsd`. Context-window fields remain in the raw usage snapshot when provided, but they are not included in contribution totals or record identity.
 
@@ -202,6 +202,26 @@ The ledger uses turn-scoped snapshot bases. `usage_updated` and `turn_completed`
 Provider adapters must normalize native usage semantics into a monotonic, turn-scoped snapshot before emitting usage events. In particular, Codex app-server reports both a thread-cumulative `total` and a request-scoped `last`; its adapter derives thread-total deltas, accumulates them within the active Paseo turn, and uses `last` only as the safe baseline for the first observation or a native counter reset. Passing `last` through directly causes valid later requests to look stale, while passing the full thread `total` through would recount resumed history. A `usageTurnKey` must also remain unique across provider-session and daemon restarts because snapshot bases persist beyond either process.
 
 Writes use `writeJsonFileAtomic`. Files are parsed with Zod at daemon bootstrap; corrupt or schema-invalid ledger files are logged and skipped instead of blocking agent lifecycle. There is no migration framework. Compatibility is maintained by accepting optional fields and keeping new persisted data isolated from the agent record schema.
+
+### Cost estimates
+
+Codex estimates use the bundled LiteLLM snapshot in `packages/server/src/server/model-pricing/`.
+Update it with `npm run pricing:update -- <full LiteLLM commit SHA>` (omit the SHA to resolve
+upstream main). Review the rates and run the pricing tests before releasing. Keep the source
+revision and license with the snapshot. Runtime pricing never fetches GitHub.
+
+Match provider and model exactly; do not infer unknown variants from a family prefix. Select
+long-context rates per request, not from the turn's accumulated tokens. Codex fast mode uses
+Priority rates. Missing models, unsupported tiers and incomplete counts remain unpriced;
+the status bar exposes partial amounts instead of silently treating missing cost as zero.
+
+After loading the ledger, queue missing Codex cost backfill outside daemon readiness and
+serialize it with live writes. Preserve existing costs and never reprice history when the
+catalogue changes. Turns with any existing cost are excluded because a later cumulative
+snapshot may already cover earlier missing amounts. Historical records without a service tier
+use standard pricing, and each recorded token delta is treated as one request; these remain
+estimates because old receipts did not preserve every request boundary. This backfill does not
+rewrite provider transcripts.
 
 ---
 
