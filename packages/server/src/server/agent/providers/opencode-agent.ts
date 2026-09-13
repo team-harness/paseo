@@ -750,7 +750,11 @@ function maxFiniteNumber(left: number | undefined, right: number): number {
   return left === undefined ? right : Math.max(left, right);
 }
 
-function assignUsageNumber(usage: AgentUsage, key: keyof AgentUsage, value: number | undefined) {
+function assignUsageNumber(
+  usage: AgentUsage,
+  key: Exclude<keyof AgentUsage, "pricingServiceTier">,
+  value: number | undefined,
+) {
   if (value !== undefined) {
     usage[key] = value;
   }

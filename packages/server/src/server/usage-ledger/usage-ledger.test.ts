@@ -3,9 +3,82 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
 import { createTestLogger } from "../../test-utils/test-logger.js";
-import { FileBackedUsageLedger, type UsageLedgerEventInput } from "./index.js";
+import {
+  FileBackedUsageLedger,
+  type UsageLedgerEventInput,
+  type UsageLedgerRecord,
+} from "./index.js";
+import { MODEL_PRICING_REVISION } from "../model-pricing/pricing.js";
 
 const logger = createTestLogger();
+
+test("backfills missing costs once, preserves provider prices and deduplicates after restart", async () => {
+  await withLedger(async ({ ledger, paseoHome }) => {
+    const first = {
+      ...usageEvent({ usage: { inputTokens: 1000, cachedInputTokens: 400, outputTokens: 100 } }),
+      model: "gpt-6-astra",
+    };
+    const second = {
+      ...first,
+      usage: { inputTokens: 2000, cachedInputTokens: 800, outputTokens: 200 },
+    };
+    ledger.enqueueEvent(first);
+    ledger.enqueueEvent(second);
+    ledger.enqueueEvent({
+      ...first,
+      usageTurnKey: "priced",
+      usage: { ...first.usage, totalCostUsd: 9 },
+    });
+    ledger.enqueueEvent({ ...first, usageTurnKey: "unknown", model: "unknown-model" });
+    await ledger.flush();
+    const reloaded = new FileBackedUsageLedger({ paseoHome, logger });
+    await reloaded.initialize();
+    expect((await reloaded.getTotals()).totalCostUsd).toBeCloseTo(9.0228);
+    expect((await reloaded.getTotals()).unpricedRecords).toBe(1);
+    const readRecords = async (): Promise<UsageLedgerRecord[]> =>
+      JSON.parse(await readFile(path.join(paseoHome, "usage-ledger", "agent-1.json"), "utf8"))
+        .records;
+    const records = await readRecords();
+    expect(
+      records.filter((record) => record.costPricingRevision === MODEL_PRICING_REVISION),
+    ).toHaveLength(2);
+    reloaded.enqueueEvent(second);
+    reloaded.enqueueEvent({
+      ...second,
+      usage: {
+        inputTokens: 3000,
+        cachedInputTokens: 1200,
+        outputTokens: 300,
+        totalCostUsd: 0.0342,
+      },
+    });
+    expect((await reloaded.getTotals()).totalCostUsd).toBeCloseTo(9.0342);
+    expect(await readRecords()).toHaveLength(5);
+    const reopened = new FileBackedUsageLedger({ paseoHome, logger });
+    await reopened.initialize();
+    expect((await reopened.getTotals()).totalCostUsd).toBeCloseTo(9.0342);
+    expect((await reopened.getTotals()).unpricedRecords).toBe(1);
+  });
+});
+
+test("does not backfill incomplete token data or double charge partially priced turns", async () => {
+  await withLedger(async ({ ledger, paseoHome }) => {
+    ledger.enqueueEvent({ ...usageEvent({ usage: { inputTokens: 100 } }), model: "gpt-6-astra" });
+    ledger.enqueueEvent({
+      ...usageEvent({ usage: { inputTokens: 200, outputTokens: 20, totalCostUsd: 1 } }),
+      model: "gpt-6-astra",
+    });
+    ledger.enqueueEvent({
+      ...usageEvent({ usageTurnKey: "missing-output", usage: { inputTokens: 100 } }),
+      model: "gpt-6-astra",
+    });
+    await ledger.flush();
+    const reloaded = new FileBackedUsageLedger({ paseoHome, logger });
+    await reloaded.initialize();
+    expect((await reloaded.getTotals()).totalCostUsd).toBe(1);
+    expect((await reloaded.getTotals()).unpricedRecords).toBe(2);
+  });
+});
 
 async function withLedger<T>(
   testBody: (context: { ledger: FileBackedUsageLedger; paseoHome: string }) => Promise<T>,
@@ -65,6 +138,7 @@ test("adds positive deltas within one turn and deduplicates identical final snap
     await expect(ledger.getTotals()).resolves.toEqual({
       inputTokens: 18,
       outputTokens: 5,
+      unpricedRecords: 2,
     });
   });
 });
@@ -84,6 +158,7 @@ test("uses turn keys to keep reset snapshots from separate provider turns indepe
     await expect(ledger.getTotals()).resolves.toEqual({
       inputTokens: 104,
       outputTokens: 7,
+      unpricedRecords: 3,
     });
   });
 });
@@ -165,6 +240,7 @@ test("drops stale snapshots without writing negative contribution or lowering th
     await expect(ledger.getTotals()).resolves.toEqual({
       inputTokens: 35,
       outputTokens: 12,
+      unpricedRecords: 2,
     });
   });
 });
@@ -226,9 +302,10 @@ test("filters today totals by daemon local day and preserves lifetime across day
       }),
     );
 
-    await expect(ledger.getTotals()).resolves.toEqual({ inputTokens: 17 });
+    await expect(ledger.getTotals()).resolves.toEqual({ inputTokens: 17, unpricedRecords: 2 });
     await expect(ledger.getTodayTotals(now)).resolves.toEqual({
       inputTokens: 7,
+      unpricedRecords: 1,
     });
   });
 });
@@ -242,7 +319,7 @@ test("skips corrupt persisted files without blocking healthy ledger data", async
     const reloaded = new FileBackedUsageLedger({ paseoHome, logger });
     await reloaded.initialize();
 
-    await expect(reloaded.getTotals()).resolves.toEqual({ inputTokens: 12 });
+    await expect(reloaded.getTotals()).resolves.toEqual({ inputTokens: 12, unpricedRecords: 1 });
   });
 });
 
@@ -254,7 +331,7 @@ test("deleteAgentUsage removes one agent ledger without affecting archived histo
 
     await ledger.deleteAgentUsage("deleted-agent");
 
-    await expect(ledger.getTotals()).resolves.toEqual({ inputTokens: 8 });
+    await expect(ledger.getTotals()).resolves.toEqual({ inputTokens: 8, unpricedRecords: 1 });
     await expect(
       readFile(path.join(paseoHome, "usage-ledger", "deleted-agent.json"), "utf8"),
     ).rejects.toMatchObject({ code: "ENOENT" });

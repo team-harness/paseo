@@ -317,7 +317,8 @@ export const zhCN: TranslationResources = {
       totalTokens: "总 token",
       today: "今天",
       cost: "总费用",
-      costToday: "今日费用",
+      costToday: "今日估算",
+      costPartial: "部分未计价",
       running: "运行中",
       needsAttention: "需要注意",
       errors: "错误",
@@ -329,6 +330,7 @@ export const zhCN: TranslationResources = {
       offline: "Host 离线。",
     },
     cost: {
+      unpricedNote: "部分用量未计价，当前金额不包含这些记录。",
       title: "费用",
       today: "今日",
       total: "总计",

@@ -326,7 +326,8 @@ export const fr: TranslationResources = {
       totalTokens: "Tokens totaux",
       today: "Aujourd'hui",
       cost: "Coût total",
-      costToday: "Coût du jour",
+      costToday: "Estimation du jour",
+      costPartial: "Tarification partielle",
       running: "En cours",
       needsAttention: "À traiter",
       errors: "Erreurs",
@@ -338,6 +339,7 @@ export const fr: TranslationResources = {
       offline: "L'hôte est hors ligne.",
     },
     cost: {
+      unpricedNote: "Une partie de l'utilisation n'est pas tarifée et est exclue du montant.",
       title: "Coût",
       today: "Aujourd'hui",
       total: "Total",

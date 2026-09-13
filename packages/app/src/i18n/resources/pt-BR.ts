@@ -324,7 +324,8 @@ export const ptBR: TranslationResources = {
       totalTokens: "Tokens totais",
       today: "Hoje",
       cost: "Custo total",
-      costToday: "Custo de hoje",
+      costToday: "Estimativa de hoje",
+      costPartial: "Preço parcial",
       running: "Em execução",
       needsAttention: "Precisa de atenção",
       errors: "Erros",
@@ -336,6 +337,7 @@ export const ptBR: TranslationResources = {
       offline: "O host está offline.",
     },
     cost: {
+      unpricedNote: "Parte do uso não tem preço e não está incluída no valor.",
       title: "Custo",
       today: "Hoje",
       total: "Total",

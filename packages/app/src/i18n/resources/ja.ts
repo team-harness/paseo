@@ -325,7 +325,8 @@ export const ja: TranslationResources = {
       totalTokens: "合計トークン",
       today: "今日",
       cost: "合計コスト",
-      costToday: "今日のコスト",
+      costToday: "今日の推定費用",
+      costPartial: "一部未計算",
       running: "実行中",
       needsAttention: "対応が必要",
       errors: "エラー",
@@ -337,6 +338,7 @@ export const ja: TranslationResources = {
       offline: "ホストはオフラインです。",
     },
     cost: {
+      unpricedNote: "料金未計算の使用量は、この金額に含まれていません。",
       title: "コスト",
       today: "今日",
       total: "合計",

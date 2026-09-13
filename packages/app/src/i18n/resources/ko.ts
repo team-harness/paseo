@@ -321,7 +321,8 @@ export const ko: TranslationResources = {
       totalTokens: "총 토큰",
       today: "오늘",
       cost: "총 비용",
-      costToday: "오늘 비용",
+      costToday: "오늘 예상 비용",
+      costPartial: "일부 미계산",
       running: "실행 중",
       needsAttention: "주의 필요",
       errors: "오류",
@@ -333,6 +334,7 @@ export const ko: TranslationResources = {
       offline: "호스트가 오프라인입니다.",
     },
     cost: {
+      unpricedNote: "가격이 없는 일부 사용량은 금액에 포함되지 않습니다.",
       title: "비용",
       today: "오늘",
       total: "전체",

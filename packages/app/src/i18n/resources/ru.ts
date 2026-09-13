@@ -324,7 +324,8 @@ export const ru: TranslationResources = {
       totalTokens: "Всего токенов",
       today: "Сегодня",
       cost: "Общая стоимость",
-      costToday: "Стоимость сегодня",
+      costToday: "Оценка за сегодня",
+      costPartial: "Часть не рассчитана",
       running: "Выполняется",
       needsAttention: "Требует внимания",
       errors: "Ошибки",
@@ -336,6 +337,7 @@ export const ru: TranslationResources = {
       offline: "Хост не в сети.",
     },
     cost: {
+      unpricedNote: "Часть использования не оценена и не включена в сумму.",
       title: "Стоимость",
       today: "Сегодня",
       total: "Всего",

@@ -145,6 +145,7 @@ function normalizeTotals(totals: UsageTotalsDelta): StatusSummaryUsageTotals {
   }
   if (totals.outputTokens !== undefined) normalized.outputTokens = totals.outputTokens;
   if (totals.totalCostUsd !== undefined) normalized.totalCostUsd = totals.totalCostUsd;
+  if (totals.unpricedRecords !== undefined) normalized.unpricedRecords = totals.unpricedRecords;
   return normalized;
 }
 

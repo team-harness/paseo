@@ -51,6 +51,41 @@ function summary(overrides: Partial<HostStatusSummaryPayload> = {}): HostStatusS
 }
 
 describe("buildStatusSummaryViewModel", () => {
+  it("marks partial totals across hosts and does not replace unknown today cost with lifetime cost", () => {
+    const partial = summary();
+    partial.usage.today.unpricedRecords = 3;
+    const view = buildMultiHostStatusSummaryViewModel([
+      {
+        serverId: "a",
+        serverLabel: "A",
+        state: { kind: "ready", summary: partial, isRefreshing: false },
+      },
+      {
+        serverId: "b",
+        serverLabel: "B",
+        state: { kind: "ready", summary: summary(), isRefreshing: false },
+      },
+    ]);
+    if (view.kind !== "ready") throw new Error("Expected ready view");
+    expect(view.summary.usage.today.unpricedRecords).toBe(3);
+    expect(view.primaryRows.find((row) => row.id === "cost")).toMatchObject({
+      value: "$0.2468+",
+      tone: "warning",
+      hasUnpricedUsage: true,
+    });
+    delete partial.usage.today.totalCostUsd;
+    const unknown = buildStatusSummaryViewModel({
+      kind: "ready",
+      summary: partial,
+      isRefreshing: false,
+    });
+    if (unknown.kind !== "ready") throw new Error("Expected ready view");
+    expect(unknown.primaryRows.find((row) => row.id === "cost")).toMatchObject({
+      label: "Today cost",
+      value: "-",
+      tone: "warning",
+    });
+  });
   it("maps disabled query states to explicit non-ready view states", () => {
     const previousSummary = summary();
 

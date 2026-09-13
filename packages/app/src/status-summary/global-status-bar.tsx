@@ -312,6 +312,9 @@ function StatusBarCostDetails({ row, t }: { row: StatusBarRow; t: (key: string) 
         </View>
       ))}
       <Text style={styles.costDetailNote}>{t("statusBar.cost.estimateNote")}</Text>
+      {row.hasUnpricedUsage ? (
+        <Text style={styles.costDetailNote}>{t("statusBar.cost.unpricedNote")}</Text>
+      ) : null}
     </View>
   );
 }
@@ -387,6 +390,7 @@ function getRowLabel(row: StatusBarRow, t: (key: string) => string) {
   if (row.id === "lifetime-tokens") return t("statusBar.rows.totalTokens");
   if (row.id === "today-tokens") return t("statusBar.rows.today");
   if (row.id === "cost") {
+    if (row.tone === "warning") return t("statusBar.rows.costPartial");
     return row.label === "Total cost" ? t("statusBar.rows.cost") : t("statusBar.rows.costToday");
   }
   if (row.id === "running") return t("statusBar.rows.running");
