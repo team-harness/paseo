@@ -24,6 +24,7 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { KeyboardDock } from "@/components/keyboard-dock";
+import { ComposerViewport, ComposerViewportContent } from "@/composer/viewport";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { Composer, type ComposerTextInsertion } from "@/composer";
@@ -1380,7 +1381,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       setText={agentInputDraft.replaceText}
       onRewindComplete={handleRewindComplete}
     >
-      <View style={styles.root} collapsable={false}>
+      <ComposerViewport style={styles.root}>
         <DockedChatSurface disabled={isArchivingCurrentAgent}>
           {contentContainer}
 
@@ -1407,7 +1408,9 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
             </View>
           ) : null}
 
-          {composerSection}
+          <ComposerViewportContent style={animatedStaticStyles.inputAreaWrapper}>
+            {composerSection}
+          </ComposerViewportContent>
 
           {showHistorySyncOverlay ? (
             <View style={styles.historySyncOverlay} testID="agent-history-overlay">
@@ -1425,7 +1428,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
             <Text style={styles.archivingSubtitle}>{t("agentPanel.states.archivingSubtitle")}</Text>
           </View>
         ) : null}
-      </View>
+      </ComposerViewport>
     </RewindComposerRestoreProvider>
   );
 });

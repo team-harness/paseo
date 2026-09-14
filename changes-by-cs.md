@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `d1b705a0c`（完整 SHA 以 Git 为准），同步于 2026-09-13。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `d1b705a0c`）。
+- 最近同步基线：`upstream/main` = `77c5c8f17`（完整 SHA 以 Git 为准），同步于 2026-09-15。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `77c5c8f17`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-15: `upstream/main` `77c5c8f17` / post-`v0.8.0`
+
+- 合入上游 7 个提交：投影时间线在写入时收敛以避免累计工具历史 OOM、工作区与 Agent 创建幂等、移动端增长 Composer 保持在 Header 下方、Android 平板模型选择恢复、Provider 模型目录去重，以及相关 CI/E2E 和 skill 文档修正。
+- 时间线存储、投影分页与 Provider 子 Agent 历史采用上游实现；fork 的客户端 canonical 100 条兼容层继续保留，用于连接尚未具备有界投影分页的旧 Host。创建流程采用上游 request receipt 与 creation snapshot，并继续保留 fork 的 Status Summary、Prompt Library、usage ledger 和 Review 投递协议。
+- 上游本轮没有提供与 fork 等价的 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、Composer 历史、选区引用、Review Comments、Threadshare 范围分享、计划任务既有 Agent 目标或独立发布链路；本轮没有下线 fork 能力。
 
 ### 2026-09-13: `upstream/main` `d1b705a0c` / post-`v0.8.0`
 

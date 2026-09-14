@@ -4,6 +4,7 @@ import type { DaemonClientConfig } from "./daemon-client.js";
 import type { AgentPermissionResponse } from "@getpaseo/protocol/agent-types";
 import type {
   AgentSnapshotPayload,
+  CreationSnapshot,
   CreateAgentRequestMessage,
   FetchWorkspacesRequestMessage,
   FetchWorkspacesResponseMessage,
@@ -29,7 +30,7 @@ import type {
   WorkspaceDescriptorPayload,
   WorkspaceCreateRequest,
 } from "@getpaseo/protocol/messages";
-import { DaemonClient } from "./daemon-client.js";
+import { DaemonClient, type CreateAgentRequestOptions } from "./daemon-client.js";
 import {
   createTerminalActions,
   type PaseoTerminalActions,
@@ -143,8 +144,16 @@ export interface PaseoWorkspaceOpenOptions {
   requestId?: string;
 }
 
-export type PaseoWorkspaceCreateOptions = Omit<WorkspaceCreateRequest, "type" | "requestId"> & {
+export type PaseoWorkspaceCreateOptions = Omit<
+  WorkspaceCreateRequest,
+  "type" | "requestId" | "agent" | "subscribe"
+> & {
   requestId?: string;
+  agent?: Omit<
+    PaseoAgentCreateOptions,
+    "worktree" | "git" | "onEvent" | "idempotencyKey" | "requestId"
+  >;
+  onEvent?: (snapshot: CreationSnapshot) => void;
 };
 
 export interface PaseoWorkspaceArchiveResult {
@@ -233,6 +242,9 @@ export interface PaseoAgentConfig {
 }
 
 export interface PaseoAgentCreateOptions {
+  idempotencyKey?: string;
+  agentId?: string;
+  onEvent?: (snapshot: CreationSnapshot) => void;
   config: PaseoAgentConfig;
   cwd: string;
   parent?: string | PaseoAgentHandle;
@@ -526,6 +538,29 @@ export function createPaseoClient(config: PaseoClientConfig): PaseoClient {
   };
 }
 
+function toDaemonAgentCreateOptions(
+  options: PaseoAgentCreateOptions,
+  placement?: { workspaceId: string; cwd: string },
+): CreateAgentRequestOptions {
+  const { config: agentConfig, cwd, parent, title, prompt, ...requestOptions } = options;
+  const { provider: providerModel, options: providerOptions, ...runtimeConfig } = agentConfig;
+  const { provider, model } = parseProviderModel(providerModel);
+  return {
+    ...requestOptions,
+    config: {
+      ...runtimeConfig,
+      provider,
+      model,
+      cwd: placement?.cwd ?? cwd,
+      ...(title !== undefined ? { title } : {}),
+      ...(providerOptions !== undefined ? { providerOptions } : {}),
+    },
+    ...(placement ? { workspaceId: placement.workspaceId } : {}),
+    ...(parent ? { callerAgentId: resolveAgentId(parent) } : {}),
+    ...(prompt !== undefined ? { initialPrompt: prompt } : {}),
+  };
+}
+
 export function createPaseoApi(
   daemonClient: DaemonClient,
   scopeOptions?: { signal?: AbortSignal },
@@ -568,24 +603,7 @@ export function createPaseoApi(
     options: PaseoAgentCreateOptions,
     placement?: { workspaceId: string; cwd: string },
   ) => {
-    const { config: agentConfig, cwd, parent, title, prompt, ...requestOptions } = options;
-    const { provider: providerModel, options: providerOptions, ...runtimeConfig } = agentConfig;
-    const { provider, model } = parseProviderModel(providerModel);
-    const effectiveCwd = placement?.cwd ?? cwd;
-    const agent = await daemonClient.createAgent({
-      ...requestOptions,
-      config: {
-        ...runtimeConfig,
-        provider,
-        model,
-        cwd: effectiveCwd,
-        ...(title !== undefined ? { title } : {}),
-        ...(providerOptions !== undefined ? { providerOptions } : {}),
-      },
-      ...(placement ? { workspaceId: placement.workspaceId } : {}),
-      ...(parent ? { callerAgentId: resolveAgentId(parent) } : {}),
-      ...(prompt !== undefined ? { initialPrompt: prompt } : {}),
-    });
+    const agent = await daemonClient.createAgent(toDaemonAgentCreateOptions(options, placement));
     return createAgentHandle(agent);
   };
   const terminals = createTerminalActions(daemonClient, async (workspaceId) => {
@@ -707,8 +725,11 @@ export function createPaseoApi(
       ref: (workspace) => createWorkspaceHandle(workspace),
       open: (input, requestId) =>
         openWorkspace(daemonClient, createWorkspaceHandle, input, requestId),
-      create: async ({ requestId, ...options }) => {
-        const result = await daemonClient.createWorkspace(options, requestId);
+      create: async ({ requestId, agent, ...options }) => {
+        const result = await daemonClient.createWorkspace(
+          { ...options, ...(agent ? { agent: toDaemonAgentCreateOptions(agent) } : {}) },
+          requestId,
+        );
         if (result.error || !result.workspace) {
           throw new Error(result.error ?? "The daemon did not create a workspace");
         }
