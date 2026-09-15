@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `77c5c8f17`（完整 SHA 以 Git 为准），同步于 2026-09-15。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `77c5c8f17`）。
+- 最近同步基线：`upstream/main` = `f9fb992dc`（完整 SHA 以 Git 为准），同步于 2026-09-16。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `f9fb992dc`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-16: `upstream/main` `f9fb992dc` / post-`v0.8.0`
+
+- 合入上游从 `77c5c8f17` 到 `f9fb992dc` 的 15 个提交：聊天、终端和文件查找，连续流式文字淡入，WordFade 跨平台渲染，开放聊天重连提示，工作区布局崩溃恢复，插件 ACP 时间线分组与 Windows 构建进程修复，旧 Host 创建兼容，以及移动端 Changes 和 CI/E2E 稳定性改进。
+- 时间线 presentation、ChatFind、WordFade、retained chat 与旧 Host creation receipt 采用上游实现；fork 的聊天范围分享、Assistant 时间戳、引用/评论、Status Summary/usage ledger、Host Prompt Library、Composer 历史、Threadshare 和 canonical 100 条旧 Host 兼容继续保留。上游删除的 fork 专属 session resume revalidation 在合并后恢复，避免后台恢复时历史不刷新。
+- 上游本轮没有提供与 fork 专属 Status Bar/计费、多 Host 汇总、Prompt Library、Review Comments、Threadshare 范围分享、计划任务既有 Agent 目标或独立发布链路等价的能力；本轮没有下线 fork 功能。上游删除的旧测试辅助和 `text-reveal` 路径由其新的 WordFade 流程替代。
 
 ### 2026-09-15: `upstream/main` `77c5c8f17` / post-`v0.8.0`
 

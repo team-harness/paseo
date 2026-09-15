@@ -611,6 +611,17 @@ export interface FetchAgentTimelineOptions {
   timeout?: number;
 }
 
+export interface AgentTimelineSearchOptions {
+  agentId: string;
+  query: string;
+  cursor?: number;
+}
+
+export type AgentTimelineSearchPayload = Extract<
+  SessionOutboundMessage,
+  { type: "agent.timeline.search.response" }
+>["payload"];
+
 export type AgentTimelinePromptIndexPayload = Extract<
   SessionOutboundMessage,
   { type: "agent.timeline.list_prompts.response" }
@@ -1183,6 +1194,7 @@ export class DaemonClient {
   private runtimeMetricsInterval: ReturnType<typeof setInterval> | null = null;
   private runtimeMetrics: DaemonClientRuntimeMetrics | null = null;
   private pingProbe: PingProbe | null = null;
+  private connectionVerification: DaemonTransport | null = null;
   private livenessHeartbeatTimer: ReturnType<typeof setTimeout> | null = null;
   private lastLivenessRttMs: number | null = null;
   private consecutiveLivenessFailures = 0;
@@ -1270,6 +1282,12 @@ export class DaemonClient {
 
     if (this.connectionState.status === "connecting") {
       return;
+    }
+    // This attempt supersedes any retry the last disconnect scheduled. Left
+    // armed, that retry would tear down the connection this attempt opens.
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
     }
 
     const headers: Record<string, string> = {};
@@ -1467,28 +1485,45 @@ export class DaemonClient {
     );
   }
 
-  ensureConnected(): void {
+  ensureConnected(options?: { verify?: boolean }): void {
     if (this.connectionState.status === "disposed") {
       return;
     }
     if (!this.shouldReconnect) {
       this.shouldReconnect = true;
     }
-    if (
-      this.connectionState.status === "connected" ||
-      this.connectionState.status === "connecting"
-    ) {
+    if (this.connectionState.status === "connected") {
+      if (options?.verify) this.verifyConnection();
       return;
     }
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
+    if (this.connectionState.status === "connecting") return;
     if (this.connectPromise) {
       this.attemptConnect();
       return;
     }
     void this.connect();
+  }
+
+  private verifyConnection(): void {
+    const transport = this.transport;
+    if (!transport || this.connectionVerification === transport) return;
+    this.connectionVerification = transport;
+    // A session probe has its own deadline, independent of a heartbeat that the OS
+    // may have suspended. A successful response also proves the session can serve RPCs.
+    void this.ping({ timeoutMs: 3_000 })
+      .catch((error: unknown) => {
+        if (this.transport !== transport || this.connectionState.status !== "connected") return;
+        this.disposeTransport(1001, "Connection verification failed");
+        this.scheduleReconnect({
+          reason: error instanceof Error ? error.message : String(error),
+          event: "CONNECTION_VERIFICATION_FAILED",
+          reasonCode: "liveness_timeout",
+        });
+        this.ensureConnected();
+      })
+      .finally(() => {
+        if (this.connectionVerification === transport) this.connectionVerification = null;
+      });
   }
 
   getConnectionState(): ConnectionState {
@@ -2692,7 +2727,7 @@ export class DaemonClient {
   // ============================================================================
 
   private readonly creations = new CreationClient({
-    supports: () => this.lastServerInfoMessage?.features?.creationLifecycle === true,
+    supports: (feature) => this.lastServerInfoMessage?.features?.[feature] === true,
     requestId: () => this.createRequestId(),
     request: (kind, input) =>
       kind === "workspace"
@@ -2728,7 +2763,6 @@ export class DaemonClient {
     },
     legacyAgent: (input) => this.createLegacyAgent(input),
     legacyWorkspace: (input) => this.createLegacyWorkspace(input, input.requestId),
-    sendMessage: (id, text, options) => this.sendMessage(id, text, options),
   });
 
   async createAgent(options: CreateAgentRequestOptions): Promise<AgentSnapshotPayload> {
@@ -2743,7 +2777,6 @@ export class DaemonClient {
   private async createLegacyAgent(
     options: CreateAgentRequestOptions,
   ): Promise<AgentSnapshotPayload> {
-    if (options.idempotencyKey !== undefined) this.requireAgentRequestReceipts();
     const requestId = this.createRequestId(options.requestId);
     const config = resolveAgentConfig(options);
 
@@ -2795,13 +2828,6 @@ export class DaemonClient {
     }
 
     return status.agent;
-  }
-
-  private requireAgentRequestReceipts(): void {
-    // COMPAT(agentRequestReceipts): added in v0.7.3; remove gate after 2027-03-05.
-    if (this.lastServerInfoMessage?.features?.agentRequestReceipts !== true) {
-      throw new Error("Update the host to use retry-safe agent creation.");
-    }
   }
 
   async deleteAgent(agentId: string): Promise<void> {
@@ -3162,6 +3188,21 @@ export class DaemonClient {
       responseType: "agent.timeline.append.response",
     });
     return { seq: payload.seq, epoch: payload.epoch };
+  }
+
+  async searchAgentTimeline({
+    agentId,
+    query,
+    cursor,
+  }: AgentTimelineSearchOptions): Promise<AgentTimelineSearchPayload> {
+    const requestId = this.createRequestId();
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "agent.timeline.search.request", requestId, agentId, query, cursor },
+      responseType: "agent.timeline.search.response",
+    });
+    if (payload.error) throw new Error(payload.error);
+    return payload;
   }
 
   async listAgentTimelinePrompts(
@@ -4444,19 +4485,16 @@ export class DaemonClient {
     input: CreateWorkspaceRequestOptions,
     requestId?: string,
   ): Promise<WorkspaceCreatePayload> {
-    // COMPAT(workspaceRequestReceipts): added in v0.8.0; remove gate after 2027-03-07.
-    if (
-      input.idempotencyKey !== undefined &&
-      !this.lastServerInfoMessage?.features?.workspaceRequestReceipts
-    ) {
-      throw new Error("Update the host to use retry-safe workspace creation.");
-    }
     return this.sendCorrelatedSessionRequest({
       requestId,
       message: {
         type: "workspace.create.request",
         source: input.source,
-        ...(input.idempotencyKey !== undefined ? { idempotencyKey: input.idempotencyKey } : {}),
+        // COMPAT(workspaceRequestReceipts): added in v0.8.0; remove after 2027-03-15 once the daemon floor supports workspace receipts.
+        ...(this.lastServerInfoMessage?.features?.workspaceRequestReceipts &&
+        input.idempotencyKey !== undefined
+          ? { idempotencyKey: input.idempotencyKey }
+          : {}),
         ...(input.title !== undefined ? { title: input.title } : {}),
         ...(input.firstAgentContext !== undefined
           ? { firstAgentContext: input.firstAgentContext }

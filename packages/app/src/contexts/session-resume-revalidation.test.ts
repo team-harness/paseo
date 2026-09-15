@@ -5,28 +5,24 @@ import {
 } from "./session-resume-revalidation";
 
 describe("session resume revalidation", () => {
-  it("refreshes demanded timeline history without manufacturing directory demand", async () => {
+  it("refreshes timeline history after a stale background interval", async () => {
     const calls: string[] = [];
-
     const revalidated = await revalidateSessionAfterResume({
       awayMs: SESSION_STALE_AFTER_MS,
       serverId: "server",
       bumpHistorySyncGeneration: (serverId) => calls.push(`history:${serverId}`),
     });
-
     expect(revalidated).toBe(true);
     expect(calls).toEqual(["history:server"]);
   });
 
   it("does nothing after a brief background interval", async () => {
     const calls: string[] = [];
-
     const revalidated = await revalidateSessionAfterResume({
       awayMs: SESSION_STALE_AFTER_MS - 1,
       serverId: "server",
       bumpHistorySyncGeneration: () => calls.push("history"),
     });
-
     expect(revalidated).toBe(false);
     expect(calls).toEqual([]);
   });
