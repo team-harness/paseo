@@ -630,7 +630,7 @@ export function WorkspaceDraftAgentTab({
     [composerState.agentControls, handleDropdownCloseFocus, isSubmitting],
   );
   return (
-    <ComposerViewport style={styles.container} bottomInset={insets.bottom}>
+    <ComposerViewport style={styles.container} bottomInset={insets.bottom} keyboardReserve="retain">
       <FileDropZone style={styles.container}>
         <View style={styles.contentContainer}>
           {isSubmitting && draftAgent ? (
@@ -680,7 +680,7 @@ export function WorkspaceDraftAgentTab({
               onSubmitMessage={handleCreateFromInput}
               isSubmitLoading={isSubmitting}
               blurOnSubmit={true}
-              value={draftInput.text}
+              textSource={draftInput.textSource}
               onChangeText={draftInput.editText}
               textReplacement={draftInput.textReplacement}
               attachments={draftInput.attachments}

@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `f9fb992dc`（完整 SHA 以 Git 为准），同步于 2026-09-16。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `f9fb992dc`）。
+- 最近同步基线：`upstream/main` = `a8a8da047`（完整 SHA 以 Git 为准），同步于 2026-09-17。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `a8a8da047`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-17: `upstream/main` `a8a8da047` / post-`v0.8.0`
+
+- 合入上游从 `f9fb992dc` 到 `a8a8da047` 的 12 个提交：输入框高度与输入更新隔离、附件上传状态、按时间排序的历史搜索、PR 页签首次自动打开、归档工作区提交恢复、语音回复延迟与内部提示隐藏、连续重连提示，以及插件跨 Host 客户端/导航、租约恢复与嵌套子 Agent 链接。
+- Composer 采用上游的外部草稿订阅和独立自动补全组件，fork 的完整消息历史、Prompt Library 与引用插入改为从同一实时文本源读取，避免重新引入每次输入的父组件渲染。工作区恢复、历史搜索和插件 API 采用上游实现；Status Bar/计费、多 Host 汇总、Review 投递、Assistant 时间和 canonical 100 条兼容继续保留。
+- 本轮上游没有提供与 fork 专属能力等价的实现，不下线 fork 功能。昨天新增的 Markdown 文档及本地图片分享也随三种安装包发布；固定签名、独立 Android/iOS 身份及发布链路继续保留。
 
 ### 2026-09-16: `upstream/main` `f9fb992dc` / post-`v0.8.0`
 
