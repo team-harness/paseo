@@ -1987,6 +1987,10 @@ export const ru: TranslationResources = {
       tooLargeToDisplay: "Этот файл слишком велик для отображения",
       failedToLoad: "Не удалось загрузить файл",
       failedToLoadPreview: "Не удалось загрузить предварительный просмотр файла.",
+      shareUnavailable: "Обновите хост для публикации документов Markdown.",
+      shareFailed: "Не удалось поделиться документом",
+      shareCopyFailed:
+        "Ссылка создана, но не скопирована. Нажмите «Поделиться» снова или скопируйте ссылку: {{url}}",
       editor: {
         fileSize: "Размер файла {{size}}",
         lines: "Строк: {{count}}",

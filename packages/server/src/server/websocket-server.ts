@@ -1853,6 +1853,8 @@ export class VoiceAssistantWebSocketServer {
         workspaceScriptManagement: true,
         // COMPAT(chatShare): added in v0.2.4, remove gate after 2027-01-29.
         chatShare: true,
+        // COMPAT(documentShare): added in v0.8.0, remove gate after 2027-03-16.
+        documentShare: true,
         // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
         projectCustomIcon: true,
         // COMPAT(fsEntryOps): added in v0.3.0, remove gate after 2027-02-08.

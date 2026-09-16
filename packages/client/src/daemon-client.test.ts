@@ -175,6 +175,53 @@ function respondToScheduleRequest(
 
 const clients: DaemonClient[] = [];
 
+test("shares a document through the correlated host RPC and returns service errors", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "document-share-test",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+  const connected = client.connect();
+  mock.triggerOpen();
+  await connected;
+  const sharing = client.shareDocument({
+    cwd: "/repo",
+    path: "docs/design.md",
+    content: "# Current editor",
+  });
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request).toMatchObject({
+    type: "fs.document.share.request",
+    cwd: "/repo",
+    path: "docs/design.md",
+    content: "# Current editor",
+  });
+  const url = "https://share.example.com/document.html?id=7b853015-bf1a-4c4c-b969-14e1247aef85";
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "fs.document.share.response",
+      payload: { requestId: request.requestId, url, error: null },
+    }),
+  );
+  await expect(sharing).resolves.toBe(url);
+  const rejected = client.shareDocument({
+    cwd: "/repo",
+    path: "docs/design.md",
+    content: "![x](missing.png)",
+  });
+  const failedRequest = parseSentFrame(mock.sent[1]);
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "fs.document.share.response",
+      payload: { requestId: failedRequest.requestId, url: null, error: "Image missing" },
+    }),
+  );
+  await expect(rejected).rejects.toThrow("Image missing");
+});
+
 afterEach(async () => {
   await Promise.all(clients.map((client) => client.close()));
   clients.length = 0;

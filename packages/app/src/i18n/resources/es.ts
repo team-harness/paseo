@@ -2005,6 +2005,10 @@ export const es: TranslationResources = {
       tooLargeToDisplay: "Este archivo es demasiado grande para mostrarlo",
       failedToLoad: "No se pudo cargar el archivo",
       failedToLoadPreview: "No se pudo cargar la vista previa del archivo",
+      shareUnavailable: "Actualiza el host para compartir documentos Markdown.",
+      shareFailed: "No se pudo compartir el documento",
+      shareCopyFailed:
+        "Enlace creado, pero no se pudo copiar. Pulsa Compartir de nuevo o copia este enlace: {{url}}",
       editor: {
         fileSize: "Tamaño {{size}}",
         lines: "{{count}} líneas",

@@ -1929,6 +1929,9 @@ export const zhCN: TranslationResources = {
       tooLargeToDisplay: "此文件过大，无法显示",
       failedToLoad: "加载文件失败",
       failedToLoadPreview: "加载文件预览失败",
+      shareUnavailable: "请更新主机以使用文档分享。",
+      shareFailed: "文档分享失败",
+      shareCopyFailed: "链接已生成，但复制失败。再次点击分享可重试复制，或手动复制：{{url}}",
       editor: {
         fileSize: "文件大小 {{size}}",
         lines: "{{count}} 行",

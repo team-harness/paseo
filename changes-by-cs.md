@@ -530,6 +530,8 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 
 ### 7. 只读聊天分享
 
+- 2026-09-16：Markdown 文件工具栏在“预览 / 源码”旁增加“分享”，通过 Host 的 `fs.document.share` RPC 调用 Threadshare 文档 API，分享当前编辑内容和本地图片，成功后复制链接。复用 `daemon.chatShare.baseUrl`，以可选 `documentShare` capability 隔离旧 Host；实现边界与图片规则见 [文档分享说明](docs/changes-by-me.md#markdown-document-sharing)。上游暂无等价实现，保留。
+
 **状态**：fork 功能。主要提交：`7c9a99eb3`、`1ecfe1612`、`6f6d0f18d`、`425fda60e`。
 
 **行为**：聊天消息菜单支持异步分享，用户依次选择起点和终点，客户端按完整对话轮次导出该范围，上传 JSON 后复制只读访问链接。Threadshare 是独立仓库 `team-harness/threadshare`，拥有 `threadshare-history@v1` 协议、受限 History API、只读 Viewer、Codex/Claude CLI 适配和云部署模板。Paseo 只是该协议的生产者，不再承载服务端、Web 或云凭证。

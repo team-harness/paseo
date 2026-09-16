@@ -70,6 +70,29 @@ When syncing upstream sidebar pin changes, update the status bar only through
 these existing sidebar hooks and the workspace pin controller. Do not introduce
 a status-bar-specific persistence store or RPC.
 
+## Markdown document sharing
+
+The file toolbar exposes Share beside Preview / Source for Markdown. It shares
+the visible editor snapshot, including unsaved edits, without writing the file.
+The daemon reads local images and publishes through the same `daemon.chatShare.baseUrl`
+used for conversations, so native and remote clients need no local filesystem access.
+`server_info.features.documentShare` gates the new `fs.document.share` RPC pair;
+older hosts show an update message and existing RPCs remain unchanged.
+
+Threadshare owns `/api/v1/documents` and its document renderer contract. All local
+bytes are frozen before creating an upload; images are sent as binary, deduplicated
+by digest, and the share is published only after every upload succeeds. The default
+asset root is the document's real directory. Parent-directory images, escaping
+symlinks, HTML images and unsupported image formats fail explicitly. Remote HTTP(S)
+images remain external links; the daemon never fetches them. Markdown is verbatim,
+not subject to conversation redaction. Limits are 1 MiB Markdown, 32 local image
+references, 4 MiB per image and 32 MiB total; Threadshare also validates image dimensions.
+
+Publishing requires `workspace.write`, uses only the host-configured endpoint and
+rejects redirects. Clipboard failure preserves the created link for copying again.
+An uncertain publish result reports the candidate URL instead of automatically
+creating another share. Both client and host need this feature's build.
+
 ## Read-only Chat Sharing
 
 Completed assistant turns expose a share action next to copy and fork. It exports

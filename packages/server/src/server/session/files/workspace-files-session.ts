@@ -36,6 +36,7 @@ import {
 } from "../../file-explorer/service.js";
 import { workspaceFileObserver, type FileObserver } from "../../file-explorer/observer.js";
 import { getProjectIcon } from "../../../utils/project-icon.js";
+import { shareDocument } from "../../document-share/service.js";
 
 /**
  * What a workspace file-access request reaches outside its own domain: the
@@ -55,6 +56,7 @@ export interface WorkspaceFilesSessionOptions {
   paseoHome: string;
   logger: pino.Logger;
   fileObserver?: FileObserver;
+  sharingConfig?: { chatShare?: { baseUrl: string } };
 }
 
 /**
@@ -70,6 +72,8 @@ export class WorkspaceFilesSession {
   private readonly logger: pino.Logger;
   private readonly fileUploads: FileUploadStore;
   private readonly fileObserver: FileObserver;
+  private readonly documentShareBaseUrl: string | undefined;
+  private documentSharePending = false;
 
   constructor(options: WorkspaceFilesSessionOptions) {
     this.host = options.host;
@@ -77,6 +81,35 @@ export class WorkspaceFilesSession {
     this.logger = options.logger;
     this.fileUploads = new FileUploadStore({ paseoHome: options.paseoHome });
     this.fileObserver = options.fileObserver ?? workspaceFileObserver;
+    this.documentShareBaseUrl = options.sharingConfig?.chatShare?.baseUrl;
+  }
+
+  async handleDocumentShareRequest(
+    request: Extract<SessionInboundMessage, { type: "fs.document.share.request" }>,
+    source?: object,
+  ): Promise<void> {
+    const reply = (url: string | null, error: string | null) =>
+      this.host.emit(
+        {
+          type: "fs.document.share.response",
+          payload: { url, error, requestId: request.requestId },
+        },
+        source,
+      );
+    if (this.documentSharePending) {
+      reply(null, "A document share is already uploading; wait for it to finish");
+      return;
+    }
+    this.documentSharePending = true;
+    try {
+      if (!this.documentShareBaseUrl) throw new Error("Threadshare is not configured on this host");
+      const result = await shareDocument({ ...request, baseUrl: this.documentShareBaseUrl });
+      reply(result.url, null);
+    } catch (error) {
+      reply(null, getErrorMessage(error));
+    } finally {
+      this.documentSharePending = false;
+    }
   }
 
   async handleFileSubscribeRequest(

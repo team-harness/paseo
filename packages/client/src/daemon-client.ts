@@ -4724,6 +4724,16 @@ export class DaemonClient {
     return payload.result;
   }
 
+  async shareDocument(input: { cwd: string; path: string; content: string }): Promise<string> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      message: { type: "fs.document.share.request", ...input },
+      responseType: "fs.document.share.response",
+      timeout: 150_000,
+    });
+    if (payload.error || !payload.url) throw new Error(payload.error ?? "Document sharing failed");
+    return payload.url;
+  }
+
   async createFileEntry(input: {
     cwd: string;
     parentPath: string;

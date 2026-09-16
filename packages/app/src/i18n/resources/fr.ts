@@ -2007,6 +2007,10 @@ export const fr: TranslationResources = {
       tooLargeToDisplay: "Ce fichier est trop volumineux pour être affiché",
       failedToLoad: "Échec du chargement du fichier",
       failedToLoadPreview: "Échec du chargement de l'aperçu du fichier",
+      shareUnavailable: "Mettez à jour l’hôte pour partager des documents Markdown.",
+      shareFailed: "Échec du partage du document",
+      shareCopyFailed:
+        "Lien créé, mais copie impossible. Appuyez à nouveau sur Partager ou copiez ce lien : {{url}}",
       editor: {
         fileSize: "Taille {{size}}",
         lines: "{{count}} lignes",

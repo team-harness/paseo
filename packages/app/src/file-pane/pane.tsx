@@ -459,6 +459,13 @@ function FilePanePresentation({
   ) => void;
   reviewSummary: React.ReactNode;
 }) {
+  const documentShare = useMemo(
+    () =>
+      readTarget && preview?.kind === "text"
+        ? { serverId, ...readTarget, content: preview.content ?? "" }
+        : undefined,
+    [serverId, readTarget, preview],
+  );
   if (!client && readTarget) {
     return (
       <View style={styles.container} testID="workspace-file-pane">
@@ -473,6 +480,7 @@ function FilePanePresentation({
     return (
       <EditableFilePane
         key={`${serverId}:${readTarget.cwd}:${readTarget.path}`}
+        serverId={serverId}
         client={client}
         cwd={readTarget.cwd}
         path={readTarget.path}
@@ -522,6 +530,7 @@ function FilePanePresentation({
           mode={previewMode}
           onModeChange={onPreviewModeChange}
           reviewSummary={reviewSummary}
+          documentShare={documentShare}
         />
       ) : null}
       <FilePreviewBody
@@ -539,6 +548,7 @@ function FilePanePresentation({
 }
 
 function EditableFilePane({
+  serverId,
   client,
   cwd,
   path,
@@ -556,6 +566,7 @@ function EditableFilePane({
   onAddReviewComment,
   reviewSummary,
 }: {
+  serverId: string;
   client: DaemonClient;
   cwd: string;
   path: string;
@@ -679,6 +690,10 @@ function EditableFilePane({
     [preview, snapshot.content, snapshot.version],
   );
   const showSource = mode !== "preview";
+  const documentShare = useMemo(
+    () => ({ serverId, cwd, path, content: snapshot.content }),
+    [serverId, cwd, path, snapshot.content],
+  );
   const [sourceReviewSelection, setSourceReviewSelection] = useState<ReviewTextSelection | null>(
     null,
   );
@@ -713,6 +728,7 @@ function EditableFilePane({
         onModeChange={onModeChange}
         reviewSummary={reviewSummary}
         reviewSelectionAction={reviewSelectionAction}
+        documentShare={documentShare}
       />
       {showSource ? (
         <FileEditorView

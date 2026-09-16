@@ -1988,6 +1988,10 @@ export const ptBR: TranslationResources = {
       tooLargeToDisplay: "Este arquivo é grande demais para exibir",
       failedToLoad: "Falha ao carregar arquivo",
       failedToLoadPreview: "Falha ao carregar prévia do arquivo",
+      shareUnavailable: "Atualize o host para compartilhar documentos Markdown.",
+      shareFailed: "Falha ao compartilhar documento",
+      shareCopyFailed:
+        "Link criado, mas a cópia falhou. Clique em Compartilhar novamente ou copie este link: {{url}}",
       editor: {
         fileSize: "Tamanho {{size}}",
         lines: "{{count}} linhas",

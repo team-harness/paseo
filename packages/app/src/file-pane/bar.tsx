@@ -8,6 +8,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import type { Theme } from "@/styles/theme";
 import { FileConflictAlert, type FileConflictAlertState } from "./conflict-alert";
 import type { FileEditorStatus } from "./editor/model";
+import { DocumentShareButton, type DocumentShareInput } from "@/document-share/button";
 
 const ThemedSpinner = withUnistyles(LoadingSpinner);
 const spinnerMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -23,6 +24,7 @@ export function FilePanelBar({
   conflict,
   reviewSummary,
   reviewSelectionAction,
+  documentShare,
 }: {
   size: number;
   lineCount?: number;
@@ -34,6 +36,7 @@ export function FilePanelBar({
   conflict?: FileConflictAlertState;
   reviewSummary?: ReactNode;
   reviewSelectionAction?: ReactNode;
+  documentShare?: DocumentShareInput;
 }) {
   const { t } = useTranslation();
   const previewModes = [
@@ -114,6 +117,12 @@ export function FilePanelBar({
                 onValueChange={onModeChange}
                 testID="file-preview-mode"
                 options={previewModes}
+              />
+            ) : null}
+            {documentShare ? (
+              <DocumentShareButton
+                key={`${documentShare.serverId}:${documentShare.cwd}:${documentShare.path}`}
+                {...documentShare}
               />
             ) : null}
           </View>

@@ -887,6 +887,7 @@ export class Session {
       downloadTokenStore,
       paseoHome,
       logger: this.sessionLogger,
+      sharingConfig: daemonRuntimeConfig,
     });
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
@@ -2940,6 +2941,8 @@ export class Session {
         return this.workspaceFilesSession.handleFileUnsubscribeRequest(msg, this.delivery);
       case "fs.file.write.request":
         return this.workspaceFilesSession.handleFileWriteRequest(msg);
+      case "fs.document.share.request":
+        return this.workspaceFilesSession.handleDocumentShareRequest(msg, source);
       case "fs.entry.create.request":
         return this.workspaceFilesSession.handleFileEntryCreateRequest(msg);
       case "fs.entry.rename.request":

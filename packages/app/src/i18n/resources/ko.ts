@@ -1964,6 +1964,10 @@ export const ko: TranslationResources = {
       tooLargeToDisplay: "이 파일은 너무 커서 표시할 수 없습니다",
       failedToLoad: "파일을 불러오지 못했습니다",
       failedToLoadPreview: "파일 미리보기를 불러오지 못했습니다",
+      shareUnavailable: "Markdown 문서를 공유하려면 호스트를 업데이트하세요.",
+      shareFailed: "문서 공유에 실패했습니다",
+      shareCopyFailed:
+        "링크를 만들었지만 복사하지 못했습니다. 공유를 다시 누르거나 이 링크를 복사하세요: {{url}}",
       editor: {
         fileSize: "파일 크기 {{size}}",
         lines: "{{count}} 라인",

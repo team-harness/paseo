@@ -1978,6 +1978,10 @@ export const en = {
       tooLargeToDisplay: "This file is too large to display",
       failedToLoad: "Failed to load file",
       failedToLoadPreview: "Failed to load file preview",
+      shareUnavailable: "Update the host to share Markdown documents.",
+      shareFailed: "Document sharing failed",
+      shareCopyFailed:
+        "Link created, but copying failed. Press Share again to copy, or copy this link: {{url}}",
       editor: {
         fileSize: "File size {{size}}",
         lines: "{{count}} lines",

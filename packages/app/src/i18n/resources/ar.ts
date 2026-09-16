@@ -1952,6 +1952,9 @@ export const ar: TranslationResources = {
       tooLargeToDisplay: "هذا الملف كبير جدًا بحيث لا يمكن عرضه",
       failedToLoad: "فشل تحميل الملف",
       failedToLoadPreview: "فشل تحميل معاينة الملف",
+      shareUnavailable: "حدّث المضيف لمشاركة مستندات Markdown.",
+      shareFailed: "فشلت مشاركة المستند",
+      shareCopyFailed: "تم إنشاء الرابط ولكن تعذّر نسخه. اضغط مشاركة مجددًا أو انسخ الرابط: {{url}}",
       editor: {
         fileSize: "حجم الملف {{size}}",
         lines: "{{count}} سطر",

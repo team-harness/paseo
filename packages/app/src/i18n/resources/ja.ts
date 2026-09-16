@@ -1974,6 +1974,10 @@ export const ja: TranslationResources = {
       tooLargeToDisplay: "このファイルは大きすぎて表示できません",
       failedToLoad: "ファイルの読み込みに失敗しました",
       failedToLoadPreview: "ファイルプレビューの読み込みに失敗しました",
+      shareUnavailable: "Markdown 文書を共有するにはホストを更新してください。",
+      shareFailed: "文書の共有に失敗しました",
+      shareCopyFailed:
+        "リンクを作成しましたがコピーできませんでした。もう一度共有を押すか、このリンクをコピーしてください：{{url}}",
       editor: {
         fileSize: "ファイルサイズ {{size}}",
         lines: "{{count}} 行",

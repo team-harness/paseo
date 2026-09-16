@@ -2806,6 +2806,14 @@ export const FileUnsubscribeRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const DocumentShareRequestSchema = z.object({
+  type: z.literal("fs.document.share.request"),
+  cwd: z.string(),
+  path: z.string(),
+  content: z.string().max(1024 * 1024),
+  requestId: z.string(),
+});
+
 export const FileWriteRequestSchema = z.object({
   type: z.literal("fs.file.write.request"),
   cwd: z.string(),
@@ -3366,6 +3374,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   FileSubscribeRequestSchema,
   FileUnsubscribeRequestSchema,
   FileWriteRequestSchema,
+  DocumentShareRequestSchema,
   FileEntryCreateRequestSchema,
   FileEntryRenameRequestSchema,
   FileEntryDuplicateRequestSchema,
@@ -3748,6 +3757,8 @@ export const ServerInfoStatusPayloadSchema = z
         workspaceScriptManagement: z.boolean().optional(),
         // COMPAT(chatShare): added in v0.2.4, remove gate after 2027-01-29.
         chatShare: z.boolean().optional(),
+        // COMPAT(documentShare): added in v0.8.0, remove gate after 2027-03-16.
+        documentShare: z.boolean().optional(),
         // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
         projectCustomIcon: z.boolean().optional(),
         // COMPAT(fsEntryOps): added in v0.3.0, remove gate after 2027-02-08.
@@ -6035,6 +6046,15 @@ export const FileWriteResultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("error"), error: z.string() }),
 ]);
 
+export const DocumentShareResponseSchema = z.object({
+  type: z.literal("fs.document.share.response"),
+  payload: z.object({
+    url: z.string().nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const FileWriteResponseSchema = z.object({
   type: z.literal("fs.file.write.response"),
   payload: z.object({
@@ -7034,6 +7054,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FileSubscribeResponseSchema,
   FileUnsubscribeResponseSchema,
   FileWriteResponseSchema,
+  DocumentShareResponseSchema,
   FileEntryCreateResponseSchema,
   FileEntryRenameResponseSchema,
   FileEntryDuplicateResponseSchema,
