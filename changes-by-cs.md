@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `a8a8da047`（完整 SHA 以 Git 为准），同步于 2026-09-17。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `a8a8da047`）。
+- 最近同步基线：`upstream/main` = `3cc4ae286`（完整 SHA 以 Git 为准），同步于 2026-09-18。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `3cc4ae286`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-18: `upstream/main` `3cc4ae286` / `v0.9.0-beta.1`
+
+- 合入上游从 `a8a8da047` 到 `3cc4ae286` 的 13 个提交：npm 插件安装与来源更新审阅、插件打开外链和工作区浏览器、ComposerDock 布局统一、输入框聚焦时聊天查找、恢复逐字流式回复、桌面 daemon 管理内存优化、Safari 官网展示，以及 beta 版本和发布上传重试。
+- 流式回复采用上游的字符节奏与稳定块索引，移除上游已退役的 WordFade 路径；继续保留 Assistant 末条回复的内联时间及复制忽略标记。ComposerDock 统一承接键盘与高度约束，fork 的 Host 底部安全区归属迁入原生 Dock，避免与 Status Bar 重复留白；引用、评论投递和完整 Composer 消息历史继续保留。
+- Android 倒置列表的选区滚动修复改用上游 PaseoScrollPackage，删除已被替代的 React Native 源码补丁；fork 的原生引用/评论模块和独立签名身份仍保留。Status Bar/计费、多 Host 汇总、Host Prompt Library、Threadshare 对话与文档分享、计划任务既有 Agent 目标、canonical 100 条兼容及三包分发没有上游等价实现，继续保留。
 
 ### 2026-09-17: `upstream/main` `a8a8da047` / post-`v0.8.0`
 

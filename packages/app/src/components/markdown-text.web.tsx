@@ -1,6 +1,12 @@
 import { useMemo, type ReactNode } from "react";
-import { View, type StyleProp, type TextProps, type TextStyle, type ViewStyle } from "react-native";
-import { WordFadeText } from "@/word-stream/text";
+import {
+  Text,
+  View,
+  type StyleProp,
+  type TextProps,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { markdownCopyDataSet, type MarkdownCopyInlineTag } from "@/assistant-selection-copy/markup";
 
@@ -44,7 +50,7 @@ export function MarkdownTextSpan({
   }, [copyIgnored, copyTag, monoSurface]);
 
   return (
-    <WordFadeText
+    <Text
       dataSet={dataSet}
       style={style}
       onPress={onPress}
@@ -52,7 +58,7 @@ export function MarkdownTextSpan({
       testID={testID}
     >
       {children}
-    </WordFadeText>
+    </Text>
   );
 }
 

@@ -6,6 +6,14 @@ import {
   expectReconnectingToastVisible,
 } from "../support/helpers/workspace-ui";
 import { trackPromptJumpRequests } from "../support/helpers/agent-timeline-gate";
+import {
+  composerLocator,
+  fillComposerDraft,
+  expectComposerDraft,
+  expectComposerFocused,
+} from "../support/helpers/composer";
+
+import { openCommandCenter, closeCommandCenter } from "../support/helpers/command-center";
 
 const RESPONSE =
   'İ😀hello **world**; hello *world*.\n\n[hello &amp; world](https://example.com/hidden-destination)\n\n```ts\nconst a = "a.b";\n```\n\n- first cell\n- second cell';
@@ -85,19 +93,20 @@ test("loads older history through prompt navigation and finds repeated rendered 
     featureValues: { mockAssistantResponse: RESPONSE },
   });
   try {
-    for (let index = 0; index < 45; index++) {
+    // Exceed the fork's 100-row canonical page so search exercises unloaded history.
+    for (let index = 0; index < 120; index++) {
       await agent.client.sendAgentMessage(agent.agentId, `Prompt number ${index}`);
       await agent.client.waitForFinish(agent.agentId, 15_000);
     }
     const jumps = await trackPromptJumpRequests(page, agent.agentId);
     await openAgentRoute(page, agent);
-    await expect(page.getByText("Prompt number 44", { exact: true })).toBeVisible();
+    await expect(page.getByText("Prompt number 119", { exact: true })).toBeVisible();
     await expect(page.getByText("Prompt number 0", { exact: true })).toHaveCount(0);
     await searchChat(page, "hello world");
     await expectHighlight(page, "hello world");
     await expect(status(page)).toHaveText("1 of 2 in message");
     await page.screenshot({ path: testInfo.outputPath("chat-find-highlight.png") });
-    expect(jumps.requests()[0]).toMatchObject({ limit: 40, mergeWindow: true });
+    expect(jumps.requests()[0]).toMatchObject({ limit: 100, mergeWindow: true });
     await nextMatch(page);
     await expect(status(page)).toHaveText("2 of 2 in message");
     await expectHighlight(page, "hello world");
@@ -203,3 +212,62 @@ test("finds text beyond the normal render cap and restores the cap when Find clo
     await agent.cleanup();
   }
 });
+
+for (const shortcut of ["Control+f", "Meta+f"]) {
+  test(`opens and refocuses Find with ${shortcut} from the composer`, async ({
+    page,
+  }, testInfo) => {
+    const agent = await seedMockAgentWorkspace({
+      repoPrefix: "chat-find-composer-",
+      title: "Chat Find from composer",
+      initialPrompt: "Render the response",
+      featureValues: { mockAssistantResponse: RESPONSE },
+    });
+    try {
+      await agent.client.waitForFinish(agent.agentId, 15_000);
+      await openAgentRoute(page, agent);
+      await searchFromComposerWithoutLosingDraft(page, shortcut);
+      await refocusFindAndReplaceQuery(page, shortcut);
+      await page.screenshot({ path: testInfo.outputPath("find-from-composer.png") });
+      await closeFind(page);
+      await expectCommandCenterOwnsFindShortcut(page, shortcut);
+      await fillComposerDraft(page, "Draft after closing Find");
+      await expectComposerDraft(page, "Draft after closing Find");
+    } finally {
+      await agent.cleanup();
+    }
+  });
+}
+
+async function openFindFromComposer(page: Page, shortcut: string) {
+  await page.keyboard.press(shortcut);
+  await expect(query(page)).toBeFocused();
+}
+
+async function searchFromComposerWithoutLosingDraft(page: Page, shortcut: string) {
+  await fillComposerDraft(page, "Keep this draft");
+  await expectComposerFocused(page);
+  await openFindFromComposer(page, shortcut);
+  await expectComposerDraft(page, "Keep this draft");
+  await query(page).fill("hello world");
+  await expectHighlight(page, "hello world");
+}
+
+async function refocusFindAndReplaceQuery(page: Page, shortcut: string) {
+  await composerLocator(page).click();
+  await expectComposerFocused(page);
+  await openFindFromComposer(page, shortcut);
+  await expect(query(page)).toHaveValue("hello world");
+  await expectComposerDraft(page, "Keep this draft");
+  await page.keyboard.type("a.b");
+  await expect(query(page)).toHaveValue("a.b");
+  await expectHighlight(page, "a.b");
+}
+
+async function expectCommandCenterOwnsFindShortcut(page: Page, shortcut: string) {
+  await openCommandCenter(page);
+  await page.keyboard.press(shortcut);
+  await expect(page.getByTestId("command-center-panel")).toBeVisible();
+  await expect(query(page)).toHaveCount(0);
+  await closeCommandCenter(page);
+}

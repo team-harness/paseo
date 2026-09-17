@@ -16,15 +16,13 @@ import React, {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet as RNStyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
-import { KeyboardDock } from "@/components/keyboard-dock";
-import { ComposerViewport, ComposerViewportContent } from "@/composer/viewport";
+import { ComposerDock } from "@/composer/dock";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { RetainedChatContent } from "./retained-chat-content";
@@ -87,7 +85,6 @@ import {
   type Agent,
   useSessionStore,
 } from "@/stores/session-store";
-import { useHostBottomChromeInset } from "@/status-summary/bottom-chrome-inset";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { openWorkspaceChanges } from "@/workspace-tabs/open-supporting-view";
@@ -1293,7 +1290,36 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       ) : null}
     </View>
   );
-  const contentContainer = <View style={styles.contentContainer}>{streamContent}</View>;
+
+  const dockContent = (
+    <View style={styles.contentContainer}>
+      {streamContent}
+
+      {showHistorySyncError ? (
+        <TimelineSyncErrorCallout isRetrying={isRetryingHistorySync} onRetry={retryTimelineSync} />
+      ) : null}
+    </View>
+  );
+
+  const dockOverlay = (
+    <>
+      {showHistorySyncOverlay ? (
+        <View style={styles.historySyncOverlay} testID="agent-history-overlay">
+          <ThemedLoadingSpinner size="large" uniProps={foregroundMutedColorMapping} />
+        </View>
+      ) : null}
+
+      <TimelineSyncStatus sync={timelineSync} toast={toast} onDismiss={dismiss} />
+    </>
+  );
+
+  const dock = (
+    <ChatSurface disabled={isArchivingCurrentAgent}>
+      {dockContent}
+      {composerSection}
+      {dockOverlay}
+    </ChatSurface>
+  );
 
   return (
     <RewindComposerRestoreProvider
@@ -1301,45 +1327,8 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       setText={agentInputDraft.replaceText}
       onRewindComplete={handleRewindComplete}
     >
-      <ComposerViewport style={styles.root} keyboardReserve="retain">
-        <DockedChatSurface disabled={isArchivingCurrentAgent}>
-          {contentContainer}
-
-          {showHistorySyncError ? (
-            <View style={styles.timelineSyncCalloutRail}>
-              <View style={styles.timelineSyncCalloutContent}>
-                <View style={styles.timelineSyncCallout} testID="agent-timeline-sync-error">
-                  <Text style={styles.timelineSyncCalloutText}>
-                    {t("agentPanel.states.timelineSyncFailed")}
-                  </Text>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onPress={retryTimelineSync}
-                    disabled={isRetryingHistorySync}
-                    testID="agent-timeline-sync-retry"
-                  >
-                    {isRetryingHistorySync
-                      ? t("agentPanel.states.timelineSyncRetrying")
-                      : t("common.actions.retry")}
-                  </Button>
-                </View>
-              </View>
-            </View>
-          ) : null}
-
-          <ComposerViewportContent style={animatedStaticStyles.inputAreaWrapper}>
-            {composerSection}
-          </ComposerViewportContent>
-
-          {showHistorySyncOverlay ? (
-            <View style={styles.historySyncOverlay} testID="agent-history-overlay">
-              <ThemedLoadingSpinner size="large" uniProps={foregroundMutedColorMapping} />
-            </View>
-          ) : null}
-
-          <TimelineSyncStatus sync={timelineSync} toast={toast} onDismiss={dismiss} />
-        </DockedChatSurface>
+      <View style={styles.root}>
+        {dock}
 
         {isArchivingCurrentAgent ? (
           <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
@@ -1348,18 +1337,52 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
             <Text style={styles.archivingSubtitle}>{t("agentPanel.states.archivingSubtitle")}</Text>
           </View>
         ) : null}
-      </ComposerViewport>
+      </View>
     </RewindComposerRestoreProvider>
   );
 });
 
-function DockedChatSurface({ children, disabled }: { children: ReactNode; disabled: boolean }) {
+function ChatSurface({
+  children,
+  disabled,
+}: {
+  children: [ReactNode, ReactNode, ReactNode];
+  disabled: boolean;
+}) {
   return (
-    <KeyboardDock style={styles.container}>
-      <FileDropZone style={styles.container} disabled={disabled}>
-        {children}
-      </FileDropZone>
-    </KeyboardDock>
+    <FileDropZone style={styles.container} disabled={disabled}>
+      <ComposerDock>{children}</ComposerDock>
+    </FileDropZone>
+  );
+}
+
+function TimelineSyncErrorCallout({
+  isRetrying,
+  onRetry,
+}: {
+  isRetrying: boolean;
+  onRetry: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.timelineSyncCalloutRail}>
+      <View style={styles.timelineSyncCalloutContent}>
+        <View style={styles.timelineSyncCallout} testID="agent-timeline-sync-error">
+          <Text style={styles.timelineSyncCalloutText}>
+            {t("agentPanel.states.timelineSyncFailed")}
+          </Text>
+          <Button
+            size="sm"
+            variant="secondary"
+            onPress={onRetry}
+            disabled={isRetrying}
+            testID="agent-timeline-sync-retry"
+          >
+            {isRetrying ? t("agentPanel.states.timelineSyncRetrying") : t("common.actions.retry")}
+          </Button>
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -1547,7 +1570,6 @@ function ActiveAgentComposer({
   onMessageSent: () => void;
   textInsertion: ComposerTextInsertion | null;
 }) {
-  const insets = useSafeAreaInsets();
   const isCompactFormFactor = useIsCompactFormFactor();
   const { onLayout: onInputAreaLayout, isBelow: isCompactComposerLayout } = useContainerWidthBelow(
     COMPACT_FORM_FACTOR_WIDTH,
@@ -1622,20 +1644,12 @@ function ActiveAgentComposer({
     ],
   );
 
-  const effectiveBottomInset = useHostBottomChromeInset(insets.bottom);
-
-  const inputAreaStyle = useMemo(
-    () => [animatedStaticStyles.inputAreaWrapper, { paddingBottom: effectiveBottomInset }],
-    [effectiveBottomInset],
-  );
-
   return (
-    <View style={inputAreaStyle} onLayout={onInputAreaLayout}>
+    <View style={animatedStaticStyles.inputAreaWrapper} onLayout={onInputAreaLayout}>
       <Composer
         agentId={agentId}
         serverId={serverId}
         workspaceId={workspaceId}
-        externalKeyboardShift
         blurOnSubmit={isNative}
         isPaneFocused={isPaneFocused}
         textSource={agentInputDraft.textSource}
@@ -1747,8 +1761,6 @@ const styles = StyleSheet.create((theme) => ({
   root: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
-    // KeyboardDock translates the chat surface while the keyboard moves; clip it at the header edge.
-    overflow: "hidden",
   },
   container: {
     flex: 1,

@@ -8,7 +8,6 @@ import {
   type ViewStyle,
 } from "react-native";
 import { UITextView } from "react-native-uitextview";
-import { WordFadeText } from "@/word-stream/text";
 import { resolvePlainMarkdownTextStyle } from "@/components/markdown-text-style";
 import {
   iosMarkdownTextIsSelectable,
@@ -74,7 +73,8 @@ export function MarkdownTextSpan({
   }
 
   return (
-    <WordFadeText
+    <UITextView
+      uiTextView
       selectable
       style={plainStyle}
       onPress={onPress}
@@ -82,7 +82,7 @@ export function MarkdownTextSpan({
       testID={testID}
     >
       {children}
-    </WordFadeText>
+    </UITextView>
   );
 }
 
@@ -120,8 +120,8 @@ export function MarkdownParagraphView({
   }
 
   return (
-    <WordFadeText selectable style={textStyle}>
+    <UITextView uiTextView selectable style={textStyle}>
       {children}
-    </WordFadeText>
+    </UITextView>
   );
 }
