@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `3cc4ae286`（完整 SHA 以 Git 为准），同步于 2026-09-18。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `3cc4ae286`）。
+- 最近同步基线：`upstream/main` = `d636abd7a`（完整 SHA 以 Git 为准），同步于 2026-09-19。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `d636abd7a`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-19: `upstream/main` `d636abd7a` / `v0.9.0-beta.2`
+
+- 合入上游 4 个提交：时间线只订阅本次客户端会话实际打开过的聊天，关闭标签才释放订阅；恢复旧布局不再自动唤醒全部历史 Agent。重连、切换工作区和后台保活继续保留已打开聊天的订阅。
+- Agent 恢复采用上游的持久化 attention 与时间戳策略：加载 runtime 不再冒充新活动或已读操作，避免侧边栏最近使用时间被改写。Status Bar 的独立汇总、提醒实际目标跳转、usage ledger 与异步子 Agent 生命周期继续保留；canonical 100 条分页、完整 Prompt 索引和 Threadshare 全历史导出不依赖恢复布局的订阅集合。
+- 上游没有提供 fork 的 Status Bar/计费、多 Host 汇总、Host Prompt Library、引用与评论投递、Assistant 时间、Threadshare 对话/文档分享、计划任务既有 Agent 目标或独立发布链路的等价能力，本轮不下线这些功能。固定签名、Android/iOS 独立身份及三包分发继续保留。
 
 ### 2026-09-18: `upstream/main` `3cc4ae286` / `v0.9.0-beta.1`
 
