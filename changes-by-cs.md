@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `d636abd7a`（完整 SHA 以 Git 为准），同步于 2026-09-19。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `d636abd7a`）。
+- 最近同步基线：`upstream/main` = `135a3b4c9`（完整 SHA 以 Git 为准），同步于 2026-09-22。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `135a3b4c9`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-22: `upstream/main` `135a3b4c9` / post-`v0.9.0-beta.2`
+
+- 合入上游 3 个提交：聊天查找按完整消息身份定位流式生成的 Markdown 块，跨块查找、滚动和复制保持一致；macOS 的聊天、文件和终端查找统一使用 Command+F；Pi 按模型的 thinking 配置及 Provider 实际返回值展示、持久化。
+- 查找、消息块身份、原文分隔和 Pi 配置采用上游实现；fork 的选区引用继续同时支持用户和 Assistant 消息，同一 Assistant 消息跨块复制采用上游范围拼接。保留 Assistant 末条内联时间、完整 Prompt 索引、Threadshare 范围分享、canonical 100 条兼容和工作区内切回标签跟随最新消息。
+- 上游快捷键 E2E 显式设置非 Mac 场景的平台，并在 Mac 原生 Control+F 移动光标后重置搜索起点，保证本机与 Linux CI 验证相同前提；不改变产品的快捷键策略。
+- 上游没有提供 Status Bar/计费、多 Host 汇总、Host Prompt Library、Review Comments 投递、Threadshare 文档图片分享、计划任务既有 Agent 目标或独立发布链路的等价能力，本轮没有下线 fork 功能。固定签名、Android/iOS 身份及三包分发继续保留。
 
 ### 2026-09-19: `upstream/main` `d636abd7a` / `v0.9.0-beta.2`
 
