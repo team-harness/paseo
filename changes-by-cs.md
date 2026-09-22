@@ -34,6 +34,7 @@
 
 - 合入上游 14 个提交及 0.9.0/0.9.1 发布：修复增量 catch-up 时侧边栏会话丢失、目录名末尾空格导致项目消失、新聊天完成同步前 draft handoff 过早释放；聊天查找改为全会话匹配计数；Codex 导入按最近更新顺序遍历分页；新增 Claude Opus 5.5 模型能力；同步赞助页、changelog、版本和 lockfile。
 - Directory replica、创建交接、侧边栏排序、搜索计数、Codex 导入和 Claude 模型采用上游实现。搜索协议的 count 保持 optional，旧 Host 在搜索边界归一化；fork canonical 100 条分页、完整 Prompt 索引、Status Bar 聚合及 Pin、usage accounting、异步子 Agent 生命周期和 Threadshare 全历史/范围分享继续保留。
+- 聊天搜索 E2E 继续使用超出 100 条分页边界的 120 轮样本；全会话计数断言相应为 240 个匹配，不沿用上游 45 轮样本的 90 个匹配。
 - 上游没有提供 Host Prompt Library、Review Comments 投递、选区引用与末条内联时间、计划任务既有 Agent 目标或独立三包发布的等价能力，本轮没有下线 fork 功能。固定 macOS/Android 签名和 Android/iOS 安装身份保持不变。
 
 ### 2026-09-22: `upstream/main` `135a3b4c9` / post-`v0.9.0-beta.2`

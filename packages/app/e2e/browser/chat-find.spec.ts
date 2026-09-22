@@ -140,14 +140,14 @@ test("loads older history through prompt navigation and finds repeated rendered 
     await expect(page.getByText("Prompt number 0", { exact: true })).toHaveCount(0);
     await searchChat(page, "hello world");
     await expectHighlight(page, "hello world");
-    await expect(status(page)).toHaveText("1 of 90");
+    await expect(status(page)).toHaveText("1 of 240");
     await page.screenshot({ path: testInfo.outputPath("chat-find-highlight.png") });
     expect(jumps.requests()[0]).toMatchObject({ limit: 100, mergeWindow: true });
     await nextMatch(page);
-    await expect(status(page)).toHaveText("2 of 90");
+    await expect(status(page)).toHaveText("2 of 240");
     await expectHighlight(page, "hello world");
     await previousMatch(page);
-    await expect(status(page)).toHaveText("1 of 90");
+    await expect(status(page)).toHaveText("1 of 240");
     await query(page).fill("hello & world");
     await expectHighlight(page, "hello & world");
     await query(page).fill("a.b");
