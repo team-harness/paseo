@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `135a3b4c9`（完整 SHA 以 Git 为准），同步于 2026-09-22。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `135a3b4c9`）。
+- 最近同步基线：`upstream/main` = `3dbbbb535`（完整 SHA 以 Git 为准），同步于 2026-09-23。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `3dbbbb535`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-23: `upstream/main` `3dbbbb535` / `v0.9.1`
+
+- 合入上游 14 个提交及 0.9.0/0.9.1 发布：修复增量 catch-up 时侧边栏会话丢失、目录名末尾空格导致项目消失、新聊天完成同步前 draft handoff 过早释放；聊天查找改为全会话匹配计数；Codex 导入按最近更新顺序遍历分页；新增 Claude Opus 5.5 模型能力；同步赞助页、changelog、版本和 lockfile。
+- Directory replica、创建交接、侧边栏排序、搜索计数、Codex 导入和 Claude 模型采用上游实现。搜索协议的 count 保持 optional，旧 Host 在搜索边界归一化；fork canonical 100 条分页、完整 Prompt 索引、Status Bar 聚合及 Pin、usage accounting、异步子 Agent 生命周期和 Threadshare 全历史/范围分享继续保留。
+- 上游没有提供 Host Prompt Library、Review Comments 投递、选区引用与末条内联时间、计划任务既有 Agent 目标或独立三包发布的等价能力，本轮没有下线 fork 功能。固定 macOS/Android 签名和 Android/iOS 安装身份保持不变。
 
 ### 2026-09-22: `upstream/main` `135a3b4c9` / post-`v0.9.0-beta.2`
 
