@@ -38,6 +38,61 @@ test("selects priority, flex and long-context rates per request", () => {
   expect(estimateModelCostUsd({ ...tokens, requestInputTokens: 272_000 })).toBeCloseTo(2.15);
 });
 
+// OpenAI pricing, checked 2026-09-23: https://developers.openai.com/api/docs/pricing
+test.each([
+  { modelId: "gpt-6-sol", input: 2, cached: 0.2, created: 2.5, output: 10 },
+  { modelId: "gpt-6-luna", input: 0.1, cached: 0.01, created: 0.125, output: 0.5 },
+])("prices $modelId across token categories, tiers and the 272K boundary", (rates) => {
+  for (const serviceTier of ["default", "priority", "flex"] as const) {
+    const tierMultiplier = { default: 1, priority: 2, flex: 0.5 }[serviceTier];
+    for (const requestInputTokens of [272_000, 272_001]) {
+      const longContext = requestInputTokens > 272_000;
+      const inputMultiplier = longContext ? 2 : 1;
+      const outputMultiplier = longContext ? 1.5 : 1;
+      const context = { modelId: rates.modelId, serviceTier, requestInputTokens };
+      expect(estimateModelCostUsd({ ...context, inputTokens: 1000, outputTokens: 0 })).toBeCloseTo(
+        (rates.input * inputMultiplier * tierMultiplier) / 1000,
+        12,
+      );
+      expect(
+        estimateModelCostUsd({
+          ...context,
+          inputTokens: 1000,
+          cachedInputTokens: 1000,
+          outputTokens: 0,
+        }),
+      ).toBeCloseTo((rates.cached * inputMultiplier * tierMultiplier) / 1000, 12);
+      expect(
+        estimateModelCostUsd({
+          ...context,
+          inputTokens: 1000,
+          cacheCreationInputTokens: 1000,
+          outputTokens: 0,
+        }),
+      ).toBeCloseTo((rates.created * inputMultiplier * tierMultiplier) / 1000, 12);
+      expect(estimateModelCostUsd({ ...context, inputTokens: 0, outputTokens: 1000 })).toBeCloseTo(
+        (rates.output * outputMultiplier * tierMultiplier) / 1000,
+        12,
+      );
+    }
+  }
+});
+
+test.each([
+  { modelId: "gpt-6-sol", cost: 0.00238 },
+  { modelId: "gpt-6-luna", cost: 0.000119 },
+])("does not double-count cached reads or writes for $modelId", ({ modelId, cost }) => {
+  expect(
+    estimateModelCostUsd({
+      modelId,
+      inputTokens: 1000,
+      cachedInputTokens: 400,
+      cacheCreationInputTokens: 200,
+      outputTokens: 100,
+    }),
+  ).toBeCloseTo(cost, 12);
+});
+
 test("does not guess providers, model aliases, missing tiers or invalid token counts", () => {
   const tokens = { modelId: "gpt-6-astra", inputTokens: 100, outputTokens: 20 };
   expect(estimateModelCostUsd({ ...tokens, provider: "anthropic" })).toBeUndefined();

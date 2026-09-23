@@ -478,20 +478,23 @@
 
 **状态**：fork 维护项。主要提交：`40cc55580`（GPT-5.5）、`7bdd79b17`（GPT-5.6）、`21ac8b8fe`（Codex usage accounting）。
 
-**行为**：为 Codex usage 计费增加 GPT-5.5 和 GPT-5.6 定价；将 Codex app-server 的 thread 累计 token usage 归一化为 foreground turn 内的单调累计值，避免多模型调用、重复通知、resume 或 native counter reset 导致 Status Bar 费用少记。
+**行为**：Codex usage 计费使用固定版本的 LiteLLM 价格快照，覆盖 GPT-5.5、GPT-5.6 和 GPT-6；将 Codex app-server 的 thread 累计 token usage 归一化为 foreground turn 内的单调累计值，避免多模型调用、重复通知、resume 或 native counter reset 导致 Status Bar 费用少记。快照更新与历史缺失费用补算约束见 [data-model.md](docs/data-model.md#cost-estimates)。
 
 - 2026-07-30 按 `Wei-Shaw/sub2api` 公开 model pricing catalogue 更新精确变体：`gpt-5.6-sol` 为 `$5/$0.5/$30`、`gpt-5.6-terra` 为 `$2.5/$0.25/$15`、`gpt-5.6-luna` 为 `$1/$0.1/$6`（输入/缓存输入/输出，每百万 token），并补齐 GPT-5.4/GPT-5.5 `-pro` 变体。Status Bar 仍是本地 token 估算；无法反映 sub2api 实例的组倍率、账号倍率、私有模型映射或实际扣费，且价格更新不回填既有 ledger 记录。
+- 2026-09-23 将 LiteLLM 快照更新至 `bc3b5b1d5b234b527aa9e4a56e156019f6827e53`，补齐 `gpt-6-sol` 与 `gpt-6-luna`。按 [OpenAI 官方价格](https://developers.openai.com/api/docs/pricing)核对：标准短上下文输入/缓存读取/输出分别为 `$2/$0.20/$10` 与 `$0.10/$0.01/$0.50`（每百万 token）；测试覆盖缓存写入、Fast/Priority、Flex，以及单请求输入超过 272K 的加价边界。已有费用不重定价，未知变体不按家族名猜价。
 
 **关键文件**：
 
+- `packages/server/src/server/model-pricing/`
+- `scripts/update-model-prices.mjs`
 - `packages/server/src/server/agent/providers/codex-app-server-agent.ts`
 - `packages/server/src/server/agent/providers/codex-app-server-agent.test.ts`
 
 **同步规则**：
 
-- 上游更新同一价格表时，以其模型标识和金额为准，逐项核对 GPT-5.5 / GPT-5.6 是否已覆盖，避免重复 case 或错误覆盖顺序。
+- 更新价格快照时保留原始内容、来源 revision、SHA-256 和许可证；对照官方价格核对新模型及各档位，不添加模型家族前缀兜底。
 - 上游调整 Codex token usage payload 或 ledger 记账时，保留 turn 内累计、native turn id 校验和旧 payload 的单次快照兼容路径；修复不回填既有 ledger 数据。
-- 必跑：`codex-app-server-agent.test.ts`、usage ledger 与 Status Bar usage 目标测试。
+- 必跑：`pricing.test.ts`；调整 usage 归一化或账本行为时，再跑 `codex-app-server-agent.test.ts`、usage ledger 与 Status Bar usage 目标测试。
 
 ### 4. 桌面端与 Web Server 本地打包兼容
 
