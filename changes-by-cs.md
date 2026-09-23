@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `3dbbbb535`（完整 SHA 以 Git 为准），同步于 2026-09-23。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `3dbbbb535`）。
+- 最近同步基线：`upstream/main` = `d615d3d424325dd0b8f8a20b5f0f6cc4bdfb6fc7`，同步于 2026-09-24。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `d615d3d42`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,14 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-24: `upstream/main` `d615d3d42` / post-`v0.9.1`
+
+- 合入上游 35 个提交：降低目录建议扫描开销、限制文件监听与会话关闭后的资源占用、修复重复时间线和 replica cache 写入失败循环；完善离线磁盘工作区保留、归档历史读取与恢复、fork PR 识别，并禁止新分支首次 push 意外落到 main。
+- Provider 修复采用上游实现：GPT-6 Sol/Luna 开放 Fast 模式；Codex 非 Auto-review 模式显式交还用户审批；Claude 支持结构化启动参数、正确定位 rewind 和 slash command；OpenCode 尊重会话权限；Pi/OMP 退出、中断和插件关闭顺序保持正确。fork 的异步子 Agent 生命周期、replacement 恢复及 usage ledger 继续保留。
+- 快捷键组合、输入时面板聚焦、Backspace 绑定、Android Back 收起底部面板、重连后的 workspace labels 和语音提示音采用上游实现。DirectorySync 继续保留 canonical 100 条分页；Prompt Library、Composer 完整历史、Review Comments、选区引用、Assistant 时间和 Threadshare 分享仍无上游等价能力，本轮不下线。
+- 新增组合快捷键 E2E 同时覆盖 Mac 和非 Mac 的 binding，避免在 macOS 上只写入未启用的非 Mac 绑定导致假失败；两种平台均验证相同的 Ctrl 多步组合行为。
+- 三包同时包含 `c6cef0028` 的 GPT-6 Sol/Luna 价格快照更新。Status Bar 聚合及 Pin、固定 macOS/Android 签名、独立 Android/iOS 安装身份和发布链路保持不变。
 
 ### 2026-09-23: `upstream/main` `3dbbbb535` / `v0.9.1`
 
