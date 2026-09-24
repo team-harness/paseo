@@ -477,6 +477,7 @@ export interface PaseoDaemon {
   start(): Promise<void>;
   stop(): Promise<void>;
   getListenTarget(): ListenTarget | null;
+  getServerId(): string;
 }
 
 export interface PaseoDaemonDependencies {
@@ -1856,6 +1857,7 @@ export async function createPaseoDaemon(
     start,
     stop,
     getListenTarget: () => boundListenTarget,
+    getServerId: () => serverId,
   };
 }
 

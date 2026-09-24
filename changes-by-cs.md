@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `d615d3d424325dd0b8f8a20b5f0f6cc4bdfb6fc7`，同步于 2026-09-24。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `d615d3d42`）。
+- 最近同步基线：`upstream/main` = `e3c853df58bd38f0c29553454c1cbe49cc391c09`，同步于 2026-09-25。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `e3c853df5`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-25: `upstream/main` `e3c853df5` / `v0.9.2`
+
+- 合入上游 19 个提交并升级至 `0.9.2`：daemon 可跳过无效计划文件、恢复空 PID 锁，配置支持 UTF-8 BOM，启动和 CLI 鉴权失败给出明确原因；插件重载等待连接关闭，避免子进程退出竞态。
+- 多选问答保留已选项与 Other 文本，聊天附件保留中文等原始文件名；Claude 设置中的 Fable 映射进入模型列表，Hub execution 可设置工作区标题，创建本地工作区拒绝不存在或非目录路径，CLI 输出完整权限请求 ID。
+- Android 商店构建采用上游的 lint 内存优化；版本、lockfile 和 Nix hash 跟随上游。fork 本地 APK 的独立包名、固定 keystore、配置指纹缓存和离线构建链路继续保留；DMG 固定签名与 Web Server 七包归档不变。
+- 上游计划存储容错不替代 fork 的既有 Agent 目标与 Prompt 编辑；配置解析与 Hub 权限更新继续保留 Threadshare、Status Summary、Prompt Library 等扩展。Status Bar/usage ledger、GPT-6 价格、异步子 Agent 生命周期、replacement 恢复、canonical 100 条分页、完整 Composer 历史、引用/评论投递、Assistant 时间和聊天/文档分享均无等价替代，本轮不下线 fork 能力。
 
 ### 2026-09-24: `upstream/main` `d615d3d42` / post-`v0.9.1`
 
