@@ -296,17 +296,6 @@ test("finish notifications tell the parent the child's last assistant message", 
   expect(scenario.steerAttemptCount()).toBe(1);
 });
 
-test("re-arming a finish notification replaces the existing child-to-caller watcher", async () => {
-  const scenario = createFinishNotificationScenario();
-
-  scenario.startWatchingChild();
-  scenario.startWatchingChild();
-  scenario.finishChild();
-
-  await vi.waitFor(() => expect(scenario.parentPrompts()).toHaveLength(1));
-  expect(scenario.parentPrompts()[0]).toContain("Agent child-agent (Child Agent) finished.");
-});
-
 test("finish notifications truncate oversized child responses", async () => {
   const included = "x".repeat(4000);
   const omitted = "TAIL-MARKER".repeat(50);

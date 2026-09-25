@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `e3c853df58bd38f0c29553454c1cbe49cc391c09`，同步于 2026-09-25。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `e3c853df5`）。
+- 最近同步基线：`upstream/main` = `8cd989529e2d86bb6d1c8a775bf695fa5970c997`，同步于 2026-09-26。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `8cd989529`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-26: `upstream/main` `8cd989529` / post-`v0.9.2`
+
+- 合入上游 13 个提交：阻塞发送超过 30 秒后继续通知 caller，向仍在运行的子 Agent 追发 Prompt 时只保留一次完成通知；Agent 内 CLI 可以显式选择另一台 daemon，不将本地 caller 身份带到远端。
+- 完成通知去重采用上游 `armedFinishNotifications`，删除 fork 等价的 `finishNotificationStops` 与重复用例，由上游 MCP 集成用例验证创建、追发和单次完成通知。replacement 失败后的条件状态恢复及异步子 Agent 生命周期约束继续保留。
+- Pi 默认模型和多次 rewind、OpenCode server 更换后的重连、OMP 带描述选项、上周同星期的日期显示、终端 OSC 8 链接、模型选择器嵌套按钮及插件主题滚动采用上游实现。Host 更新/重启操作使用上游延长后的连接预算；构建流程仍不执行主 daemon 生命周期操作。
+- Status Bar/usage ledger 与 GPT-6 价格、既有 Agent 计划目标、Host Prompt Library、canonical 100 条分页、完整 Composer 历史、选区引用与评论投递、Assistant 时间、Threadshare 对话/文档分享、固定签名及独立安装身份继续保留；除完成通知去重外，本轮无其他等价实现下线。
 
 ### 2026-09-25: `upstream/main` `e3c853df5` / `v0.9.2`
 
@@ -817,7 +824,7 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
 
 **状态**：fork 修复。主要提交：`95f727124`。
 
-**行为**：同一 `child → caller` 的完成通知只保留一个监听，避免重复终态通知并发替换父 Agent。替换失败时，若 provider 仍持有活动 turn/run，Agent 继续保持 `running` 并要求真实中断确认；若活动身份已经全部终止，则清除 `pendingReplacement` 并恢复为 `idle` 或 `error`，后续用户消息可以正常启动新 turn。仅残留 `lifecycle: running`、但没有 `activeForegroundTurnId`、`activeTurnId` 或 tracked run 时，发送消息不会再中断一个不存在的 provider turn。
+**行为**：替换失败时，若 provider 仍持有活动 turn/run，Agent 继续保持 `running` 并要求真实中断确认；若活动身份已经全部终止，则清除 `pendingReplacement` 并恢复为 `idle` 或 `error`，后续用户消息可以正常启动新 turn。仅残留 `lifecycle: running`、但没有 `activeForegroundTurnId`、`activeTurnId` 或 tracked run 时，发送消息不会再中断一个不存在的 provider turn。同一 `child → caller` 的完成通知去重已于 2026-09-26 迁移到上游实现，不再维护 fork 重复路径。
 
 **关键文件**：
 
@@ -826,11 +833,11 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
 - `packages/server/src/server/agent/agent-prompt.ts`
 - `packages/server/src/server/agent/agent-prompt.test.ts`
 
-**同步规则**：中断确认保护不能放宽，也不能在父 Agent 进入终态时取消仍异步运行的子 Agent。上游调整 steer/replacement admission 时，继续以真实 turn/run 身份判定活动状态，并保留重复完成监听去重与 replacement 失败后的条件状态恢复。
+**同步规则**：中断确认保护不能放宽，也不能在父 Agent 进入终态时取消仍异步运行的子 Agent。上游调整 steer/replacement admission 时，继续以真实 turn/run 身份判定活动状态，保留 replacement 失败后的条件状态恢复。完成通知去重直接采用上游机制，不恢复 fork Map 或重复测试。
 
 **验证**：`agent-manager.test.ts`、`agent-prompt.test.ts`、`npm run typecheck`、`npm run lint`。
 
-**最近同步判断**：2026-08-19 的上游 `f1eeef32a` 增加了 autonomous turn steering、默认 steer 和系统通知 steer，但没有处理重复完成监听或 replacement 失败后残留的伪 `running` 状态，保留本修复。
+**最近同步判断**：2026-09-26 的上游 `8cd989529` 已处理重复完成监听，采用上游实现与 MCP 回归测试；仍未覆盖 replacement 失败后残留的伪 `running` 状态，继续保留条件状态恢复。
 
 ## 同步上游操作清单
 

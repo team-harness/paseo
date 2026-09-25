@@ -383,7 +383,6 @@ export interface SetupFinishNotificationParams {
 type FinishNotificationReason = "finished" | "errored" | "needs permission" | "was closed";
 
 const FINISH_NOTIFICATION_MESSAGE_LIMIT = 4000;
-const finishNotificationStops = new WeakMap<AgentManager, Map<string, () => void>>();
 
 interface FinishNotificationBodyInput {
   childAgentId: string;
@@ -426,6 +425,11 @@ interface NotifySafelyOptions {
   permissionRequest?: AgentPermissionRequest;
 }
 
+// A caller waits on a child through one armed notification. Arming again, such as a
+// follow-up prompt while the child still runs, replaces the earlier one so the child's
+// next finish reaches the caller once.
+const armedFinishNotifications = new WeakMap<AgentManager, Map<string, () => void>>();
+
 export function setupFinishNotification(params: SetupFinishNotificationParams): void {
   const {
     agentManager,
@@ -435,33 +439,26 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
     requireParentOwnership = false,
     logger,
   } = params;
-  const existingRegisteredStops = finishNotificationStops.get(agentManager);
-  const registeredStops = existingRegisteredStops ?? new Map<string, () => void>();
-  if (!existingRegisteredStops) {
-    finishNotificationStops.set(agentManager, registeredStops);
-  }
-  const registrationKey = `${childAgentId}\0${callerAgentId}`;
-  registeredStops.get(registrationKey)?.();
-
   let hasSeenRunning = false;
   let stopped = false;
   const notifiedPermissionRequestIds = new Set<string>();
   let unsubscribe: (() => void) | null = null;
   let notificationQueue = Promise.resolve();
 
+  const armedByManager = armedFinishNotifications.get(agentManager) ?? new Map();
+  armedFinishNotifications.set(agentManager, armedByManager);
+  const armedKey = JSON.stringify([childAgentId, callerAgentId]);
+  armedByManager.get(armedKey)?.();
+  armedByManager.set(armedKey, stop);
+
   function stop(): void {
     if (stopped) return;
     stopped = true;
     unsubscribe?.();
-    if (registeredStops.get(registrationKey) === stop) {
-      registeredStops.delete(registrationKey);
-      if (registeredStops.size === 0) {
-        finishNotificationStops.delete(agentManager);
-      }
+    if (armedByManager.get(armedKey) === stop) {
+      armedByManager.delete(armedKey);
     }
   }
-
-  registeredStops.set(registrationKey, stop);
 
   async function notify(
     reason: FinishNotificationReason,
