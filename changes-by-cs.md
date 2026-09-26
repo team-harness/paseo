@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `8cd989529e2d86bb6d1c8a775bf695fa5970c997`，同步于 2026-09-26。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `8cd989529`）。
+- 最近同步基线：`upstream/main` = `d7b7016cc98da02ce5110fb218c70cac419657f3`，同步于 2026-09-27。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `d7b7016cc`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-27: `upstream/main` `d7b7016cc` / post-`v0.9.2`
+
+- 合入上游 14 个提交：OpenCode 按二进制版本选择 v1/v2 runtime，Pi 扩展通过独立 adapter 映射子 Agent、任务和提问，Pi rewind 在 daemon 重启后保留；自定义 Codex Provider 会话导入与 Claude 独立配置目录的历史读取采用上游实现。
+- 密码连接采用上游 hello 鉴权、本地 credential 与 Relay E2EE 边界，新增 wire 字段保持 optional，hello rejection 受 capability 约束。fork 的 Status Summary、Host Prompt Library、Threadshare 和其他 RPC 扩展继续保留。
+- 设置页分类与控件、分支切换后项目 skills 刷新、generic ACP slash commands、daemon 日志及 ACP 启动失败容错采用上游实现。DirectorySync 采用同一快照及游标的工作区恢复逻辑，同时保留 canonical 100 条分页；设置页继续避让 fork Status Bar。
+- Status Bar/usage ledger 与 GPT-6 价格、异步子 Agent 生命周期、replacement 恢复、既有 Agent 计划目标、Host Prompt、完整 Composer 历史、引用评论和 Threadshare 对话/文档分享无上游等价替代，本轮不下线 fork 能力。固定 macOS/Android 签名、独立安装身份和三包分发继续保留。
 
 ### 2026-09-26: `upstream/main` `8cd989529` / post-`v0.9.2`
 
