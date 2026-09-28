@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `d7b7016cc98da02ce5110fb218c70cac419657f3`，同步于 2026-09-27。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `d7b7016cc`）。
+- 最近同步基线：`upstream/main` = `849a876bcec1c856a6f75e8bece566f2ead42cef`，同步于 2026-09-29。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `849a876bc`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-29: `upstream/main` `849a876bc` / `v0.10.0`
+
+- 合入上游 27 个提交：Usage Sources 改为内置 plugins 并新增 usage reports 页面/Composer 用量胶囊；OpenCode v2 会话环境恢复、Codex 自定义 provider 配置与归档、插件 provider reload 完成态处理、后台发送状态、流式回复缩进换行、Pi/OMP provider 与多项时间显示和文件链接修复采用上游实现。
+- 上游的 usage protocol 与 plugin runtime 已接入，同时保留 fork 的 Status Summary、usage ledger/GPT-6 价格和 Host Prompt Library；两套 usage 能力按各自 RPC 与页面边界共存，不删除 fork 状态栏统计。
+- 上游新增的 subagent split pane、host 重启版本刷新、relative timestamp、Cursor 图标和 Windows 文件链接采用上游实现。fork 的异步子 Agent 生命周期、replacement 恢复、既有 Agent 计划目标、canonical 100 条分页、完整 Composer 历史、选区引用/评论投递、Assistant 时间、Threadshare 对话/文档分享、固定签名和三包分发继续保留；本轮没有下线 fork 能力。
 
 ### 2026-09-27: `upstream/main` `d7b7016cc` / post-`v0.9.2`
 

@@ -103,6 +103,8 @@ import type {
   PromptLibraryMergeResponseMessage,
   SavedPrompt,
   SavedPromptDraft,
+  UsageListReportsResponseMessage,
+  AgentResolveUsageReportResponseMessage,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
   DaemonConfigReloadResponse,
@@ -575,6 +577,8 @@ type PromptLibraryUpdatePayload = PromptLibraryUpdateResponseMessage["payload"];
 type PromptLibraryDeletePayload = PromptLibraryDeleteResponseMessage["payload"];
 type PromptLibraryClearPayload = PromptLibraryClearResponseMessage["payload"];
 type PromptLibraryMergePayload = PromptLibraryMergeResponseMessage["payload"];
+type UsageListReportsPayload = UsageListReportsResponseMessage["payload"];
+type AgentResolveUsageReportPayload = AgentResolveUsageReportResponseMessage["payload"];
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
 type DaemonPairingOfferPayload = DaemonGetPairingOfferResponse["payload"];
 type DiagnosticsPayload = DiagnosticsResponse["payload"];
@@ -5273,6 +5277,21 @@ export class DaemonClient {
     });
   }
 
+  async listUsageReports(options?: {
+    requestId?: string;
+    forceRefresh?: boolean;
+    reportIds?: string[];
+  }): Promise<UsageListReportsPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "usage.list_reports.request",
+        forceRefresh: options?.forceRefresh,
+        reportIds: options?.reportIds,
+      },
+    });
+  }
+
   async listSavedPrompts(options?: { requestId?: string }): Promise<PromptLibraryListPayload> {
     return this.sendNamespacedCorrelatedSessionRequest<"prompt.library.list.response">({
       requestId: options?.requestId,
@@ -5325,6 +5344,19 @@ export class DaemonClient {
     return this.sendNamespacedCorrelatedSessionRequest<"prompt.library.merge.response">({
       requestId: options?.requestId,
       message: { type: "prompt.library.merge.request", items: [...items] },
+    });
+  }
+
+  async resolveAgentUsageReport(options: {
+    agentId: string;
+    requestId?: string;
+  }): Promise<AgentResolveUsageReportPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "agent.resolve_usage_report.request",
+        agentId: options.agentId,
+      },
     });
   }
 
