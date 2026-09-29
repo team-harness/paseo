@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgentTimelinePromptIndexPayload } from "@getpaseo/client/internal/daemon-client";
+import { isWeb } from "@/constants/platform";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { shouldAcceptPromptIndexEpoch } from "@/agent-stream/chat-outline/model";
 
 export interface UseAgentTimelinePromptIndexInput {
   agentId: string;
@@ -21,7 +23,7 @@ export function useAgentTimelinePromptIndex({
   const nextRequestIdRef = useRef(0);
 
   useEffect(() => {
-    if (!enabled) {
+    if (!isWeb || !enabled || timelineEpoch === null) {
       setIndex(null);
       return;
     }
@@ -37,7 +39,7 @@ export function useAgentTimelinePromptIndex({
           if (
             active &&
             requestId === nextRequestIdRef.current &&
-            (timelineEpoch === null || timelineEpoch === payload.epoch)
+            shouldAcceptPromptIndexEpoch(timelineEpoch, payload.epoch)
           ) {
             setIndex(payload);
           }
@@ -46,22 +48,8 @@ export function useAgentTimelinePromptIndex({
         .catch(() => undefined);
     };
     refresh();
-    const unsubscribe =
-      typeof client.on === "function"
-        ? client.on("agent_stream", (message) => {
-            if (
-              message.type === "agent_stream" &&
-              message.payload.agentId === agentId &&
-              message.payload.event.type === "timeline" &&
-              message.payload.event.item.type === "user_message"
-            ) {
-              refresh();
-            }
-          })
-        : () => undefined;
     return () => {
       active = false;
-      unsubscribe();
     };
   }, [agentId, enabled, refreshKey, serverId, timelineEpoch]);
 

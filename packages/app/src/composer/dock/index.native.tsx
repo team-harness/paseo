@@ -3,7 +3,8 @@ export { ComposerDockBackground } from "./internal/background";
 import { ScrollView } from "@/components/ui/scroll-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHostBottomChromeInset } from "@/status-summary/bottom-chrome-inset";
-import { HEADER_INNER_HEIGHT, MAX_CONTENT_WIDTH } from "@/constants/layout";
+import { HEADER_INNER_HEIGHT } from "@/constants/layout";
+import { resolveContentMaxWidth, useAppSettings } from "@/hooks/use-settings";
 import { KeyboardTranslateView } from "@/keyboard/shift";
 import { createContext, useCallback, useContext, type ReactNode } from "react";
 import { View, type LayoutChangeEvent, type ViewProps, StyleSheet } from "react-native";
@@ -91,6 +92,7 @@ export function ComposerDock({
 }: ComposerDockProps) {
   const insets = useSafeAreaInsets();
   const safeAreaBottomInset = useHostBottomChromeInset(insets.bottom);
+  const contentMaxWidth = resolveContentMaxWidth(useAppSettings().settings);
   // Preserve the existing centered form's visual balance on tablets.
   const bottomInset = centered ? HEADER_INNER_HEIGHT + 24 : 0;
   if (centered) {
@@ -100,7 +102,7 @@ export function ComposerDock({
         bottomInset={bottomInset}
         centered
       >
-        <KeyboardTranslateView style={dockStyles.centered}>
+        <KeyboardTranslateView style={[dockStyles.centered, { maxWidth: contentMaxWidth }]}>
           <ComposerViewportContent style={dockStyles.composer}>
             <ScrollView style={dockStyles.setup} keyboardShouldPersistTaps="handled">
               {content}
@@ -141,13 +143,15 @@ export function ComposerDock({
   );
 }
 
+// Plain React Native styles: these land on Reanimated views, which must not carry
+// theme-driven Unistyles (docs/unistyles.md). The content width arrives inline.
 const dockStyles = StyleSheet.create({
   viewport: { flex: 1, overflow: "hidden" },
   surface: { flex: 1 },
   content: { flex: 1, justifyContent: "flex-end" },
   composer: { width: "100%", flexShrink: 1 },
   centeredViewport: { flex: 1, alignItems: "center", justifyContent: "center" },
-  centered: { flexShrink: 1, width: "100%", maxWidth: MAX_CONTENT_WIDTH },
+  centered: { flexShrink: 1, width: "100%" },
   // Reserve the composer's own capped height before the setup scroll view shrinks.
   centeredComposer: { width: "100%", flexShrink: 0 },
   setup: { flexGrow: 0, flexShrink: 1, minHeight: 0 },

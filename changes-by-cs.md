@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `849a876bcec1c856a6f75e8bece566f2ead42cef`，同步于 2026-09-29。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `849a876bc`）。
+- 最近同步基线：`upstream/main` = `767b0e970b50e3a3dfccbfbc75bac5e86d5cea7f`，同步于 2026-09-30。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `767b0e970`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-09-30: `upstream/main` `767b0e970` / `v0.10.1` release notes
+
+- 合入上游 26 个提交：Claude Sonnet 5.5 模型能力、OMP 一等 Provider、Codex Fast/Ultrafast 目录与 rewind/默认 effort 修复、OpenCode v2 上下文计量、补丁编辑和长 turn 生命周期、问题卡片文本、桌面缩放标注、归档 workspace 恢复、插件设置导航、草稿命令过滤、上传重连等待，以及发送活动 turn 的行为选择。
+- 聊天罗盘采用上游“仅对已服务 timeline 请求 prompt index”的 epoch 校验；fork 的完整 Prompt 索引、Composer 历史和 `visible` 设置仍由共享 hook 提供。上游内容宽度设置应用到聊天、Markdown 预览和 Composer，同时保留 fork 的 Status Bar 底部安全区。
+- 上游 OMP、Codex、OpenCode、工作区恢复与桌面行为修复采用原作者实现；fork 的 Status Summary/usage ledger/GPT-6 价格、多 Host、Host Prompt Library、异步子 Agent 生命周期、引用与 Review Comments、Threadshare 对话/文档分享、范围分享、计划任务既有 Agent 目标、canonical 100 条分页及固定签名三包发布链路继续保留。本轮没有下线 fork 能力。
 
 ### 2026-09-29: `upstream/main` `849a876bc` / `v0.10.0`
 
