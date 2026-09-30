@@ -499,7 +499,7 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
-export type ProviderOptions = Record<string, JsonValue>;
+export type ProviderOptions = Record<string, unknown>;
 
 export interface McpToolRef {
   kind: "mcp";

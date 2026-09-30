@@ -536,6 +536,7 @@ export interface AgentSlashCommand {
 }
 
 export interface ListImportableSessionsOptions {
+  providerOptions?: ProviderOptions;
   limit?: number;
   /** Optional case-insensitive descriptor search text. */
   query?: string;
@@ -647,11 +648,6 @@ export interface AgentPermissionResult {
   followUpPrompt?: AgentPromptInput;
 }
 
-export interface UsageReference {
-  source: string;
-  input: JsonValue;
-}
-
 export interface AgentSession {
   readonly provider: AgentProvider;
   readonly id: string | null;
@@ -660,8 +656,6 @@ export interface AgentSession {
   /** New provider-owned rows to commit on registration. streamHistory must also
    * replay them at their original timestamps; restored sessions omit old rows. */
   readonly initialTimeline?: ImportedTimelineEntry[];
-  /** Resolved at fetch time because model and credentials may change during a session. */
-  getUsageReference?(): Promise<UsageReference | null>;
   run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult>;
   startTurn(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<{ turnId: string }>;
   steerActiveTurn?(prompt: AgentPromptInput, options: SteerActiveTurnOptions): Promise<SteerResult>;
@@ -705,7 +699,7 @@ export interface AgentSession {
   } | null;
 }
 
-export type FetchCatalogOptions =
+export type FetchCatalogOptions = { providerOptions?: ProviderOptions } & (
   | {
       scope: "global";
       force: boolean;
@@ -714,7 +708,8 @@ export type FetchCatalogOptions =
       scope: "workspace";
       cwd: string;
       force: boolean;
-    };
+    }
+);
 
 export interface ProviderRefreshContext {
   readonly signal: AbortSignal;

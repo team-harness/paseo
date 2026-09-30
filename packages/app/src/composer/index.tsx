@@ -48,7 +48,6 @@ import {
   type DraftAgentControlsProps,
 } from "@/composer/agent-controls";
 import { ContextWindowMeter } from "@/components/context-window-meter";
-import { UsageComposerPill } from "@/usage";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { selectAgentTurnPresentation, useSessionStore } from "@/stores/session-store";
 import { useAgentTimelinePromptIndex } from "@/timeline/use-agent-timeline-prompt-index";
@@ -2175,13 +2174,8 @@ function ComposerContentImpl({
     ],
   );
   const beforeVoiceContent = useMemo(
-    () => (
-      <>
-        {resolveContextWindowPlacement(contextWindowMeter, hasAgent)}
-        {hasAgent ? <UsageComposerPill serverId={serverId} agentId={agentId} /> : null}
-      </>
-    ),
-    [agentId, contextWindowMeter, hasAgent, serverId],
+    () => <>{resolveContextWindowPlacement(contextWindowMeter, hasAgent)}</>,
+    [contextWindowMeter, hasAgent],
   );
 
   const hasGithubAttachment = useMemo(

@@ -1,3 +1,4 @@
+import { validateProviderOptions } from "../provider-options.js";
 import {
   getAgentStreamEventTurnId,
   type AgentPermissionAction,
@@ -57,6 +58,7 @@ import { CodexAsyncQuestions, codexAsyncQuestionToTimeline } from "./codex/async
 import {
   mapCodexToolCallEnvelope,
   mapCodexToolCallFromThreadItem,
+  normalizeCommandExecutionCommand,
   splitCodexMcpToolResultImages,
 } from "./codex/tool-call-mapper.js";
 import {
@@ -3657,7 +3659,6 @@ export class CodexAppServerAgentSession implements AgentSession {
     private readonly autoReviewEnabled: boolean = false,
     private readonly agentId?: string,
     private readonly initialResumePurpose: "interactive" | "history" = "interactive",
-    private readonly usageEnv: NodeJS.ProcessEnv = process.env,
   ) {
     this.logger = logger.child({
       module: "agent",
@@ -3669,7 +3670,8 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
     this.hasWorkflowModeOverride = config.modeId !== undefined;
     this.currentMode = config.modeId ?? DEFAULT_CODEX_MODE_ID;
-    this.providerOptions = CodexProviderOptionsSchema.parse(config.providerOptions ?? {});
+    this.providerOptions =
+      validateProviderOptions("codex", CodexProviderOptionsSchema, config.providerOptions) ?? {};
     this.config = config;
     this.asyncQuestions = new CodexAsyncQuestions(resumeHandle?.metadata?.asyncQuestions);
     this.codexHome = deps.codexHome ?? resolveCodexHomeDir(process.env);
@@ -3683,17 +3685,6 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.currentThreadId = this.resumeHandle.sessionId;
       this.historyPending = true;
     }
-  }
-
-  async getUsageReference() {
-    if (this.usageEnv.OPENAI_BASE_URL) return null;
-    return {
-      source: "codex",
-      input: {
-        codexHome:
-          this.usageEnv.CODEX_HOME || path.join(this.usageEnv.HOME || os.homedir(), ".codex"),
-      },
-    };
   }
 
   get id(): string | null {
@@ -5050,7 +5041,6 @@ export class CodexAppServerAgentSession implements AgentSession {
         modeId: this.config.modeId,
         model: this.config.model ?? null,
         thinkingOptionId,
-        providerOptions: this.config.providerOptions,
         toolPolicy: this.config.toolPolicy,
         systemPrompt: this.config.systemPrompt,
         mcpServers: this.config.mcpServers,
@@ -6941,6 +6931,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     );
     const itemId = parsed.item.id;
     if (normalizedItemType === "commandExecution") {
+      this.rememberTerminalProcessForItem(parsed.item);
       const callId = timelineItem.callId || itemId;
       if (callId && this.emittedExecCommandStartedCallIds.has(callId)) {
         return;
@@ -7060,19 +7051,21 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private rememberTerminalProcessForCommand(command: unknown, output: string | null): void {
-    const normalizedCommand = normalizeCodexCommandValue(command);
-    if (!normalizedCommand) {
-      return;
-    }
-    const displayCommand =
-      typeof normalizedCommand === "string"
-        ? normalizedCommand
-        : normalizedCommand.join(" ").trim();
-    if (!displayCommand) {
-      return;
-    }
     const processId = extractCodexTerminalSessionId(output ?? undefined);
-    if (!processId) {
+    if (processId) {
+      this.rememberTerminalProcess(processId, command);
+    }
+  }
+
+  private rememberTerminalProcessForItem(item: { [key: string]: unknown }): void {
+    if (typeof item.processId === "string" && item.processId) {
+      this.rememberTerminalProcess(item.processId, item.command);
+    }
+  }
+
+  private rememberTerminalProcess(processId: string, command: unknown): void {
+    const displayCommand = normalizeCommandExecutionCommand(command);
+    if (!displayCommand) {
       return;
     }
     this.terminalCommandByProcessId.set(processId, displayCommand);
@@ -7144,6 +7137,8 @@ export class CodexAppServerAgentSession implements AgentSession {
     const parsed = z
       .object({
         itemId: z.string(),
+        // Set when several approval callbacks belong to one item; it names the callback.
+        approvalId: z.string().nullable().optional(),
         threadId: z.string(),
         turnId: z.string(),
         command: z.string().nullable().optional(),
@@ -7157,7 +7152,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       cwd: parsed.cwd ?? this.config.cwd ?? null,
       running: true,
     });
-    const requestId = `permission-${parsed.itemId}`;
+    const requestId = `permission-${parsed.approvalId ?? parsed.itemId}`;
     const title = parsed.command ? `Run command: ${parsed.command}` : "Run command";
     const request: AgentPermissionRequest = {
       id: requestId,
@@ -7461,7 +7456,6 @@ export class CodexAppServerAgentClient implements AgentClient {
       autoReviewEnabled,
       launchContext?.agentId,
       "interactive",
-      buildCodexAppServerEnv(this.runtimeSettings, launchContext?.env),
     );
     await session.connect();
     return session;
@@ -7494,7 +7488,6 @@ export class CodexAppServerAgentClient implements AgentClient {
       autoReviewEnabled,
       launchContext?.agentId,
       options?.purpose ?? "interactive",
-      buildCodexAppServerEnv(this.runtimeSettings, launchContext?.env),
     );
     await session.connect();
     return session;
