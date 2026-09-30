@@ -5396,19 +5396,6 @@ export class DaemonClient {
     });
   }
 
-  async resolveAgentUsageReport(options: {
-    agentId: string;
-    requestId?: string;
-  }): Promise<AgentResolveUsageReportPayload> {
-    return this.sendNamespacedCorrelatedSessionRequest({
-      requestId: options.requestId,
-      message: {
-        type: "agent.resolve_usage_report.request",
-        agentId: options.agentId,
-      },
-    });
-  }
-
   async listCommands(options: ListCommandsOptions): Promise<ListCommandsPayload>;
   async listCommands(agentId: string, requestId?: string): Promise<ListCommandsPayload>;
   async listCommands(

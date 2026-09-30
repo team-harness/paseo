@@ -1,5 +1,3 @@
-import { legacyUsageIcon } from "./legacy-usage-icons.js";
-import { readFileSync } from "node:fs";
 import { afterEach, expect, expectTypeOf, test, vi } from "vitest";
 import { z } from "zod";
 import {

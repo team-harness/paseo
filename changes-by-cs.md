@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `767b0e970b50e3a3dfccbfbc75bac5e86d5cea7f`，同步于 2026-09-30。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `767b0e970`）。
+- 最近同步基线：`upstream/main` = `a7c9c05bef06f1b0aea14653e7b14c315d27918d`，同步于 2026-10-01。
+- 最近同步 merge commit：`ae23bafce`（第二父提交为 `a7c9c05be`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-01: `upstream/main` `a7c9c05be` / `v0.10.2`
+
+- 合入上游 25 个提交：新增 Muse Code 内置 Provider，插件 Provider 的状态、启动解析和配置覆盖，Host 新建确认、原生叠加 sheet/dialog、iPad 文本重排与触控操作、Pi 子 Agent 流式 transcript、Codex 审批回调与命令失败收敛、工作区从远端 origin/main 创建，以及 0.10.2 发布说明。
+- 上游新增的 Usage Sources sidebar 项目展示账号配额百分比和来源图标；它属于 provider/plugin quota 页面，继续与 fork 的 Status Bar `status.summary` token/费用 ledger 并存，不替代本地 Codex/Claude 计费。上游的 usage plugin 运行时、Muse Provider 和插件侧边栏采用原作者实现。
+- fork 的 Status Bar/usage ledger/GPT-6 与 GPT-6.1 价格快照、多 Host 汇总、Host Prompt Library、异步子 Agent 生命周期、既有 Agent 计划目标、canonical 100 条分页、完整 Composer 历史、选区引用与 Review Comments、Threadshare 对话/文档（含图片）分享、固定签名 DMG、Web + Server tar 和独立 Android APK 发布链路继续保留。本轮没有下线 fork 能力；上游删除的重复 usage reference 测试不影响 fork ledger。
+- 本轮没有新的模型价格数据；继续使用 2026-09-30 LiteLLM revision `04fa760bf2a0a2d7be05302f2bb079a65593e478`，含 `gpt-6.1-sol` 的标准、缓存写入、Priority/Flex 与长上下文档位。既有费用不重定价。
 
 ### 2026-09-30: `upstream/main` `767b0e970` / `v0.10.1` release notes
 
