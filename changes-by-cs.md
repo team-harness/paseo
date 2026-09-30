@@ -523,6 +523,7 @@
 
 - 2026-07-30 按 `Wei-Shaw/sub2api` 公开 model pricing catalogue 更新精确变体：`gpt-5.6-sol` 为 `$5/$0.5/$30`、`gpt-5.6-terra` 为 `$2.5/$0.25/$15`、`gpt-5.6-luna` 为 `$1/$0.1/$6`（输入/缓存输入/输出，每百万 token），并补齐 GPT-5.4/GPT-5.5 `-pro` 变体。Status Bar 仍是本地 token 估算；无法反映 sub2api 实例的组倍率、账号倍率、私有模型映射或实际扣费，且价格更新不回填既有 ledger 记录。
 - 2026-09-23 将 LiteLLM 快照更新至 `bc3b5b1d5b234b527aa9e4a56e156019f6827e53`，补齐 `gpt-6-sol` 与 `gpt-6-luna`。按 [OpenAI 官方价格](https://developers.openai.com/api/docs/pricing)核对：标准短上下文输入/缓存读取/输出分别为 `$2/$0.20/$10` 与 `$0.10/$0.01/$0.50`（每百万 token）；测试覆盖缓存写入、Fast/Priority、Flex，以及单请求输入超过 272K 的加价边界。已有费用不重定价，未知变体不按家族名猜价。
+- 2026-09-30 将 LiteLLM 快照更新至 `04fa760bf2a0a2d7be05302f2bb079a65593e478`，加入 `gpt-6.1-sol` 价格（标准短上下文输入/缓存读取/输出 `$2/$0.10/$10`，每百万 token），并保留其 272K 长上下文、Priority/Flex 和缓存写入档位。已有费用不重定价，未知变体不按家族名猜价。
 
 **关键文件**：
 

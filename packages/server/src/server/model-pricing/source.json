@@ -1,6 +1,6 @@
 {
-  "source": "https://raw.githubusercontent.com/BerriAI/litellm/bc3b5b1d5b234b527aa9e4a56e156019f6827e53/model_prices_and_context_window.json",
-  "revision": "bc3b5b1d5b234b527aa9e4a56e156019f6827e53",
-  "sha256": "83cc2d6257437025ef7f8a56533d596159e915a199647ba1e3a37f3f706bc734",
-  "updatedAt": "2026-09-23T09:45:38.310Z"
+  "source": "https://raw.githubusercontent.com/BerriAI/litellm/04fa760bf2a0a2d7be05302f2bb079a65593e478/model_prices_and_context_window.json",
+  "revision": "04fa760bf2a0a2d7be05302f2bb079a65593e478",
+  "sha256": "d04d76d67fcc623404e4b3e77af4db9e451e97f1782879b5ac1af70c66bfc936",
+  "updatedAt": "2026-09-30T08:40:17.895Z"
 }

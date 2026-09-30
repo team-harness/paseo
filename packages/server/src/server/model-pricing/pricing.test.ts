@@ -42,6 +42,7 @@ test("selects priority, flex and long-context rates per request", () => {
 test.each([
   { modelId: "gpt-6-sol", input: 2, cached: 0.2, created: 2.5, output: 10 },
   { modelId: "gpt-6-luna", input: 0.1, cached: 0.01, created: 0.125, output: 0.5 },
+  { modelId: "gpt-6.1-sol", input: 2, cached: 0.1, created: 2.5, output: 10 },
 ])("prices $modelId across token categories, tiers and the 272K boundary", (rates) => {
   for (const serviceTier of ["default", "priority", "flex"] as const) {
     const tierMultiplier = { default: 1, priority: 2, flex: 0.5 }[serviceTier];
