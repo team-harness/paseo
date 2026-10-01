@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `a7c9c05bef06f1b0aea14653e7b14c315d27918d`，同步于 2026-10-01。
-- 最近同步 merge commit：`ae23bafce`（第二父提交为 `a7c9c05be`）。
+- 最近同步基线：`upstream/main` = `b5b43edd65cc1253493b13cca3941dd390df6ef3`，同步于 2026-10-02。
+- 最近同步 merge commit：本次同步提交（第二父提交为 `b5b43edd6`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-02: `upstream/main` `b5b43edd6` / `v0.11.0-beta.2`
+
+- 合入上游 18 个提交并升级到 `0.11.0-beta.2`：恢复 Antigravity Provider、修复桌面 usage/subscription 发现、优化侧边栏配额与叠加弹窗、显示 Agent 实际模型和思考档位、展示 Codex 图片生成失败、OpenCode 工具权限确认、Pi 分组子 Agent 完成事件、Claude 历史诊断、Codex 技能去重和 relay 包导出。
+- 桌面内置插件采用上游的独立 `Resources/builtin-plugins` 布局，保留编译所需的 `.d.ts`；产物校验随之检查该物理目录，不再要求插件位于 asar。固定签名、标准 APFS DMG、Web + Server 七包归档和独立 Android/iOS 身份保持不变。
+- 配额发现、模型控件、共享弹窗与 Provider 修复采用上游实现；fork 的 Status Bar/usage ledger/GPT-6.1 价格、多 Host 汇总、Prompt Library、异步子 Agent 生命周期、replacement 恢复、既有 Agent 计划目标、canonical 100 条、Composer 完整历史、引用/评论投递和 Threadshare 对话/文档分享继续保留。本轮没有等价 fork 功能下线；Pi 仅按真实完成事件收敛子项，不按父 turn 结束取消异步子项。
 
 ### 2026-10-01: `upstream/main` `a7c9c05be` / `v0.10.2`
 
