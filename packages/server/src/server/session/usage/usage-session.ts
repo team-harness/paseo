@@ -28,7 +28,16 @@ export class UsageSession {
       });
       this.options.emit({
         type: "usage.list_reports.response",
-        payload: { requestId: msg.requestId, reports },
+        payload: {
+          requestId: msg.requestId,
+          // COMPAT(usageReportProblems): added in v0.11.0, remove after 2027-04-03.
+          // Older apps require windows even for unavailable/error reports.
+          reports: reports.map((entry) =>
+            Object.assign({}, entry, {
+              report: Object.assign({ windows: [] }, entry.report),
+            }),
+          ),
+        },
       });
     } catch (error) {
       this.emitError(msg, error, "usage_list_reports_failed");

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, expect, expectTypeOf, test, vi } from "vitest";
 import { z } from "zod";
 import {
@@ -6754,6 +6755,84 @@ test("sends prompt-library list and merge requests to the connected host", async
     skippedCount: 0,
   });
 });
+test.each([
+  {
+    status: "available",
+    report: {
+      status: "available",
+      windows: [],
+      balances: undefined,
+      details: undefined,
+      planLabel: undefined,
+    },
+  },
+  { status: "error", report: { status: "error", error: "" } },
+  {
+    status: "unavailable",
+    report: { status: "unavailable", problem: { kind: "no_quota", detail: "" } },
+  },
+] as const)(
+  "maps released-host $status usage and filters report IDs",
+  async ({ status, report }) => {
+    const mock = createMockTransport();
+    const client = new DaemonClient({
+      url: "ws://test",
+      clientId: "clsk_unit_test",
+      logger: createMockLogger(),
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+    const connected = client.connect();
+    mock.triggerOpen({ features: { providerUsageList: true } });
+    await connected;
+    const result = client.listUsageReports({
+      requestId: "legacy-usage",
+      reportIds: ["claude"],
+      forceRefresh: true,
+    });
+    expect(parseSentFrame(mock.sent[0])).toEqual({
+      type: "provider.usage.list.request",
+      requestId: "legacy-usage",
+    });
+    const provider = {
+      providerId: "claude",
+      displayName: "Claude",
+      status,
+      windows: [],
+      planLabel: null,
+      fetchedAt: null,
+      error: null,
+    };
+    mock.triggerMessage(
+      wrapSessionMessage({
+        type: "provider.usage.list.response",
+        payload: {
+          requestId: "legacy-usage",
+          fetchedAt: "2026-09-30T00:00:00.000Z",
+          providers: [provider, { ...provider, providerId: "codex" }],
+        },
+      }),
+    );
+    expect(await result).toStrictEqual({
+      requestId: "legacy-usage",
+      reports: [
+        {
+          id: "claude",
+          sourceId: "claude",
+          sourceLabel: "Claude",
+          icon: readFileSync(
+            new URL("../../../plugins/claude-usage-source/icon.svg", import.meta.url),
+            "utf8",
+          ),
+          account: {},
+          fetchedAt: "2026-09-30T00:00:00.000Z",
+          report,
+        },
+      ],
+    });
+  },
+);
 
 test("sends close_items_request and resolves close_items_response", async () => {
   const logger = createMockLogger();
@@ -7351,4 +7430,43 @@ test("rejects usage requests when the host has neither capability", async () => 
   await connected;
   await expect(client.listUsageReports()).rejects.toThrow("Update the host to see usage.");
   expect(mock.sent).toEqual([]);
+});
+
+test("normalizes a legacy usage report before exposing it to the app", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger: createMockLogger(),
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+  const connected = client.connect();
+  mock.triggerOpen({ features: { usageSources: true } });
+  await connected;
+  const result = client.listUsageReports({ requestId: "legacy" });
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "usage.list_reports.response",
+      payload: {
+        requestId: "legacy",
+        reports: [
+          {
+            id: "claude:work",
+            sourceId: "claude",
+            sourceLabel: "Claude",
+            account: {},
+            fetchedAt: "2026-09-30T00:00:00.000Z",
+            report: { status: "unavailable", windows: [], error: "Sign in again" },
+          },
+        ],
+      },
+    }),
+  );
+  await expect(result).resolves.toMatchObject({
+    reports: [
+      { report: { status: "unavailable", problem: { kind: "no_quota", detail: "Sign in again" } } },
+    ],
+  });
 });

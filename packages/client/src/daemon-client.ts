@@ -105,6 +105,7 @@ import type {
   SavedPrompt,
   SavedPromptDraft,
   UsageListReportsResponseMessage,
+  UsageReportEntry,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
   DaemonConfigReloadResponse,
@@ -578,7 +579,31 @@ type PromptLibraryUpdatePayload = PromptLibraryUpdateResponseMessage["payload"];
 type PromptLibraryDeletePayload = PromptLibraryDeleteResponseMessage["payload"];
 type PromptLibraryClearPayload = PromptLibraryClearResponseMessage["payload"];
 type PromptLibraryMergePayload = PromptLibraryMergeResponseMessage["payload"];
-type UsageListReportsPayload = UsageListReportsResponseMessage["payload"];
+type UsageListReportsWireEntry = UsageListReportsResponseMessage["payload"]["reports"][number];
+type UsageListReportsPayload = Omit<UsageListReportsResponseMessage["payload"], "reports"> & {
+  reports: UsageReportEntry[];
+};
+
+// COMPAT(usageReportProblems): added in v0.11.0, remove after 2027-04-03.
+function normalizeUsageReportEntry(entry: UsageListReportsWireEntry): UsageReportEntry {
+  const report = entry.report;
+  if (report.status === "available") {
+    return {
+      ...entry,
+      report: { ...report, status: "available", windows: report.windows ?? [] },
+    };
+  }
+  if (report.status === "error") {
+    return { ...entry, report: { status: "error", error: report.error ?? "" } };
+  }
+  return {
+    ...entry,
+    report: {
+      status: "unavailable",
+      problem: report.problem ?? { kind: "no_quota", detail: report.error ?? "" },
+    },
+  };
+}
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
 type DaemonPairingOfferPayload = DaemonGetPairingOfferResponse["payload"];
 type DiagnosticsPayload = DiagnosticsResponse["payload"];
@@ -1203,8 +1228,8 @@ interface PingProbe {
   drivesLivenessFailure: boolean;
 }
 
+// COMPAT(providerUsageList): added in v0.1.98, remove after 2027-03-26.
 export function supportsUsageReports(features: ServerInfoStatusPayload["features"]): boolean {
-  // COMPAT(providerUsageList): added in v0.1.98, remove after 2027-03-26.
   return features?.usageSources === true || features?.providerUsageList === true;
 }
 
@@ -5313,32 +5338,51 @@ export class DaemonClient {
           .filter(
             (provider) => !options?.reportIds || options.reportIds.includes(provider.providerId),
           )
-          .map((provider) => ({
-            id: provider.providerId,
-            sourceId: provider.providerId,
-            sourceLabel: provider.displayName,
-            icon: legacyUsageIcon(provider.providerId),
-            account: {},
-            fetchedAt: provider.fetchedAt ?? payload.fetchedAt,
-            report: {
-              status: provider.status,
-              windows: provider.windows,
-              balances: provider.balances ?? undefined,
-              details: provider.details ?? undefined,
-              planLabel: provider.planLabel ?? undefined,
-              error: provider.error ?? undefined,
-            },
-          })),
+          .map((provider) => {
+            // COMPAT(providerUsageList): added in v0.1.98, remove after 2027-03-26.
+            // 0.10 reports have no typed problems; preserve their unavailable badge and error text.
+            let report: UsageListReportsPayload["reports"][number]["report"];
+            if (provider.status === "available") {
+              report = {
+                status: "available",
+                windows: provider.windows,
+                balances: provider.balances ?? undefined,
+                details: provider.details ?? undefined,
+                planLabel: provider.planLabel ?? undefined,
+              };
+            } else if (provider.status === "error") {
+              report = { status: "error", error: provider.error ?? "" };
+            } else {
+              report = {
+                status: "unavailable",
+                problem: { kind: "no_quota", detail: provider.error ?? "" },
+              };
+            }
+            return {
+              id: provider.providerId,
+              sourceId: provider.providerId,
+              sourceLabel: provider.displayName,
+              icon: legacyUsageIcon(provider.providerId),
+              account: {},
+              fetchedAt: provider.fetchedAt ?? payload.fetchedAt,
+              report,
+            };
+          }),
       };
     }
-    return this.sendNamespacedCorrelatedSessionRequest({
-      requestId: options?.requestId,
-      message: {
-        type: "usage.list_reports.request",
-        forceRefresh: options?.forceRefresh,
-        reportIds: options?.reportIds,
-      },
-    });
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"usage.list_reports.response">({
+        requestId: options?.requestId,
+        message: {
+          type: "usage.list_reports.request",
+          forceRefresh: options?.forceRefresh,
+          reportIds: options?.reportIds,
+        },
+      });
+    return {
+      ...payload,
+      reports: payload.reports.map(normalizeUsageReportEntry),
+    };
   }
 
   async listSavedPrompts(options?: { requestId?: string }): Promise<PromptLibraryListPayload> {

@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `b5b43edd65cc1253493b13cca3941dd390df6ef3`，同步于 2026-10-02。
-- 最近同步 merge commit：本次同步提交（第二父提交为 `b5b43edd6`）。
+- 最近同步基线：`upstream/main` = `d831c7bf33bbcad1835cf8e81668b8eebb97f3f4`，同步于 2026-10-03。
+- 最近同步 merge commit：`caa22f9a2`（第二父提交为 `d831c7bf3`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-03: `upstream/main` `d831c7bf3` / `v0.11.0-beta.3`
+
+- 合入上游 14 个提交并升级至 `0.11.0-beta.3`：Usage 设置入口、Usage 登录/过期/拒绝/无 quota 的 typed problem、Usage pin/window 选择、macOS `ComputerName` host identity、Usage source/plugin runtime 重构，以及官网字体、FAQ、下载感谢页、Agent 图标和文案更新。
+- Usage Report 协议由旧的 `error/windows` 形态迁移为 discriminated union。fork 增加兼容边界：新客户端读取旧 Host 时归一化 unavailable/error 报告；新 daemon 回包保留 `windows: []`，使旧客户端仍可解析；旧 provider usage RPC 继续转换为新的报告模型。新增 protocol/client 定向回归测试。
+- 上游 Usage Sources、设置页和网站改动采用原作者实现。fork 的 Status Bar/usage ledger、GPT-6/6.1 价格、多 Host 汇总、Host Prompt Library、异步子 Agent 生命周期、replacement 恢复、既有 Agent 计划目标、canonical 100 条、Composer 完整历史、引用/Review Comments、Threadshare 对话/文档分享与固定签名三包发布链路继续保留；本轮没有下线 fork 专属能力。
 
 ### 2026-10-02: `upstream/main` `b5b43edd6` / `v0.11.0-beta.2`
 

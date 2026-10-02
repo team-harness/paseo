@@ -6453,14 +6453,30 @@ export const PromptLibraryMergeResponseMessageSchema = z.object({
   }),
 });
 
-export const UsageReportSchema = z.object({
-  status: ProviderUsageStatusSchema,
-  planLabel: z.string().optional(),
-  windows: z.array(ProviderUsageWindowSchema),
-  balances: z.array(ProviderUsageBalanceSchema).optional(),
-  details: z.array(ProviderUsageDetailSchema).optional(),
-  error: z.string().optional(),
-});
+export const UsageProblemSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("expired"),
+    expiresAt: z.iso.datetime(),
+    refreshedBy: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal("rejected"),
+    status: z.number().int(),
+    refreshedBy: z.string().optional(),
+  }),
+  z.object({ kind: z.literal("no_quota"), detail: z.string() }),
+]);
+export const UsageReportSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("available"),
+    planLabel: z.string().optional(),
+    windows: z.array(ProviderUsageWindowSchema),
+    balances: z.array(ProviderUsageBalanceSchema).optional(),
+    details: z.array(ProviderUsageDetailSchema).optional(),
+  }),
+  z.object({ status: z.literal("unavailable"), problem: UsageProblemSchema }),
+  z.object({ status: z.literal("error"), error: z.string() }),
+]);
 export const UsageReportEntrySchema = z.object({
   id: z.string(),
   account: z.object({ label: z.string().optional() }),
@@ -6472,7 +6488,24 @@ export const UsageReportEntrySchema = z.object({
 });
 export const UsageListReportsResponseMessageSchema = z.object({
   type: z.literal("usage.list_reports.response"),
-  payload: z.object({ requestId: z.string(), reports: z.array(UsageReportEntrySchema) }),
+  payload: z.object({
+    requestId: z.string(),
+    reports: z.array(
+      UsageReportEntrySchema.extend({
+        // COMPAT(usageReportProblems): added in v0.11.0, remove after 2027-04-03.
+        // Accept both pre-beta.3 reports and typed problems; normalize after validation.
+        report: z.object({
+          status: ProviderUsageStatusSchema,
+          planLabel: z.string().optional(),
+          windows: z.array(ProviderUsageWindowSchema).optional(),
+          balances: z.array(ProviderUsageBalanceSchema).optional(),
+          details: z.array(ProviderUsageDetailSchema).optional(),
+          error: z.string().optional(),
+          problem: UsageProblemSchema.optional(),
+        }),
+      }),
+    ),
+  }),
 });
 
 const AgentSlashCommandSchema = z.object({
@@ -7348,6 +7381,7 @@ export type ProviderDiagnosticResponseMessage = z.infer<
   typeof ProviderDiagnosticResponseMessageSchema
 >;
 export type ProviderUsageTone = z.infer<typeof ProviderUsageToneSchema>;
+export type UsageProblem = z.infer<typeof UsageProblemSchema>;
 export type UsageReport = z.infer<typeof UsageReportSchema>;
 export type UsageReportEntry = z.infer<typeof UsageReportEntrySchema>;
 export type UsageListReportsResponseMessage = z.infer<typeof UsageListReportsResponseMessageSchema>;

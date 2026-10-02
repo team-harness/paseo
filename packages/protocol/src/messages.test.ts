@@ -5,6 +5,7 @@ import {
   parseServerInfoStatusPayload,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
+  UsageListReportsResponseMessageSchema,
   WorkspaceProjectDescriptorPayloadSchema,
 } from "./messages.js";
 
@@ -40,6 +41,44 @@ function fetchWorkspacesResponse(workspace: Record<string, unknown>) {
     },
   };
 }
+
+test("accepts both legacy and typed usage report payloads", () => {
+  const base = {
+    id: "claude:work",
+    account: {},
+    fetchedAt: "2026-10-02T00:00:00.000Z",
+    sourceId: "claude",
+    sourceLabel: "Claude",
+  };
+  expect(
+    UsageListReportsResponseMessageSchema.parse({
+      type: "usage.list_reports.response",
+      payload: {
+        requestId: "legacy",
+        reports: [
+          {
+            ...base,
+            report: { status: "unavailable", windows: [], error: "Sign in again" },
+          },
+        ],
+      },
+    }).payload.reports[0]?.report,
+  ).toMatchObject({ status: "unavailable", windows: [], error: "Sign in again" });
+  expect(
+    UsageListReportsResponseMessageSchema.parse({
+      type: "usage.list_reports.response",
+      payload: {
+        requestId: "typed",
+        reports: [
+          {
+            ...base,
+            report: { status: "unavailable", problem: { kind: "no_quota", detail: "No quota" } },
+          },
+        ],
+      },
+    }).payload.reports[0]?.report,
+  ).toMatchObject({ status: "unavailable", problem: { kind: "no_quota" } });
+});
 
 describe("project icon message security", () => {
   test("rejects URL sources at the daemon boundary", () => {
