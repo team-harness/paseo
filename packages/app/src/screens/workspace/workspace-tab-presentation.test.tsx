@@ -106,6 +106,7 @@ function presentation(
     titleState: "ready",
     icon: Icon,
     statusBucket,
+    showCloseButton: true,
   };
 }
 

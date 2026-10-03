@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `d831c7bf33bbcad1835cf8e81668b8eebb97f3f4`，同步于 2026-10-03。
-- 最近同步 merge commit：`caa22f9a2`（第二父提交为 `d831c7bf3`）。
+- 最近同步基线：`upstream/main` = `749fe3e5a`，同步于 2026-10-04。
+- 最近同步 merge commit：待本轮提交后填写（第二父提交为 `749fe3e5a`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-04: `upstream/main` `749fe3e5a`
+
+- 合入上游 17 个提交：聊天历史滚动锚点与图片尺寸稳定、Explorer 标签统一和插件目录/生命周期能力、终端键盘快捷键平台策略、插件音频播放、工作区面板与 Markdown 图片渲染修复，以及 CLI 计划参数和锁文件更新。
+- 聊天滚动与虚拟化采用上游 `reading-anchor`、ResizeObserver 和历史分页实现；保留 fork 的同一工作区内 Agent 标签切回时回到底部语义，并继续保留完整 Composer 历史、选区引用、Review Comments、Threadshare 分享和 canonical 100 条兼容层。
+- Explorer、插件、音频、终端快捷键和图片渲染采用上游实现；Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、异步子 Agent 生命周期、计划任务既有 Agent 目标、固定签名三包发布链路和 Android/iOS 独立身份均无上游等价替代，本轮没有下线 fork 能力。
 
 ### 2026-10-03: `upstream/main` `d831c7bf3` / `v0.11.0-beta.3`
 
