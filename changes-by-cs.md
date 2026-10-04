@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `8a4ce5a48`，同步于 2026-10-05。
-- 最近同步 merge commit：`72ae2169d`（第二父提交为 `8a4ce5a48`）。
+- 最近同步基线：`upstream/main` = `71b236d38`，同步于 2026-10-05。
+- 最近同步 merge commit：`e71b2b0d6`（第二父提交为 `71b236d38`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,11 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-05: `upstream/main` `71b236d38`
+
+- 合入上游 1 个提交：修复 npm 全局安装 Paseo CLI 时使用错误的安装前缀。daemon 自更新现在从当前 server 包路径解析 npm prefix，并将该 prefix 传给探测、安装和升级后的版本检查；补充了自定义 prefix 的回归测试。
+- 该改动属于 daemon 自更新的安装环境修复，与 fork 的 Status Bar、Host Prompt Library、Review Comments、Threadshare、canonical 100 条 timeline、异步子 Agent 生命周期和三包发布链路无冲突；本轮没有下线 fork 专属能力。
 
 ### 2026-10-05: `upstream/main` `8a4ce5a48`
 
