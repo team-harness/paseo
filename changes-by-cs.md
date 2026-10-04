@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `749fe3e5a`，同步于 2026-10-04。
-- 最近同步 merge commit：`85f21bad5`（第二父提交为 `749fe3e5a`）。
+- 最近同步基线：`upstream/main` = `8a4ce5a48`，同步于 2026-10-05。
+- 最近同步 merge commit：`72ae2169d`（第二父提交为 `8a4ce5a48`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,11 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-05: `upstream/main` `8a4ce5a48`
+
+- 合入上游 22 个提交：Usage Reports 流式 `usage.list_reports.update` 与最终 response、Context Window 详情和用量展示、插件目录 redesign、Claude/ACP/Pi/OMP 状态修复、移动端侧边栏滚动保持、Composer 触摸屏焦点、目录搜索、worktree/CLI 和网站插件浏览修复。
+- Usage Reports 采用上游流式实现，保留最终 `reports` 和旧报告归一化，以兼容已安装的客户端和 Host；新的 `error` 为可选字段，失败仍发关联 `rpc_error`。Provider mode 的恢复和实时持久化采用上游实现。Status Summary、Host Prompt Library、Review Comments、Threadshare、canonical 100 条 timeline、异步子 Agent 生命周期、replacement 恢复、既有 Agent 计划目标和固定签名三包发布链路继续保留。本轮没有下线 fork 专属能力。
 
 ### 2026-10-04: `upstream/main` `749fe3e5a`
 

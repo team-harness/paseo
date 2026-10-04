@@ -1,3 +1,4 @@
+import type { ListUsageReportsOptions } from "../../plugins/usage-sources/index.js";
 import type pino from "pino";
 import type { ProviderUsage, UsageReportEntry } from "@getpaseo/protocol/messages";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
@@ -5,10 +6,7 @@ import type { SessionInboundMessage, SessionOutboundMessage } from "../../messag
 export interface UsageSessionOptions {
   emit(message: SessionOutboundMessage): void;
   runtime?: {
-    listUsageReports(options: {
-      forceRefresh?: boolean;
-      reportIds?: string[];
-    }): Promise<UsageReportEntry[]>;
+    listUsageReports(options: ListUsageReportsOptions): Promise<UsageReportEntry[]>;
     listLegacyUsage(): Promise<{ fetchedAt: string; providers: ProviderUsage[] }>;
   };
   logger: pino.Logger;
@@ -25,22 +23,45 @@ export class UsageSession {
       const reports = await this.options.runtime.listUsageReports({
         forceRefresh: msg.forceRefresh,
         reportIds: msg.reportIds,
+        agentId: msg.agentId,
+        onReport: (report) =>
+          this.options.emit({
+            type: "usage.list_reports.update",
+            payload: { requestId: msg.requestId, report },
+          }),
       });
       this.options.emit({
         type: "usage.list_reports.response",
         payload: {
           requestId: msg.requestId,
-          // COMPAT(usageReportProblems): added in v0.11.0, remove after 2027-04-03.
-          // Older apps require windows even for unavailable/error reports.
+          error: null,
+          // COMPAT(usageReportStreaming): added in v0.11.0, remove after 2027-04-05.
+          // Old clients ignore unknown updates and consume this final array.
           reports: reports.map((entry) =>
-            Object.assign({}, entry, {
-              report: Object.assign({ windows: [] }, entry.report),
-            }),
+            Object.assign({}, entry, { report: Object.assign({ windows: [] }, entry.report) }),
           ),
         },
       });
     } catch (error) {
-      this.emitError(msg, error, "usage_list_reports_failed");
+      // COMPAT(usageReportStreaming): added in v0.11.0, remove after 2027-04-05.
+      // Pre-streaming clients reject through rpc_error, not the final error field.
+      this.options.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: error instanceof Error ? error.message : String(error),
+          code: "usage_list_reports_failed",
+        },
+      });
+      this.options.emit({
+        type: "usage.list_reports.response",
+        payload: {
+          requestId: msg.requestId,
+          error: error instanceof Error ? error.message : String(error),
+          reports: [],
+        },
+      });
     }
   }
 
@@ -72,21 +93,5 @@ export class UsageSession {
         },
       });
     }
-  }
-
-  private emitError(
-    msg: Extract<SessionInboundMessage, { type: "usage.list_reports.request" }>,
-    error: unknown,
-    code: string,
-  ): void {
-    this.options.emit({
-      type: "rpc_error",
-      payload: {
-        requestId: msg.requestId,
-        requestType: msg.type,
-        error: error instanceof Error ? error.message : String(error),
-        code,
-      },
-    });
   }
 }

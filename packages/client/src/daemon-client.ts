@@ -579,19 +579,18 @@ type PromptLibraryUpdatePayload = PromptLibraryUpdateResponseMessage["payload"];
 type PromptLibraryDeletePayload = PromptLibraryDeleteResponseMessage["payload"];
 type PromptLibraryClearPayload = PromptLibraryClearResponseMessage["payload"];
 type PromptLibraryMergePayload = PromptLibraryMergeResponseMessage["payload"];
-type UsageListReportsWireEntry = UsageListReportsResponseMessage["payload"]["reports"][number];
-type UsageListReportsPayload = Omit<UsageListReportsResponseMessage["payload"], "reports"> & {
+interface UsageListReportsPayload {
+  requestId: string;
   reports: UsageReportEntry[];
-};
+}
 
-// COMPAT(usageReportProblems): added in v0.11.0, remove after 2027-04-03.
-function normalizeUsageReportEntry(entry: UsageListReportsWireEntry): UsageReportEntry {
+// COMPAT(usageReportStreaming): added in v0.11.0, remove after 2027-04-05.
+function normalizeUsageReportEntry(
+  entry: NonNullable<UsageListReportsResponseMessage["payload"]["reports"]>[number],
+): UsageReportEntry {
   const report = entry.report;
   if (report.status === "available") {
-    return {
-      ...entry,
-      report: { ...report, status: "available", windows: report.windows ?? [] },
-    };
+    return { ...entry, report: { ...report, status: "available", windows: report.windows ?? [] } };
   }
   if (report.status === "error") {
     return { ...entry, report: { status: "error", error: report.error ?? "" } };
@@ -5319,17 +5318,25 @@ export class DaemonClient {
     });
   }
 
-  async listUsageReports(options?: {
-    requestId?: string;
-    forceRefresh?: boolean;
-    reportIds?: string[];
-  }): Promise<UsageListReportsPayload> {
+  async listUsageReports(
+    options?: {
+      agentId?: string;
+      requestId?: string;
+      forceRefresh?: boolean;
+      reportIds?: string[];
+    },
+    onReport?: (report: UsageReportEntry) => void,
+  ): Promise<UsageListReportsPayload> {
     const features = this.getLastServerInfoMessage()?.features;
     if (!supportsUsageReports(features)) {
       throw new Error("Update the host to see usage.");
     }
+    if (options?.agentId !== undefined && options.reportIds !== undefined)
+      throw new Error("agentId and reportIds cannot be combined");
     // COMPAT(providerUsageList): added in v0.1.98, remove after 2027-03-26.
     if (features?.usageSources !== true) {
+      if (options?.agentId !== undefined)
+        return { requestId: this.createRequestId(options.requestId), reports: [] };
       // Released hosts serve a five-minute cache and have no forceRefresh option.
       const payload = await this.listProviderUsage({ requestId: options?.requestId });
       return {
@@ -5370,19 +5377,50 @@ export class DaemonClient {
           }),
       };
     }
-    const payload =
-      await this.sendNamespacedCorrelatedSessionRequest<"usage.list_reports.response">({
-        requestId: options?.requestId,
+    const requestId = this.createRequestId(options?.requestId);
+    const reports: UsageReportEntry[] = [];
+    let active = true;
+    const unsubscribe = this.subscribeRawMessages((message) => {
+      if (
+        !active ||
+        !("payload" in message) ||
+        !("requestId" in message.payload) ||
+        message.payload.requestId !== requestId
+      )
+        return;
+      if (message.type === "usage.list_reports.response" || message.type === "rpc_error") {
+        active = false;
+        return;
+      }
+      if (message.type !== "usage.list_reports.update") return;
+      reports.push(message.payload.report);
+      onReport?.(message.payload.report);
+    });
+    try {
+      const response = await this.sendRequest({
+        requestId,
         message: {
           type: "usage.list_reports.request",
+          requestId,
           forceRefresh: options?.forceRefresh,
           reportIds: options?.reportIds,
+          agentId: options?.agentId,
         },
+        select: (message) =>
+          message.type === "usage.list_reports.response" && message.payload.requestId === requestId
+            ? message.payload
+            : null,
       });
-    return {
-      ...payload,
-      reports: payload.reports.map(normalizeUsageReportEntry),
-    };
+      if (response.error != null) throw new Error(response.error);
+      // COMPAT(usageReportStreaming): added in v0.11.0, remove after 2027-04-05.
+      if (reports.length === 0 && response.reports) {
+        reports.push(...response.reports.map(normalizeUsageReportEntry));
+      }
+      return { requestId, reports };
+    } finally {
+      active = false;
+      unsubscribe();
+    }
   }
 
   async listSavedPrompts(options?: { requestId?: string }): Promise<PromptLibraryListPayload> {

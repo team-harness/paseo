@@ -391,6 +391,7 @@ const OUTBOUND_PERMISSION = {
   "prompt.library.delete.response": "daemon.manage",
   "prompt.library.clear.response": "daemon.manage",
   "prompt.library.merge.response": "daemon.manage",
+  "usage.list_reports.update": "daemon.read",
   "usage.list_reports.response": "daemon.read",
   provider_diagnostic_response: "daemon.read",
   providers_snapshot_update: ["daemon.read", "hub.execute"],

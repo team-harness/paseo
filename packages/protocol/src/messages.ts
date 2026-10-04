@@ -1842,6 +1842,7 @@ export const PromptLibraryMergeRequestMessageSchema = z.object({
 
 export const UsageListReportsRequestMessageSchema = z.object({
   type: z.literal("usage.list_reports.request"),
+  agentId: z.string().optional(),
   requestId: z.string(),
   reportIds: z.array(z.string()).optional(),
   forceRefresh: z.boolean().optional(),
@@ -6497,25 +6498,32 @@ export const UsageReportEntrySchema = z.object({
   icon: z.string().optional(),
   report: UsageReportSchema,
 });
+export const UsageListReportsUpdateMessageSchema = z.object({
+  type: z.literal("usage.list_reports.update"),
+  payload: z.object({ requestId: z.string(), report: UsageReportEntrySchema }),
+});
 export const UsageListReportsResponseMessageSchema = z.object({
   type: z.literal("usage.list_reports.response"),
   payload: z.object({
     requestId: z.string(),
-    reports: z.array(
-      UsageReportEntrySchema.extend({
-        // COMPAT(usageReportProblems): added in v0.11.0, remove after 2027-04-03.
-        // Accept both pre-beta.3 reports and typed problems; normalize after validation.
-        report: z.object({
-          status: ProviderUsageStatusSchema,
-          planLabel: z.string().optional(),
-          windows: z.array(ProviderUsageWindowSchema).optional(),
-          balances: z.array(ProviderUsageBalanceSchema).optional(),
-          details: z.array(ProviderUsageDetailSchema).optional(),
-          error: z.string().optional(),
-          problem: UsageProblemSchema.optional(),
+    error: z.string().nullable().optional(),
+    // COMPAT(usageReportStreaming): added in v0.11.0, remove after 2027-04-05.
+    // Pre-streaming hosts return a final report array; retain its wire shape.
+    reports: z
+      .array(
+        UsageReportEntrySchema.extend({
+          report: z.object({
+            status: ProviderUsageStatusSchema,
+            planLabel: z.string().optional(),
+            windows: z.array(ProviderUsageWindowSchema).optional(),
+            balances: z.array(ProviderUsageBalanceSchema).optional(),
+            details: z.array(ProviderUsageDetailSchema).optional(),
+            error: z.string().optional(),
+            problem: UsageProblemSchema.optional(),
+          }),
         }),
-      }),
-    ),
+      )
+      .optional(),
   }),
 });
 
@@ -7213,6 +7221,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   PromptLibraryDeleteResponseMessageSchema,
   PromptLibraryClearResponseMessageSchema,
   PromptLibraryMergeResponseMessageSchema,
+  UsageListReportsUpdateMessageSchema,
   UsageListReportsResponseMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,

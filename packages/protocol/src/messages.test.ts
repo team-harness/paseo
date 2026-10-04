@@ -62,7 +62,7 @@ test("accepts both legacy and typed usage report payloads", () => {
           },
         ],
       },
-    }).payload.reports[0]?.report,
+    }).payload.reports?.[0]?.report,
   ).toMatchObject({ status: "unavailable", windows: [], error: "Sign in again" });
   expect(
     UsageListReportsResponseMessageSchema.parse({
@@ -76,8 +76,20 @@ test("accepts both legacy and typed usage report payloads", () => {
           },
         ],
       },
-    }).payload.reports[0]?.report,
+    }).payload.reports?.[0]?.report,
   ).toMatchObject({ status: "unavailable", problem: { kind: "no_quota" } });
+});
+
+test("accepts usage report completion payloads", () => {
+  expect(
+    UsageListReportsResponseMessageSchema.parse({
+      type: "usage.list_reports.response",
+      payload: {
+        requestId: "typed",
+        error: null,
+      },
+    }).payload,
+  ).toEqual({ requestId: "typed", error: null });
 });
 
 describe("project icon message security", () => {
