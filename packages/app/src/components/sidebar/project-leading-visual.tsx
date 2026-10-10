@@ -1,8 +1,9 @@
 import { ActivityIndicator, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight, CircleAlert } from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
-import { STATUS_BUCKET_LABELS } from "@/hooks/sidebar-status-view-model";
+import { getStatusBucketLabel } from "@/hooks/sidebar-status-view-model";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import {
@@ -126,16 +127,15 @@ export function ProjectStatusIndicator({
   loadingAccessibilityLabel?: string;
   testID?: string;
 }) {
+  const { t } = useTranslation();
   const placeholderInitial = projectIconPlaceholderLabelFromDisplayName(displayName)
     .charAt(0)
     .toUpperCase();
   const badgeBucket = loading ? "running" : statusBucket;
   const badgeContent = getProjectStatusBadgeContent(badgeBucket);
-  const accessibilityLabel = getProjectStatusAccessibilityLabel({
-    loading,
-    loadingAccessibilityLabel,
-    statusBucket,
-  });
+  let accessibilityLabel: string | undefined;
+  if (loading) accessibilityLabel = loadingAccessibilityLabel;
+  else if (statusBucket) accessibilityLabel = getStatusBucketLabel(statusBucket, t);
   const indicatorTestID = getProjectStatusIndicatorTestID({ loading, statusBucket, testID });
 
   return (
@@ -161,20 +161,6 @@ export function ProjectStatusIndicator({
       </View>
     </View>
   );
-}
-
-function getProjectStatusAccessibilityLabel({
-  loading,
-  loadingAccessibilityLabel,
-  statusBucket,
-}: {
-  loading: boolean;
-  loadingAccessibilityLabel: string;
-  statusBucket: SidebarStateBucket | null;
-}): string | undefined {
-  if (loading) return loadingAccessibilityLabel;
-  if (statusBucket) return STATUS_BUCKET_LABELS[statusBucket];
-  return undefined;
 }
 
 function getProjectStatusIndicatorTestID({
@@ -203,6 +189,7 @@ function ProjectStatusBadge({
   statusBucket: SidebarStateBucket;
   backdrop: SidebarSurfaceBackdrop;
 }) {
+  const { t } = useTranslation();
   // Running skips the shell. The ring is wider than the 12pt shell and carries its own knockout,
   // so nesting it inside would clip it against the very thing that was meant to separate it from
   // the icon. It anchors to the same corner instead, growing around the centre the dot had.
@@ -210,7 +197,7 @@ function ProjectStatusBadge({
     return (
       <View
         role="status"
-        accessibilityLabel={STATUS_BUCKET_LABELS[statusBucket]}
+        accessibilityLabel={getStatusBucketLabel(statusBucket, t)}
         style={styles.statusRingAnchor}
         testID="project-status-badge"
       >
@@ -220,6 +207,8 @@ function ProjectStatusBadge({
   }
   return (
     <View
+      role="status"
+      accessibilityLabel={getStatusBucketLabel(statusBucket, t)}
       style={[styles.statusBadge, getStatusBadgeBackdropStyle(backdrop)]}
       testID="project-status-badge"
     >

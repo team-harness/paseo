@@ -547,6 +547,7 @@ export class DirectorySync {
     let subscribe = initialSubscribe;
     while (true) {
       const query: Parameters<DaemonClient["observeWorkspaces"]>[0] = {
+        ...(client.supportsBackgroundWorkspaces() ? { includeBackground: true } : {}),
         sort: [{ key: "activity_at", direction: "desc" }],
         page: cursor ? { limit: PAGE_LIMIT, cursor } : { limit: PAGE_LIMIT },
         ...(supportsDirectorySync
@@ -646,6 +647,7 @@ export class DirectorySync {
       const limit = input.page?.limit ?? PAGE_LIMIT;
       const query: Omit<FetchAgentsOptions, "subscribe"> = {
         ...(input.filter ? { filter: input.filter } : { scope: "active" as const }),
+        ...(client.supportsBackgroundWorkspaces() ? { includeBackground: true } : {}),
         sort: AGENT_SORT,
         page: cursor ? { limit, cursor } : { limit },
         ...(!input.filter && cursor === null && this.supportsDirectorySync()

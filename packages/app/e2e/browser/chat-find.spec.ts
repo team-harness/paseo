@@ -429,14 +429,15 @@ async function findFromComposer(page: Page, shortcut: string, testInfo: TestInfo
   }
 }
 
-test("opens and refocuses Find with Control+f from the composer", async ({ page }, testInfo) => {
-  // Exercise non-Mac keyboard policy even when Playwright runs on a Mac host.
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, "platform", { get: () => "Linux x86_64" });
-    Object.defineProperty(navigator, "userAgent", {
-      get: () =>
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
-    });
+test("opens and refocuses Find with Control+f from the composer on Linux", async ({
+  page,
+}, testInfo) => {
+  // Chromium retains the host navigator.platform even when its user agent is overridden.
+  const session = await page.context().newCDPSession(page);
+  await session.send("Emulation.setUserAgentOverride", {
+    userAgent:
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    platform: "Linux x86_64",
   });
   await findFromComposer(page, "Control+f", testInfo);
 });

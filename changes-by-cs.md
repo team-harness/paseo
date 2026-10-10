@@ -9,7 +9,7 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `71b236d38`，同步于 2026-10-05。
+- 最近同步基线：`upstream/main` = `6ec663342`，同步于 2026-10-10。
 - 最近同步 merge commit：`e71b2b0d6`（第二父提交为 `71b236d38`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
@@ -29,6 +29,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-10: `upstream/main` `6ec663342` / `0.11.2`
+
+- 合入上游 121 个提交：后台工作区可见性、Agent 消息来源标识、CLI 账户用量、插件目录与元数据、Claude 后台助手生命周期及断线重连后的子 Agent 状态同步、Haiku 5.5/Mythos 5.1 模型发现、首次 Prompt 失败保留会话、计划调度容错、iOS 文本裁剪和选区复制修复。
+- Diff 评论采用上游移动端编辑 sheet 和编辑状态管理；发送仍统一走 fork 的跨文件评论汇总、首次固定绑定 Agent、按 revision 增量投递与 Composer queue/interrupt 路径。上游新增的按 diff 临时选收件人及发送后清空评论不具备等价语义，不接入独立发送入口，避免绕过 workspace 投递锁和固定关联。
+- Linux Find 快捷键测试改用上游 CDP 平台模拟，保留 fork 的超过 100 条历史样本。状态徽标采用上游本地化无障碍标签。Status Bar/usage ledger 与 GPT-6.1 价格、Host Prompt Library、canonical 100 条分页、完整 Composer 历史、引用与 Assistant 时间、Threadshare 对话/文档分享、replacement 恢复、异步子 Agent 和既有 Agent 计划目标继续保留；三包固定签名及 Android/iOS 独立身份不变。本轮没有下线 fork 产品能力。
+- 聊天分享使用的 `jsonc-parser` 改为 app 的显式运行时依赖，避免上游依赖树变化后 clean install 丢失解析器；计费文案测试对齐现有“今日估算”表述。
 
 ### 2026-10-05: `upstream/main` `71b236d38`
 

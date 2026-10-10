@@ -11,7 +11,7 @@ import {
 } from "@/components/sidebar/workspace-meta-row";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
 import type { HostBadgeModel } from "@/hosts/appearance";
-import { STATUS_BUCKET_LABELS } from "@/hooks/sidebar-status-view-model";
+import { getStatusBucketLabel } from "@/hooks/sidebar-status-view-model";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import {
   hasSidebarWorkspaceTrailing,
@@ -205,6 +205,7 @@ function WorkspaceStatusIndicator({
   loadingAccessibilityLabel: string;
   reserveIdleSpace?: boolean;
 }) {
+  const { t } = useTranslation();
   // Busy is the only status that moves, and it is the ring rather than a dot for the same
   // reason it is a dot elsewhere: every status in the sidebar sits in this one slot, so busy
   // has to fill it without displacing anything. A row starting up and a row working are both
@@ -226,7 +227,7 @@ function WorkspaceStatusIndicator({
     return (
       <View
         role="status"
-        accessibilityLabel={STATUS_BUCKET_LABELS.running}
+        accessibilityLabel={getStatusBucketLabel("running", t)}
         style={styles.workspaceStatusDot}
         testID="workspace-status-indicator-running"
       >
@@ -239,7 +240,7 @@ function WorkspaceStatusIndicator({
     return (
       <View
         role="status"
-        accessibilityLabel={STATUS_BUCKET_LABELS.needs_input}
+        accessibilityLabel={getStatusBucketLabel("needs_input", t)}
         style={styles.workspaceStatusDot}
         testID="workspace-status-indicator-needs_input"
       >
@@ -252,7 +253,7 @@ function WorkspaceStatusIndicator({
     return (
       <View
         role="status"
-        accessibilityLabel={STATUS_BUCKET_LABELS.attention}
+        accessibilityLabel={getStatusBucketLabel("attention", t)}
         style={styles.workspaceStatusDot}
         testID="workspace-status-indicator-attention"
       >
@@ -269,7 +270,7 @@ function WorkspaceStatusIndicator({
     return reserveIdleSpace ? (
       <View
         role="status"
-        accessibilityLabel={STATUS_BUCKET_LABELS.done}
+        accessibilityLabel={getStatusBucketLabel("done", t)}
         style={styles.workspaceStatusDot}
         testID="workspace-status-indicator-done"
       >
@@ -287,7 +288,7 @@ function WorkspaceStatusIndicator({
   return (
     <View
       role="status"
-      accessibilityLabel={STATUS_BUCKET_LABELS[bucket]}
+      accessibilityLabel={getStatusBucketLabel(bucket, t)}
       style={styles.workspaceStatusDot}
       testID={`workspace-status-indicator-${bucket}`}
     >
