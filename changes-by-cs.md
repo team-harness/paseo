@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `6ec663342`，同步于 2026-10-10。
-- 最近同步 merge commit：`699e994d2`（第二父提交为 `6ec663342`）。
+- 最近同步基线：`upstream/main` = `b3693b79d`，同步于 2026-10-12。
+- 最近同步 merge commit：待本轮 merge 完成后填写。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-12: `upstream/main` `b3693b79d` / `0.11.2`
+
+- 合入上游 30 个提交：紧凑工作区 header/sidebar 密度布局、隐藏 Agent 计划文件发现、标准 Web 端口反代连接、定时任务 due slot 原子 claim、文件链接/Markdown HTML 解析、权限确认、Git diff/rename、日志时间戳、OpenCode 与 CJK 终端修复，以及 Android 无 camera 设备兼容。
+- 采用上游 workspace header、Explorer、文件链接、schedule claim、终端和 Android optional camera 实现；侧边栏行图标采用上游 `DensityIcon`，保留 fork 的状态环、项目/分支上下文和中文无障碍状态标签。
+- 上游没有等价替代 Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、Review Comments/Threadshare 分享、完整 Composer 历史、canonical 100 条时间线、异步子 Agent 生命周期、replacement 恢复、既有 Agent 计划目标或固定签名三包发布链路，均继续保留。本轮没有下线 fork 产品能力。
 
 ### 2026-10-10: `upstream/main` `6ec663342` / `0.11.2`
 

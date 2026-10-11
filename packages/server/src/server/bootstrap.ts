@@ -838,6 +838,9 @@ export async function createPaseoDaemon(
     try {
       fileHandle = await open(entry.absolutePath, DOWNLOAD_OPEN_FLAGS);
       const fileStats = await fileHandle.stat();
+      if (res.destroyed) {
+        return;
+      }
       if (!fileStats.isFile()) {
         res.status(404).json({ error: "File not found" });
         return;
@@ -849,6 +852,7 @@ export async function createPaseoDaemon(
 
       const stream = fileHandle.createReadStream();
       fileHandle = null;
+      res.once("close", () => stream.destroy());
       stream.on("error", (err) => {
         logger.error({ err }, "Failed to stream download");
         if (!res.headersSent) {
