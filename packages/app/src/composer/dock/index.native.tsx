@@ -3,6 +3,7 @@ export { ComposerDockBackground } from "./internal/background";
 import { ScrollView } from "@/components/ui/scroll-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHostBottomChromeInset } from "@/status-summary/bottom-chrome-inset";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { HEADER_INNER_HEIGHT } from "@/constants/layout";
 import { resolveContentMaxWidth, useAppSettings } from "@/hooks/use-settings";
 import { KeyboardTranslateView } from "@/keyboard/shift";
@@ -18,6 +19,7 @@ import Animated, {
 import { useKeyboardShift } from "@/keyboard/shift";
 import {
   resolveCenteredClearance,
+  resolveInlineComposerCapacity,
   updateComposerCapacity,
   type ComposerCapacity,
 } from "./internal/capacity";
@@ -72,12 +74,13 @@ function ComposerViewport({
 
 /** Bound the complete composer (including its controls), not just the text input. */
 function ComposerViewportContent({ style, ...props }: ViewProps) {
+  const compact = useIsCompactFormFactor();
   const capacity = useContext(ViewportCapacity);
   if (!capacity) throw new Error("ComposerViewportContent requires ComposerViewport");
   const constraint = useAnimatedStyle(() => ({
     // Only viewport changes and keyboard start/end events trigger layout. Motion
     // stays in KeyboardTranslateView and never changes this constraint per frame.
-    maxHeight: capacity.value,
+    maxHeight: resolveInlineComposerCapacity(capacity.value, compact),
   }));
 
   return (

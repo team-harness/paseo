@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `b3693b79d`，同步于 2026-10-12。
-- 最近同步 merge commit：`419a5e859`（第二父提交为 `b3693b79d`）。
+- 最近同步基线：`upstream/main` = `e135e9c10`，同步于 2026-10-14。
+- 最近同步 merge commit：本次合并提交（第二父提交为 `e135e9c10`，提交后回填 SHA）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-14: `upstream/main` `e135e9c10` / `0.11.2`
+
+- 合入上游 39 个提交：手机文件/子 Agent 工作区 sheet、长草稿全屏编辑与选区恢复、Markdown 本地图片预览、native 启动 polyfill、子任务取消通知、Codex Node 24 历史恢复、Claude context usage、Linux 窗口启动、非拉丁键盘快捷键、Git 路径和 IPv6 服务代理等修复。
+- 采用上游移动端 sheet、Composer 编辑状态和图片加载实现，同时保留 Status Bar 底部安全区、Markdown 选区评论与文档分享。只读 Agent sheet 不展示无目标输入框的引用按钮，打开为标签后仍可引用。子任务按自身真实终态通知，不因父 turn 结束取消异步子项。
+- Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、固定 Agent 关联与增量 Review 投递、Threadshare、完整 Composer 历史、canonical 100 条、replacement 恢复、既有 Agent 计划目标和固定签名三包发布链路继续保留。app Vitest 的 NODE_ENV 类型兼容采用上游 `Object.assign`，移除该处重复修复；本轮没有下线 fork 产品能力。
 
 ### 2026-10-12: `upstream/main` `b3693b79d` / `0.11.2`
 

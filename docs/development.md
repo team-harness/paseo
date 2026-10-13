@@ -319,9 +319,25 @@ the app entitlements must keep
 `com.apple.security.cs.disable-library-validation`; otherwise dyld can abort at
 launch while loading `Electron Framework.framework` with a Team ID mismatch.
 
-When validating a local packaged desktop build, set `PASEO_DESKTOP_SMOKE=1` so
-the `afterSign` hook launches the signed `.app` and catches dyld/signing errors
-before the installer is copied into `/Applications`.
+Run packaged desktop smoke only on an isolated host without live Paseo sessions.
+On this release machine keep `PASEO_DESKTOP_SMOKE=0` and verify signatures and
+package contents without launching the app; see [the fork release runbook](../shedule-synup.md).
+
+### Desktop Linux hidden-window fallback
+
+On Wayland (seen on ChromeOS Linux) a window created with `show: false` can sit
+forever without a single compositor frame: the renderer loads and runs, but
+`ready-to-show` never fires, so the window is never shown and the app looks like
+it did not start while every process is alive. `showWindowWhenReady`
+(`packages/desktop/src/window/show-when-ready.ts`) shows the main window when
+the document finishes loading if the event has not arrived. The fallback is
+Linux-only; macOS and Windows keep waiting for `ready-to-show`.
+
+Run the startup regression on Linux with an isolated display:
+
+```bash
+xvfb-run -a npm run test:e2e:window-startup --workspace=@getpaseo/desktop
+```
 
 ### Daemon logs
 

@@ -1157,6 +1157,8 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     null,
   );
   const composerTextInsertionIdRef = useRef(0);
+  // The workspace sheet is for looking; Open as tab brings the agent back with its composer.
+  const showsComposer = usePaneContext().host !== "sheet";
   const subagentRows = useSubagentsForParent({ serverId, parentAgentId: agentId });
   const tasks = useSessionStore((state): TodoEntry[] | undefined =>
     state.sessions[serverId]?.agentTasks.get(agentId),
@@ -1234,7 +1236,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     },
     [agentId],
   );
-  const composerSection = (
+  const composerSection = showsComposer ? (
     <RenderProfile id={`AgentComposerSection:${agentId}`}>
       <AgentComposerSection
         agentId={agentId}
@@ -1252,7 +1254,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         textInsertion={composerTextInsertion}
       />
     </RenderProfile>
-  );
+  ) : null;
   const streamContent = (
     <View style={animatedStaticStyles.content}>
       <RenderProfile id={`AgentStreamSection:${agentId}`}>
@@ -1268,7 +1270,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
           hasVisibleAgentTracks={hasVisibleAgentTracks}
           toast={toastApi}
           onOpenWorkspaceFile={onOpenWorkspaceFile}
-          onQuoteSelection={handleQuoteSelection}
+          onQuoteSelection={showsComposer ? handleQuoteSelection : undefined}
         />
       </RenderProfile>
       {hasActiveComposer ? (
@@ -1407,7 +1409,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   hasVisibleAgentTracks: boolean;
   toast: ReturnType<typeof useToastHost>["api"];
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
-  onQuoteSelection: (markdown: string) => void;
+  onQuoteSelection?: (markdown: string) => void;
 }) {
   const isCompactFormFactor = useIsCompactFormFactor();
   const hasWorkspaceDiffStat = useWorkspaceHasDiffStat(serverId, workspaceId);

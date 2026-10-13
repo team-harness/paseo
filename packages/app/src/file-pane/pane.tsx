@@ -68,6 +68,9 @@ interface FilePreviewBodyProps {
     body: string,
     source?: WorkspaceReviewCommentSource,
   ) => void;
+  workspaceRoot: string;
+  client: DaemonClient | null;
+  serverId: string;
 }
 
 type TextExplorerFile = ExplorerFile & { kind: "text" };
@@ -152,6 +155,9 @@ function FilePreviewBody({
   navigationRevision,
   imagePreviewUri,
   onAddReviewComment,
+  workspaceRoot,
+  client,
+  serverId,
 }: FilePreviewBodyProps) {
   const { t } = useTranslation();
   const filePath = location.path;
@@ -192,7 +198,15 @@ function FilePreviewBody({
     }
 
     if (renderKind === "markdown") {
-      const markdown = <FileMarkdownPreview source={preview.content ?? ""} />;
+      const markdown = (
+        <FileMarkdownPreview
+          source={preview.content ?? ""}
+          filePath={filePath}
+          workspaceRoot={workspaceRoot}
+          client={client}
+          serverId={serverId}
+        />
+      );
       const reviewableMarkdown = onAddReviewComment ? (
         <ReviewSelectionSurface filePath={filePath} onComment={onAddReviewComment}>
           {markdown}
@@ -367,6 +381,7 @@ export function FilePane({
   return (
     <FilePanePresentation
       serverId={serverId}
+      workspaceRoot={normalizedWorkspaceRoot}
       client={client}
       readTarget={readTarget}
       preview={preview}
@@ -410,6 +425,7 @@ function isEditableTextFile(input: {
 
 function FilePanePresentation({
   serverId,
+  workspaceRoot,
   client,
   readTarget,
   preview,
@@ -433,6 +449,7 @@ function FilePanePresentation({
   reviewSummary,
 }: {
   serverId: string;
+  workspaceRoot: string;
   client: DaemonClient | null;
   readTarget: { cwd: string; path: string } | null;
   preview: ExplorerFile | null;
@@ -481,6 +498,7 @@ function FilePanePresentation({
       <EditableFilePane
         key={`${serverId}:${readTarget.cwd}:${readTarget.path}`}
         serverId={serverId}
+        workspaceRoot={workspaceRoot}
         client={client}
         cwd={readTarget.cwd}
         path={readTarget.path}
@@ -542,6 +560,9 @@ function FilePanePresentation({
         navigationRevision={navigationRevision}
         imagePreviewUri={imagePreviewUri}
         onAddReviewComment={onAddReviewComment}
+        workspaceRoot={workspaceRoot}
+        client={client}
+        serverId={serverId}
       />
     </View>
   );
@@ -549,6 +570,7 @@ function FilePanePresentation({
 
 function EditableFilePane({
   serverId,
+  workspaceRoot,
   client,
   cwd,
   path,
@@ -567,6 +589,7 @@ function EditableFilePane({
   reviewSummary,
 }: {
   serverId: string;
+  workspaceRoot: string;
   client: DaemonClient;
   cwd: string;
   path: string;
@@ -752,6 +775,9 @@ function EditableFilePane({
           navigationRevision={navigationRevision}
           imagePreviewUri={null}
           onAddReviewComment={onAddReviewComment}
+          workspaceRoot={workspaceRoot}
+          client={client}
+          serverId={serverId}
         />
       )}
     </View>
