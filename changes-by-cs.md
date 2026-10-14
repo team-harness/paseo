@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `e135e9c10`，同步于 2026-10-14。
-- 最近同步 merge commit：`6175b6997`（第二父提交为 `e135e9c10`）。
+- 最近同步基线：`upstream/main` = `6d43a8c5b`，同步于 2026-10-15。
+- 最近同步 merge commit：本次合并提交（第二父提交为 `6d43a8c5b`，提交后回填 SHA）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-15: `upstream/main` `6d43a8c5b` / `0.11.2`
+
+- 合入上游 19 个提交：通过实际连接的 Host 下载文件并检查传输完整性、发送超大消息时就地拒绝而不断开连接、子目录工作区恢复文件和特殊文件名 Git diff、配置软链接保留、动态添加工作区服务、Claude 自定义配置目录 rewind、OMP 手动压缩进度、CLI 全量 Agent 分页，以及字体设置、HTML 标题、问题卡选项预览和快捷键等修复。
+- 下载、传输大小检查、配置持久化、Provider 与桌面控制台关闭保护采用上游实现。新增消息大小常量和可选 SDK timeout 不改变 wire schema；发送大小检查不等同于旧 Host 的 projected timeline 响应有界化，继续保留 canonical 100 条分页。
+- Status Bar/usage ledger、多 Host、Host Prompt Library、Review 固定 Agent 与增量投递、引用与 Assistant 时间、Threadshare 对话/文档分享、完整 Composer 历史、异步子 Agent 生命周期、replacement 恢复、既有 Agent 计划目标和固定签名三包发布均无等价替代，继续保留。本轮没有下线 fork 能力。
 
 ### 2026-10-14: `upstream/main` `e135e9c10` / `0.11.2`
 
