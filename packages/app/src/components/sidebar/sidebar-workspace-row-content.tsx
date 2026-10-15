@@ -18,7 +18,7 @@ import {
   type SidebarWorkspaceTrailing,
 } from "@/components/sidebar/workspace-trailing";
 import { useAppSettings } from "@/hooks/use-settings";
-import { density, densityFontSize, densityIconBox } from "@/styles/density";
+import { densityIconBox } from "@/styles/density";
 import type { Theme } from "@/styles/theme";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { getStatusDotColor } from "@/utils/status-dot-color";
@@ -496,6 +496,9 @@ export function SidebarWorkspaceTrailingActionOverlay({
   );
 }
 
+// The status dot centres on the title's first line, so both share its line height.
+const TITLE_LINE_HEIGHT = 20;
+
 const styles = StyleSheet.create((theme) => ({
   workspaceRowContent: {
     position: "relative",
@@ -524,7 +527,7 @@ const styles = StyleSheet.create((theme) => ({
   workspaceStatusDot: {
     position: "relative",
     width: densityIconBox("md"),
-    height: density.rowLineHeight,
+    height: TITLE_LINE_HEIGHT,
     borderRadius: theme.borderRadius.full,
     flexShrink: 0,
     alignItems: "center",
@@ -556,9 +559,9 @@ const styles = StyleSheet.create((theme) => ({
   // to the meta row, so it takes the full width the trailing slot leaves behind.
   workspaceBranchText: {
     color: theme.colors.foreground,
-    fontSize: densityFontSize(theme, "base"),
+    fontSize: theme.fontSize.base,
     fontWeight: "400",
-    lineHeight: density.rowLineHeight,
+    lineHeight: TITLE_LINE_HEIGHT,
     opacity: 0.76,
     flex: 1,
     minWidth: 0,

@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `6d43a8c5b`，同步于 2026-10-15。
-- 最近同步 merge commit：`fc80f7004`（第二父提交为 `6d43a8c5b`）。
+- 最近同步基线：`upstream/main` = `208e32303`，同步于 2026-10-16。
+- 最近同步 merge commit：本轮合并提交（第二父提交为 `208e32303`，提交后回填）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-16: `upstream/main` `208e32303` / `0.11.2`
+
+- 合入上游 32 个提交：手机弹层统一堆叠、工作区 sheet 中的 Agent 模型与上下文信息、全屏输入及键盘恢复、侧边栏密度、可选 Hoplite Provider 与可搜索 Provider 目录、按工作区发现模型，以及 Claude 模型切换和问题重试、OpenCode 多选与流式内存、Git 子目录 diff/rename、Forgejo/Gitea fork 和终端退出处理等修复。
+- 弹层、全屏 Composer、Provider 与 Git 修复采用上游实现，并应用其 bottom-sheet 补丁；原生普通及全屏输入继续使用 fork 的 Host 底部安全区归属，聊天引用继续接入 Composer，侧边栏保留项目上下文与共享状态环。上游新增 Hoplite capability 为可选字段。上游新增了 0.11.3/0.11.4 发布说明，但 main 的 package 版本仍为 0.11.2，安装包按源码版本构建。
+- Status Bar/usage ledger、多 Host、Host Prompt Library、Review 固定 Agent 与增量投递、引用与 Assistant 时间、Threadshare 对话/文档图片分享、完整 Composer 历史、canonical 100 条分页、异步子 Agent 生命周期、replacement 恢复、既有 Agent 计划目标和固定签名三包发布均无等价替代，继续保留。本轮没有下线 fork 能力。
 
 ### 2026-10-15: `upstream/main` `6d43a8c5b` / `0.11.2`
 
