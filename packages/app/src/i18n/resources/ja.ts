@@ -511,6 +511,7 @@ export const ja: TranslationResources = {
       failedRetry: "音声入力に失敗しました。再試行をタップしてください。",
     },
     question: {
+      responseFailed: "回答を送信できませんでした。もう一度お試しください。",
       submit: "送信",
       next: "次へ",
       answerPlaceholder: "回答を入力...",
@@ -870,6 +871,7 @@ export const ja: TranslationResources = {
     header: {
       actions: {
         workspaceActions: "ワークスペースアクション",
+        workspaceActionsUnhealthy: "ワークスペースアクション、異常なサービスがあります",
         newAgent: "新しいエージェント",
         newTerminal: "新しいターミナル",
         newBrowser: "新しいブラウザタブ",
@@ -917,6 +919,8 @@ export const ja: TranslationResources = {
         exitCode: "終了コード: {{code}}",
         startFailed: "{{scriptName}}の起動に失敗しました",
         stopFailed: "{{scriptName}}の停止に失敗しました",
+        running: "実行中",
+        runningCount: "{{count}} 件実行中",
       },
     },
     tree: {

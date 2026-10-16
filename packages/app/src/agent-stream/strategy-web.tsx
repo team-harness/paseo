@@ -307,7 +307,6 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     olderHistoryProgressKey,
     scrollEnabled,
     contentMaxWidth,
-    imageContext,
     isMobileBreakpoint,
   } = props;
   const historyVirtualized = useRevisedHistoryRows(
@@ -463,7 +462,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       const row = segments.historyVirtualized[index];
       const measured = row && measuredRowHeights.current.get(row.id);
       if (measured && measured.width === contentWidth) return measured.height;
-      return row ? estimateStreamItemHeight({ item: row, contentMaxWidth, imageContext }) : 120;
+      return row ? estimateStreamItemHeight({ item: row, contentMaxWidth }) : 120;
     },
     observeElementOffset: observeVirtualOffset,
     rangeExtractor,
@@ -647,7 +646,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   }, [cancelPendingStickToBottom, clearMouseScrollGesture, clearUpwardInputEvidence, isActive]);
 
   const scrollMessagesToBottom = useCallback(
-    (behavior: ScrollBehaviorLike = "auto") => {
+    (behavior: ScrollBehaviorLike = "auto", allowOverscroll = false) => {
       const scrollContainer = scrollContainerRef.current;
       if (
         !isActiveRef.current ||
@@ -656,7 +655,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       ) {
         return;
       }
-      if (isScrollContainerOverscrolledPastBottom(scrollContainer)) {
+      if (!allowOverscroll && isScrollContainerOverscrolledPastBottom(scrollContainer)) {
         return;
       }
       scrollElementToBottom(scrollContainer, behavior);
@@ -687,11 +686,14 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     });
   }, [scrollMessagesToBottom]);
 
-  const forceStickToBottom = useCallback(() => {
-    cancelPendingStickToBottom();
-    scrollMessagesToBottom("auto");
-    scheduleStickToBottom();
-  }, [cancelPendingStickToBottom, scheduleStickToBottom, scrollMessagesToBottom]);
+  const forceStickToBottom = useCallback(
+    (allowOverscroll = false) => {
+      cancelPendingStickToBottom();
+      scrollMessagesToBottom("auto", allowOverscroll);
+      scheduleStickToBottom();
+    },
+    [cancelPendingStickToBottom, scheduleStickToBottom, scrollMessagesToBottom],
+  );
 
   // Rows are laid out in DOM order, virtualized block first, so the first row whose bottom
   // clears the reading line is the one the reader is looking at.
@@ -854,7 +856,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       return;
     }
     setFollowOutput(true);
-    forceStickToBottom();
+    forceStickToBottom(true);
   }, [forceStickToBottom, isActive, isLocallyActive]);
 
   useLayoutEffect(() => {
@@ -1000,14 +1002,25 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       if (!followOutputRef.current) {
         return;
       }
-      scheduleStickToBottom();
+      // ResizeObserver runs before paint. Following in the next frame exposes
+      // the newly grown row at the old offset for one painted frame.
+      forceStickToBottom();
     });
     observer.observe(scrollContainer);
     if (contentNode) {
       observer.observe(contentNode);
     }
+    // Paced reveal commits inside a message without rerendering this viewport.
+    // Observe those commits too, so the next frame sees the grown content at the
+    // bottom instead of waiting for the resize notification after animation frames.
+    const contentChanges = new MutationObserver(() => {
+      if (isActiveRef.current && followOutputRef.current) forceStickToBottom();
+    });
+    if (contentNode)
+      contentChanges.observe(contentNode, { childList: true, characterData: true, subtree: true });
     return () => {
       observer.disconnect();
+      contentChanges.disconnect();
     };
   }, [
     reconcileReadingPosition,
@@ -1015,7 +1028,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     isActive,
     reportReadingPosition,
     scheduleHistoryStartPrependSettle,
-    scheduleStickToBottom,
+    forceStickToBottom,
     updateScrollMetrics,
     measureVirtualizedRows,
   ]);
@@ -1319,6 +1332,8 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     <div style={viewportStyle} data-window-content>
       <div
         ref={handleScrollContainerRef}
+        // Let clicks focus the feed for browser keyboard scrolling without adding a Tab stop.
+        tabIndex={-1}
         data-testid="agent-chat-scroll"
         data-overlay-scrollbar={scrollEnabled && !isMobileBreakpoint ? "true" : undefined}
         id={`agent-chat-scroll-${shouldUseVirtualizer ? "web-dom-virtualized" : "web-dom-scroll"}`}

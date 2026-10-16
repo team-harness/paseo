@@ -510,6 +510,7 @@ export const ptBR: TranslationResources = {
       failedRetry: "Falha no ditado. Toque para tentar novamente.",
     },
     question: {
+      responseFailed: "Não foi possível enviar sua resposta. Tente novamente.",
       submit: "Enviar",
       next: "Próximo",
       answerPlaceholder: "Digite sua resposta...",
@@ -870,6 +871,7 @@ export const ptBR: TranslationResources = {
     header: {
       actions: {
         workspaceActions: "Ações do workspace",
+        workspaceActionsUnhealthy: "Ações do workspace, há um serviço com problema",
         newAgent: "Novo agente",
         newTerminal: "Novo terminal",
         newBrowser: "Nova aba de navegador",
@@ -917,6 +919,8 @@ export const ptBR: TranslationResources = {
         exitCode: "saída {{code}}",
         startFailed: "Falha ao iniciar {{scriptName}}",
         stopFailed: "Falha ao parar {{scriptName}}",
+        running: "Em execução",
+        runningCount: "{{count}} em execução",
       },
     },
     tree: {

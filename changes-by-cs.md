@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `208e32303`，同步于 2026-10-16。
-- 最近同步 merge commit：`1a1e8bfeb`（第二父提交为 `208e32303`）。
+- 最近同步基线：`upstream/main` = `d152f1529`，同步于 2026-10-17。
+- 最近同步 merge commit：本轮合并提交（第二父提交为 `d152f1529`，提交后回填）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -29,6 +29,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-17: `upstream/main` `d152f1529` / `0.12.0-beta.1`
+
+- 合入上游 32 个提交：升级至 0.12.0-beta.1，修复失败问题回答恢复、iOS 全屏 Composer 键盘层级、WebSocket 入站校验拆分、Markdown 统一渲染器与图片占位、长聊天渲染性能、Page Up/Down、后台聊天缓存、终端配置和工作区脚本，并补齐 Cursor 计划用量、Antigravity 图标及本地 WAV 转写等改动。
+- 采用上游新的 `react-native-enriched-markdown` 渲染链、协议 envelope validator、Provider 图片/终端和工作区脚本实现；原生输入继续保留 fork 的 Host bottom chrome inset、引用和全屏 Composer 行为。上游删除的 fork 专属目录已按本台账恢复，避免 Status Bar、Prompt Library、Review/Threadshare、usage ledger、Composer 历史、价格快照及三包构建链路回归。上游发布版本为 `0.12.0-beta.1`，安装包按该源码版本构建。
+- 上游没有等价替代 Status Bar/usage ledger、多 Host、Host Prompt Library、Review 固定 Agent 与增量投递、引用与 Assistant 时间、Threadshare 对话/文档图片分享、canonical 100 条分页、异步子 Agent 生命周期、replacement 恢复、既有 Agent 计划目标和固定签名三包发布。本轮没有下线 fork 能力。
 
 ### 2026-10-16: `upstream/main` `208e32303` / `0.11.2`
 

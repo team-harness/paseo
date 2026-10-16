@@ -32,7 +32,7 @@ export interface UseChatOutlineInput {
   visible?: boolean;
   viewportRef: RefObject<StreamViewportHandle | null>;
   onJumpError: () => void;
-  visibleMessageIds?: ReadonlySet<string>;
+  mountedHistoryMessageIds?: ReadonlySet<string>;
   revealLoadedMessage?: (messageId: string) => boolean;
 }
 
@@ -53,7 +53,7 @@ export function useChatOutline({
   visible = true,
   viewportRef,
   onJumpError,
-  visibleMessageIds,
+  mountedHistoryMessageIds,
   revealLoadedMessage,
 }: UseChatOutlineInput): ChatOutline {
   const loadedItems = useMemo(() => [...tail, ...(head ?? NO_STREAM_ITEMS)], [head, tail]);
@@ -107,7 +107,8 @@ export function useChatOutline({
     const target = loadedItems.find((item) => item.timelineCursor?.seq === pendingJump.seq);
     if (target) {
       if (pendingJump.hasScrolled) return;
-      if (visibleMessageIds?.has(target.id) === false) {
+      const isLiveHead = head?.some((item) => item.id === target.id) ?? false;
+      if (mountedHistoryMessageIds?.has(target.id) === false && !isLiveHead) {
         revealLoadedMessage?.(target.id);
         return;
       }
@@ -119,7 +120,7 @@ export function useChatOutline({
       return;
     }
     if (pendingJump.fetchSettled) setPendingJump(null);
-  }, [loadedItems, pendingJump, revealLoadedMessage, viewportRef, visibleMessageIds]);
+  }, [head, loadedItems, mountedHistoryMessageIds, pendingJump, revealLoadedMessage, viewportRef]);
 
   const jumpToPrompt = useCallback(
     (seq: number) => {
