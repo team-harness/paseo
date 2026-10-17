@@ -30,6 +30,15 @@
 
 ## 最近同步判断
 
+### 2026-10-18: `upstream/main` `9bd58f66b` / `0.12.0-beta.2`
+
+- 合入上游 133 个文件改动并升级至 `0.12.0-beta.2`：Markdown 文件/文件夹链接打开、源码消息定位、终端 CJK 选区复制、音频打断与 Android 两路音频测试、Compact Sidebar 与 New Workspace 表单、Provider/Plugin 生命周期、Claude 中途设置变更、OMP/OpenCode/Copilot 行为、计划调度及客户端错误处理等修复。
+- 采用上游新的文件链接解析、Markdown 图片块渲染、Compact New Workspace 表单、Provider/Plugin 生命周期和客户端错误处理实现；fork 的 Status Bar/usage ledger、多 Host/Prompt Library、Review/Threadshare 分享、Composer 历史与引用、canonical 100 条分页、异步子 Agent 生命周期、replacement 恢复、既有 Agent 计划目标和固定签名三包发布链路继续保留。本轮没有下线 fork 能力。
+- 上游发布版本为 `0.12.0-beta.2`，本轮三类安装包按该源码版本构建。
+
+- 最近同步基线：`upstream/main` = `9bd58f66b`，同步于 2026-10-18。
+- 最近同步 merge commit：`8ffc672351c4a14a2e9425a46045cf5caa27162d`。
+
 ### 2026-10-17: `upstream/main` `d152f1529` / `0.12.0-beta.1`
 
 - 合入上游 32 个提交：升级至 0.12.0-beta.1，修复失败问题回答恢复、iOS 全屏 Composer 键盘层级、WebSocket 入站校验拆分、Markdown 统一渲染器与图片占位、长聊天渲染性能、Page Up/Down、后台聊天缓存、终端配置和工作区脚本，并补齐 Cursor 计划用量、Antigravity 图标及本地 WAV 转写等改动。
