@@ -1186,6 +1186,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
 
   useEffect(() => {
     const handle: StreamViewportHandle = {
+      focus: () => scrollContainerRef.current?.focus({ preventScroll: true }),
       scrollToBottom: () => {
         setFollowOutput(true);
         cancelPendingStickToBottom();
