@@ -35,7 +35,7 @@
 - 合入上游 27 个提交、156 个文件改动：Codex 恢复 Goal 时保留启动事件并恢复停止能力、Claude 后台子 Agent 跨父回合保留日志、Hub 静默断线重连、高延迟 Relay 连接、Android 长聊天空白行、流式回复刷新恢复、关闭查找后键盘滚动、当前 Host 创建工作区，以及 Markdown 间距、工具摘要、子 Agent 模型和命令中心展示。
 - 采用上游上述实现；Usage Sources 刷新失败保留上次成功配额，与 fork 的 Status Bar token/费用 ledger 属于不同数据来源。Codex 恢复事件缓存与 fork 的 UUID foreground turn 标识组合，保留跨进程计费身份与 replacement 恢复；Claude 子任务仍由其真实终态收敛，不因父 turn 结束取消。
 - Status Bar/usage ledger、多 Host、Host Prompt Library、Review 固定 Agent 与增量投递、Threadshare 对话/文档图片分享、Composer 完整历史与引用、末条 Assistant 时间、canonical 100 条分页、既有 Agent 计划目标及固定签名三包发布继续保留。本轮没有下线 fork 能力。
-- typecheck、lint、format 与 469 项定向测试通过，覆盖 Codex/Claude、Agent 恢复与 replacement、timeline、Android 滚动、Markdown、usage 和 wire compatibility。静态审查工具存在范围截断，交叉点另经源码 diff 核对；未运行全量测试或启动构建产物。
+- typecheck、lint、format 与 469 项定向测试通过，覆盖 Codex/Claude、Agent 恢复与 replacement、timeline、Android 滚动、Markdown、usage 和 wire compatibility。静态审查工具存在范围截断，交叉点另经源码 diff 核对；全量 server 测试被 npm 包装脚本意外启动后已停止，验证结论仅采用定向测试，未启动构建产物。
 
 ### 2026-10-18: `upstream/main` `9bd58f66b` / `0.12.0-beta.2`
 
