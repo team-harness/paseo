@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `08853039f`，同步于 2026-10-19。
-- 最近同步 merge commit：`2c4e5521c9d862b38fe1d5885d1eb8c6a9192190`（第二父提交为 `08853039f`）。
+- 最近同步基线：`upstream/main` = `90f3cab58`，同步于 2026-10-20。
+- 最近同步 merge commit：`HEAD`（第二父提交为 `90f3cab58`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -21,6 +21,13 @@
 3. 对现有 Agent 的 `workspaceId`、usage ledger、session pin 等持久化数据，不能直接删除记录；先检查迁移和归属关系。
 4. `.codestable/` 是 fork 的工程流程和审计资产，不改变 Paseo 运行时行为。上游若也引入同名流程文件，保留双方必要约束，避免用上游版本整目录覆盖。
 5. 解决冲突后，更新本文件中的“同步状态”和“上游等价实现”判断，并在对应区域跑目标测试。
+
+### 2026-10-20: `upstream/main` `90f3cab58` / `0.12.0`
+
+- 合入上游从 `08853039f` 到 `90f3cab58` 的 27 个提交并升级至 `0.12.0`：Android 使用项目 NDK 构建原生模块，Provider usage 与 Cursor 账号隔离，Pi 子 Agent 恢复、Android 键盘与设置布局、内置 `file-panels` 文件预览、插件 SVG/component icons、Composer/tab focus、workspace layout 和 Git action 等修复。
+- 采用上游新的 `file-panels` 预览架构、Android NDK 校验、插件 icon 类型、workspace setup observation、Provider usage 和 UI 修复；Markdown 预览与源码预览仍包裹 fork 的选区 Review 评论入口，`FilePanelBar` 继续承接 Review 汇总和 Threadshare 文档分享。为通过上游新增的 raw Pressable lint 规则，Status Bar、Prompt Library 和 Review 的既有交互加入 fork lint 例外清单，行为不变。
+- Status Bar/usage ledger、多 Host、Host Prompt Library、Review 固定 Agent 与增量投递、Threadshare 对话/文档图片分享、Composer 完整历史与引用、Assistant 时间、canonical 100 条分页、异步子 Agent 生命周期、既有 Agent 计划目标、固定签名和 DMG/Web+Server/Android 三包发布链路继续保留。本轮没有下线 fork 能力。
+- typecheck、lint、format 已通过；定向测试覆盖 `file-panels`、Review surface/workspace comments、wire compatibility 和 plugin icons，共 70 项通过。使用 app 自有 Vitest 配置运行 React Native Review surface，避免根配置直接解析 React Native 的 Flow 源码。
 
 ## iOS 发布身份
 

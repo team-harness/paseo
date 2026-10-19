@@ -11,8 +11,6 @@ import {
   createSetAgentInitializing,
   refreshAgentInitializationTimeout,
 } from "@/hooks/use-agent-initialization";
-import { applyStatusSummaryUpdate } from "@/status-summary/push";
-import { refreshStatusSummary, shouldRefreshStatusSummary } from "@/status-summary/query";
 import type { StreamItem } from "@/types/stream";
 import { deriveAgentStreamTurnLiveness } from "@/timeline/session-stream-reducers";
 import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
@@ -38,7 +36,6 @@ import {
   useSessionStore,
   type SessionState,
 } from "@/stores/session-store";
-import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { sendOsNotification } from "@/utils/os-notifications";
 import { getIsAppActivelyVisible, getIsAppVisible } from "@/utils/app-visibility";
 import {
@@ -53,7 +50,6 @@ import { toErrorMessage } from "@/utils/error-messages";
 import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import { applyCheckoutStatusUpdateFromEvent } from "@/git/checkout-status-cache";
 import { resyncProviderSubagents, useProviderSubagentStore } from "@/subagents/provider-store";
-import { revalidateSessionAfterResume } from "@/contexts/session-resume-revalidation";
 
 // Re-export types from session-store and draft-store for backward compatibility
 export type { DraftInput } from "@/stores/draft-store";
@@ -171,11 +167,6 @@ function resolveAgentAttentionNotification(
   });
 }
 
-type WorkspaceSetupProgressPayload = Extract<
-  SessionOutboundMessage,
-  { type: "workspace_setup_progress" }
->["payload"];
-
 function notifyVoiceAbortFailure(
   data: Extract<SessionOutboundMessage, { type: "activity_log" }>["payload"],
   notifyError: (message: string) => void,
@@ -223,13 +214,11 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead);
   const clearAgentStreamHead = useSessionStore((state) => state.clearAgentStreamHead);
   const setInitializingAgents = useSessionStore((state) => state.setInitializingAgents);
-  const bumpHistorySyncGeneration = useSessionStore((state) => state.bumpHistorySyncGeneration);
   const setAgents = useSessionStore((state) => state.setAgents);
   const flushAgentLastActivity = useSessionStore((state) => state.flushAgentLastActivity);
   const setPendingPermissions = useSessionStore((state) => state.setPendingPermissions);
   const updateSessionServerInfo = useSessionStore((state) => state.updateSessionServerInfo);
   const setViewedTimelineSync = useSessionStore((state) => state.setViewedTimelineSync);
-  const upsertWorkspaceSetupProgress = useWorkspaceSetupStore((state) => state.upsertProgress);
 
   // Track focused agent for heartbeat
   const focusedAgentId = useSessionStore(
@@ -237,9 +226,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   );
   const focusedTerminalId = useSessionStore(
     (state) => state.sessions[serverId]?.focusedTerminalId ?? null,
-  );
-  const supportsStatusSummary = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.statusSummary === true,
   );
   const _sessionStateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attentionNotifiedRef = useRef<Map<string, number>>(new Map());
@@ -263,46 +249,13 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     viewedTimelineSyncRef.current?.setActive(isAppVisible);
   }, [isAppVisible]);
 
-  const refreshHostStatusSummary = useCallback(() => {
-    if (
-      !shouldRefreshStatusSummary({
-        serverId,
-        client,
-        isConnected,
-        supportsStatusSummary,
-      })
-    ) {
-      return;
-    }
-    void refreshStatusSummary({ queryClient, serverId, client }).catch((error) => {
-      console.warn("[Session] failed to refresh status summary", { serverId, error });
-    });
-  }, [client, isConnected, queryClient, serverId, supportsStatusSummary]);
-
-  const handleAppResumed = useCallback(
-    (awayMs: number) => {
-      refreshHostStatusSummary();
-      void revalidateSessionAfterResume({
-        awayMs,
-        serverId,
-        bumpHistorySyncGeneration,
-      });
-    },
-    [bumpHistorySyncGeneration, refreshHostStatusSummary, serverId],
-  );
-
   // Client activity tracking (heartbeat, push token registration)
   useClientActivity({
     client,
     focusedAgentId,
     focusedTerminalId,
-    onAppResumed: handleAppResumed,
   });
   useEffect(() => startPushNotifications({ client, serverId }), [client, serverId]);
-
-  useEffect(() => {
-    refreshHostStatusSummary();
-  }, [refreshHostStatusSummary]);
 
   const notifyAgentAttention = useCallback(
     (params: {
@@ -404,13 +357,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       setInitializingAgents(serverId, new Map());
     }
   }, [flushAgentLastActivity, serverId, isConnected, setInitializingAgents]);
-
-  const applyWorkspaceSetupProgress = useCallback(
-    (payload: WorkspaceSetupProgressPayload) => {
-      upsertWorkspaceSetupProgress({ serverId, payload });
-    },
-    [serverId, upsertWorkspaceSetupProgress],
-  );
 
   useEffect(() => {
     const setAgentInitializing = createSetAgentInitializing(serverId, setInitializingAgents);
@@ -548,7 +494,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         "agent_permission_resolved",
         "agent.provider_subagents.update",
         "checkout_status_update",
-        "workspace_setup_progress",
         "status.server_info",
       ],
       { notifications: true },
@@ -585,21 +530,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     const unsubCheckoutStatusUpdate = onFeed("checkout_status_update", (message) => {
       if (message.type !== "checkout_status_update") return;
       applyCheckoutStatusUpdateFromEvent({ queryClient, serverId, message });
-    });
-
-    const unsubStatusSummaryUpdate = client.on("status.summary.updated", (message) => {
-      if (message.type !== "status.summary.updated") return;
-      applyStatusSummaryUpdate({ serverId, queryClient, message });
-    });
-
-    const unsubAgentAttentionCleared = client.on("clear_agent_attention_response", (message) => {
-      if (message.type !== "clear_agent_attention_response") return;
-      refreshHostStatusSummary();
-    });
-
-    const unsubWorkspaceSetupProgress = onFeed("workspace_setup_progress", (message) => {
-      if (message.type !== "workspace_setup_progress") return;
-      applyWorkspaceSetupProgress(message.payload);
     });
 
     const unsubStatus = onFeed("status", (message) => {
@@ -760,9 +690,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubProviderSubagentUpdate();
       unsubAgentAttention();
       unsubCheckoutStatusUpdate();
-      unsubStatusSummaryUpdate();
-      unsubAgentAttentionCleared();
-      unsubWorkspaceSetupProgress();
       unsubStatus();
       unsubPermissionRequest();
       unsubPermissionResolved();
@@ -784,8 +711,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     setAgents,
     setPendingPermissions,
     notifyAgentAttention,
-    refreshHostStatusSummary,
-    applyWorkspaceSetupProgress,
     updateSessionServerInfo,
     toast,
     voiceRuntime,
