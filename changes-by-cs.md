@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `90f3cab58`，同步于 2026-10-20。
-- 最近同步 merge commit：`HEAD`（第二父提交为 `90f3cab58`）。
+- 最近同步基线：`upstream/main` = `69ef741a7`，同步于 2026-10-20。
+- 最近同步 merge commit：待本轮提交（第二父提交为 `69ef741a7`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-20: `upstream/main` `69ef741a7` / `0.12.0`
+
+- 合入上游修复：隐藏的 retained panel 不再订阅共享 native status ring 时钟；恢复可见时保留本地旋转相位，并新增 Android 原生状态环回归覆盖。
+- 采用上游 `components/status-ring/clock.ts` 实现。Status Bar、usage ledger、Host Prompt Library、Review/Threadshare、Composer 历史与引用、canonical 100 条分页、异步子 Agent 生命周期和三包发布链路均无冲突，继续保留 fork 行为；本轮没有下线 fork 能力。
+- 合并后运行 typecheck、lint、format，并运行 status ring 与受影响 app/server 定向测试；主 daemon 6767 保持原 PID 与健康状态。
 
 ### 2026-10-19: `upstream/main` `08853039f` / `0.12.0-beta.3`
 
