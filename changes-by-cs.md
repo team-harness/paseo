@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `69ef741a7`，同步于 2026-10-20。
-- 最近同步 merge commit：待本轮提交（第二父提交为 `69ef741a7`）。
+- 最近同步基线：`upstream/main` = `068f272a0`，同步于 2026-10-21。
+- 最近同步 merge commit：待本轮提交（第二父提交为 `068f272a0`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-21: `upstream/main` `068f272a0` / `0.12.0`
+
+- 合入上游从 `69ef741a7` 到 `068f272a0` 的 6 个提交：Explorer 在 phone/tablet/desktop 上统一布局与导航，插件 turn-ended 事件改为不携带历史并要求 bounded timeline refetch，Claude 计划批准后恢复 Auto，Android 证书错误文案区分 TLS，补充 schedule archive-on-finish 文档，并更新 lockfile/Nix 依赖哈希。
+- 采用上游 Explorer、插件生命周期、Claude 计划、Android 连接错误和 schedule 文档实现；Explorer 旧 compact sidebar 状态与测试按上游删除。Status Bar/usage ledger、多 Host、Host Prompt Library、Review 固定 Agent 与增量投递、Threadshare 对话/文档图片分享、Composer 完整历史与引用、Assistant 时间、canonical 100 条分页、异步子 Agent 生命周期、既有 Agent 计划目标、固定签名和 DMG/Web+Server/Android 三包发布链路继续保留。本轮没有下线 fork 产品能力。
+- 合并后将运行 typecheck、lint、format 与 Explorer、插件 lifecycle、Claude plan、connection failure 定向测试；主 daemon 6767 不重启。
 
 ### 2026-10-20: `upstream/main` `69ef741a7` / `0.12.0`
 
