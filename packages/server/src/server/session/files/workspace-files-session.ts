@@ -193,6 +193,7 @@ export class WorkspaceFilesSession {
       root: request.cwd,
       relativePath: request.path,
       content: request.content,
+      contentEncoding: request.contentEncoding,
       expectedModifiedAt: request.expectedModifiedAt,
       expectedRevision: request.expectedRevision,
     });

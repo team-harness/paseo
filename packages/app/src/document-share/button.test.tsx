@@ -3,6 +3,13 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { DocumentShareButton } from "./button";
+import type { ReviewTextSelection } from "@/review/workspace-comments";
+import {
+  FilePanelReviewActions,
+  FilePanelReviewProvider,
+  FilePanelReviewSurface,
+  useFilePanelReviewContent,
+} from "@/review/file-panel-review";
 
 const state = vi.hoisted(() => ({
   supported: true,
@@ -10,6 +17,51 @@ const state = vi.hoisted(() => ({
   copy: vi.fn(),
   show: vi.fn(),
   error: vi.fn(),
+  addComment: vi.fn(),
+}));
+vi.mock("@/review/summary-trigger", () => ({ ReviewSummaryTrigger: () => null }));
+vi.mock("@/review/selection-comment-trigger", () => ({
+  ReviewSelectionCommentTrigger: ({
+    selection,
+    onComment,
+  }: {
+    selection: ReviewTextSelection | null;
+    onComment: (selection: ReviewTextSelection, body: string) => void;
+  }) => {
+    const press = React.useCallback(() => {
+      if (selection) onComment(selection, "Fix source");
+    }, [selection, onComment]);
+    return selection ? (
+      <button type="button" onClick={press}>
+        Source comment
+      </button>
+    ) : null;
+  },
+}));
+vi.mock("@/review/selection-surface", () => ({
+  ReviewSelectionSurface: ({
+    children,
+    onComment,
+  }: {
+    children: React.ReactNode;
+    onComment: (selection: ReviewTextSelection, body: string) => void;
+  }) => {
+    const press = React.useCallback(
+      () => onComment({ quote: "Preview phrase", lineStart: null, lineEnd: null }, "Fix preview"),
+      [onComment],
+    );
+    return (
+      <div>
+        {children}
+        <button type="button" onClick={press}>
+          Preview comment
+        </button>
+      </div>
+    );
+  },
+}));
+vi.mock("@/review/workspace-comments-store", () => ({
+  addWorkspaceReviewComment: state.addComment,
 }));
 vi.mock("@/stores/session-store", () => ({
   useSessionStore: (select: (state: unknown) => unknown) =>
@@ -71,6 +123,79 @@ async function render(content = "# Unsaved edits", filePath = "docs/design.md") 
 async function click() {
   await act(async () => container.querySelector("button")!.click());
 }
+
+function PanelDraft({ content }: { content: string }) {
+  const select = useFilePanelReviewContent(content);
+  const press = React.useCallback(
+    () => select?.({ quote: "Source phrase", lineStart: 4, lineEnd: 5 }),
+    [select],
+  );
+  return (
+    <button type="button" onClick={press}>
+      Select source
+    </button>
+  );
+}
+
+test("file panels share unsaved drafts and clear sharing when the text panel unmounts", async () => {
+  const panel = (content: string | null) => (
+    <FilePanelReviewProvider serverId="host" workspaceId="workspace-1" cwd="/repo" path="doc.md">
+      <FilePanelReviewActions />
+      {content !== null ? <PanelDraft content={content} /> : null}
+    </FilePanelReviewProvider>
+  );
+  await act(async () => root.render(panel("# Disk copy")));
+  await act(async () => root.render(panel("# Unsaved revision")));
+  await click();
+  expect(state.share).toHaveBeenCalledWith({
+    cwd: "/repo",
+    path: "doc.md",
+    content: "# Unsaved revision",
+  });
+  await act(async () => root.render(panel(null)));
+  expect(container.querySelector("button")).toBeNull();
+});
+
+test("preview and source comments retain workspace identity and precise source lines", async () => {
+  await act(async () =>
+    root.render(
+      <FilePanelReviewProvider serverId="host" workspaceId="workspace-1" cwd="/repo" path="doc.md">
+        <FilePanelReviewActions />
+        <PanelDraft content="# Draft" />
+        <FilePanelReviewSurface>
+          <span>Preview phrase</span>
+        </FilePanelReviewSurface>
+      </FilePanelReviewProvider>,
+    ),
+  );
+  const press = async (label: string) =>
+    act(async () =>
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent === label)!
+        .click(),
+    );
+  await press("Select source");
+  await press("Source comment");
+  await press("Preview comment");
+  const [source, preview] = state.addComment.mock.calls.map(([input]) => input);
+  expect(source.key).toBe(preview.key);
+  expect(source.key).toContain("workspace-1");
+  expect(source.comment).toMatchObject({
+    filePath: "doc.md",
+    source: "source",
+    lineStart: 4,
+    lineEnd: 5,
+    body: "Fix source",
+  });
+  expect(preview.comment).toEqual({
+    filePath: "doc.md",
+    source: "preview",
+    quote: "Preview phrase",
+    lineStart: null,
+    lineEnd: null,
+    body: "Fix preview",
+  });
+});
 
 test("shares the currently displayed Markdown and copies the returned link", async () => {
   await render();

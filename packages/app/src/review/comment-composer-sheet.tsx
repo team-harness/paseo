@@ -31,7 +31,10 @@ export function ReviewCommentComposerSheet({
     [filePath, selection, t],
   );
   const header = useMemo<SheetHeader>(
-    () => ({ title: t("review.comment.add"), subtitle: `${filePath} · ${location}` }),
+    () => ({
+      title: t("review.comment.add"),
+      subtitle: <Text style={styles.subtitle}>{`${filePath} · ${location}`}</Text>,
+    }),
     [filePath, location, t],
   );
 
@@ -114,6 +117,7 @@ function formatSelectionLocation(
 }
 
 const styles = StyleSheet.create((theme) => ({
+  subtitle: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
   content: {
     gap: theme.spacing[4],
   },

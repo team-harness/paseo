@@ -163,7 +163,7 @@ test("file selection comments persist and remain available from Changes", async 
     );
   await page.keyboard.press("Escape");
 
-  await page.getByTestId("file-mode-source").click();
+  await page.getByTestId("file-panel-switcher-builtin:source").click();
   const sourceEditor = page
     .getByTestId("file-source-editor")
     .filter({ visible: true })

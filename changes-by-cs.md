@@ -9,7 +9,7 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `068f272a0`，同步于 2026-10-21。
+- 最近同步基线：`upstream/main` = `ce67efa9e`，同步于 2026-10-22。
 - 最近同步 merge commit：`43d7956114`（第二父提交为 `068f272a0`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
@@ -36,6 +36,14 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-22: `upstream/main` `ce67efa9e` / `0.12.0`
+
+- 合入 27 个上游提交：插件式文件面板与 Markdown 相对链接、跨 daemon 连接和 Agent 委派、批量通知、重启后运行状态恢复、归档发现隔离、默认完整分支 diff、手机 Explorer 标签栏、Android 图片选择恢复及可选诊断构建。
+- 采用上游文件句柄、插件面板和 Source 编辑器架构，删除被替代的旧文件面板实现。通过 workspace 级 Review 上下文重新接入预览/源码评论、共享汇总和文档分享；分享仍使用当前显示内容，包括未保存的源码编辑，切换面板后清理旧选区和分享内容。
+- Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、固定 Agent Review 增量投递、Threadshare 对话范围与文档图片分享、Composer 完整历史与引用、Assistant 内联时间、canonical 100 条分页、异步子 Agent 与 replacement 条件恢复、既有 Agent 计划目标以及固定签名三包发布均保留。本轮没有下线 fork 产品能力。
+- 服务端扩展消息分发与上游 Agent observation 分发并存；Android 保留 jsonc-parser ESM 入口并接入上游诊断开关。跨 daemon 功能为可选 capability，不替代 fork 的多 Host 计费汇总。
+- typecheck、lint、format 与 422 项定向测试通过；文件评论浏览器测试验证预览/源码评论、跨 Changes 汇总、持久化、复制与删除。评论弹窗副标题和 tooltip 按现有组件契约使用 Text 包装。静态审查存在图谱覆盖和截断限制，文件面板及服务端冲突另经源码核对；主 daemon 6767 保持运行。
 
 ### 2026-10-21: `upstream/main` `068f272a0` / `0.12.0`
 
@@ -703,14 +711,15 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 **关键文件**：
 
 - `packages/app/src/file-pane/pane.tsx`
-- `packages/app/src/components/file-pane-render-mode.ts`
+- `packages/app/src/file-panels/choice/`
+- `packages/app/src/file-panels/source/`
 - `packages/app/src/i18n/resources/*.ts`
 
 **同步规则**：
 
 - 采用上游文件面板的状态模型、render kind 和控件位置；带行号定位时默认 Source 的行为由上游统一模型负责。
 - 不恢复 fork 的 Markdown 专用 helper、图标切换 UI、独立文案或旧文件读取路径。
-- 必跑：文件面板、`file-pane-render-mode.test.ts`、`resources.test.ts`、`npm run typecheck`。
+- 必跑：文件面板 choice/source 目标测试、`resources.test.ts`、`npm run typecheck`。
 
 ### 7. 只读聊天分享
 
@@ -825,6 +834,8 @@ Web + Server 归档沿用官方 Docker 的 workspace pack 链路，包含 `highl
 - `packages/app/src/review/selection-surface.web.tsx`
 - `packages/app/src/review/summary-trigger.tsx`
 - `packages/app/src/file-pane/`
+- `packages/app/src/review/file-panel-review.tsx`
+- `packages/app/src/file-panels/source/`
 
 **同步规则**：
 

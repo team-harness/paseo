@@ -117,7 +117,9 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
       selectingAgent
         ? {
             title: t("review.summary.selectAgentTitle"),
-            subtitle: t("review.summary.selectAgentSubtitle"),
+            subtitle: (
+              <Text style={styles.subtitle}>{t("review.summary.selectAgentSubtitle")}</Text>
+            ),
             back: {
               onPress: () => setSelectingAgent(false),
               accessibilityLabel: t("common.actions.back"),
@@ -125,7 +127,7 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
           }
         : {
             title: t("review.summary.title"),
-            subtitle: t("review.summary.count", { count }),
+            subtitle: <Text style={styles.subtitle}>{t("review.summary.count", { count })}</Text>,
           },
     [count, selectingAgent, t],
   );
@@ -517,7 +519,7 @@ export function ReviewSummaryTrigger(props: BuildWorkspaceReviewKeyInput) {
           <Text style={styles.triggerCount}>{count}</Text>
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
-          {t("review.summary.open", { count })}
+          <Text style={styles.subtitle}>{t("review.summary.open", { count })}</Text>
         </TooltipContent>
       </Tooltip>
       <AdaptiveModalSheet
@@ -812,6 +814,7 @@ function agentRowStyle({ hovered, pressed }: PressableStateCallbackType & { hove
 }
 
 const styles = StyleSheet.create((theme) => ({
+  subtitle: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
   trigger: {
     minWidth: 28,
     height: 24,
