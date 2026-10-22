@@ -15,7 +15,6 @@ import { useSessionStore } from "@/stores/session-store";
 import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
 import { formatFileSize } from "@/utils/format-file-size";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
-import { FilePanelBar } from "./bar";
 import { FilePanelReviewProvider } from "@/review/file-panel-review";
 
 /**
@@ -121,7 +120,6 @@ export function FilePane({
       >
         <View style={styles.container} testID="workspace-file-pane">
           <FilePanelPicker choice={choice} />
-          <FilePanelBar choice={choice} modified={modified} />
           <MountedFilePanel
             key={`${panel.id}:${targetKey}`}
             panel={panel}

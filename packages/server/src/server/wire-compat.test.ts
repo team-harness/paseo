@@ -1,3 +1,4 @@
+import { createWorkspaceRuntimeStore } from "./workspace-runtime-store/index.js";
 import { createAgentMessageDeliveryStub } from "./test-utils/session-stubs.js";
 import {
   createMessageReceiptsStub,
@@ -217,6 +218,7 @@ function createSessionForWireCompatTest(options?: {
   ];
 
   const session = new Session({
+    workspaceRuntimeStore: createWorkspaceRuntimeStore(),
     messageReceipts: createMessageReceiptsStub(),
     agentMessages: createAgentMessageDeliveryStub(),
     creationService: createTestCreationService(),
@@ -265,9 +267,7 @@ function createSessionForWireCompatTest(options?: {
       async listStashes() {
         return [];
       },
-      peekSnapshot() {
-        return null;
-      },
+
       async validateBranchRef() {
         return { ok: false, error: "not found" };
       },

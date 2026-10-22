@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `ce67efa9e`，同步于 2026-10-22。
-- 最近同步 merge commit：`8bbcd06ed0`（第二父提交为 `ce67efa9e`）。
+- 最近同步基线：`upstream/main` = `d972f67c3`，同步于 2026-10-23。
+- 最近同步 merge commit：`bbc7a7015`（第二父提交为 `d972f67c3`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-23: `upstream/main` `d972f67c3` / `0.13.0-beta.1`
+
+- 合入上游自 `ce67efa9e` 以来的 20 个提交：侧边栏按最近用户 Prompt 排序并保持 active workspace 可见、Relay 防重放、重连后保留 workspace PR 状态、Web 终端统一 xterm、终端图片粘贴、Claude 大历史导入限流、手机工作区插件按钮、通知 Agent 在原工作区打开、手动元数据只使用配置模型，以及恢复 Markdown/HTML 文件的 Preview/Source 视图。
+- 采用上游的侧边栏排序、Relay Noise 安全通道、workspace runtime/PR 恢复、终端渲染与图片粘贴、Claude 导入调度、通知路由和文本文件 Preview/Source 工具栏。文本工具栏接回 fork 的工作区 Review Provider、预览/源码选区评论、Review 汇总和 Threadshare 文档分享；旧的 `file-pane/bar.tsx` 与已被上游替代的面板切换重复实现下线。
+- Status Bar/usage ledger、多 Host 汇总、Host Prompt Library、固定 Agent Review 增量投递、Threadshare 对话范围与文档图片分享、Composer 完整历史与引用、Assistant 内联时间、canonical 100 条分页、异步子 Agent 与 replacement 条件恢复、既有 Agent 计划目标以及固定签名三包发布均保留。本轮没有下线其他 fork 产品能力。
+- 上游版本升级到 `0.13.0-beta.1`；定向验证覆盖文件面板/Review、侧边栏排序、Relay、通知恢复、终端和受影响 server/client 协议测试。主 daemon 6767 保持原 PID 与健康状态。
 
 ### 2026-10-22: `upstream/main` `ce67efa9e` / `0.12.0`
 
