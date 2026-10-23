@@ -163,7 +163,7 @@ test("file selection comments persist and remain available from Changes", async 
     );
   await page.keyboard.press("Escape");
 
-  await page.getByTestId("file-panel-switcher-builtin:source").click();
+  await page.getByTestId("file-mode-source").filter({ visible: true }).click();
   const sourceEditor = page
     .getByTestId("file-source-editor")
     .filter({ visible: true })
@@ -177,7 +177,6 @@ test("file selection comments persist and remain available from Changes", async 
   await appendFile(path.join(workspace.repoPath, fileName), "\nA new line to review.\n", "utf8");
 
   await page.reload();
-  await workspace.navigateTo();
   await expectFileTabOpen(page, fileName);
   await expect(
     page.getByTestId("review-summary-trigger").filter({ visible: true }).first(),
@@ -232,6 +231,6 @@ test("file selection comments persist and remain available from Changes", async 
   await expect(page.getByTestId("review-summary-trigger").filter({ visible: true })).toHaveCount(0);
 
   await page.reload();
-  await workspace.navigateTo();
+  await expectFileTabOpen(page, fileName);
   await expect(page.getByTestId("review-summary-trigger").filter({ visible: true })).toHaveCount(0);
 });

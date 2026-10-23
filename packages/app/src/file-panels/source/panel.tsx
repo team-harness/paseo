@@ -7,7 +7,11 @@ import {
   type ComponentProps,
   type ComponentType,
 } from "react";
-import { useFileText, type PluginFileLocation } from "@getpaseo/plugin/client";
+import {
+  useFileText,
+  type PluginFilePanelProps,
+  type PluginFilePanelParams,
+} from "@getpaseo/plugin/client";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -18,7 +22,6 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { formatFileSize } from "@/utils/format-file-size";
 import type { Theme } from "@/styles/theme";
 import { FilePanelLoading } from "../loading";
-import type { BuiltinFilePanelProps } from "../panels";
 import type { FileConflictAlertState } from "./conflict-alert";
 import { FileEditorModel, getFileConflictCallout } from "./editor/model";
 import { FileEditorView } from "./editor/view";
@@ -52,10 +55,12 @@ const MAX_EDITABLE_BYTES = 1024 * 1024;
 /** A rendered view of the file's text: the panel's Preview, shown instead of its source. */
 export interface TextFilePreviewProps {
   text: string;
-  target: BuiltinFilePanelProps["target"];
+  params: PluginFilePanelProps["params"];
+  workspaceId: string;
+  host: PluginFilePanelProps["host"];
 }
 
-type TextFilePanelProps = BuiltinFilePanelProps & {
+type TextFilePanelProps = PluginFilePanelProps & {
   /** The panel's Preview; with one, the toolbar switches between Preview and Source. */
   preview?: ComponentType<TextFilePreviewProps>;
 };
@@ -79,9 +84,10 @@ export function TextFilePanel(props: TextFilePanelProps) {
  * each later line target switches to Source again.
  */
 function useTextFileView(
-  location: PluginFileLocation,
+  params: PluginFilePanelParams,
+  revision: number,
 ): [TextFileView, (view: TextFileView) => void] {
-  const lineTarget = location.lineStart ? location.revision : null;
+  const lineTarget = params.lineStart ? revision : null;
   const [view, setView] = useState<TextFileView>(lineTarget === null ? "preview" : "source");
   const [shownLineTarget, setShownLineTarget] = useState(lineTarget);
   if (lineTarget !== null && lineTarget !== shownLineTarget) {
@@ -103,18 +109,20 @@ function TooLargeTextFile({ size }: { size: number }) {
 
 function ReadonlyTextFile({
   file,
-  location,
-  target,
+  params,
+  revision,
+  workspaceId,
+  host,
   preview: Preview,
   presentation,
 }: TextFilePanelProps & { presentation: "highlighted" | "plain" }) {
   const text = useFileText(file);
   useFilePanelReviewContent(text.status === "ready" ? text.text : null);
   const { t } = useTranslation();
-  const [view, setView] = useTextFileView(location);
+  const [view, setView] = useTextFileView(params, revision);
   const sourceLocation = useMemo(
-    () => ({ path: target.path, lineStart: location.lineStart, lineEnd: location.lineEnd }),
-    [location.lineEnd, location.lineStart, target.path],
+    () => ({ path: params.path, lineStart: params.lineStart, lineEnd: params.lineEnd }),
+    [params.lineEnd, params.lineStart, params.path],
   );
   if (text.status === "loading") return <FilePanelLoading />;
   if (text.status === "error") {
@@ -134,14 +142,14 @@ function ReadonlyTextFile({
         onViewChange={Preview ? setView : undefined}
       />
       {showPreview ? (
-        <Preview text={text.text} target={target} />
+        <Preview text={text.text} params={params} workspaceId={workspaceId} host={host} />
       ) : (
         <FilePanelReviewSurface source="source">
           <ThemedFileSourceView
             content={text.text}
-            filename={target.path}
+            filename={params.path}
             location={sourceLocation}
-            navigationRevision={location.revision}
+            navigationRevision={revision}
             presentation={presentation}
           />
         </FilePanelReviewSurface>
@@ -150,11 +158,19 @@ function ReadonlyTextFile({
   );
 }
 
-function EditableTextFile({ file, tab, location, target, preview: Preview }: TextFilePanelProps) {
+function EditableTextFile({
+  file,
+  tab,
+  params,
+  revision,
+  workspaceId,
+  host,
+  preview: Preview,
+}: TextFilePanelProps) {
   const { settings } = useAppSettings();
   const { t } = useTranslation();
   const [model] = useState(() => new FileEditorModel({ file }));
-  const [view, setView] = useTextFileView(location);
+  const [view, setView] = useTextFileView(params, revision);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const [vimMode, setVimMode] = useState<string | null>(settings.vimKeybindings ? "NORMAL" : null);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
@@ -188,8 +204,8 @@ function EditableTextFile({ file, tab, location, target, preview: Preview }: Tex
   const handleOverwrite = useCallback(() => void model.overwrite(), [model]);
   const handleRetry = useCallback(() => void model.reload(), [model]);
   const editorLocation = useMemo(
-    () => ({ path: target.path, lineStart: location.lineStart, lineEnd: location.lineEnd }),
-    [location.lineEnd, location.lineStart, target.path],
+    () => ({ path: params.path, lineStart: params.lineStart, lineEnd: params.lineEnd }),
+    [params.lineEnd, params.lineStart, params.path],
   );
 
   if (snapshot.status === "loading") return <FilePanelLoading />;
@@ -229,13 +245,13 @@ function EditableTextFile({ file, tab, location, target, preview: Preview }: Tex
         conflict={conflict}
       />
       {showPreview ? (
-        <Preview text={snapshot.content} target={target} />
+        <Preview text={snapshot.content} params={params} workspaceId={workspaceId} host={host} />
       ) : (
         <SourceEditor
           model={model}
-          filename={target.path}
+          filename={params.path}
           location={editorLocation}
-          navigationRevision={location.revision}
+          navigationRevision={revision}
           vimEnabled={settings.vimKeybindings}
           onCursorChange={setCursor}
           onVimModeChange={setVimMode}

@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `d972f67c3`，同步于 2026-10-23。
-- 最近同步 merge commit：`bbc7a7015`（第二父提交为 `d972f67c3`）。
+- 最近同步基线：`upstream/main` = `d6fa23189`，同步于 2026-10-24。
+- 最近同步 merge commit：包含本节更新、第二父提交为 `d6fa23189` 的合并提交（`git log --merges -1 --format=%H`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-24: `upstream/main` `d6fa23189` / `0.13.0-beta.2`
+
+- 合入上游 15 个提交：Claude 大历史改为避免整份 transcript 重复加载、ACP session load 历史回放恢复、完成通知订阅持久化及 daemon 重启恢复、Relay 连接强制校验已配置密码、无 UI 订阅时发布 workspace 快照，以及搜索状态一致性、Command Center 手动滚动、移动端 sidebar/sheet/技能选择器、Android DNS 错误提示和 iOS 构建 SDK 更新。
+- 文件面板采用上游统一的 `params`、`host`、`workspaceId`、`revision` 和持久化 tab state；保留外层 workspace Review Provider、Markdown/Source 选区评论、汇总及文档分享。标签运行图标改为直接使用上游共享 `StatusIcon`，其内部继续使用 `StatusRing`；删除 fork 重复的图标包装实现。完成通知采用上游持久化订阅模型，移除已退役的测试 helper。
+- Status Bar/usage ledger、多 Host、Host Prompt Library、固定 Agent Review 增量投递、Threadshare 范围和文档图片分享、Composer 完整历史与引用、Assistant 时间、canonical 100 条分页、异步子 Agent 生命周期与 replacement 条件恢复、既有 Agent 计划目标及固定签名三包发布继续保留。本轮没有下线 fork 产品能力。
+- typecheck、lint、format 与 596 项定向测试通过，覆盖文件面板与 Review、状态展示、Agent replacement、完成通知及 Claude/ACP 历史。浏览器实测覆盖 Markdown/源码评论、刷新持久化、Changes 汇总与复制删除；更新旧源码切换定位器，并移除刷新后的重复整页导航。测试使用独立临时目录，避开本机默认临时目录下观察到的 macOS FSEvents 阻塞；主 daemon 6767 只做 PID 与健康检查，不执行生命周期操作。
 
 ### 2026-10-23: `upstream/main` `d972f67c3` / `0.13.0-beta.1`
 
