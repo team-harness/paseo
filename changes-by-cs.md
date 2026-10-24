@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `d6fa23189`，同步于 2026-10-24。
-- 最近同步 merge commit：包含本节更新、第二父提交为 `d6fa23189` 的合并提交（`git log --merges -1 --format=%H`）。
+- 最近同步基线：`upstream/main` = `72e3316f4`，同步于 2026-10-25。
+- 最近同步 merge commit：包含本节更新、第二父提交为 `72e3316f4` 的合并提交（`git log --merges -1 --format=%H`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-25: `upstream/main` `72e3316f4` / `0.13.0`
+
+- 合入上游 14 个提交并升级至 `0.13.0`：恢复工作区手动排序、保留创建响应到达前的 live workspace 状态、平板侧边栏系统导航安全区、保留面板失活时关闭 Combobox、Claude 历史回放避免探测文件和去重后台通知、OpenCode v2 子任务模型信息、Cursor 配额百分比及预取语音播放修复，并更新 ACP 固定 Provider 版本。
+- 采用上游手动排序与不可变 workspace 投影、面板弹层生命周期、Provider 历史和语音实现。侧边栏仍保留项目上下文与共享状态环；Claude 通知仅按真实通知身份去重，不在父 turn 结束时取消异步子任务；Cursor Provider 配额展示与 fork 的 token/费用 ledger 数据来源不同，两者继续各自保留。
+- Status Bar/usage ledger、多 Host、Host Prompt Library、固定 Agent Review 增量投递、Threadshare 对话范围和文档图片分享、Composer 完整历史与引用、Assistant 时间、canonical 100 条分页、异步子 Agent 生命周期与 replacement 条件恢复、既有 Agent 计划目标及固定签名三包发布继续保留。本轮没有下线 fork 能力。
+- typecheck、lint、format 与 311 项定向测试通过，覆盖侧边栏顺序与 workspace replica、Claude 历史/通知、OpenCode 子任务、Cursor 配额、插件和语音播放。5 项浏览器验证通过；手动排序用例补上拖拽库 mouseup 后 50 ms 点击抑制的菜单打开同步，保留排序及刷新断言。静态工具存在索引陈旧与范围截断，相关交叉点另经源码核对。主 daemon 6767 仅执行 PID 和健康检查。
 
 ### 2026-10-24: `upstream/main` `d6fa23189` / `0.13.0-beta.2`
 

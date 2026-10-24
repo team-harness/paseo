@@ -1323,6 +1323,7 @@ export const ru: TranslationResources = {
       sort: {
         label: "Сортировка",
         created: "Дата создания",
+        manual: "Вручную",
         lastPrompt: "Последний запрос",
         updateHost: "Обновите хосты для сортировки рабочих пространств",
       },
