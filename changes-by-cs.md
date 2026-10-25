@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `72e3316f4`，同步于 2026-10-25。
-- 最近同步 merge commit：包含本节更新、第二父提交为 `72e3316f4` 的合并提交（`git log --merges -1 --format=%H`）。
+- 最近同步基线：`upstream/main` = `d0fd2e532`，同步于 2026-10-26。
+- 最近同步 merge commit：包含本节更新、第二父提交为 `d0fd2e532` 的合并提交（`git log --merges -1 --format=%H`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-26: `upstream/main` `d0fd2e532` / `0.13.0`
+
+- 合入上游 3 个提交：SSH 进程 stdin 写入失败时关闭隧道并返回错误，避免未处理的流错误使调用方崩溃；Web/Electron 的大量 Import Session 列表改为虚拟化，保留分页、搜索及键盘焦点；Markdown 裸链接完整识别端口、IPv6、用户信息和路径中的冒号，并更新原生解析器与 Web WASM 补丁。
+- 采用上游 SSH 错误处理、会话导入列表和 Markdown 链接识别；原生导入列表继续采用上游 sheet ScrollView。链接渲染不改变 Threadshare 上传前的凭据脱敏；Markdown 选区引用、文件 Review 和文档图片分享继续使用既有 fork 边界。
+- Status Bar/usage ledger、多 Host、Host Prompt Library、固定 Agent Review 增量投递、Threadshare 范围及文档分享、Composer 完整历史与引用、Assistant 时间、canonical 100 条分页、异步子 Agent 与 replacement 恢复、既有 Agent 计划目标和固定签名三包发布继续保留。本轮没有下线 fork 能力。
+- typecheck、lint、format 与 174 项定向测试通过，覆盖 SSH、Markdown 链接、Composer 引用、Review 和 Threadshare 范围。4 项浏览器用例中，3 项首次通过；200 条列表用例首次在切换手机宽度后的加载阶段超时，未改代码单独重跑通过，覆盖分页、挂载行数和键盘导航，保留首次时序失败记录。静态工具存在覆盖缺口与范围截断，交叉点另经源码核对。Markdown 原生及 WASM 补丁已在精确版本的依赖上重新应用；主 daemon 6767 仅执行 PID 和健康检查。
 
 ### 2026-10-25: `upstream/main` `72e3316f4` / `0.13.0`
 
