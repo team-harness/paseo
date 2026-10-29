@@ -676,12 +676,13 @@ describe("exportChatHistory", () => {
         .join(""),
     ).toBe("OldestMiddleNewest");
     expect(requests).toEqual([
-      { direction: "tail", limit: 40, projection: "projected" },
+      { direction: "tail", limit: 40, projection: "projected", wholeTurns: true },
       {
         direction: "before",
         cursor: { epoch: "epoch-1", seq: 3 },
         limit: 40,
         projection: "projected",
+        wholeTurns: true,
       },
     ]);
   });

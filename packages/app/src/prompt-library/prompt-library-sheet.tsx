@@ -768,7 +768,6 @@ export function PromptLibrarySheet({
       onDismiss={onDismiss}
       footer={editorFooter}
       snapPoints={PROMPT_LIBRARY_SNAP_POINTS}
-      sizeContentToCurrentSnapPoint
       desktopMaxWidth={560}
       testID="prompt-library-sheet"
     >

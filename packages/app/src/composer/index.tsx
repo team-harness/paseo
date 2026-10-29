@@ -122,6 +122,7 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import { submitAgentInput } from "@/composer/submit";
+import { ComposerRecall } from "@/composer/recall";
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { ComposerKeyboardScopeProvider, useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -162,7 +163,7 @@ import { readClipboardImage } from "./clipboard-image";
 import { normalizeNativePastedImages, type NativePastedFile } from "./native-pasted-image";
 import { PluginResourceAttachmentPill, usePluginAttachmentPicker } from "@/plugins";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
-import { collectUserMessageHistory, resolveMessageHistoryNavigation } from "@/composer/history";
+import { collectUserMessageHistory } from "@/composer/history";
 import {
   appendWorkspaceFileAttachment,
   getWorkspaceFileAttachmentKey,
@@ -1007,20 +1008,24 @@ interface ComposerAutocompleteHandle {
 function ComposerAutocompleteBinding({
   text,
   cursor,
+  recall,
   configuration,
   inputRef,
-  anchorRef,
+  children,
+  anchorStyle,
   show,
   ref,
 }: {
   text: ComposerTextSource;
   cursor: StoreApi<number>;
+  recall: ComposerRecall;
   configuration: Omit<
     Parameters<typeof useAgentAutocomplete>[0],
     "userInput" | "cursorIndex" | "onAutocompleteApplied"
   >;
   inputRef: React.RefObject<MessageInputRef | null>;
-  anchorRef: React.RefObject<View | null>;
+  children: React.ReactNode;
+  anchorStyle: React.ComponentProps<typeof View>["style"];
   show: boolean;
   ref: React.Ref<ComposerAutocompleteHandle>;
 }) {
@@ -1032,9 +1037,11 @@ function ComposerAutocompleteBinding({
     cursorIndex: Math.min(cursorIndex, userInput.length),
     onAutocompleteApplied: () => inputRef.current?.focus(),
   });
+  // A recalled message is sent as is; its leading `/command` must not open the picker.
+  const isShown = show && !recall.isShowing(userInput);
   const handleKeyPress = autocomplete.onKeyPress;
-  useImperativeHandle(ref, () => ({ onKeyPress: (event) => show && handleKeyPress(event) }), [
-    show,
+  useImperativeHandle(ref, () => ({ onKeyPress: (event) => isShown && handleKeyPress(event) }), [
+    isShown,
     handleKeyPress,
   ]);
   const selectOption = autocomplete.onSelectOption;
@@ -1044,8 +1051,8 @@ function ComposerAutocompleteBinding({
   );
   return (
     <ComposerAutocomplete
-      visible={autocomplete.isVisible && show}
-      anchorRef={anchorRef}
+      visible={autocomplete.isVisible && isShown}
+      anchorStyle={anchorStyle}
       options={autocomplete.options}
       selectedIndex={autocomplete.selectedIndex}
       onSelect={onSelect}
@@ -1053,7 +1060,9 @@ function ComposerAutocompleteBinding({
       errorMessage={autocomplete.errorMessage}
       loadingText={autocomplete.loadingText}
       emptyText={autocomplete.emptyText}
-    />
+    >
+      {children}
+    </ComposerAutocomplete>
   );
 }
 
@@ -1313,14 +1322,31 @@ function ComposerContentImpl({
   const timelineEpoch = useSessionStore(
     (state) => state.sessions[serverId]?.agentTimelineCursor.get(agentId)?.epoch ?? null,
   );
+  const latestPromptSeq = useSessionStore((state) => {
+    const session = state.sessions[serverId];
+    let latest = -1;
+    for (const items of [
+      session?.agentStreamTail.get(agentId),
+      session?.agentStreamHead.get(agentId),
+    ]) {
+      if (!items) continue;
+      for (const item of items) {
+        if (item.kind === "user_message" && item.timelineCursor?.epoch === timelineEpoch) {
+          latest = Math.max(latest, item.timelineCursor.seq);
+        }
+      }
+    }
+    return latest;
+  });
   const promptIndex = useAgentTimelinePromptIndex({
     agentId,
     serverId,
     timelineEpoch,
     enabled: supportsComposerMessageHistory,
+    refreshKey: latestPromptSeq,
   });
   const messageHistory = useMemo(
-    () => collectUserMessageHistory(promptIndex?.prompts),
+    () => collectUserMessageHistory(promptIndex?.prompts).reverse(),
     [promptIndex?.prompts],
   );
 
@@ -1397,6 +1423,9 @@ function ComposerContentImpl({
   );
   useEffect(() => () => cursorPublication.cancel(), [cursorPublication]);
   const autocompleteRef = useRef<ComposerAutocompleteHandle>(null);
+  // A retained composer must not carry a recalled cursor into another conversation.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const recall = useMemo(() => new ComposerRecall(), [agentId, serverId]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFileAttachment[]>([]);
   const nextPendingFileId = useRef(0);
@@ -1412,8 +1441,6 @@ function ComposerContentImpl({
   const attachButtonRef = useRef<View | null>(null);
   const messageInputRef = useRef<MessageInputRef>(null);
   const handledTextInsertionIdRef = useRef<string | null>(null);
-  const messageHistoryIndexRef = useRef<number | null>(null);
-  const historyAppliedValueRef = useRef<string | null>(null);
   const pluginAttachments = usePluginAttachmentPicker({
     serverId,
     client,
@@ -1508,17 +1535,9 @@ function ComposerContentImpl({
           start: Math.min(current.start, value.length),
           end: Math.min(current.end, value.length),
         };
-        const historyAppliedValue = historyAppliedValueRef.current;
-        historyAppliedValueRef.current = null;
-        if (historyAppliedValue !== value) messageHistoryIndexRef.current = null;
       }),
     [textSource],
   );
-
-  useEffect(() => {
-    messageHistoryIndexRef.current = null;
-    historyAppliedValueRef.current = null;
-  }, [agentId, messageHistory, serverId]);
 
   const { pickImages } = useImageAttachmentPicker();
   const { pickFiles } = useFilePicker();
@@ -2040,33 +2059,17 @@ function ComposerContentImpl({
 
   const hasSendableContent = hasText || selectedAttachments.length > 0;
 
-  // Handle keyboard navigation for command autocomplete and session message history.
+  // An open autocomplete owns the arrows; otherwise they may recall sent messages.
   const handleCommandKeyPress = useCallback(
     (event: ComposerKeyPressEvent) => {
-      if (autocompleteRef.current?.onKeyPress(event)) {
-        return true;
-      }
-      const navigation = resolveMessageHistoryNavigation({
-        key: event.key,
-        value: textSource.getSnapshot(),
-        history: messageHistory,
-        index: messageHistoryIndexRef.current,
-      });
-      if (!navigation) {
-        return false;
-      }
+      if (autocompleteRef.current?.onKeyPress(event)) return true;
+      const recalledText = recall.handleKeyPress(event, () => messageHistory);
+      if (recalledText === null) return false;
       event.preventDefault();
-      messageHistoryIndexRef.current = navigation.index;
-      historyAppliedValueRef.current = navigation.value;
-      replaceUserInput(navigation.value, navigation.selection);
-      cursor.setState(navigation.selection.start);
-      textSelectionRef.current = navigation.selection;
-      requestAnimationFrame(() => {
-        messageInputRef.current?.setSelection(navigation.selection);
-      });
+      replaceUserInput(recalledText);
       return true;
     },
-    [messageHistory, replaceUserInput, textSource, cursor],
+    [messageHistory, recall, replaceUserInput],
   );
 
   const cancelButtonStyle = useMemo(
@@ -2501,7 +2504,6 @@ function ComposerContentImpl({
       pluginClientSlashCommands,
     ],
   );
-  const messageInputContainerRef = useRef<View>(null);
 
   const isSubmitLoadingVisible =
     isProcessing || isSubmitLoading || isUploadingFile || pendingNativeImagePastes > 0;
@@ -2560,16 +2562,16 @@ function ComposerContentImpl({
             {isFullscreen ? null : queueList}
             {!isFullscreen && sendErrorNode}
 
-            <View ref={messageInputContainerRef} style={messageInputContainerStyle}>
-              <ComposerAutocompleteBinding
-                text={textSource}
-                cursor={cursor}
-                inputRef={messageInputRef}
-                anchorRef={messageInputContainerRef}
-                show={mode.showAutocomplete && !isFullscreen}
-                ref={autocompleteRef}
-                configuration={autocompleteConfiguration}
-              />
+            <ComposerAutocompleteBinding
+              text={textSource}
+              cursor={cursor}
+              recall={recall}
+              inputRef={messageInputRef}
+              anchorStyle={messageInputContainerStyle}
+              show={mode.showAutocomplete && !isFullscreen}
+              ref={autocompleteRef}
+              configuration={autocompleteConfiguration}
+            >
               <ComposerForgeBinding
                 text={textSource}
                 configuration={forgeConfiguration}
@@ -2614,6 +2616,7 @@ function ComposerContentImpl({
                   voiceAgentId={agentId}
                   isAgentRunning={isAgentRunning}
                   defaultSendBehavior={activeSendBehavior}
+                  sendShortcut={appSettings.sendShortcut}
                   onQueue={handleQueue}
                   onSubmitLoadingPress={submitLoadingPressHandler}
                   onKeyPress={handleCommandKeyPress}
@@ -2649,7 +2652,7 @@ function ComposerContentImpl({
                 renderOption={renderGithubPickerOption}
               />
               {pluginAttachments.picker}
-            </View>
+            </ComposerAutocompleteBinding>
           </View>
         </View>
       </View>

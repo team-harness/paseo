@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `d0fd2e532`，同步于 2026-10-26。
-- 最近同步 merge commit：包含本节更新、第二父提交为 `d0fd2e532` 的合并提交（`git log --merges -1 --format=%H`）。
+- 最近同步基线：`upstream/main` = `0feaf0d98`，同步于 2026-10-29。
+- 最近同步 merge commit：包含本节更新、第二父提交为 `0feaf0d98` 的合并提交（`git log --merges -1 --format=%H`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-10-29: `upstream/main` `0feaf0d98` / `0.14.0-beta.2`
+
+- 合入上游 97 个提交：终端跨 daemon 重启保留、重启后恢复中断 Agent、闲置 runtime 按工作守卫回收、聊天回合折叠与历史位置保持、Composer 上下键回忆和发送快捷键、语音设置、插件生命周期与 worktree 初始化，以及 Claude 配置、后台子任务回放、Android/Markdown 和事件循环响应性修复。
+- Composer 键盘与草稿状态改用上游 `ComposerRecall`，移除 fork 的重复导航状态机；数据仍来自完整 prompt index，并在新 Prompt 到达后刷新，不退回已加载 timeline window。Prompt Library 弹窗直接使用上游始终按当前 snap height 布局的 sheet，移除重复开关。范围分享、引用与 Assistant 时间接入上游回合渲染；后台子任务按实际中断/通知恢复，不随父 turn 结束而取消。
+- Status Bar/usage ledger、多 Host、Host Prompt Library、固定 Agent Review 增量投递、Threadshare 范围及文档图片分享、canonical 100 条分页、异步子 Agent 与 replacement 恢复、既有 Agent 计划目标和固定签名三包发布继续保留。Android/iOS 安装身份不变；本轮安装包版本为 `0.14.0-beta.2`。
+- typecheck、lint、format 与受影响定向测试通过；3 项浏览器测试覆盖上下键/斜杠 Prompt 回忆和文件评论持久化。Codex 通知处理改为异步后，fork 计费测试补齐 await；分享历史测试对齐上游 whole-turn 请求字段。静态审查有陈旧索引、覆盖缺口与截断，冲突和调用链另经源码核对；生产 daemon 6767 仅做 PID/健康检查。
 
 ### 2026-10-26: `upstream/main` `d0fd2e532` / `0.13.0`
 
@@ -956,9 +963,9 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
 
 ### 13. Composer 完整用户消息历史
 
-**状态**：fork 功能。
+**状态**：上游键盘交互 + fork 完整历史数据源。2026-10-29 移除 fork 重复导航状态机。
 
-**行为**：Composer 为空时，`ArrowUp` 从最近一条用户消息开始向前遍历完整会话历史；进入历史导航后，`ArrowDown` 向后遍历并最终回到空输入。用户手动编辑历史内容后退出导航状态，避免后续方向键覆盖草稿。
+**行为**：Composer 为空时，`ArrowUp` 从最近一条用户消息开始向前遍历完整会话历史；`ArrowDown` 向后遍历并最终回到空输入。用户手动编辑历史内容后退出导航状态；多行消息优先移动光标，到首/尾行才切换历史，沿用上游 `ComposerRecall`。新 Prompt 到达时刷新完整索引；回忆斜杠消息不会打开命令菜单。
 
 **关键边界**：daemon 的 `agent.timeline.list_prompts` 是聊天罗盘、分享起点和 Composer 历史的唯一用户消息索引。索引同时提供折叠后的 `preview` 与保留换行的完整 `text`；`text` 在 wire schema 中保持 optional，并由 `server_info.features.composerMessageHistory` 单点 gate，保证旧客户端仍可解析新 daemon、旧 daemon 仍可连接新客户端。
 
@@ -976,6 +983,8 @@ SHA-256。首次联网构建会使用本机代理并填充 SDK、Gradle 与本�
 **状态**：fork 临时修复。
 
 **行为**：App 通过 `DirectorySync` 发出的 `tail`、`before` 和 `after` timeline 请求统一把 `projection: "projected"` 改写为 `projection: "canonical"`，并使用每页 100 条 canonical timeline 行。旧 Host 的 projected 分页可能因跨区间 tool lifecycle 把有限页面扩成完整历史，并把十几 MiB 的加密响应作为单个 Relay frame 发送，最终以 WebSocket `1009 Message Too Big` 断开。canonical 分页严格遵守请求窗口，使客户端能够一次加载更多聊天内容，同时避免超长对话进入重连循环。
+
+2026-10-29 上游改为保留 projected timeline，当前 Host 不再按请求的 `projection` 切换存储视图；100 是 projected item 目标，`wholeTurns` 可为完整回合扩展窗口。此时沿用上游回合分页语义；canonical 改写继续保护尚未升级的 Host，不将新 Host 的完整回合页面误称为严格 100 行上限。
 
 **关键文件**：
 
