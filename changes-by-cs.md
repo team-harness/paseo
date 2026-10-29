@@ -37,6 +37,13 @@
 
 ## 最近同步判断
 
+### 2026-10-30: `upstream/main` `950353704` / `0.14.0`
+
+- 合入上游自 `0feaf0d98` 之后的 15 个提交并升级至 `0.14.0`：Codex 启动阶段 steer 投递、Pi 子 Agent 完成状态持久化、usage reset 展示、隐藏主题下 transcript 颜色同步、分栏拖拽与 Web 菜单动画修复、Codex 历史重开性能优化，以及稳定版发布/商店截图流程更新。
+- 采用上游的 Agent 生命周期、usage 展示、菜单/分栏交互、Pi 子 Agent 和发布流程实现。Host Prompt Library、Status Bar/usage ledger、Review/Threadshare（含文档图片分享）、Composer 完整历史与引用、canonical 100 条分页、异步子 Agent replacement、既有 Agent 计划目标和固定签名三包发布链路均未被上游等价替代，继续保留 fork 实现；本轮没有下线 fork 能力。
+- 合并前工作树仅保留 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 两个原有未跟踪项，未纳入提交。主 daemon 6767 仅做 PID/健康检查，不重启、不停止。
+- 本轮将运行受影响的 server/app 定向测试，以及 typecheck、lint、format；随后构建并验证 Apple Silicon DMG、Web + Paseo Server tar.gz、Android 四 ABI APK，上传 OSS 并用 bot 通知固定飞书群。
+
 ### 2026-10-29: `upstream/main` `0feaf0d98` / `0.14.0-beta.2`
 
 - 合入上游 97 个提交：终端跨 daemon 重启保留、重启后恢复中断 Agent、闲置 runtime 按工作守卫回收、聊天回合折叠与历史位置保持、Composer 上下键回忆和发送快捷键、语音设置、插件生命周期与 worktree 初始化，以及 Claude 配置、后台子任务回放、Android/Markdown 和事件循环响应性修复。
