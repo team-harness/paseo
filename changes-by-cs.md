@@ -37,11 +37,12 @@
 
 ## 最近同步判断
 
-### 2026-11-04: `upstream/main` `3084f3285` / `0.15.0-beta.1`
+### 2026-11-04: `upstream/main` `3084f3285` / `0.15.0`
 
 - 合入上游自 `fc710be1a` 之后的 15 个提交：Claude 设置中的 effort 控件、OpenCode 重开会话可中断、Android 聊天滚轮方向、Claude 优雅关停恢复、Apache-2.0 license 发布、跨原生与桌面的硬件键盘快捷键、断开 ACP Agent 时失败而不悬挂、缺失 well-known 返回 404、合并 PR 后继续显示工作区、插件加载进度、聊天中的 issue/PR 引用链接，以及 Pi 压缩后的完整历史恢复。
 - 采用上游键盘系统、ACP/Claude/OpenCode/Pi 生命周期修复、插件加载状态、Git 引用链接和发布 license；保留 fork 的 Status Bar/usage ledger、多 Host、Host Prompt Library、Review 固定 Agent 增量投递、Threadshare 对话与文档图片分享、完整 Composer 历史与引用、Assistant 时间、canonical 100 条兼容、异步子 Agent、replacement 恢复和固定签名三包发布链路。本轮没有下线 fork 产品能力。
 - 合并提交为 `938015cb2464acdf74addd52bac6f6ca1c2a01cf`；原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交。主 daemon 6767 仅做 PID/健康检查，不重启、不停止。
+- 本轮上游已同步 `v0.15.0` 的 workspace 版本，安装包使用 `0.15.0`。fork 的聊天选区引用和文件评论浮层迁移到上游 `useGlobalOverlayLayer`，不保留旧 hook 别名。typecheck、lint、format 与 App 186 项、Server 816 项定向测试通过；4 项浏览器用例验证选区复制/引用、图片选区、上下键历史和文件评论持久化。静态审查未关联两个浮层的测试，另经源码和浏览器流程核验。
 
 ### 2026-11-03: `upstream/main` `fc710be1a` / `0.15.0-beta.1`
 
