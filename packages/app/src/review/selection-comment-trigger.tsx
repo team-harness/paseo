@@ -41,7 +41,7 @@ export function ReviewSelectionCommentTrigger({
     <>
       <Button
         variant="ghost"
-        size="xs"
+        size="sm"
         leftIcon={MessageSquarePlus}
         onPress={handleOpen}
         accessibilityLabel={t("review.comment.add")}

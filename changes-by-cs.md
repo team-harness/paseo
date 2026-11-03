@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `0feaf0d98`，同步于 2026-10-29。
-- 最近同步 merge commit：包含本节更新、第二父提交为 `0feaf0d98` 的合并提交（`git log --merges -1 --format=%H`）。
+- 最近同步基线：`upstream/main` = `fc710be1a`，同步于 2026-11-03。
+- 最近同步 merge commit：包含本节更新、第二父提交为 `fc710be1a` 的合并提交（`git log --merges -1 --format=%H`）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-03: `upstream/main` `fc710be1a` / `0.15.0-beta.1`
+
+- 合入上游自 `950353704` 之后的 97 个提交：首次使用引导、父时间线子 Agent 启动标记、Codex 分页历史和补丁审批、失败历史重试、Relay 大消息分块、Claude 失败 turn 最终 usage、错误提醒在新 turn 开始时清除、cron 日字段语义与步长校验、插件流式 RPC、终端 Unicode/选择/回放，以及文件预览和移动端布局修复。main 的 package 版本仍为 `0.15.0-beta.1`，本轮安装包按源码版本构建。
+- 采用上游新 turn 提醒清理、Provider/子 Agent 生命周期、按需 Usage Sources、首次引导、插件和新版 electron-builder；Usage Sources 配额不替代 fork 的 Status Bar token/费用账本。计划表单迁移到上游 `ControlSize`，同时保留已有 Agent 目标；聊天命令建议与 fork 引用共存；服务端扩展分发接入新增插件流式 RPC。
+- Status Bar/usage ledger、多 Host、Host Prompt Library、固定 Agent Review 增量投递、Threadshare 范围和文档图片分享、完整 Composer 历史、引用与 Assistant 时间、100 条旧 Host canonical 兼容、replacement 条件恢复、异步子 Agent 和固定签名三包发布继续保留。上游大消息分块与逐项字节限制只保障新 Host，不删除仍保护旧 Host 的兼容层。本轮没有下线 fork 产品能力。
+- typecheck、lint、format 与定向测试通过，覆盖 Agent 生命周期/计费、插件 session 分发、协议、桌面打包、Review/分享和计划表单；8 项浏览器用例验证上下键历史、文件评论持久化、计划中文输入与已有 Agent Prompt 编辑。fork 的 7 处小按钮由旧 `xs` 迁至上游同高度 `sm`；Usage Off 测试纳入旧客户端兼容错误响应。静态审查有覆盖缺口与截断，冲突另经源码和测试核对。主 daemon 6767 仅做 PID/健康检查；原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交。
 
 ### 2026-10-30: `upstream/main` `950353704` / `0.14.0`
 

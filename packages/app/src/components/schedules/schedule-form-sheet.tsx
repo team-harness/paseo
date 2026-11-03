@@ -20,9 +20,8 @@ import { ComboboxItem } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
-import { useIsCompactFormFactor } from "@/constants/layout";
 import { HostStatusDotSlot } from "@/components/hosts/host-picker";
-import { createControlGeometry, type FieldControlSize } from "@/components/ui/control-geometry";
+import { createControlGeometry, type ControlSize } from "@/components/ui/control-geometry";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
 import { useProviderIcon } from "@/components/provider-icons";
@@ -271,7 +270,7 @@ function OpenScheduleFormSheet({
   mode,
   schedule,
 }: ScheduleFormSheetProps & { onDismiss: () => void }): ReactElement {
-  const controlSize: FieldControlSize = useIsCompactFormFactor() ? "md" : "sm";
+  const controlSize: ControlSize = "md";
   const { projects } = useProjects();
   const hostProfiles = useHosts();
   const hosts = useStoreWithEqualityFn(
@@ -555,7 +554,7 @@ interface ScheduleFormFieldsProps {
   agentOptions: SelectFieldOption<string>[];
   selectedAgentKey: string | null;
   onSelectAgentKey: (agentKey: string | null) => void;
-  controlSize: FieldControlSize;
+  controlSize: ControlSize;
   cadenceError: string | null;
   mutationServerId: string;
 }
@@ -652,7 +651,7 @@ interface ScheduleTargetFieldsProps {
   agentOptions: SelectFieldOption<string>[];
   selectedAgentKey: string | null;
   onSelectAgentKey: (agentKey: string | null) => void;
-  controlSize: FieldControlSize;
+  controlSize: ControlSize;
   mutationServerId: string;
 }
 
@@ -726,7 +725,7 @@ function ScheduleHostField({
 }: {
   model: ScheduleFormModel;
   state: ScheduleFormState;
-  size: FieldControlSize;
+  size: ControlSize;
   onChangeHost: () => void;
 }): ReactElement {
   const hostOptions = useMemo<SelectFieldOption<string>[]>(
@@ -789,7 +788,7 @@ function ScheduleExistingAgentField({
   agentOptions: SelectFieldOption<string>[];
   selectedAgentKey: string | null;
   onSelectAgentKey: (agentKey: string | null) => void;
-  size: FieldControlSize;
+  size: ControlSize;
 }): ReactElement {
   const selectedDisplay = useMemo(
     () => agentOptions.find((option) => option.value === selectedAgentKey) ?? null,
@@ -829,7 +828,7 @@ function ScheduleNewAgentFields({
   model: ScheduleFormModel;
   state: ScheduleFormState;
   providerSnapshot: ReturnType<typeof useScheduleFormProviderSnapshot>;
-  size: FieldControlSize;
+  size: ControlSize;
   mutationServerId: string;
 }): ReactElement {
   const projectOptions = state.projectOptions;
@@ -1030,7 +1029,7 @@ function ScheduleIsolationField({
 }: {
   model: ScheduleFormModel;
   state: ScheduleFormState;
-  size: FieldControlSize;
+  size: ControlSize;
 }): ReactElement {
   const options = useMemo<SelectFieldOption<"local" | "worktree">[]>(
     () => [
@@ -1105,7 +1104,7 @@ function ScheduleTargetModeField({
 }: {
   value: ScheduleCreateTargetMode;
   onChange: (value: ScheduleCreateTargetMode) => void;
-  size: FieldControlSize;
+  size: ControlSize;
 }): ReactElement {
   const options = useMemo<Array<SegmentedControlOption<ScheduleCreateTargetMode>>>(
     () => [
@@ -1133,7 +1132,7 @@ function ScheduleAgentTargetField({
   size,
 }: {
   label: string | null;
-  size: FieldControlSize;
+  size: ControlSize;
 }): ReactElement {
   const fieldStyle = useMemo(
     () => [styles.readonlyField, size === "sm" ? styles.readonlyFieldSm : styles.readonlyFieldMd],

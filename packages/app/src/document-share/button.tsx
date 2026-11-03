@@ -76,7 +76,7 @@ export function DocumentShareButton(input: DocumentShareInput) {
   return (
     <Button
       variant="ghost"
-      size="xs"
+      size="sm"
       leftIcon={Share2}
       loading={busy}
       disabled={busy}

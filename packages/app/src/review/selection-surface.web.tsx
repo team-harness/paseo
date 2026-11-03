@@ -153,7 +153,7 @@ export function ReviewSelectionSurface({
           data-testid="review-selection-actions"
         >
           <Button
-            size="xs"
+            size="sm"
             variant="secondary"
             leftIcon={MessageSquarePlus}
             onPress={handleOpenComment}

@@ -161,6 +161,7 @@ export class DirectorySync {
   private readonly fullDemandSources = new Set<object>();
   private readonly scriptStatusDemand = new Map<object, string>();
   private demandRefresh: Promise<void> | null = null;
+  private subscriptionGeneration = 0;
   private satisfiedDemandSource: DirectorySourceToken | null = null;
   private cursors: DirectoryCheckpoint = {};
 
@@ -263,6 +264,7 @@ export class DirectorySync {
   }
 
   private releaseSubscriptions(): void {
+    this.subscriptionGeneration += 1;
     for (const subscription of [
       this.agentSubscription,
       this.workspaceSubscription,
@@ -363,6 +365,7 @@ export class DirectorySync {
     this.observeDirectoryEvents();
     this.observeScriptStatusEvents();
     const source = this.connection.source;
+    const subscriptionGeneration = this.subscriptionGeneration;
     if (
       !force &&
       this.satisfiedDemandSource?.clientGeneration === source.clientGeneration &&
@@ -379,17 +382,19 @@ export class DirectorySync {
           ]).then(() => undefined);
     this.demandRefresh = refresh
       .then(() => {
-        this.satisfiedDemandSource = source;
+        if (this.subscriptionGeneration === subscriptionGeneration) {
+          this.satisfiedDemandSource = source;
+        }
         return undefined;
       })
       .finally(() => {
         this.demandRefresh = null;
         const current = this.connection.source;
-        if (
-          this.hasDemand() &&
-          (current.clientGeneration !== source.clientGeneration ||
-            current.connectionEpoch !== source.connectionEpoch)
-        ) {
+        const sourceChanged =
+          current.clientGeneration !== source.clientGeneration ||
+          current.connectionEpoch !== source.connectionEpoch;
+        const subscriptionsReleased = this.subscriptionGeneration !== subscriptionGeneration;
+        if (this.hasDemand() && (sourceChanged || subscriptionsReleased)) {
           void this.requestDemandRefresh().catch(() => undefined);
         }
       });

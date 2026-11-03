@@ -27,7 +27,7 @@ export type ReplicaQueryInput<TQueryFnData, TError, TData, TQueryKey extends Que
 
 type FetchQueryInput<TQueryFnData, TError, TData, TQueryKey extends QueryKey> = Omit<
   UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
-  "initialData" | "placeholderData" | "queryFn" | "refetchOnMount" | "staleTime"
+  "initialData" | "placeholderData" | "queryFn" | "staleTime"
 > & {
   dataShape: "list" | "value";
   queryFn: QueryFnOption<TQueryFnData, TError, TData, TQueryKey>;
@@ -126,7 +126,7 @@ export function fetchQueryOptions<
         dataShape,
       },
     },
-    refetchOnMount: immutableWhen ? true : "always",
+    refetchOnMount: options.refetchOnMount ?? (immutableWhen ? true : "always"),
     staleTime: immutableWhen
       ? (query) =>
           query.state.data !== undefined && immutableWhen(query.state.data) ? Infinity : 0

@@ -181,8 +181,8 @@ export function ComposerDock({
               <View style={fullscreen ? fullscreenSurface : dockStyles.composer}>{composer}</View>
             </ComposerViewportContent>
           </ComposerViewportContent>
-          {overlay}
         </KeyboardTranslateView>
+        {overlay}
       </ComposerViewport>
     );
   }
@@ -216,8 +216,8 @@ export function ComposerDock({
             {composer}
           </View>
         </ComposerViewportContent>
-        {overlay}
       </KeyboardTranslateView>
+      {overlay}
     </ComposerViewport>
   );
 }

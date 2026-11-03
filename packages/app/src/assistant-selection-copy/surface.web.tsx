@@ -164,7 +164,7 @@ export function AssistantSelectionCopySurface({
           data-testid="assistant-selection-actions"
         >
           <Button
-            size="xs"
+            size="sm"
             variant="secondary"
             leftIcon={Quote}
             onPress={handleQuote}

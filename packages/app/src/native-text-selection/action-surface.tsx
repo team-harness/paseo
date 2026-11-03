@@ -171,7 +171,7 @@ export function NativeTextSelectionActionSurface({
           <View pointerEvents="box-none" style={styles.overlay} onLayout={handleOverlayLayout}>
             <View style={actionStyle} onLayout={handleActionLayout}>
               <Button
-                size="xs"
+                size="sm"
                 variant="secondary"
                 leftIcon={actionIcon}
                 onPress={handleAction}

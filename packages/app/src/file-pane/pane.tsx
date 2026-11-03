@@ -93,7 +93,7 @@ export function FilePane({
         <Text style={styles.errorText}>
           {snapshot.status === "error" ? snapshot.error : t("panels.file.notFound")}
         </Text>
-        <Button variant="outline" size="sm" onPress={handle.retry}>
+        <Button variant="outline" onPress={handle.retry}>
           {t("common.actions.retry")}
         </Button>
       </>

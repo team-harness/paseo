@@ -58,7 +58,7 @@ export function PromptLibraryTrigger({
         <TooltipTrigger asChild>
           <Button
             variant="ghost"
-            size="xs"
+            size="sm"
             leftIcon={BookOpen}
             style={styles.trigger}
             disabled={disabled || !isPaneFocused}

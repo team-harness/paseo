@@ -518,7 +518,7 @@ export function PromptLibrarySheet({
     () => (
       <Button
         variant="ghost"
-        size="xs"
+        size="sm"
         leftIcon={Plus}
         onPress={handleNew}
         disabled={
