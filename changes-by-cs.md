@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `fc710be1a`，同步于 2026-11-03。
-- 最近同步 merge commit：包含本节更新、第二父提交为 `fc710be1a` 的合并提交（`git log --merges -1 --format=%H`）。
+- 最近同步基线：`upstream/main` = `3084f3285`，同步于 2026-11-04。
+- 最近同步 merge commit：`938015cb2464acdf74addd52bac6f6ca1c2a01cf`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-04: `upstream/main` `3084f3285` / `0.15.0-beta.1`
+
+- 合入上游自 `fc710be1a` 之后的 15 个提交：Claude 设置中的 effort 控件、OpenCode 重开会话可中断、Android 聊天滚轮方向、Claude 优雅关停恢复、Apache-2.0 license 发布、跨原生与桌面的硬件键盘快捷键、断开 ACP Agent 时失败而不悬挂、缺失 well-known 返回 404、合并 PR 后继续显示工作区、插件加载进度、聊天中的 issue/PR 引用链接，以及 Pi 压缩后的完整历史恢复。
+- 采用上游键盘系统、ACP/Claude/OpenCode/Pi 生命周期修复、插件加载状态、Git 引用链接和发布 license；保留 fork 的 Status Bar/usage ledger、多 Host、Host Prompt Library、Review 固定 Agent 增量投递、Threadshare 对话与文档图片分享、完整 Composer 历史与引用、Assistant 时间、canonical 100 条兼容、异步子 Agent、replacement 恢复和固定签名三包发布链路。本轮没有下线 fork 产品能力。
+- 合并提交为 `938015cb2464acdf74addd52bac6f6ca1c2a01cf`；原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交。主 daemon 6767 仅做 PID/健康检查，不重启、不停止。
 
 ### 2026-11-03: `upstream/main` `fc710be1a` / `0.15.0-beta.1`
 

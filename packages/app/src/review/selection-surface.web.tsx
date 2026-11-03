@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 import { MessageSquarePlus } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { getOverlayRoot, useGlobalWebOverlayLayer } from "@/lib/overlay-root";
+import { getOverlayRoot, useGlobalOverlayLayer } from "@/lib/overlay-root";
 import { ReviewCommentComposerSheet } from "./comment-composer-sheet";
 import type { ReviewTextSelection } from "./workspace-comments";
 import type { ReviewSelectionSurfaceProps } from "./selection-surface";
@@ -41,7 +41,7 @@ export function ReviewSelectionSurface({
   const selectionFrameRef = useRef<number | null>(null);
   const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
   const [editingSelection, setEditingSelection] = useState<ReviewTextSelection | null>(null);
-  const overlayLayer = useGlobalWebOverlayLayer("floating", selectionAction !== null);
+  const overlayLayer = useGlobalOverlayLayer("floating", selectionAction !== null);
 
   const updateSelectionAction = useCallback(() => {
     const selection = window.getSelection();

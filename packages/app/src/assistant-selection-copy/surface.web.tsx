@@ -14,7 +14,7 @@ import { View, type StyleProp, type ViewStyle } from "react-native";
 import { Quote } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { getOverlayRoot, useGlobalWebOverlayLayer } from "@/lib/overlay-root";
+import { getOverlayRoot, useGlobalOverlayLayer } from "@/lib/overlay-root";
 import { createAssistantSelectionClipboardContent } from "./content.web";
 
 interface AssistantSelectionCopySurfaceProps {
@@ -48,7 +48,7 @@ export function AssistantSelectionCopySurface({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const selectionFrameRef = useRef<number | null>(null);
   const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
-  const overlayLayer = useGlobalWebOverlayLayer("floating", selectionAction !== null);
+  const overlayLayer = useGlobalOverlayLayer("floating", selectionAction !== null);
   const handleCopy = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
     const content = createAssistantSelectionClipboardContent(window.getSelection());
     if (!content) {
