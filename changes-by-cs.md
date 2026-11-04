@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `3084f3285`，同步于 2026-11-04。
-- 最近同步 merge commit：`938015cb2464acdf74addd52bac6f6ca1c2a01cf`。
+- 最近同步基线：`upstream/main` = `5d1a2c10f`，同步于 2026-11-05。
+- 最近同步 merge commit：`a79af8049`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-05: `upstream/main` `5d1a2c10f` / `0.15.0`
+
+- 合入上游自 `3084f3285` 之后的工作区与移动端改动：LegendList 原生聊天时间线和 disclosure 稳定性、后台 Agent、工作区 Git 观察与恢复、插件设置/卡片交互、窄屏与触屏布局、终端滚动、已删除工作目录下的历史读取，以及相关协议/客户端能力和测试更新。
+- 保留 fork 的 Status Bar/usage ledger、多 Host、Host Prompt Library、Review 固定 Agent 增量投递、Threadshare 对话与文档图片分享、完整 Composer 历史与引用、Assistant 时间、canonical 100 条兼容、异步子 Agent、replacement 恢复和固定签名三包发布链路。本轮没有下线 fork 产品能力；Composer 冲突保留了 fork 的键盘作用域逻辑，并采用上游新的控制尺寸/指针能力实现。
+- 合并提交为 `a79af8049`；原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交。主 daemon 6767 仅做 PID/健康检查，不重启、不停止。
+- npm 依赖补齐并重新应用仓库补丁；typecheck、lint、format 通过。App 定向测试 65 项、Server 定向测试 459 项通过。首次从根配置运行部分 React Native UI 测试因环境未加载 Unistyles/浏览器运行时而失败，改用 `packages/app/vitest.config.ts` 后目标测试全部通过。
 
 ### 2026-11-04: `upstream/main` `3084f3285` / `0.15.0`
 
