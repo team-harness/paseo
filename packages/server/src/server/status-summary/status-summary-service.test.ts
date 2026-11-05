@@ -149,7 +149,15 @@ describe("StatusSummaryService", () => {
           ["perm-1", { id: "perm-1", toolName: "write", description: "Write" }],
         ]),
       }),
-      agent({ id: "failed", lifecycle: "error" }),
+      agent({
+        id: "failed",
+        lifecycle: "error",
+        attention: {
+          requiresAttention: true,
+          attentionReason: "error",
+          attentionTimestamp: new Date("2026-07-06T03:59:00.000Z"),
+        },
+      }),
       agent({
         id: "done",
         lifecycle: "idle",
@@ -195,6 +203,26 @@ describe("StatusSummaryService", () => {
     });
     expect(summary.activity.recentlyCompletedAgents.map((item) => item.agentId)).toEqual(["done"]);
     expect(summary.activity.recentlyCompletedAgents[0]?.parentAgentId).toBe("parent-1");
+  });
+
+  test("clears the error count after reading a failed agent without changing its lifecycle", async () => {
+    const { service, source } = createService();
+    const failed = agent({
+      lifecycle: "error",
+      attention: {
+        requiresAttention: true,
+        attentionReason: "error",
+        attentionTimestamp: new Date("2026-07-06T03:59:00.000Z"),
+      },
+    });
+    source.agents = [failed];
+    expect((await service.getSummary()).activity.counts.error).toBe(1);
+
+    failed.attention = { requiresAttention: false };
+    const summary = await service.getSummary();
+    expect(failed.lifecycle).toBe("error");
+    expect(summary.activity.counts).toEqual({ running: 0, needsAttention: 0, idle: 1, error: 0 });
+    expect(summary.activity.needsAttentionAgents).toEqual([]);
   });
 
   test("prioritizes pending permissions and restores stored attention after resolution", async () => {

@@ -20,15 +20,18 @@ import Animated, {
 import { useKeyboardShift } from "@/keyboard/shift";
 import {
   resolveCenteredClearance,
+  resolveComposerBottomPlacement,
   resolveComposerSlotCapacity,
   updateComposerCapacity,
   type ComposerCapacity,
 } from "./internal/capacity";
+import { SPACING } from "@/styles/theme";
 
 const ViewportSizing = createContext<SharedValue<ComposerCapacity | undefined> | null>(null);
 
 interface ComposerViewportProps extends ViewProps {
   bottomInset?: number;
+  keyboardGap?: number;
   centered?: boolean;
 }
 
@@ -37,6 +40,7 @@ function ComposerViewport({
   children,
   onLayout,
   bottomInset = 0,
+  keyboardGap = 0,
   centered = false,
   ...props
 }: ComposerViewportProps) {
@@ -49,6 +53,7 @@ function ComposerViewport({
       bottomInset,
       safeAreaBottom: safeAreaBottom.value,
       keyboardShift: layoutShift.value,
+      keyboardGap,
       centered,
     }),
     (geometry) => {
@@ -131,6 +136,10 @@ export function ComposerDock({
   const safeAreaBottomInset = useHostBottomChromeInset(insets.bottom);
   const contentMaxWidth = resolveContentMaxWidth(useAppSettings().settings);
   const centeredClearance = useCenteredClearance(insets.bottom);
+  const placement = resolveComposerBottomPlacement({
+    safeAreaBottom: safeAreaBottomInset,
+    contentSpacing: SPACING[4],
+  });
   // Preserve the existing centered form's visual balance on tablets.
   const bottomInset = centered && !fullscreen ? HEADER_INNER_HEIGHT + 24 : 0;
   const fullscreenSurface = [
@@ -178,7 +187,9 @@ export function ComposerDock({
               style={fullscreen ? dockStyles.surface : dockStyles.centeredComposer}
               fullscreen={fullscreen}
             >
-              <View style={fullscreen ? fullscreenSurface : dockStyles.composer}>{composer}</View>
+              <View style={fullscreen ? fullscreenSurface : dockStyles.centeredComposerSurface}>
+                {composer}
+              </View>
             </ComposerViewportContent>
           </ComposerViewportContent>
         </KeyboardTranslateView>
@@ -187,8 +198,12 @@ export function ComposerDock({
     );
   }
   return (
-    <ComposerViewport style={dockStyles.viewport}>
-      <KeyboardTranslateView style={dockStyles.surface} enabled={!fullscreen}>
+    <ComposerViewport style={dockStyles.viewport} keyboardGap={placement.keyboardGap}>
+      <KeyboardTranslateView
+        style={dockStyles.surface}
+        enabled={!fullscreen}
+        keyboardGap={placement.keyboardGap}
+      >
         <View
           testID="composer-dock-content"
           collapsable={false}
@@ -210,7 +225,7 @@ export function ComposerDock({
             style={
               fullscreen
                 ? fullscreenSurface
-                : [dockStyles.composer, { paddingBottom: safeAreaBottomInset }]
+                : [dockStyles.composer, { paddingBottom: placement.restingPadding }]
             }
           >
             {composer}
@@ -234,6 +249,7 @@ const dockStyles = StyleSheet.create({
   centered: { flexShrink: 1, width: "100%" },
   // Reserve the composer's own capped height before the setup scroll view shrinks.
   centeredComposer: { width: "100%", flexShrink: 0 },
+  centeredComposerSurface: { width: "100%", flexShrink: 1 },
   setup: { flexGrow: 0, flexShrink: 1, minHeight: 0 },
   hiddenSetup: { display: "none" },
 });
