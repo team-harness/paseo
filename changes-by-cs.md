@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `5d1a2c10f`，同步于 2026-11-05。
-- 最近同步 merge commit：`f31c93ad2`。
+- 最近同步基线：`upstream/main` = `3ed57e9dd`，同步于 2026-11-06。
+- 最近同步 merge commit：`0955fe638`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-06: `upstream/main` `3ed57e9dd` / `0.15.2`
+
+- 合入上游自 `5d1a2c10f` 之后的 13 个提交：Changes 中切换 worktree workspace 的 base branch、前台恢复避免重复重连、失败 Agent 提醒支持已读清除、iPhone Composer 底部与键盘间距、npm mirror 插件 integrity 校验，以及 terminal worker 无法启动时 daemon 仍可启动；版本升级至 `0.15.2`。
+- 采用上游新的 Composer placement 与错误已读语义，同时保留 fork 的 Host Status Bar 底部 inset。Status Bar/usage ledger、多 Host、Host Prompt Library、固定 Agent Review 增量投递、Threadshare 对话与文档图片分享、完整 Composer 历史与引用、Assistant 时间、canonical 100 条旧 Host 兼容、异步子 Agent、replacement 恢复、已有 Agent 计划目标和固定签名三包发布继续保留。本轮没有下线 fork 产品能力。
+- typecheck、lint、format 与受影响定向测试通过，App 9 个文件共 269 项；服务端/客户端/协议/桌面目标测试另行验证。补齐 workspace Session fixture 的 Status Summary service，并新增错误提醒已读后计数清零、生命周期仍为 error 的回归测试。插件 registry 测试首次受 npm 环境污染失败，直接运行 Vitest 后与 Status Summary 共 17 项通过；未修改产品 registry 逻辑。
+- Status Bar 浏览器用例 2 项、Composer 间距用例 2 项通过；后者按 fork 的 Status Bar 上沿计算间距。静态审查有截断与覆盖缺口，交叉点经源码与定向测试核对。原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交；主 daemon 6767 仅做 PID/健康检查，不重启、不停止。
 
 ### 2026-11-05: `upstream/main` `5d1a2c10f` / `0.15.0`
 
