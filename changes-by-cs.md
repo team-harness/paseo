@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `3ed57e9dd`，同步于 2026-11-06。
-- 最近同步 merge commit：`0955fe638`。
+- 最近同步基线：`upstream/main` = `9f68af027`，同步于 2026-11-07。
+- 最近同步 merge commit：`2a2535b4e`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-07: `upstream/main` `9f68af027` / `0.15.3`
+
+- 合入上游自 `3ed57e9dd` 之后的 25 个提交并升级至 `0.15.3`：Agent 获得独立 workspace identity、后台工作可查看/停止、workspace archive/undo、Changes base branch 与 worktree 展示、Mermaid source toggle、终端上传文件路径隔离、ACP mode 配置修复、前台恢复与聊天滚动稳定性、窄侧边栏 footer、slash command 加载/错误态，以及 Android/iOS Composer 和 workspace 交互修复。
+- 采用上游的 background-work inventory、workspace archive/undo、agent identity、Mermaid source toggle、terminal worker 路径隔离和新版 sidebar/composer 行为；冲突处保留 fork 的聊天分享范围选择、分享状态清理、Codex usage/cost tracking reset，并接入上游的 Codex background inventory。Status Bar/usage ledger、多 Host、Host Prompt Library、固定 Agent Review 增量投递、Threadshare 对话与文档图片分享、完整 Composer 历史与引用、Assistant 时间、canonical 100 条旧 Host 兼容、异步子 Agent、replacement 恢复、已有 Agent 计划目标和固定签名三包发布继续保留。本轮没有下线 fork 产品能力。
+- 合并提交为 `2a2535b4e`；原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交。主 daemon 6767 仅做 PID/健康检查，不重启、不停止。GitHub fetch 使用本机代理备用端口 `7892`；默认 `7890` 在本轮 TLS 握手失败。
+- 上游合并前置 hook 已通过格式与 lint 检查；完整 typecheck、定向测试和三包构建在本轮发布步骤继续执行，结果以本轮日志为准。
 
 ### 2026-11-06: `upstream/main` `3ed57e9dd` / `0.15.2`
 
