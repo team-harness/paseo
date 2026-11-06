@@ -850,10 +850,6 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   ]);
 
   useEffect(() => {
-    const initialHistoryStartState = createHistoryStartPaginationState();
-    historyStartPaginationStateRef.current = initialHistoryStartState;
-    setHistoryStartPaginationState(initialHistoryStartState);
-    readingAnchor.reset();
     const frame = window.requestAnimationFrame(() => {
       historyStartReadyRef.current = true;
       evaluateHistoryStart();
@@ -864,7 +860,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       historyStartSettleSchedulerRef.current?.cancel();
       historyStartSettleSchedulerRef.current = null;
     };
-  }, [evaluateHistoryStart, props.agentId, readingAnchor]);
+  }, [evaluateHistoryStart]);
 
   // A chat tab becoming active inside the current workspace should resume at the
   // newest message. A workspace becoming visible again keeps its saved reading
@@ -1419,11 +1415,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
 export function createWebStreamStrategy(input: CreateWebStreamStrategyInput): StreamStrategy {
   return createStreamStrategy({
     render: (renderInput) => (
-      <WebStreamViewport
-        key={renderInput.agentId}
-        {...renderInput}
-        isMobileBreakpoint={input.isMobileBreakpoint}
-      />
+      <WebStreamViewport {...renderInput} isMobileBreakpoint={input.isMobileBreakpoint} />
     ),
     orderTailReverse: false,
     orderHeadReverse: false,

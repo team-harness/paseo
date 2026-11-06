@@ -99,6 +99,7 @@ import {
   type ProviderSubagentDescriptor,
   type ProviderSubagentStoreEvent,
 } from "./provider-subagents/store.js";
+import { AgentBackgroundWorkStore, type AgentBackgroundWorkItem } from "./background-work/index.js";
 import { withTimeout } from "../../utils/promise-timeout.js";
 import { extractAttention } from "../persistence-hooks.js";
 
@@ -170,6 +171,12 @@ async function assertUsableWorkingDirectory(cwd: string): Promise<void> {
     }
     throw new Error(`Failed to access working directory: ${cwd}`, { cause: error });
   }
+}
+
+interface StopAgentBackgroundWorkOptions {
+  agentId: string;
+  itemId: string;
+  stopToken: string;
 }
 
 async function resolveResumePurpose(
@@ -255,6 +262,7 @@ export type AgentManagerEvent =
   | { type: "agent_state"; agent: ManagedAgent }
   | { type: "agent_removed"; agentId: string; workspaceId?: string; internal: boolean }
   | { type: "provider_subagent"; event: ProviderSubagentStoreEvent }
+  | { type: "background_work"; agentId: string; items: AgentBackgroundWorkItem[] }
   | { type: "timeline_replacement"; agentId: string; epoch: string }
   | {
       type: "agent_stream";
@@ -657,6 +665,36 @@ function createAbortError(signal: AbortSignal | undefined, fallbackMessage: stri
   return Object.assign(new Error(message), { name: "AbortError" });
 }
 
+// PASEO_WORKSPACE_ID lets an agent rename or archive its own workspace; several workspaces can
+// share one cwd, so the agent can't work it out from PASEO_AGENT_CWD.
+function agentIdentityEnv({
+  agentId,
+  cwd,
+  opening,
+}: {
+  agentId: string;
+  cwd: string;
+  opening: { workspaceId?: string | null } | undefined;
+}): Record<string, string> {
+  const workspaceId = opening?.workspaceId;
+  return {
+    PASEO_AGENT_ID: agentId,
+    PASEO_AGENT_CWD: cwd,
+    ...(workspaceId ? { PASEO_WORKSPACE_ID: workspaceId } : {}),
+  };
+}
+
+// Launch env and the registered agent must agree, or the next snapshot erases the stored workspace.
+function resolveResumeWorkspaceId({
+  options,
+  record,
+}: {
+  options: { workspaceId?: string } | undefined;
+  record: Pick<StoredAgentRecord, "workspaceId"> | null;
+}): string | undefined {
+  return options?.workspaceId ?? record?.workspaceId;
+}
+
 function validateAgentId(agentId: string, source: string): string {
   const result = AgentIdSchema.safeParse(agentId);
   if (!result.success) {
@@ -795,6 +833,7 @@ export class AgentManager {
   private readonly agents = new Map<string, LiveManagedAgent>();
   private readonly timelineStore: InMemoryAgentTimelineStore;
   private readonly providerSubagents = new ProviderSubagentStore();
+  private readonly backgroundWork = new AgentBackgroundWorkStore();
   private readonly agentsAwaitingInitialSnapshotPersist = new Set<string>();
   private readonly sessionEventTails = new Map<string, Promise<void>>();
   private readonly steerEventBarriers = new Map<string, SteerEventBarrier>();
@@ -1359,6 +1398,38 @@ export class AgentManager {
     return this.providerSubagents.list(parentAgentId);
   }
 
+  listAgentBackgroundWork(agentId: string): AgentBackgroundWorkItem[] {
+    this.requirePublicAgent(agentId);
+    return this.backgroundWork.list(agentId);
+  }
+
+  async stopAgentBackgroundWork({
+    agentId,
+    itemId,
+    stopToken,
+  }: StopAgentBackgroundWorkOptions): Promise<void> {
+    this.requirePublicAgent(agentId);
+    // Inventory events share the session queue; drain events already received before
+    // authorizing the token, including a reconnect's ownership revocation.
+    await this.sessionEventTails.get(agentId)?.catch(() => undefined);
+    const agent = this.requirePublicAgent(agentId);
+    if (!agent.session || !agent.session.stopBackgroundWork)
+      throw new Error("Background work cannot be stopped");
+    const item = this.backgroundWork.list(agentId).find((entry) => entry.id === itemId);
+    if (!item?.canStop || item.stopToken !== stopToken)
+      throw new Error("Background work is no longer available to stop");
+    await agent.session.stopBackgroundWork(itemId);
+  }
+
+  getAgentBackgroundWorkSummary(agentId: string): { count: number } | undefined {
+    return this.backgroundWork.summary(agentId);
+  }
+
+  private clearBackgroundWork(agentId: string): void {
+    const items = this.backgroundWork.clear(agentId);
+    if (items) this.dispatch({ type: "background_work", agentId, items });
+  }
+
   listProviderSubagentActivity(): ProviderSubagentDescriptor[] {
     const publicParentIds = new Set(
       Array.from(this.agents.values())
@@ -1535,6 +1606,7 @@ export class AgentManager {
     const currentResumeOptions = { purpose } satisfies AgentResumeSessionOptions;
 
     const launchEnv = record?.launchEnv;
+    const workspaceId = resolveResumeWorkspaceId({ options, record });
     const { storedConfig, launchConfig, paseoToolPolicy } = await this.prepareSessionConfig(
       mergedConfig,
       resolvedAgentId,
@@ -1557,7 +1629,7 @@ export class AgentManager {
       {
         reason: "resume",
         purpose,
-        workspaceId: options?.workspaceId ?? null,
+        workspaceId,
         title: record?.title ?? mergedConfig.title ?? null,
         labels: record?.labels ?? options?.labels ?? {},
       },
@@ -1573,6 +1645,7 @@ export class AgentManager {
     await this.requireExternalMcpSupport(session, providerLaunchConfig, launchContext);
     return this.registerSession(session, storedConfig, resolvedAgentId, {
       ...options,
+      workspaceId,
       launchEnv,
       persistence: handle,
       restoring: true,
@@ -1745,6 +1818,7 @@ export class AgentManager {
       await this.closeReloadedSession(existing.session, agentId);
       await this.drainSessionEvents(agentId);
       this.cancelRunningProviderSubagents(agentId);
+      this.clearBackgroundWork(agentId);
       closedExisting = this.prepareAgentForClosure(existing, "agent reloaded");
       await this.persistSnapshot(closedExisting);
       this.assertAcceptingAgentRegistrations();
@@ -1995,6 +2069,8 @@ export class AgentManager {
     await agent.session.close();
     await this.drainSessionEvents(agentId);
     this.cancelRunningProviderSubagents(agentId);
+    // close() drops the session's subscribers before the provider could report an empty list.
+    this.clearBackgroundWork(agentId);
     const closedAgent = this.prepareAgentForClosure(agent, "agent closed");
     this.clearFallbackUsageTurnKey(agentId);
 
@@ -2118,7 +2194,10 @@ export class AgentManager {
           return;
         }
         if (shouldDetachFromArchivedParent(parent, currentChild)) {
-          await this.detachAgentUnlocked(currentChild.id);
+          const detached = await this.detachAgentUnlocked(currentChild.id);
+          if (!detached.live) {
+            this.dispatchStoredAgentState(detached.record);
+          }
         } else if (this.agents.has(currentChild.id)) {
           await this.archiveAgentUnlocked(currentChild.id);
         } else {
@@ -2204,7 +2283,7 @@ export class AgentManager {
         session: null,
         capabilities: STORED_AGENT_CAPABILITIES,
         config: buildStoredAgentConfig(record),
-        runtimeInfo: undefined,
+        runtimeInfo: record.runtimeInfo,
         lifecycle: "closed",
         createdAt: new Date(record.createdAt),
         updatedAt,
@@ -2546,16 +2625,20 @@ export class AgentManager {
     if (this.agents.has(agentId)) await this.closeAgentRuntime(agentId);
     await this.syncNativeArchiveState(record.provider, record.persistence, "restore");
 
-    await registry.upsert({
+    const nextRecord: StoredAgentRecord = {
       ...record,
       ...(updates?.workspaceId ? { workspaceId: updates.workspaceId } : {}),
       ...(updates?.labels ? { labels: applyLabelPatch(record.labels, updates.labels) } : {}),
       archivedAt: null,
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await registry.upsert(nextRecord);
 
     if (this.getAgent(agentId)) {
       this.notifyAgentState(agentId);
+    } else if (!nextRecord.internal) {
+      // Same publication archiveSnapshot makes, so a stored-only agent reappears for every client.
+      this.dispatchStoredAgentState(nextRecord);
     }
     return true;
   }
@@ -4185,6 +4268,7 @@ export class AgentManager {
     for (const event of this.providerSubagents.deleteParent(agentId)) {
       this.dispatch({ type: "provider_subagent", event });
     }
+    this.clearBackgroundWork(agentId);
   }
 
   private emitClosedAgent(agent: ManagedAgentClosed, options?: { persist?: boolean }): void {
@@ -4292,6 +4376,14 @@ export class AgentManager {
     if (event.type === "provider_subagent") {
       const update = this.providerSubagents.apply(agent.id, event.provider, event.event);
       this.dispatch({ type: "provider_subagent", event: update });
+      return;
+    }
+    if (event.type === "background_work") {
+      const items =
+        event.items === null
+          ? this.backgroundWork.clear(agent.id)
+          : this.backgroundWork.apply(agent.id, event.items);
+      if (items) this.dispatch({ type: "background_work", agentId: agent.id, items });
       return;
     }
     const turnId = getAgentStreamEventTurnId(event);
@@ -5583,6 +5675,13 @@ export class AgentManager {
       }
       if (
         subscriber.agentId &&
+        event.type === "background_work" &&
+        subscriber.agentId !== event.agentId
+      ) {
+        continue;
+      }
+      if (
+        subscriber.agentId &&
         event.type === "agent_state" &&
         subscriber.agentId !== event.agent.id
       ) {
@@ -5614,6 +5713,7 @@ export class AgentManager {
     if (event.type === "agent_state") return event.agent.internal === true;
     if (event.type === "agent_removed") return event.internal;
     if (event.type === "agent_stream") return this.agents.get(event.agentId)?.internal === true;
+    if (event.type === "background_work") return this.agents.get(event.agentId)?.internal === true;
     if (event.type !== "provider_subagent") return false;
     const parentAgentId =
       event.event.type === "upsert"
@@ -5784,8 +5884,7 @@ export class AgentManager {
       mcpServerOwners,
       env: {
         ...env,
-        PASEO_AGENT_ID: agentId,
-        PASEO_AGENT_CWD: cwd,
+        ...agentIdentityEnv({ agentId, cwd, opening }),
       },
     };
     const useNativeTools =
