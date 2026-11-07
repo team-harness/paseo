@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `249c35891`，同步于 2026-11-08。
-- 最近同步 merge commit：`568b32c57`。
+- 最近同步基线：`upstream/main` = `d92495487`，同步于 2026-11-08。
+- 最近同步 merge commit：`d2ffd7662`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-08: `upstream/main` `d92495487` / `0.15.3`
+
+- 合入上游自 `249c35891` 之后的 2 个提交：桌面日志保留 Host identity 与错误详情，并补充 host logger 定向测试；网站语言菜单在 hydration 完成前保持禁用，避免 SSR/客户端状态不一致。
+- 采用上游的 host logger 与语言菜单 hydration 修复；本轮没有触及 fork 专属的 Prompt Library、Review/Threadshare 文档分享、usage ledger、Composer 历史、Assistant 分享、多 Host History 过滤或固定签名三包发布链路，也没有下线任何 fork 能力。
+- 合并提交为 `d2ffd7662`；本轮未发生冲突。原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交；主 daemon 6767 仅做 PID/健康检查，不重启、不停止。GitHub fetch 使用本机 `7890` 代理。
+- 本轮将运行 typecheck、lint、format 与受影响的 host logger/daemon connection/website 定向测试，随后构建并验证 Apple Silicon DMG、Web + Paseo Server tar.gz、Android 四 ABI APK，上传 OSS 并用 bot 通知固定飞书群。
 
 ### 2026-11-08: `upstream/main` `249c35891` / `0.15.3`
 
