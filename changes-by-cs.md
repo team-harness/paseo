@@ -10,7 +10,7 @@
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
 - 最近同步基线：`upstream/main` = `249c35891`，同步于 2026-11-08。
-- 最近同步 merge commit：`2a2535b4e`。
+- 最近同步 merge commit：`568b32c57`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -43,6 +43,7 @@
 - 采用上游的插件 Sidebar View、Composer ready、折叠历史/回合布局、Provider runtime 清理、Relay/Terminal/Browser 修复；冲突处保留 fork 的本地活动面板滚动、Assistant 消息分享按钮和多 Host Agent History 过滤。Host Prompt Library、Review/Threadshare 文档分享、usage ledger、完整 Composer 历史与引用、canonical 100 条旧 Host 兼容、异步子 Agent、replacement 恢复、既有 Agent 计划目标和固定签名三包发布继续保留。本轮没有下线 fork 产品能力。
 - 合并时仅有 `strategy-web.tsx`、`message.tsx`、`use-agent-history.ts` 三处冲突，分别合并上游布局/连接状态逻辑与 fork 的本地激活、分享和 Host 过滤行为。原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交；主 daemon 6767 仅做 PID/健康检查，不重启、不停止。
 - GitHub fetch 使用本机代理备用端口 `7892`；默认 `7890` 在本轮 TLS 握手失败。版本仍为 `0.15.3`，本轮按定时发布流程重新构建三种安装包。
+- 合并提交为 `568b32c57`；类型检查、lint、格式化和定向测试均通过。
 
 ### 2026-11-07: `upstream/main` `9f68af027` / `0.15.3`
 
