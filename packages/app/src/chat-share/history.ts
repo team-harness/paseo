@@ -541,6 +541,8 @@ function exportItem(item: StreamItem): SharedChatEntry | null {
       };
     case "plugin":
       return null;
+    case "turn_summary":
+      return null;
     case "tool_call": {
       if (item.payload.source === "agent") {
         const { data } = item.payload;

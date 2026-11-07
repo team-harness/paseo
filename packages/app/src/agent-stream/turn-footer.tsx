@@ -264,8 +264,8 @@ const stylesheet = StyleSheet.create((theme) => ({
   turnFooterSlot: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    height: TURN_FOOTER_CONTENT_HEIGHT + TURN_FOOTER_BOTTOM_SPACING,
+    alignSelf: "stretch",
+    minHeight: TURN_FOOTER_CONTENT_HEIGHT + TURN_FOOTER_BOTTOM_SPACING,
     paddingBottom: TURN_FOOTER_BOTTOM_SPACING,
   },
   turnFooterContent: {
