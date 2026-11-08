@@ -3663,6 +3663,10 @@ export class CodexAppServerAgentSession implements AgentSession {
   private threadRollbackAvailable = true;
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private startupEvents: AgentStreamEvent[] | null = null;
+  // A fresh namespace prevents a resumed provider session from reusing persisted turn ids.
+  // Tests may inject a UUID and retain the historical compact id shape.
+  private readonly turnNamespace: string;
+  private nextTurnOrdinal = 0;
   private activeForegroundTurnId: string | null = null;
   private activeClientMessageId: string | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
@@ -3773,6 +3777,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     private readonly agentId?: string,
     private readonly initialResumePurpose: "interactive" | "history" = "interactive",
   ) {
+    this.turnNamespace = deps._randomUUID?.() ?? randomUUID();
     this.logger = logger.child({
       module: "agent",
       provider: CODEX_PROVIDER,
@@ -5855,7 +5860,10 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private createTurnId(): string {
-    return `codex-turn-${this.deps._randomUUID?.() ?? randomUUID()}`;
+    if (this.deps._randomUUID) {
+      return `codex-turn-${this.turnNamespace}`;
+    }
+    return `codex-turn-${this.turnNamespace}-${this.nextTurnOrdinal++}`;
   }
 
   private pendingNotifications: Promise<void> = Promise.resolve();

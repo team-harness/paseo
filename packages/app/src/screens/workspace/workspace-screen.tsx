@@ -1,6 +1,6 @@
 import {
   AdaptiveWorkspaceChrome,
-  type WorkspaceCompactHeaderActions,
+  type WorkspaceCompactHeaderTabs,
 } from "./adaptive-workspace-chrome";
 import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
 import { useHostFeature } from "@/runtime/host-features";
@@ -3393,11 +3393,11 @@ function WorkspaceScreenContent({
     ],
   );
   const renderWorkspaceTabSwitcher = useCallback(
-    (
-      headerTabs: WorkspaceTabDescriptor[],
-      headerActiveTabKey: string,
-      actions: WorkspaceCompactHeaderActions,
-    ) => {
+    ({
+      tabs: headerTabs,
+      activeTabKey: headerActiveTabKey,
+      actions,
+    }: WorkspaceCompactHeaderTabs) => {
       return (
         <MobileWorkspaceTabSwitcher
           paneId={actions.pane?.id}
@@ -3438,14 +3438,11 @@ function WorkspaceScreenContent({
       handleCloseTabById,
     ],
   );
+  // Without a pane's tabs (above a split) the header carries workspace controls only: split panes
+  // keep their tab rails.
   const renderCompactWorkspaceHeader = useCallback(
-    (
-      headerTabs: WorkspaceTabDescriptor[],
-      headerActiveTabKey: string,
-      actions: WorkspaceCompactHeaderActions,
-      actionsOnly = false,
-    ) => {
-      const tabSwitcher = renderWorkspaceTabSwitcher(headerTabs, headerActiveTabKey, actions);
+    (paneTabs: WorkspaceCompactHeaderTabs | null, actionsOnly = false) => {
+      const tabSwitcher = paneTabs ? renderWorkspaceTabSwitcher(paneTabs) : null;
       return (
         <CompactWorkspaceHeader
           headerVariant={actionsOnly ? "full" : "compact"}
@@ -3461,7 +3458,7 @@ function WorkspaceScreenContent({
           explorerToggleAccessibilityState={explorerSidebarToggleAccessibilityState}
         >
           <WorkspaceHeaderMenuMobile
-            pane={actions.pane}
+            pane={paneTabs?.actions.pane}
             onExitFocusMode={isFocusModeEnabled ? toggleFocusMode : undefined}
             normalizedServerId={normalizedServerId}
             normalizedWorkspaceId={normalizedWorkspaceId}
@@ -3513,21 +3510,17 @@ function WorkspaceScreenContent({
       workspacePanelActive,
     ],
   );
-  const compactWorkspaceHeader = renderCompactWorkspaceHeader(tabs, activeTabKey, {
-    closeAbove: handleCloseTabsToLeft,
-    closeBelow: handleCloseTabsToRight,
-    closeOthers: handleCloseOtherTabs,
-  });
-  const fullWorkspaceActions = renderCompactWorkspaceHeader(
+  const workspaceCompactHeaderTabs = {
     tabs,
     activeTabKey,
-    {
+    actions: {
       closeAbove: handleCloseTabsToLeft,
       closeBelow: handleCloseTabsToRight,
       closeOthers: handleCloseOtherTabs,
     },
-    true,
-  );
+  };
+  const compactWorkspaceHeader = renderCompactWorkspaceHeader(workspaceCompactHeaderTabs);
+  const fullWorkspaceActions = renderCompactWorkspaceHeader(workspaceCompactHeaderTabs, true);
   const desktopSplitContent = useMemo(() => {
     if (!canRenderDesktopPaneSplits || !workspaceLayout || !persistenceKey) {
       return null;

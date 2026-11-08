@@ -261,7 +261,7 @@ function createSessionForWireCompatTest(options?: {
     directorySync: options?.directorySync,
     scheduleService: {} as SessionOptions["scheduleService"],
     checkoutDiffManager: {
-      scheduleRefreshForCwd() {},
+      async scheduleRefreshForCwd() {},
       onWorkspaceStateMayHaveChanged() {},
     } as unknown as SessionOptions["checkoutDiffManager"],
     github: {
