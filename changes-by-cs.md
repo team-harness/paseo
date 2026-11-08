@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `d92495487`，同步于 2026-11-08。
-- 最近同步 merge commit：`d2ffd7662`。
+- 最近同步基线：`upstream/main` = `7a4d26082`，同步于 2026-11-09。
+- 最近同步 merge commit：`99a2f0dbc`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-09: `upstream/main` `7a4d26082` / `0.15.3`
+
+- 合入上游自 `d92495487` 之后的 18 个提交：Changes diff 流式订阅与二进制帧协议、断线/背压与 abandoned browser connection 修复、Agent 恢复后保留早期回复、前台恢复和 workspace attention 同步、未发送草稿保留、聊天 footer 与 Android plan card 布局、workspace split header，以及插件目录搜索与端到端测试。
+- 采用上游的 diff streaming、connected-hosts flow control、Agent resume/host recovery、workspace split header、draft/footer 和 website hydration/plugin search 实现；冲突处保留 fork 的 Assistant 分享、Review/Threadshare 文档分享、Host Prompt Library、usage ledger、多 Host 过滤、完整 Composer 历史与固定签名三包发布链路。Codex turn ID 合并为新的 session namespace + ordinal；测试注入 UUID 时保留 fork 的稳定 ID 形状。本轮没有下线 fork 产品能力。
+- 合并提交为 `99a2f0dbc`。为适配 fork 的 assistant 分享 props，补齐上游 turn-footer 浏览器测试默认参数，并补充 `Share2` 测试图标 stub。原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交；主 daemon 6767 仅做 PID/健康检查，不重启、不停止。GitHub fetch 使用本机 `7890` 代理。
+- `npm run format`、`npm run lint`、`npm run typecheck` 通过；定向 Codex/diff 协议客户端测试 237 项通过，turn-footer Chromium 测试 2 项通过。
 
 ### 2026-11-08: `upstream/main` `d92495487` / `0.15.3`
 
