@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `e0f545fed`，同步于 2026-11-10。
-- 最近同步 merge commit：`edfdeadc6`。
+- 最近同步基线：`upstream/main` = `ab64bebe1`，同步于 2026-11-10。
+- 最近同步 merge commit：`2ab059928773`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-10: `upstream/main` `ab64bebe1` / `0.15.3`
+
+- 合入上游 1 个终端回放测试修复：先注册 stdin 行处理器，再输出 readiness 历史行，避免父进程在测试夹具安装输入处理前发送预置命令。
+- 该提交仅调整 `packages/server/src/terminal/worker-terminal-manager.test.ts` 的测试时序，不改变 Paseo 运行时行为；fork 的产品能力和发布链路均继续保留，本轮没有下线能力。
+- 合并提交为 `2ab059928773`。原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交；主 daemon 6767 仅做 PID/健康检查，不重启、不停止。GitHub fetch 使用本机 `7890` HTTP 代理。
 
 ### 2026-11-10: `upstream/main` `e0f545fed` / `0.15.3`
 
