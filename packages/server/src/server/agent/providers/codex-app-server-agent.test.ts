@@ -120,7 +120,8 @@ interface CodexSessionTestAccess {
   handleToolApprovalRequest(params: unknown): Promise<unknown>;
   handleNotification(method: string, params: unknown): Promise<void>;
   refreshResolvedCollaborationMode(): void;
-  serviceTier: "fast" | null;
+  requestedServiceTier: string | null;
+  serviceTier: string | null;
   planModeEnabled: boolean;
   collaborationModes: CollaborationModeRecord[];
   config: AgentSessionConfig;
@@ -6503,7 +6504,7 @@ describe("Codex app-server provider", () => {
 
   test("emits a synthetic plan approval permission after a successful Codex plan turn", async () => {
     const session = createSession({
-      featureValues: { plan_mode: true, fast_mode: true },
+      providerOptions: { plan_mode: true, service_tier: "fast" },
     });
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
@@ -6573,7 +6574,7 @@ describe("Codex app-server provider", () => {
 
   test("does not complete Codex plan timeline cards while plan approval is pending", async () => {
     const session = createSession({
-      featureValues: { plan_mode: true, fast_mode: true },
+      providerOptions: { plan_mode: true, service_tier: "fast" },
     });
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
@@ -6619,7 +6620,7 @@ describe("Codex app-server provider", () => {
 
   test("replaces a pending synthetic plan approval when a later plan completes", async () => {
     const session = createSession({
-      featureValues: { plan_mode: true },
+      providerOptions: { plan_mode: true },
     });
 
     await asInternals(session).handleNotification("turn/started", {
@@ -6652,7 +6653,7 @@ describe("Codex app-server provider", () => {
 
   test("dismisses a pending synthetic plan approval after a new prompt is accepted", async () => {
     const session = createSession({
-      featureValues: { plan_mode: true },
+      providerOptions: { plan_mode: true },
     });
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
@@ -6694,7 +6695,7 @@ describe("Codex app-server provider", () => {
 
   test("makes the old plan non-actionable while a new prompt is being prepared", async () => {
     const session = createSession({
-      featureValues: { plan_mode: true },
+      providerOptions: { plan_mode: true },
     });
 
     await asInternals(session).handleNotification("turn/started", {
@@ -6748,7 +6749,7 @@ describe("Codex app-server provider", () => {
 
   test("does not dismiss a new plan approval emitted while a prompt is being accepted", async () => {
     const session = createSession({
-      featureValues: { plan_mode: true },
+      providerOptions: { plan_mode: true },
     });
 
     await asInternals(session).handleNotification("turn/started", {
@@ -6798,7 +6799,7 @@ describe("Codex app-server provider", () => {
 
   test("keeps a synthetic plan dismissed when a new prompt is rejected", async () => {
     const session = createSession({
-      featureValues: { plan_mode: true },
+      providerOptions: { plan_mode: true },
     });
 
     await asInternals(session).handleNotification("turn/started", {
@@ -7425,7 +7426,7 @@ describe("Codex app-server provider", () => {
 
   test("prices requests independently in a long turn and does not charge duplicate snapshots", async () => {
     const session = createSession({ model: "gpt-6-astra" });
-    asInternals(session).serviceTier = "fast";
+    asInternals(session).requestedServiceTier = "fast";
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
     const first = {
@@ -7742,7 +7743,7 @@ describe("Codex app-server provider", () => {
 
   test("approving a synthetic Codex plan permission disables plan mode, preserves fast mode, and returns follow-up prompt", async () => {
     const session = createSession({
-      featureValues: { plan_mode: true, fast_mode: true },
+      providerOptions: { plan_mode: true, service_tier: "fast" },
     });
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
@@ -7773,9 +7774,10 @@ describe("Codex app-server provider", () => {
 
     expect(asInternals(session).serviceTier).toBe("fast");
     expect(asInternals(session).planModeEnabled).toBe(false);
-    expect(asInternals(session).config.featureValues).toEqual({
-      plan_mode: false,
-      fast_mode: true,
+    expect(events).toContainEqual({
+      type: "options_changed",
+      provider: "codex",
+      patch: { plan_mode: false },
     });
     // The session returns the follow-up prompt instead of calling startTurn directly.
     // The caller (session/agent-manager) is responsible for sending it through streamAgent.
@@ -7796,7 +7798,7 @@ describe("Codex app-server provider", () => {
 
   test("approving a synthetic Codex plan permission keeps fast mode disabled when it started disabled", async () => {
     const session = createSession({
-      featureValues: { plan_mode: true, fast_mode: false },
+      providerOptions: { plan_mode: true, service_tier: "default" },
     });
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
@@ -7825,11 +7827,12 @@ describe("Codex app-server provider", () => {
       selectedActionId: "implement",
     });
 
-    expect(asInternals(session).serviceTier).toBeNull();
+    expect(asInternals(session).serviceTier).toBe("default");
     expect(asInternals(session).planModeEnabled).toBe(false);
-    expect(asInternals(session).config.featureValues).toEqual({
-      plan_mode: false,
-      fast_mode: false,
+    expect(events).toContainEqual({
+      type: "options_changed",
+      provider: "codex",
+      patch: { plan_mode: false },
     });
     expect(result?.followUpPrompt).toEqual(
       expect.stringContaining("The user approved the plan. Implement it now."),
@@ -7838,7 +7841,7 @@ describe("Codex app-server provider", () => {
 
   test("follow-up implementation turn keeps fast service tier and switches back to code collaboration mode", async () => {
     const session = createSession({
-      featureValues: { plan_mode: true, fast_mode: true },
+      providerOptions: { plan_mode: true, service_tier: "fast" },
     });
     asInternals(session).collaborationModes = [
       {

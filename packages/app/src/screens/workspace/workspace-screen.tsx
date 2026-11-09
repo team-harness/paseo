@@ -164,7 +164,11 @@ import {
   WorkspaceExplorerSidebarToggle,
   WorkspaceHeaderExplorerToggle,
 } from "@/screens/workspace/workspace-explorer-toggle";
-import { useHasWindowChromeObstruction } from "@/utils/desktop-window";
+import {
+  useHasWindowChromeObstruction,
+  WindowChromeRegion,
+  WindowChromeSafeArea,
+} from "@/utils/desktop-window";
 import {
   resolveWorkspaceHeaderRenderState,
   type WorkspaceHeaderCheckoutState,
@@ -1031,6 +1035,23 @@ function useLastMainPane(input: {
     lastMainPaneRef.current.paneId = focusedPaneId;
   }
   return lastMainPaneRef;
+}
+
+/** The docked explorer beside the center column takes the top-right window-chrome corner. */
+function DesktopCenterColumnChrome({
+  explorerOpen,
+  focusModeEnabled,
+  children,
+}: {
+  explorerOpen: boolean;
+  focusModeEnabled: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <WindowChromeRegion corners={explorerOpen && !focusModeEnabled ? "top-left" : "both"}>
+      <View style={styles.centerColumn}>{children}</View>
+    </WindowChromeRegion>
+  );
 }
 
 function WorkspaceScreenContent({
@@ -3520,6 +3541,11 @@ function WorkspaceScreenContent({
     },
   };
   const compactWorkspaceHeader = renderCompactWorkspaceHeader(workspaceCompactHeaderTabs);
+  // SplitContainer reserves the corner around its own compact headers; this is the column's.
+  const centerColumnCompactHeader = useMemo(
+    () => <WindowChromeSafeArea placement="inline">{compactWorkspaceHeader}</WindowChromeSafeArea>,
+    [compactWorkspaceHeader],
+  );
   const fullWorkspaceActions = renderCompactWorkspaceHeader(workspaceCompactHeaderTabs, true);
   const desktopSplitContent = useMemo(() => {
     if (!canRenderDesktopPaneSplits || !workspaceLayout || !persistenceKey) {
@@ -3643,9 +3669,12 @@ function WorkspaceScreenContent({
       <SheetTabs onCloseTab={handleCloseTabById} />
     </View>
   ) : (
-    <View style={styles.centerColumn}>
+    <DesktopCenterColumnChrome
+      explorerOpen={isExplorerSidebarShowing}
+      focusModeEnabled={desktopFocusModeEnabled}
+    >
       {rendersDesktopSplitContent ? null : (
-        <AdaptiveWorkspaceChrome compactHeader={compactWorkspaceHeader}>
+        <AdaptiveWorkspaceChrome compactHeader={centerColumnCompactHeader}>
           {fullWorkspaceActions}
           {renderWorkspaceScreenHeader()}
 
@@ -3682,7 +3711,7 @@ function WorkspaceScreenContent({
       <View style={styles.centerContent}>
         <View style={styles.content}>{desktopContent}</View>
       </View>
-    </View>
+    </DesktopCenterColumnChrome>
   );
 
   const [workspaceViewportWidth, setWorkspaceViewportWidth] = useState(0);

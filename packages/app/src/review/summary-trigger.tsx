@@ -575,9 +575,6 @@ function collectWorkspaceReviewAgents(
 }
 
 function buildReviewAgentConfig(template: Agent, cwd: string, title: string) {
-  const featureValues = Object.fromEntries(
-    (template.features ?? []).map((feature) => [feature.id, feature.value]),
-  );
   const modeId = template.currentModeId ?? template.runtimeInfo?.modeId ?? undefined;
   const model = template.model ?? template.runtimeInfo?.model ?? undefined;
   const thinkingOptionId =
@@ -589,7 +586,7 @@ function buildReviewAgentConfig(template: Agent, cwd: string, title: string) {
     ...(modeId ? { modeId } : {}),
     ...(model ? { model } : {}),
     ...(thinkingOptionId ? { thinkingOptionId } : {}),
-    ...(Object.keys(featureValues).length > 0 ? { featureValues } : {}),
+    ...(template.options ? { providerOptions: template.options } : {}),
   };
 }
 

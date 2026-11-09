@@ -33,7 +33,7 @@ import { resolveSidebarWorkspacePrimaryLabel } from "@/components/sidebar/sideba
 import { DensityIcon } from "@/components/ui/density-icon";
 import { SCRIM_WIDTH, TrailingActionScrim } from "@/components/ui/trailing-action-scrim";
 import {
-  ARCHIVE_BUTTON_SIZE,
+  ARCHIVE_BUTTON_FOOTPRINT,
   SidebarWorkspaceArchiveButton,
 } from "@/components/sidebar/sidebar-workspace-menu";
 import { useWorkspaceLabelDefinitions } from "@/workspace-labels";
@@ -489,9 +489,6 @@ export function SidebarWorkspaceTrailingActionBase({
   );
 }
 
-// The archive button plus the kebab's marginLeft, which is the gap between them.
-const ARCHIVE_BUTTON_SCRIM_WIDTH = ARCHIVE_BUTTON_SIZE + 2;
-
 export function SidebarWorkspaceTrailingActionOverlay({
   visible,
   scrimBackdrop,
@@ -516,7 +513,7 @@ export function SidebarWorkspaceTrailingActionOverlay({
       {scrimBackdrop ? (
         <TrailingActionScrim
           backdrop={scrimBackdrop}
-          width={onArchiveButtonPress ? SCRIM_WIDTH + ARCHIVE_BUTTON_SCRIM_WIDTH : SCRIM_WIDTH}
+          width={onArchiveButtonPress ? SCRIM_WIDTH + ARCHIVE_BUTTON_FOOTPRINT : SCRIM_WIDTH}
           testID="sidebar-workspace-trailing-scrim"
         />
       ) : null}

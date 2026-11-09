@@ -27,6 +27,7 @@ import {
 } from "./connection/index.js";
 import { CreationClient } from "./creation/index.js";
 import type { CreationSnapshot } from "@getpaseo/protocol/messages";
+import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import type { z } from "zod";
 import type { SessionEventSubscription } from "@getpaseo/protocol/messages";
 import type { LocalSpeechModel } from "@getpaseo/protocol/speech/rpc-schemas";
@@ -108,6 +109,7 @@ import type {
   WorkspaceSetupStatusResponseMessage,
   ListCommandsResponse,
   ListProviderFeaturesResponseMessage,
+  ProviderControlsListResponseMessage,
   ListProviderModelsResponseMessage,
   ListProviderModesResponseMessage,
   ListAvailableProvidersResponse,
@@ -159,6 +161,7 @@ import type {
   AgentSkillsSaveResult,
 } from "@getpaseo/protocol/messages";
 import type {
+  AgentOptionControl,
   AgentPermissionRequest,
   AgentPermissionResponse,
   AgentPersistenceHandle,
@@ -205,6 +208,10 @@ import {
   normalizeProviderSnapshotUpdateMessage,
   normalizeProvidersSnapshotPayload,
 } from "./compat/normalize-provider-models.js";
+import {
+  LegacyProviderOptions,
+  usesLegacyProviderOptions,
+} from "./compat/legacy-provider-options.js";
 import { TerminalStreamRouter, type TerminalStreamEvent } from "./terminal-stream-router.js";
 import type {
   BrowserAutomationExecuteRequest,
@@ -526,11 +533,15 @@ export interface CreateAgentRequestOptions extends AgentConfigOverrides {
   worktreeName?: string;
   requestId?: string;
   labels?: Record<string, string>;
+  /** Plugin-owned data stored on the agent. Needs a host with `entityMetadata`. */
+  metadata?: CreateAgentRequestMessage["metadata"];
 }
 
 export interface CreateWorkspaceRequestOptions {
   source: WorkspaceCreateRequest["source"];
   title?: string;
+  /** Plugin-owned data stored on the workspace. Needs a host with `entityMetadata`. */
+  metadata?: WorkspaceCreateRequest["metadata"];
   /** Workspace discovery visibility; contents retain normal durability. */
   background?: boolean;
   callerAgentId?: string;
@@ -620,6 +631,7 @@ export interface FileUploadInput {
 export type FileUploadResult = FileUploadResponse["payload"];
 type FileDownloadTokenPayload = FileDownloadTokenResponse["payload"];
 type ListProviderFeaturesPayload = ListProviderFeaturesResponseMessage["payload"];
+export type ListProviderControlsPayload = ProviderControlsListResponseMessage["payload"];
 type ListProviderModelsPayload = ListProviderModelsResponseMessage["payload"];
 type ListProviderModesPayload = ListProviderModesResponseMessage["payload"];
 type ListAvailableProvidersPayload = ListAvailableProvidersResponse["payload"];
@@ -673,7 +685,7 @@ type WriteProjectConfigPayload = Extract<
 type ListCommandsPayload = ListCommandsResponse["payload"];
 type ListCommandsDraftConfig = Pick<
   AgentSessionConfig,
-  "provider" | "cwd" | "modeId" | "model" | "thinkingOptionId" | "featureValues"
+  "provider" | "cwd" | "modeId" | "model" | "thinkingOptionId" | "featureValues" | "providerOptions"
 >;
 export interface WriteProjectConfigInput {
   repoRoot: string;
@@ -1437,12 +1449,16 @@ export class DaemonClient {
       ),
     release: async (subscriptionId) => {
       if (!this.isConnected) return;
+      const transport = this.transport;
       try {
         await this.sendCorrelatedSessionRequest({
           message: { type: "subscription.release.request", subscriptionId },
           responseType: "subscription.release.response",
         });
       } catch (error) {
+        // close() rejects in-flight requests after dropping the transport. That failure says
+        // nothing about a live connection, and rethrowing it would abort close() midway.
+        if (this.transport !== transport) return;
         this.disposeTransport(1001, "Subscription release failed");
         this.scheduleReconnect({ reason: "Subscription release failed" });
         throw error;
@@ -2186,17 +2202,13 @@ export class DaemonClient {
   }
 
   private sendSessionPayload(payload: SessionInboundMessage): Promise<void> {
-    return this.sendJsonMessage(
-      "session",
-      payload.type,
-      { type: "session", message: payload },
-      () => {
-        if (!("requestId" in payload) || typeof payload.requestId !== "string") return;
-        for (const waiter of this.waiters) {
-          if (waiter.requestId === payload.requestId) waiter.submitted = true;
-        }
-      },
-    );
+    const wire = this.legacyProviderOptions()?.prepare(payload) ?? payload;
+    return this.sendJsonMessage("session", payload.type, { type: "session", message: wire }, () => {
+      if (!("requestId" in payload) || typeof payload.requestId !== "string") return;
+      for (const waiter of this.waiters) {
+        if (waiter.requestId === payload.requestId) waiter.submitted = true;
+      }
+    });
   }
 
   private sendTransportFrame(
@@ -3466,6 +3478,13 @@ export class DaemonClient {
     legacyWorkspace: (input) => this.createLegacyWorkspace(input, input.requestId),
   });
 
+  // Entity metadata is gated once at the transport boundary.
+  private requireEntityMetadata(): void {
+    if (this.lastServerInfoMessage?.features?.entityMetadata !== true) {
+      throw new Error("Update the host to use metadata.");
+    }
+  }
+
   // Background workspaces are gated once at the transport boundary.
   private requireBackgroundWorkspaces(): void {
     if (this.lastServerInfoMessage?.features?.backgroundWorkspaces !== true) {
@@ -3495,12 +3514,43 @@ export class DaemonClient {
       );
     }
     if (options.background !== undefined) this.requireBackgroundCreation(options);
+    if (options.metadata !== undefined) this.requireEntityMetadata();
+    const config = resolveAgentConfig(options);
     const result = await this.creations.createAgent({
       ...options,
-      config: resolveAgentConfig(options),
+      config: this.carriesLegacyOptions(config)
+        ? await this.routeLegacyCreateConfig(config)
+        : config,
     });
     if (result.error || !result.agent) throw new Error(result.error ?? "Agent creation failed");
     return result.agent;
+  }
+
+  /**
+   * A legacy daemon reads control options as `featureValues`, and which options are controls
+   * depends on the config (Claude's differ by model), so a create that carries options first lists
+   * the controls for its own config. Callers never prime anything.
+   */
+  private carriesLegacyOptions(config: AgentSessionConfig): boolean {
+    return (
+      this.legacyProviderOptions() !== null && Object.keys(config.providerOptions ?? {}).length > 0
+    );
+  }
+
+  private async routeLegacyCreateConfig(config: AgentSessionConfig): Promise<AgentSessionConfig> {
+    const payload = await this.listProviderFeatures({
+      provider: config.provider,
+      cwd: config.cwd || "~",
+      ...(config.modeId ? { modeId: config.modeId } : {}),
+      ...(config.model ? { model: config.model } : {}),
+      ...(config.thinkingOptionId ? { thinkingOptionId: config.thinkingOptionId } : {}),
+      featureValues: config.providerOptions,
+    });
+    if (payload.error) throw new Error(payload.error);
+    return this.legacyOptions.routeCreateConfig(
+      config,
+      new Set((payload.features ?? []).map((feature) => feature.id)),
+    );
   }
 
   private async createLegacyAgent(
@@ -3699,6 +3749,42 @@ export class DaemonClient {
       throw new Error(payload.error ?? "removeProject rejected");
     }
     return { removedWorkspaceIds: payload.removedWorkspaceIds };
+  }
+
+  /** Top-level keys replace; `null` removes the key. Resolves to the agent's metadata afterwards. */
+  async setAgentMetadata(
+    agentId: string,
+    patch: Record<string, JsonValue>,
+    requestId?: string,
+  ): Promise<Record<string, JsonValue>> {
+    this.requireEntityMetadata();
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"agent.metadata.update.response">({
+        requestId,
+        message: { type: "agent.metadata.update.request", agentId, patch },
+      });
+    if (!payload.accepted || !payload.metadata) {
+      throw new Error(payload.error ?? "setAgentMetadata rejected");
+    }
+    return payload.metadata;
+  }
+
+  /** Top-level keys replace; `null` removes the key. Resolves to the workspace's metadata afterwards. */
+  async setWorkspaceMetadata(
+    workspaceId: string,
+    patch: Record<string, JsonValue>,
+    requestId?: string,
+  ): Promise<Record<string, JsonValue>> {
+    this.requireEntityMetadata();
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"workspace.metadata.update.response">({
+        requestId,
+        message: { type: "workspace.metadata.update.request", workspaceId, patch },
+      });
+    if (!payload.accepted || !payload.metadata) {
+      throw new Error(payload.error ?? "setWorkspaceMetadata rejected");
+    }
+    return payload.metadata;
   }
 
   async setWorkspaceTitle(
@@ -4118,11 +4204,23 @@ export class DaemonClient {
 
   observeTimeline(
     agentIds: string[],
-    options?: { signal?: AbortSignal },
+    options?: {
+      signal?: AbortSignal;
+      /** The caller's position per chat; the response answers whether each is at the head. */
+      cursors?: Record<string, { epoch: string; seq: number }>;
+    },
   ): OwnedSubscription<CorrelatedResponsePayload<"agent.timeline.set_subscription.response">> {
     return this.observe(
       "agent.timeline.set_subscription.response",
-      { type: "agent.timeline.set_subscription.request", agentIds },
+      {
+        type: "agent.timeline.set_subscription.request",
+        agentIds,
+        // COMPAT(timelineFreshnessCheck): added after v0.15.3, remove after 2027-05-09.
+        ...(options?.cursors &&
+        this.lastServerInfoMessage?.features?.timelineFreshnessCheck === true
+          ? { cursors: options.cursors }
+          : {}),
+      },
       options,
     );
   }
@@ -4378,6 +4476,41 @@ export class DaemonClient {
     }
   }
 
+  /**
+   * Changes the agent's own provider options: top-level keys replace, `null` removes the key.
+   * A daemon without `providerOptionControls` takes each key as a feature write.
+   */
+  async setAgentOptions(
+    agentId: string,
+    patch: Record<string, unknown>,
+  ): Promise<AgentProviderNotice | null> {
+    const legacy = this.legacyProviderOptions();
+    if (legacy) {
+      // COMPAT(providerOptionControls): added in v0.15.0, remove after 2027-05-01.
+      const pending = this.legacyResetControls(agentId, patch);
+      const controls = pending ? await pending : [];
+      for (const [featureId, value] of legacy.featureWrites(patch, controls)) {
+        await this.setAgentFeature(agentId, featureId, value);
+      }
+      return null;
+    }
+    return this.applyAgentConfig(agentId, { options: patch });
+  }
+
+  /**
+   * COMPAT(providerOptionControls): added in v0.15.0, remove after 2027-05-01.
+   * A reset (`null`) on a daemon without `providerOptionControls` is written as the value its
+   * control resets to, which takes the agent's controls. Without a reset nothing is fetched, so
+   * the write is not delayed.
+   */
+  private legacyResetControls(
+    agentId: string,
+    patch: Record<string, unknown>,
+  ): Promise<AgentOptionControl[]> | null {
+    if (!Object.values(patch).includes(null)) return null;
+    return this.fetchAgent(agentId).then((result) => result?.agent.controls ?? []);
+  }
+
   async setAgentThinkingOption(
     agentId: string,
     thinkingOptionId: string | null,
@@ -4420,11 +4553,18 @@ export class DaemonClient {
     agentId: string,
     config: AgentConfigApply,
   ): Promise<AgentProviderNotice | null> {
+    let wireConfig = config;
+    const legacy = this.legacyProviderOptions();
+    if (legacy && config.options) {
+      // COMPAT(providerOptionControls): added in v0.15.0, remove after 2027-05-01.
+      const pending = this.legacyResetControls(agentId, config.options);
+      wireConfig = legacy.featureValuesConfig(config, pending ? await pending : []);
+    }
     const requestId = this.createRequestId();
     const message = SessionInboundMessageSchema.parse({
       type: "agent.config.apply.request",
       agentId,
-      config,
+      config: wireConfig,
       requestId,
     });
     const payload = await this.sendRequest({
@@ -5341,12 +5481,16 @@ export class DaemonClient {
     if (input.background !== undefined || input.callerAgentId) this.requireBackgroundWorkspaces();
     if (input.agent?.background !== undefined)
       throw new Error("Configure background on the workspace, not its initial agent.");
+    if (input.metadata !== undefined || input.agent?.metadata !== undefined)
+      this.requireEntityMetadata();
+    let agentConfig = input.agent ? resolveAgentConfig(input.agent) : undefined;
+    if (agentConfig && this.carriesLegacyOptions(agentConfig)) {
+      agentConfig = await this.routeLegacyCreateConfig(agentConfig);
+    }
     const result = await this.creations.createWorkspace({
       ...input,
       requestId: resolvedRequestId,
-      ...(input.agent
-        ? { agent: { ...input.agent, config: resolveAgentConfig(input.agent) } }
-        : {}),
+      ...(input.agent && agentConfig ? { agent: { ...input.agent, config: agentConfig } } : {}),
     });
     return {
       ...result,
@@ -5838,6 +5982,36 @@ export class DaemonClient {
     });
   }
 
+  /**
+   * The controls a draft agent would show and the options it would run with: `config.json`
+   * defaults merged with the draft's own `providerOptions`, resolved by the daemon.
+   */
+  async listProviderControls(
+    draftConfig: ListCommandsDraftConfig,
+    options?: { requestId?: string },
+  ): Promise<ListProviderControlsPayload> {
+    const legacy = this.legacyProviderOptions();
+    if (legacy) {
+      const { providerOptions, ...rest } = draftConfig;
+      const payload = await this.listProviderFeatures(
+        {
+          ...rest,
+          // A legacy daemon reads the options it exposes as features, whatever the others are.
+          ...(providerOptions ? { featureValues: providerOptions } : {}),
+        },
+        options,
+      );
+      return legacy.controlsResponse(payload);
+    }
+    return this.sendCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: { type: "provider.controls.list.request", draftConfig },
+      responseType: "provider.controls.list.response",
+      timeout: 90000,
+    });
+  }
+
+  /** @deprecated Use `listProviderControls`. */
   async listProviderFeatures(
     draftConfig: ListCommandsDraftConfig,
     options?: { requestId?: string },
@@ -7202,6 +7376,14 @@ export class DaemonClient {
     return requestId ?? crypto.randomUUID();
   }
 
+  private readonly legacyOptions = new LegacyProviderOptions();
+
+  /** The translation for a daemon without `providerOptionControls`; null for a current one. */
+  private legacyProviderOptions(): LegacyProviderOptions | null {
+    const info = this.lastServerInfoMessage;
+    return info && usesLegacyProviderOptions(info) ? this.legacyOptions : null;
+  }
+
   getLastServerInfoMessage(): ServerInfoStatusPayload | null {
     return this.lastServerInfoMessage;
   }
@@ -7811,6 +7993,7 @@ export class DaemonClient {
 
   private handleSessionMessage(msg: SessionOutboundMessage): void {
     msg = this.owned.normalize(msg);
+    msg = this.legacyProviderOptions()?.normalize(msg) ?? msg;
     if (
       msg.type === "providers_snapshot_update" &&
       this.config.providerSnapshots !== "wire" &&
@@ -8100,6 +8283,7 @@ function resolveAgentConfig(options: CreateAgentRequestOptions): AgentSessionCon
     worktreeName: _worktreeName,
     requestId: _requestId,
     labels: _labels,
+    metadata: _metadata,
     ...overrides
   } = options;
 
