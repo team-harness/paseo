@@ -10,7 +10,7 @@
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
 - 最近同步基线：`upstream/main` = `e0f545fed`，同步于 2026-11-10。
-- 最近同步 merge commit：`c0a58c03a`。
+- 最近同步 merge commit：`edfdeadc6`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -41,7 +41,7 @@
 
 - 合入上游自 `7a4d26082` 之后的 15 个提交：插件 option controls/metadata、插件 Composer 与 New Workspace 扩展点、Terraform/HCL 高亮、timeline freshness 与 host 连接稳定性、Composer trailing action 和 Android pills、iPhone Duo top band、workspace archive undo toast，以及相关浏览器回归测试。
 - 采用上游的插件 option controls/metadata、timeline freshness、Composer voice/action 布局、Android Composer pills、iPhone Duo top band、workspace archive toast 和测试基础设施；冲突处保留 fork 的 Host Prompt Library、Review/Threadshare 文档分享、usage ledger、完整 Composer 历史与引用、canonical 100 条分页、Agent replacement 恢复、异步子 Agent 生命周期、固定签名三包发布链路。Review 新 Agent 创建已从旧 `features` 迁移到上游 `options`/`providerOptions`，避免新旧字段混用。本轮没有下线 fork 产品能力。
-- 合并提交为 `c0a58c03a`；原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交。主 daemon 6767 仅做 PID/健康检查，不重启、不停止；GitHub fetch 使用本机代理。
+- 合并提交为 `edfdeadc6`；原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交。主 daemon 6767 仅做 PID/健康检查，不重启、不停止；GitHub fetch 使用本机代理。
 - `npm run format`、`npm run lint`、`npm run typecheck` 通过；App 定向测试 190 项、Server 定向测试 529 项通过。合并后补齐 Codex 测试访问器，使 service tier 测试写入 `requestedServiceTier`，与上游解析后的只读 `serviceTier` 一致。
 
 ### 2026-11-09: `upstream/main` `7a4d26082` / `0.15.3`
