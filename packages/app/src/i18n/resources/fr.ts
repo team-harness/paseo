@@ -1343,6 +1343,8 @@ export const fr: TranslationResources = {
     title: "Nouveautés",
     installed: "Installée",
     showMore: "Afficher plus",
+    showAllChanges: "Afficher toutes les modifications",
+    hideAllChanges: "Masquer toutes les modifications",
     openWebsite: "Journal des modifications complet",
     error: {
       title: "Impossible de charger le journal des modifications",

@@ -3730,6 +3730,7 @@ function WorkspaceScreenContent({
         normalizedServerId={normalizedServerId}
         normalizedWorkspaceId={normalizedWorkspaceId}
         isWorkspaceFocused={isRouteFocused}
+        paneFocusSuspended={paneFocusSuspended}
         closingTabIds={closingTabIds}
         hoveredCloseTabKey={hoveredCloseTabKey}
         setHoveredCloseTabKey={setHoveredCloseTabKey}
@@ -3771,6 +3772,7 @@ function WorkspaceScreenContent({
     normalizedServerId,
     normalizedWorkspaceId,
     isRouteFocused,
+    paneFocusSuspended,
     isExplorerSidebarShowing,
     closingTabIds,
     hoveredCloseTabKey,

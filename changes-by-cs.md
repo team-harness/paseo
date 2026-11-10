@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `ab64bebe1`，同步于 2026-11-10。
-- 最近同步 merge commit：`2ab059928773`。
+- 最近同步基线：`upstream/main` = `f68480482`，同步于 2026-11-11。
+- 最近同步 merge commit：`4f9a1fc9c`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-11: `upstream/main` `f68480482` / `0.16.0-beta.1`
+
+- 合入上游自 `ab64bebe1` 之后的 17 个提交并升级至 `0.16.0-beta.1`：插件 Composer 可定位任意 Agent、插件更新恢复与测试隔离、Changes 面板快速加载与重开保持、流式工具调用标题/图标、usage 首帧展示、Composer 触控布局、Fable 5.2/Mythos 5.2 模型目录、发布说明/网站 changelog 流程，以及 lockfile/Nix 哈希更新。
+- 采用上游的插件 Composer focus、Changes/usage/timeline 修复、popover 与 Composer 触控布局、Claude 新模型目录和 release changelog 机制；冲突处保留 fork 的 `MessageInputRef.setSelection`、Host Prompt Library、Review/Threadshare 文档分享、usage ledger、多 Host 过滤、完整 Composer 历史与引用、canonical 100 条分页、异步子 Agent 生命周期、Agent replacement 恢复和固定签名三包发布链路。本轮没有下线 fork 产品能力。
+- 合并提交为 `4f9a1fc9c`；原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交。主 daemon 6767 仅做 PID/健康检查，不重启、不停止；GitHub fetch 使用本机 `127.0.0.1:7890` 代理。
+- `npm run build:client`、`npm run build:server` 和 `npm run typecheck` 已通过；lint、format、受影响定向测试及三类安装包在本轮发布步骤继续执行。
 
 ### 2026-11-10: `upstream/main` `ab64bebe1` / `0.15.3`
 
