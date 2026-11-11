@@ -10,7 +10,7 @@
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
 - 最近同步基线：`upstream/main` = `68818067f`，同步于 2026-11-12。
-- 最近同步 merge commit：`12219ac56`。
+- 最近同步 merge commit：`21be137b39`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -42,7 +42,7 @@
 - 合入上游自 `f68480482` 之后的 19 个提交并升级至 `0.16.0-beta.2`：Codex 重连与警告展示、Pi resumed subagent 状态和历史、ACP Prompt token usage、工作区取消归档时恢复 Agent、宽屏侧边栏原地重命名、长用户消息首帧折叠、工具文件按钮嵌套修复，以及插件后台工作计数和退出清理。
 - 采用上述上游实现；侧边栏原地重命名继续保留 fork 的项目次级名称和状态环语义。Status Bar/usage ledger、多 Host、Host Prompt Library、Review 固定 Agent 增量投递、Threadshare 对话与文档分享、完整 Composer 历史与引用、Assistant 时间、canonical 100 条旧 Host 兼容、异步子 Agent 生命周期、replacement 条件恢复及固定签名三包发布继续保留。本轮无冲突，没有下线 fork 产品能力。
 - `npm run build:server`、typecheck、lint、format 与定向测试 729 项通过（Server/plugin 655、App 68、Chromium 6）。Agent Manager 测试使用 server 自有 Vitest 配置；首次根配置缺少 globals 的失败不涉及产品代码。静态分析存在覆盖截断，Provider、sidebar 和 message 交叉点另经源码 diff 与定向测试核对。
-- 原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交。主 daemon 6767 仅检查 PID/健康，不重启、不停止；GitHub SSH 代理失败后通过 HTTPS 和本机 `7890` 代理完成 fetch。合并 hash 在独立台账提交回填，避免 amend 后记录失效。
+- 合并提交为 `21be137b39`。原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交。主 daemon 6767 仅检查 PID/健康，不重启、不停止；GitHub SSH 代理失败后通过 HTTPS 和本机 `7890` 代理完成 fetch。合并 hash 在独立台账提交回填，避免 amend 后记录失效。
 
 ### 2026-11-11: `upstream/main` `f68480482` / `0.16.0-beta.1`
 
