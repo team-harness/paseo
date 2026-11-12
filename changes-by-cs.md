@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `d426088c3`，同步于 2026-11-13。
-- 最近同步 merge commit：`3ef7c5b00`。
+- 最近同步基线：`upstream/main` = `21709812b`，同步于 2026-11-13。
+- 最近同步 merge commit：`f8aebc366`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-13: `upstream/main` `21709812b` / `0.16.0-beta.2`
+
+- 合入上游 1 个 Codex 历史读取修复：当 image-heavy 的 `thread/items/list` 100 条页面超过 app-server 行限制时，按同一 cursor 将页大小递减重试，只有单条仍无法容纳时才展示历史过大警告；补充了对应回归测试。
+- 采用上游实现。该改动位于 Codex provider 的历史读取链路，与 fork 的客户端 canonical 100 条 timeline 分页兼容层不冲突；Status Bar/usage ledger、Host Prompt Library、Review/Threadshare、完整 Composer 历史、异步子 Agent、replacement 恢复和固定签名三包发布继续保留。本轮没有下线 fork 产品能力。
+- 合并提交为 `f8aebc366`。原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交。主 daemon 6767 仅检查 PID/健康，不重启、不停止；GitHub fetch 使用本机 `127.0.0.1:7890` 代理。
 
 ### 2026-11-13: `upstream/main` `d426088c3` / `0.16.0-beta.2`
 
