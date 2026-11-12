@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `68818067f`，同步于 2026-11-12。
-- 最近同步 merge commit：`21be137b39`。
+- 最近同步基线：`upstream/main` = `d426088c3`，同步于 2026-11-13。
+- 最近同步 merge commit：`3ef7c5b00`。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-13: `upstream/main` `d426088c3` / `0.16.0-beta.2`
+
+- 合入上游自 `68818067f` 之后的 7 个提交：工作区无关 Agent 更新不再触发屏幕重渲染，OpenCode V2 工具目录发现、Mermaid 坐标渲染、workspace scripts 慢速配置检查、ACP 失败工具历史、Composer recall journey，以及 Android 终端实体箭头键修复。
+- 采用上述上游实现；fork 的 Status Bar/usage ledger、Host Prompt Library、Review/Threadshare、完整 Composer 历史数据源、canonical 100 条兼容、异步子 Agent 生命周期、replacement 恢复、项目上下文与状态环、固定签名三包发布继续保留。Composer recall 测试和 Android 硬件键盘改动与 fork 历史导航共用上游输入边界，无重复路径；本轮没有下线 fork 产品能力。
+- 合并提交为 `3ef7c5b00`。原有未跟踪 `.codegraph/` 与 `docs/refactors/agent-teams-design.md` 不纳入提交。主 daemon 6767 仅检查 PID/健康，不重启、不停止；GitHub fetch 使用本机 `127.0.0.1:7890` HTTPS 代理。
 
 ### 2026-11-12: `upstream/main` `68818067f` / `0.16.0-beta.2`
 
