@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `21709812b`，同步于 2026-11-13。
-- 最近同步 merge commit：`f8aebc366`。
+- 最近同步基线：`upstream/main` = `2bd9e9d87`，同步于 2026-11-15。
+- 最近同步 merge commit：本轮同步 merge commit（见 Git 历史）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-15: `upstream/main` `2bd9e9d87` / `0.16.0-beta.2`
+
+- 合入上游自 `21709812b` 之后的 49 个提交：Agent replacement 前台 mutation lane 与取消确认、后台/跨 Host Agent 恢复、Codex/OpenCode/Pi 生命周期、插件侧边栏扩展点、Changes/文件预览/聊天历史滚动、Android 触控与键盘、Composer 和设置布局、usage/sidebar 错误展示、worktree/归档安全检查，以及相关协议、文档和回归测试。
+- 采用上游 Agent replacement 前台队列实现，解决并发替换/Stop 竞态；保留 fork 的 Status Bar/usage ledger、Host Prompt Library、Review/Threadshare 文档分享、完整 Composer 历史与引用、canonical 100 条分页、异步子 Agent、项目上下文与状态环、固定签名三包发布链路。侧边栏冲突合并上游 `backdrop` 支持，同时保留 fork 的 branch 标题模式和项目次级上下文。本轮没有下线 fork 产品能力。
+- 主 daemon 6767 仅做 PID/健康检查，不重启、不停止；GitHub fetch 使用本机 ClashX `127.0.0.1:7892` HTTP 代理（默认 `7890` TLS 握手失败）。
+- 合并后的 typecheck、lint、format、受影响定向测试和三类安装包验证将在本轮后续发布步骤完成。
 
 ### 2026-11-13: `upstream/main` `21709812b` / `0.16.0-beta.2`
 
