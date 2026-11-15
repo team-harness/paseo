@@ -37,6 +37,13 @@
 
 ## 最近同步判断
 
+### 2026-11-16: `upstream/main` `0273b6b61` / `0.16.0-beta.2`
+
+- 合入上游自 `2bd9e9d87` 之后的 41 个提交：Command Center 标签页、最近/归档工作区和目录搜索，内置插件 Gallery，Usage 卡片排序与 Host 选择，弹出层定位与键盘焦点环，归档工作区恢复、命令中心筛选、主机重连恢复、Claude session cron 保活、dictation 错误透传、完成通知预览，以及相关协议、服务端和浏览器回归测试。
+- 采用上游 Command Center、插件 Gallery、Usage/归档工作区、主机恢复、Provider 生命周期和 UI 可访问性实现；冲突仅涉及 `use-agent-history.ts`，保留 fork 的多 Host `serverIds` 过滤，同时接入上游的 `searchableHostsOnly` 与 `keepPreviousResults` 语义。Status Bar/usage ledger、Host Prompt Library、Review/Threadshare 文档分享、完整 Composer 历史与引用、canonical 100 条分页、异步子 Agent、replacement 恢复、项目上下文与状态环、固定签名三包发布链路继续保留。本轮没有下线 fork 产品能力。
+- 主 daemon 6767 仅做 PID/健康检查，不重启、不停止；GitHub SSH fetch 使用本机 SOCKS5 `127.0.0.1:7891`（HTTP `127.0.0.1:7892` 可用，默认 `7890` 的 HTTPS 握手失败）。
+- 合并提交：本轮同步 merge commit（见 Git 历史）；类型检查、lint、format、受影响定向测试和三类安装包验证按本轮发布步骤执行。
+
 ### 2026-11-15: `upstream/main` `2bd9e9d87` / `0.16.0-beta.2`
 
 - 合入上游自 `21709812b` 之后的 49 个提交：Agent replacement 前台 mutation lane 与取消确认、后台/跨 Host Agent 恢复、Codex/OpenCode/Pi 生命周期、插件侧边栏扩展点、Changes/文件预览/聊天历史滚动、Android 触控与键盘、Composer 和设置布局、usage/sidebar 错误展示、worktree/归档安全检查，以及相关协议、文档和回归测试。
