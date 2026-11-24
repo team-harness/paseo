@@ -60,6 +60,34 @@ describe("PersistedConfigSchema daemon append system prompt config", () => {
   });
 });
 
+describe("PersistedConfigSchema fork daemon compatibility", () => {
+  test("preserves MAIForce daemon fields when sharing a Paseo home", () => {
+    const parsed = PersistedConfigSchema.parse({
+      daemon: {
+        autoContinue: {
+          enabled: true,
+          prompt: "Continue the interrupted turn.",
+          maxAttempts: 3,
+          initialDelayMs: 2_000,
+        },
+      },
+      bundledPlugins: {
+        "rocket-chat": { enabled: true },
+      },
+    });
+
+    expect(parsed.daemon?.autoContinue).toEqual({
+      enabled: true,
+      prompt: "Continue the interrupted turn.",
+      maxAttempts: 3,
+      initialDelayMs: 2_000,
+    });
+    expect(parsed.bundledPlugins).toEqual({
+      "rocket-chat": { enabled: true },
+    });
+  });
+});
+
 describe("PersistedConfigSchema daemon browser tools config", () => {
   test("accepts optional browser tools opt-in", () => {
     const parsed = PersistedConfigSchema.parse({

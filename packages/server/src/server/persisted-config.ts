@@ -90,6 +90,22 @@ const ChatShareConfigSchema = z
   })
   .strict();
 
+// COMPAT(forkDaemonConfig): accept host-only fields written by the MAIForce fork
+// so a Paseo desktop can inspect the same home without discarding those settings.
+const ForkAutoContinueSettingsSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    prompt: z.string().max(4000).optional(),
+    maxAttempts: z.number().int().min(1).max(10).optional(),
+    initialDelayMs: z.number().int().min(0).max(60_000).optional(),
+  })
+  .strict();
+
+const ForkBundledPluginsSchema = z.record(
+  PluginIdSchema,
+  z.object({ enabled: z.boolean() }).strict(),
+);
+
 const SpeechProviderIdSchema = z
   .string()
   .trim()
@@ -303,6 +319,7 @@ export const PersistedConfigSchema = z
         autoArchiveAfterMerge: z.boolean().optional(),
         enableTerminalAgentHooks: z.boolean().optional(),
         appendSystemPrompt: z.string().optional(),
+        autoContinue: ForkAutoContinueSettingsSchema.optional(),
         terminalProfiles: z.array(TerminalProfileSchema).optional(),
         agentProfiles: z.array(AgentProfileSchema).optional(),
         cors: z
@@ -372,6 +389,7 @@ export const PersistedConfigSchema = z
     pluginRegistries: PluginRegistriesSchema.optional(),
     pluginsEnabled: z.boolean().optional(),
     plugins: z.record(PluginIdSchema, PluginSourceSchema).optional(),
+    bundledPlugins: ForkBundledPluginsSchema.optional(),
     worktrees: WorktreesConfigSchema.optional(),
     agents: z
       .object({

@@ -43,7 +43,8 @@
 - 采用上游的 Provider 安装、Provider 页面、turn metrics、聊天轨道、保留式文件预览、内容宽度、用量展示、Provider catalog 和跨平台修复。冲突处保留 fork 的聊天分享与 Threadshare 文档分享、Prompt Library、Review 选区评论与汇总、Status Summary/usage ledger、多 Host 过滤、canonical 100 条时间线、异步子 Agent、固定签名和三包发布链路。未发现上游已提供等价能力的 fork 专属路径，本轮没有下线 fork 产品能力。
 - `strategy-web.tsx` 接入上游的有效内容宽度计算和历史测量失效处理；turn footer 同时保留分享按钮并接入上游 turn metrics；Agent stream 使用上游聊天轨道开关，同时保留 fork 的 chat share capability 查询；文件 Source 视图保留 Review surface 并接入上游 Preview/Source 保持挂载；client/server 冲突合并双方的 Provider installation、Prompt Library、Status Summary 和 session metrics 契约。
 - 主 daemon 6767 仅做 PID/健康检查，不重启、不停止；GitHub fetch 使用本机 `127.0.0.1:7890` HTTP/HTTPS 代理。`npm run build:server`、`npm run typecheck`、`npm run lint` 和 `npm run format` 已通过；受影响定向测试为 app unit 25 项、app browser 15 项、client 268 项、server agent projections 26 项，全部通过。浏览器测试前补齐上游新增的两个 Lucide test stub。
-- 从该 merge commit 构建并验证 Apple Silicon DMG。标准 APFS 产物为 `packages/desktop/release/Paseo-0.17.4-arm64-standard.dmg`，大小 217656352 bytes，SHA-256 为 `2799eaa452308ddc3693f0838c2994af11dc413f2516ad4236d4632f08c22ade`；`hdiutil verify`、arm64 架构、应用版本 `0.17.4`、内置 server 版本 `0.17.4`、bundle 内容和 `codesign --verify --deep --strict` 均通过。当前机器没有 `Paseo Local Code Signing` 证书，本次使用 ad-hoc 签名且未公证，未启动构建产物。
+- 修复共享 `~/.paseo/config.json` 与 MAIForce 主机配置的兼容性：保留 `daemon.autoContinue` 和顶层 `bundledPlugins`，避免新桌面 CLI 因未知键拒绝读取现有配置；新增回归测试，server 配置定向测试 69 项通过。
+- 从该 merge commit 构建并验证 Apple Silicon DMG。标准 APFS 产物为 `packages/desktop/release/Paseo-0.17.4-arm64-standard.dmg`，大小 218193407 bytes，SHA-256 为 `488aa5cd635f00ae2b058d56500a70d16c59c10dd9ec70eaf59b4c1a35e72a90`；`hdiutil verify`、arm64 架构、应用版本 `0.17.4`、内置 server 版本 `0.17.4`、bundle 内容和 `codesign --verify --deep --strict` 均通过。构建产物 CLI 已在现有 `~/.paseo` 上成功返回运行中的 daemon，6767 PID 仍为 `7283`，健康检查返回 200。当前机器没有 `Paseo Local Code Signing` 证书，本次显式使用 ad-hoc 签名且未公证，`spctl` 仍会拒绝该包，未启动构建产物。
 
 ### 2026-11-16: `upstream/main` `0273b6b61` / `0.16.0-beta.2`
 
