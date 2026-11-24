@@ -3,6 +3,7 @@ import { MessagePreview, MessageSender } from "@/components/user-message";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { getAgentAttachmentPillContent } from "@/attachments/attachment-pill-content";
 import { AssistantForkMenu, type AssistantForkTarget } from "@/components/assistant-fork-menu";
+import { TurnMetricsButton } from "@/components/turn-metrics";
 import { AttachmentLightbox, type ImageLightboxSource } from "@/components/attachment-lightbox";
 import {
   AttachmentFrame,
@@ -11,8 +12,12 @@ import {
 } from "@/components/attachment-pill";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
 import { useRetainedPanelActive } from "@/components/retained-panel";
-import { RewindMenu, type RewindMode } from "@/components/rewind/rewind-menu";
-import { useRewindAgentMutation } from "@/components/rewind/use-rewind-agent-mutation";
+import {
+  isRewindableMessage,
+  RewindMenu,
+  useRewindAgentMutation,
+  type RewindMode,
+} from "@/components/rewind";
 import { TaskListRow } from "@/components/task-list-row";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -32,7 +37,11 @@ import { useToolCallExpanded } from "@/tool-calls/expansion-context";
 import { useTargetAgentTitle } from "@/tool-calls/use-target-agent-title";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { AgentMessage } from "@getpaseo/protocol/agent-message";
-import type { AgentCapabilityFlags, ToolCallDetail } from "@getpaseo/protocol/agent-types";
+import type {
+  AgentCapabilityFlags,
+  AgentMetric,
+  ToolCallDetail,
+} from "@getpaseo/protocol/agent-types";
 import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import MaskedView from "@react-native-masked-view/masked-view";
 import {
@@ -531,7 +540,7 @@ export const UserMessage = memo(function UserMessage({
             <Text style={userMessageStylesheet.timestampText} testID="user-message-timestamp">
               {formattedTimestamp}
             </Text>
-            {capabilities && messageId ? (
+            {capabilities && isRewindableMessage(messageId, message) ? (
               <RewindMenu
                 capabilities={capabilities}
                 isPending={rewindMutation.isPending}
@@ -560,6 +569,8 @@ interface AssistantTurnFooterProps {
   onShare?: () => Promise<void> | void;
   isSharing?: boolean;
   shareDisabled?: boolean;
+  /** What the provider reported about the turn. Without any, the footer has no stats button. */
+  metrics?: AgentMetric[];
 }
 
 const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
@@ -596,6 +607,8 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
     flexShrink: 0,
     color: theme.colors.foregroundMuted,
     fontSize: STREAM_METADATA_FONT_SIZE,
+    // React Native Web preserves trailing spaces at line wraps by default.
+    ...(isWeb ? { whiteSpace: "normal" } : {}),
   },
   overlappingLabel: {
     marginLeft: "-100%",
@@ -636,6 +649,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   onShare,
   isSharing = false,
   shareDisabled = false,
+  metrics,
 }: AssistantTurnFooterProps) {
   const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
@@ -688,10 +702,11 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
     void onShare?.();
   }, [onShare]);
   const canFork = Boolean(onFork);
+  const hasMetrics = metrics !== undefined && metrics.length > 0;
 
   return (
     <View style={assistantTurnFooterStylesheet.container}>
-      {getContent || canFork ? (
+      {getContent || canFork || hasMetrics ? (
         <View style={assistantTurnFooterStylesheet.actions}>
           {getContent ? (
             <TurnCopyButton
@@ -700,6 +715,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
             />
           ) : null}
           {canFork ? <AssistantForkMenu onFork={handleFork} /> : null}
+          {hasMetrics ? <TurnMetricsButton metrics={metrics} /> : null}
         </View>
       ) : null}
       {onShare ? (
@@ -1614,7 +1630,6 @@ interface ExpandableBadgeProps {
   style?: StyleProp<ViewStyle>;
   onToggle?: () => void;
   onOpenFile?: () => void;
-  onDetailHoverChange?: (hovered: boolean) => void;
   renderDetails?: () => ReactNode;
   isLoading?: boolean;
   isError?: boolean;
@@ -1939,7 +1954,6 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   isExpanded,
   onToggle,
   onOpenFile,
-  onDetailHoverChange,
   renderDetails,
   isLoading = false,
   isError = false,
@@ -1965,11 +1979,6 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   }, []);
   const handlePressIn = useCallback(() => setIsPressed(true), []);
   const handlePressOut = useCallback(() => setIsPressed(false), []);
-  const handleDetailHoverIn = useCallback(() => onDetailHoverChange?.(true), [onDetailHoverChange]);
-  const handleDetailHoverOut = useCallback(
-    () => onDetailHoverChange?.(false),
-    [onDetailHoverChange],
-  );
   const handleOpenFilePress = useCallback(
     (event: GestureResponderEvent) => {
       event.stopPropagation?.();
@@ -2259,14 +2268,9 @@ export const ExpandableBadge = memo(function ExpandableBadge({
         ) : null}
       </View>
       {detailContent ? (
-        <Pressable
-          ref={detailWrapperRef}
-          style={detailWrapperStyle}
-          onHoverIn={handleDetailHoverIn}
-          onHoverOut={handleDetailHoverOut}
-        >
+        <View ref={detailWrapperRef} style={detailWrapperStyle}>
           {detailContent}
-        </Pressable>
+        </View>
       ) : null}
     </View>
   );
@@ -2286,7 +2290,6 @@ function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: Expa
   if (previous.testID !== next.testID) return false;
   if (previous.onToggle !== next.onToggle) return false;
   if (previous.onOpenFile !== next.onOpenFile) return false;
-  if (previous.onDetailHoverChange !== next.onDetailHoverChange) return false;
   if (previous.renderDetails !== next.renderDetails) return false;
   return true;
 }
@@ -2304,7 +2307,6 @@ interface ToolCallProps {
   metadata?: Record<string, unknown>;
   isLastInSequence?: boolean;
   disableOuterSpacing?: boolean;
-  onInlineDetailsHoverChange?: (hovered: boolean) => void;
   onInlineDetailsExpandedChange?: (expanded: boolean) => void;
   onOpenFilePath?: (filePath: string) => void;
   defaultExpanded?: boolean;
@@ -2328,7 +2330,6 @@ export const ToolCall = memo(function ToolCall({
   metadata,
   isLastInSequence = false,
   disableOuterSpacing,
-  onInlineDetailsHoverChange,
   onInlineDetailsExpandedChange,
   onOpenFilePath,
   defaultExpanded,
@@ -2415,13 +2416,6 @@ export const ToolCall = memo(function ToolCall({
   ]);
 
   useEffect(() => {
-    if (!onInlineDetailsHoverChange || !shouldRenderInline || isExpanded) {
-      return;
-    }
-    onInlineDetailsHoverChange(false);
-  }, [isExpanded, shouldRenderInline, onInlineDetailsHoverChange]);
-
-  useEffect(() => {
     if (!onInlineDetailsExpandedChange) {
       return;
     }
@@ -2487,7 +2481,6 @@ export const ToolCall = memo(function ToolCall({
       isError={status === "failed"}
       isLastInSequence={isLastInSequence}
       disableOuterSpacing={disableOuterSpacing}
-      onDetailHoverChange={onInlineDetailsHoverChange}
     />
   );
 }, areToolCallPropsEqual);

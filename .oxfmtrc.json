@@ -15,6 +15,7 @@
     "packages/server/src/server/model-pricing/model_prices_and_context_window.json",
     "*.lock",
     "**/*.gen.ts",
-    "**/*.gen.tsx"
+    "**/*.gen.tsx",
+    "packages/react-native-enriched-markdown/**"
   ]
 }

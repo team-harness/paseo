@@ -9,7 +9,7 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `2bd9e9d87`，同步于 2026-11-15。
+- 最近同步基线：`upstream/main` = `ff27da07b`，同步于 2026-11-24。
 - 最近同步 merge commit：本轮同步 merge commit（见 Git 历史）。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-24: `upstream/main` `ff27da07b` / `0.17.4`
+
+- 合入上游自 `0273b6b61` 之后的 287 个提交，版本进入 `0.17.4`。本轮包含 Provider 安装与更新、Provider 页面和诊断、turn metrics、聊天轨道与内容宽度、OpenCode Go/OpenRouter 用量、Antigravity 与 Goose/Hermes Provider、消息 steering、工作区恢复、Android/iOS 输入与布局、Hub 自包含触发器、多 forge 变更请求观察和发布流程修复。
+- 采用上游的 Provider 安装、Provider 页面、turn metrics、聊天轨道、保留式文件预览、内容宽度、用量展示、Provider catalog 和跨平台修复。冲突处保留 fork 的聊天分享与 Threadshare 文档分享、Prompt Library、Review 选区评论与汇总、Status Summary/usage ledger、多 Host 过滤、canonical 100 条时间线、异步子 Agent、固定签名和三包发布链路。未发现上游已提供等价能力的 fork 专属路径，本轮没有下线 fork 产品能力。
+- `strategy-web.tsx` 接入上游的有效内容宽度计算和历史测量失效处理；turn footer 同时保留分享按钮并接入上游 turn metrics；Agent stream 使用上游聊天轨道开关，同时保留 fork 的 chat share capability 查询；文件 Source 视图保留 Review surface 并接入上游 Preview/Source 保持挂载；client/server 冲突合并双方的 Provider installation、Prompt Library、Status Summary 和 session metrics 契约。
+- 主 daemon 6767 仅做 PID/健康检查，不重启、不停止；GitHub fetch 使用本机 `127.0.0.1:7890` HTTP/HTTPS 代理。`npm run build:server`、`npm run typecheck`、`npm run lint` 和 `npm run format` 已通过；受影响定向测试为 app unit 25 项、app browser 15 项、client 268 项、server agent projections 26 项，全部通过。浏览器测试前补齐上游新增的两个 Lucide test stub。
 
 ### 2026-11-16: `upstream/main` `0273b6b61` / `0.16.0-beta.2`
 

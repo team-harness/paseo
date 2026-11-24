@@ -1,3 +1,4 @@
+import type { AgentMetric } from "@getpaseo/protocol/agent-types";
 import React, { memo, useCallback, useMemo, type ReactNode } from "react";
 import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -54,8 +55,8 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor,
   onForkAssistantTurn,
   onShareAssistantTurn,
-  isSharingAssistantTurn,
-  isShareStartSelectionOpen,
+  isSharingAssistantTurn = false,
+  isShareStartSelectionOpen = false,
   onForkInFlightTurn,
 }: {
   isRunning: boolean;
@@ -65,8 +66,8 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onShareAssistantTurn?: AssistantTurnShareHandler;
-  isSharingAssistantTurn: boolean;
-  isShareStartSelectionOpen: boolean;
+  isSharingAssistantTurn?: boolean;
+  isShareStartSelectionOpen?: boolean;
   onForkInFlightTurn?: InFlightTurnForkHandler;
 }) {
   if (isRunning) {
@@ -88,6 +89,7 @@ export const TurnFooter = memo(function TurnFooter({
       items={host.items}
       timing={host.timing}
       startIndex={host.startIndex}
+      turnMetrics={host.turnMetrics}
       supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
       onShareAssistantTurn={onShareAssistantTurn}
@@ -102,21 +104,23 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   items,
   timing,
   startIndex,
+  turnMetrics,
   supportsTimelineCursor,
   onForkAssistantTurn,
   onShareAssistantTurn,
-  isSharingAssistantTurn,
-  isShareStartSelectionOpen,
+  isSharingAssistantTurn = false,
+  isShareStartSelectionOpen = false,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
   timing?: TurnTiming;
   startIndex: number;
+  turnMetrics?: AgentMetric[];
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onShareAssistantTurn?: AssistantTurnShareHandler;
-  isSharingAssistantTurn: boolean;
-  isShareStartSelectionOpen: boolean;
+  isSharingAssistantTurn?: boolean;
+  isShareStartSelectionOpen?: boolean;
 }) {
   return (
     <TurnFooterRow>
@@ -125,6 +129,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
         items={items}
         timing={timing}
         startIndex={startIndex}
+        turnMetrics={turnMetrics}
         supportsTimelineCursor={supportsTimelineCursor}
         onForkAssistantTurn={onForkAssistantTurn}
         onShareAssistantTurn={onShareAssistantTurn}
@@ -184,21 +189,23 @@ function CompletedTurnFooter({
   items,
   timing,
   startIndex,
+  turnMetrics,
   supportsTimelineCursor,
   onForkAssistantTurn,
   onShareAssistantTurn,
-  isSharingAssistantTurn,
-  isShareStartSelectionOpen,
+  isSharingAssistantTurn = false,
+  isShareStartSelectionOpen = false,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
   timing?: TurnTiming;
   startIndex: number;
+  turnMetrics?: AgentMetric[];
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onShareAssistantTurn?: AssistantTurnShareHandler;
-  isSharingAssistantTurn: boolean;
-  isShareStartSelectionOpen: boolean;
+  isSharingAssistantTurn?: boolean;
+  isShareStartSelectionOpen?: boolean;
 }) {
   const getContent = useCallback(
     () =>
@@ -233,6 +240,7 @@ function CompletedTurnFooter({
         onShare={onShareAssistantTurn}
         isSharing={isSharingAssistantTurn}
         shareDisabled={isShareStartSelectionOpen}
+        metrics={turnMetrics}
       />
     </View>
   );
