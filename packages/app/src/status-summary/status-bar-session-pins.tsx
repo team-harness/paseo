@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import type { HostBadgeModel } from "@/hosts/appearance";
+import { useHostBadges } from "@/hosts/use-host-badges";
 import { splitPinnedSidebarGroups, usePinnedSidebarKeys } from "@/hooks/use-sidebar-pins";
 import { useSidebarWorkspaceEntries } from "@/hooks/use-sidebar-workspace-entries";
 import {
@@ -19,7 +21,6 @@ import {
   type SidebarWorkspaceEntry,
   type SidebarWorkspacePlacement,
 } from "@/hooks/use-sidebar-workspaces-list";
-import { useHosts } from "@/runtime/host-runtime";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 
@@ -69,13 +70,8 @@ export function StatusBarSessionPinsTrigger({ serverId }: { serverId: string }) 
     () => splitPinnedSidebarGroups({ projects, keys: pinnedKeys, pinnedWorkspaceOrder }),
     [pinnedKeys, pinnedWorkspaceOrder, projects],
   );
-  const hosts = useHosts();
   const [open, setOpen] = useState(false);
   const sheetHeader = useMemo(() => ({ title: t("statusBar.pins.title") }), [t]);
-  const hostLabelByServerId = useMemo(
-    () => new Map(hosts.map((host) => [host.serverId, host.label?.trim() || host.serverId])),
-    [hosts],
-  );
   const pinnedWorkspaces = useMemo(
     () =>
       pinnedChats.flatMap((workspace) => {
@@ -84,8 +80,9 @@ export function StatusBarSessionPinsTrigger({ serverId }: { serverId: string }) 
       }),
     [pinnedChats, workspaceEntriesByKey],
   );
-  const showHostLabel =
-    new Set(pinnedWorkspaces.map(({ workspace }) => workspace.serverId)).size > 1;
+  const hostBadgeByServerId = useHostBadges({
+    enabled: new Set(pinnedWorkspaces.map(({ workspace }) => workspace.serverId)).size > 1,
+  });
 
   useEffect(() => {
     setOpen(false);
@@ -118,9 +115,8 @@ export function StatusBarSessionPinsTrigger({ serverId }: { serverId: string }) 
 
   const content = (
     <StatusBarSessionPinsList
-      hostLabelByServerId={hostLabelByServerId}
+      hostBadgeByServerId={hostBadgeByServerId}
       items={pinnedWorkspaces}
-      showHostLabel={showHostLabel}
       onNavigate={handleNavigate}
     />
   );
@@ -186,14 +182,12 @@ export function StatusBarSessionPinsTrigger({ serverId }: { serverId: string }) 
 }
 
 function StatusBarSessionPinsList({
-  hostLabelByServerId,
+  hostBadgeByServerId,
   items,
-  showHostLabel,
   onNavigate,
 }: {
-  hostLabelByServerId: ReadonlyMap<string, string>;
+  hostBadgeByServerId: ReadonlyMap<string, HostBadgeModel>;
   items: Array<{ workspace: SidebarWorkspacePlacement; entry: SidebarWorkspaceEntry }>;
-  showHostLabel: boolean;
   onNavigate: (workspace: SidebarWorkspacePlacement) => void;
 }) {
   return (
@@ -201,10 +195,9 @@ function StatusBarSessionPinsList({
       {items.map(({ workspace, entry }) => (
         <StatusBarSessionPinRow
           entry={entry}
-          hostLabel={hostLabelByServerId.get(workspace.serverId) ?? workspace.serverId}
+          hostBadge={hostBadgeByServerId.get(workspace.serverId) ?? null}
           key={workspace.workspaceKey}
           workspace={workspace}
-          showHostLabel={showHostLabel}
           onNavigate={onNavigate}
         />
       ))}
@@ -214,30 +207,16 @@ function StatusBarSessionPinsList({
 
 function StatusBarSessionPinRow({
   entry,
-  hostLabel,
+  hostBadge,
   workspace,
-  showHostLabel,
   onNavigate,
 }: {
   entry: SidebarWorkspaceEntry;
-  hostLabel: string;
+  hostBadge: HostBadgeModel | null;
   workspace: SidebarWorkspacePlacement;
-  showHostLabel: boolean;
   onNavigate: (workspace: SidebarWorkspacePlacement) => void;
 }) {
   const { t } = useTranslation();
-  const hostBadge = useMemo(
-    () =>
-      showHostLabel
-        ? {
-            serverId: workspace.serverId,
-            label: hostLabel,
-            color: "none" as const,
-            showLabel: true,
-          }
-        : null,
-    [hostLabel, showHostLabel, workspace.serverId],
-  );
   const handlePress = useCallback(() => {
     onNavigate(workspace);
   }, [onNavigate, workspace]);

@@ -163,6 +163,11 @@ vi.mock("@/runtime/host-runtime", () => ({
   getHostRuntimeStore: () => ({ getClient: () => null }),
 }));
 
+vi.mock("@/hooks/use-is-local-daemon", () => ({
+  useLocalDaemonServerId: () => null,
+  useLocalDaemonServerIdState: () => ({ status: "resolved", serverId: null }),
+}));
+
 vi.mock("@/runtime/host-features", () => ({
   useHostFeatureMap: (serverIds: readonly string[]) =>
     new Map(serverIds.map((serverId) => [serverId, false])),

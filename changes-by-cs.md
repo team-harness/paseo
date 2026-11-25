@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `ff27da07b`，同步于 2026-11-24。
-- 最近同步 merge commit：`55ea93d86fb48a3ab8503d839a9a4d7680085516`，同步于 2026-11-24。
+- 最近同步基线：`upstream/main` = `311728a78`，同步于 2026-11-25。
+- 最近同步 merge commit：`Merge upstream/main at 311728a78`，同步于 2026-11-25。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,12 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-25: `upstream/main` `311728a78` / `0.17.4`
+
+- 合入 `ff27da07b` 之后的 9 个提交。上游更新了 Host 选择器的图标、连接类型和延迟显示，支持配置非 `origin` 远端的推拉，跳过未授权的跨仓库工作树清理命令，直接运行已解析的 forge CLI，按当前 OpenCode 安装选择用量登录存储，并停止空闲插件 IPC 心跳。
+- 状态栏置顶列表复用侧边栏的 Host 徽标选择逻辑，读取上游的外观设置并继续在置顶项跨 Host 时显示徽标。会话状态比较同时保留 Host 类型和 fork 的聊天分享配置。核对未发现需要下线的重复实现，MAIForce 配置兼容仍保留。
+- Server 和音频 workspace 构建、全仓 typecheck、lint、format 通过。Client、协议和 OpenCode Go 定向测试 341 项通过，Server 396 项通过、2 项跳过。App 的 Host 与 Git 定向测试、会话和状态栏单测通过，Host 外观与状态栏 Chromium 用例 4 项通过。本轮仅同步源码。
 
 ### 2026-11-24: `upstream/main` `ff27da07b` / `0.17.4`
 

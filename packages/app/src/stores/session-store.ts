@@ -293,6 +293,7 @@ export interface DaemonServerInfo {
   serverId: string;
   hostname: string | null;
   version: string | null;
+  machineKind?: string | null;
   desktopManaged?: boolean;
   capabilities?: ServerCapabilities;
   chatShare?: ServerInfoStatusPayload["chatShare"];
@@ -304,6 +305,7 @@ export function toDaemonServerInfo(serverInfo: ServerInfoStatusPayload): DaemonS
     serverId: serverInfo.serverId,
     hostname: serverInfo.hostname ?? null,
     version: serverInfo.version ?? null,
+    ...(serverInfo.machineKind !== undefined ? { machineKind: serverInfo.machineKind } : {}),
     ...(serverInfo.desktopManaged !== undefined
       ? { desktopManaged: serverInfo.desktopManaged }
       : {}),
@@ -794,6 +796,7 @@ function isSessionServerInfoUnchanged(input: {
   currentServerInfo: SessionState["serverInfo"] | undefined;
   nextHostname: string | null;
   nextVersion: string | null;
+  nextMachineKind: string | null;
   nextDesktopManaged: boolean | undefined;
   nextCapabilities: ServerCapabilities | undefined;
   nextChatShare: ServerInfoStatusPayload["chatShare"] | undefined;
@@ -804,21 +807,26 @@ function isSessionServerInfoUnchanged(input: {
     currentServerInfo,
     nextHostname,
     nextVersion,
+    nextMachineKind,
     nextDesktopManaged,
     nextCapabilities,
     nextChatShare,
     nextFeatures,
   } = input;
-  const prevHostname = currentServerInfo?.hostname?.trim() || null;
-  const prevVersion = currentServerInfo?.version?.trim() || null;
+  if (!currentServerInfo || currentServerInfo.serverId !== input.nextServerId) {
+    return false;
+  }
+  const prevHostname = currentServerInfo.hostname?.trim() || null;
+  const prevVersion = currentServerInfo.version?.trim() || null;
+  const prevMachineKind = currentServerInfo.machineKind?.trim() || null;
   return (
-    currentServerInfo?.serverId === input.nextServerId &&
     prevHostname === nextHostname &&
     prevVersion === nextVersion &&
-    currentServerInfo?.desktopManaged === nextDesktopManaged &&
-    areServerCapabilitiesEqual(currentServerInfo?.capabilities, nextCapabilities) &&
-    currentServerInfo?.chatShare?.baseUrl === nextChatShare?.baseUrl &&
-    areServerInfoFeaturesEqual(currentServerInfo?.features, nextFeatures)
+    prevMachineKind === nextMachineKind &&
+    currentServerInfo.desktopManaged === nextDesktopManaged &&
+    areServerCapabilitiesEqual(currentServerInfo.capabilities, nextCapabilities) &&
+    currentServerInfo.chatShare?.baseUrl === nextChatShare?.baseUrl &&
+    areServerInfoFeaturesEqual(currentServerInfo.features, nextFeatures)
   );
 }
 
@@ -953,6 +961,7 @@ export const useSessionStore = create<SessionStore>()(
 
           const nextHostname = info.hostname?.trim() || null;
           const nextVersion = info.version?.trim() || null;
+          const nextMachineKind = info.machineKind?.trim() || null;
           const nextDesktopManaged = info.desktopManaged;
           const nextCapabilities = info.capabilities;
           const nextChatShare = info.chatShare;
@@ -963,6 +972,7 @@ export const useSessionStore = create<SessionStore>()(
               currentServerInfo: session.serverInfo,
               nextHostname,
               nextVersion,
+              nextMachineKind,
               nextDesktopManaged,
               nextCapabilities,
               nextChatShare,
@@ -983,6 +993,7 @@ export const useSessionStore = create<SessionStore>()(
                   serverId: info.serverId,
                   hostname: nextHostname,
                   version: nextVersion,
+                  ...(nextMachineKind !== null ? { machineKind: nextMachineKind } : {}),
                   ...(nextDesktopManaged !== undefined
                     ? { desktopManaged: nextDesktopManaged }
                     : {}),
