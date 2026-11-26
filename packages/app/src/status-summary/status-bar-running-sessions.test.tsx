@@ -141,6 +141,11 @@ vi.mock("@/constants/layout", () => ({
   useIsCompactFormFactor: () => runtimeState.compact,
 }));
 
+vi.mock("@/hooks/use-is-local-daemon", () => ({
+  useLocalDaemonServerId: () => null,
+  useLocalDaemonServerIdState: () => ({ status: "resolved", serverId: null }),
+}));
+
 vi.mock("@/stores/session-store", () => ({
   useSessionStore: Object.assign(
     (selector: (state: unknown) => unknown) =>
