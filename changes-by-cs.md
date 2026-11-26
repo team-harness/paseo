@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `311728a78`，同步于 2026-11-25。
-- 最近同步 merge commit：`b6e221b46e4ce3c4a87ed2796303927e7cd512cb`，同步于 2026-11-25。
+- 最近同步基线：`upstream/main` = `e51bb7b8c`，同步于 2026-11-26。
+- 最近同步 merge commit：`12704f65954b5dd99734b6953621b877c1ee6f60`，同步于 2026-11-26。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-26: `upstream/main` `e51bb7b8c` / `0.17.4`
+
+- 合入 `311728a78` 之后的 40 个提交，涵盖侧栏多选归档、Agent Profile 和项目创建、插件命令启动和重载、OpenCode v2、Claude MCP、移动端选区与布局，以及 Web 样式和 Portal 性能修复。
+- 侧栏采用上游多选逻辑，多选时位置由复选框占用，普通行和置顶行保留项目上下文、状态环和加载提示。继续保留 Status Bar/usage ledger、多 Host、Prompt Library、Review、Threadshare、完整 Composer 历史、旧 Host 时间线兼容、异步子 Agent 和 MAIForce 共享配置兼容。本轮没有下线 fork 功能。
+- 重新安装依赖并验证更新的四个依赖补丁。Server 和音频 workspace 构建、全仓 typecheck、lint、format 均通过。Server 623 项、Client/协议 297 项、App 181 项定向测试均通过。状态栏单测模拟本机 daemon 查询，仍使用真实 Host 徽标逻辑。Chromium 首次在 Metro 预热时超时，重跑后侧栏两种分组多选和状态栏桌面、紧凑布局共 4 项通过。静态审查索引存在覆盖缺口，冲突处另经源码和测试核对。
+- 本轮仅同步源码。安装包、OSS 上传和 Lark 通知均跳过。合并在隔离工作区完成，主工作区原有四个文档删除保留。主 daemon 6767 的监听 PID 为 `2513`，健康检查返回 HTTP 200。
 
 ### 2026-11-25: `upstream/main` `311728a78` / `0.17.4`
 
