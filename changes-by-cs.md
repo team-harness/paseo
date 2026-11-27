@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `e51bb7b8c`，同步于 2026-11-26。
-- 最近同步 merge commit：`12704f65954b5dd99734b6953621b877c1ee6f60`，同步于 2026-11-26。
+- 最近同步基线：`upstream/main` = `74c33b03d`，同步于 2026-11-27。
+- 最近同步 merge commit：`fb7c2e89aa7416645d66a25e100e23b6c55590fa`，同步于 2026-11-27。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-27: `upstream/main` `74c33b03d` / `0.17.5`
+
+- 合入 `e51bb7b8c` 之后的 29 个提交，涵盖设备与 Host 设置导航、按设备配置通知和插件通知、归档恢复、时间线 rewind 恢复、工作树归属、Git 后台抓取和桌面更新。
+- 通知测试同时接入上游推送工厂和 fork 的状态汇总服务。时间线接入上游 epoch 恢复，旧 Host 仍使用 canonical 100 条分页。保留 Status Bar 和 usage ledger、Prompt Library、Review、Threadshare、完整 Composer 历史和 MAIForce 共享配置兼容。
+- Server、CLI、音频组件和桌面主进程编译通过，全仓 typecheck、lint、format 通过。Server 486 项、App 330 项、Client、协议与桌面 405 项定向测试通过。Chromium 5 项通过，覆盖通知偏好、设置页导航、Host 选择与状态栏。静态审查范围有缺口，冲突处另经源码、Git 差异和通知测试核对。
+- 本轮范围为源码同步。安装包、OSS 上传和 Lark 通知均跳过。隔离工作区承载合并，主工作区原有四处文档删除保留。6767 健康检查返回 HTTP 200，监听 PID 为 `98047`。
 
 ### 2026-11-26: `upstream/main` `e51bb7b8c` / `0.17.4`
 
