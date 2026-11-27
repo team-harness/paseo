@@ -355,6 +355,7 @@ export const ja: TranslationResources = {
     archived: {
       callout: "このエージェントはアーカイブされています",
       unarchive: "アーカイブ解除",
+      unarchiving: "アーカイブ解除中...",
     },
   },
   sessions: {
@@ -1702,6 +1703,8 @@ export const ja: TranslationResources = {
       status: {
         checking: "アプリの更新を確認中...",
         installing: "アプリの更新をインストール中...",
+        downloadingVersionProgress: "{{version}} をダウンロード中... {{percent}}%",
+        downloadingProgress: "アプリの更新をダウンロード中... {{percent}}%",
         upToDate: "アプリは最新です。",
         upToDateWithLastChecked: "最新の状態です。最終確認: {{time}}。",
         pending: "更新の準備ができたらお知らせします。",
@@ -1709,6 +1712,15 @@ export const ja: TranslationResources = {
         pendingWithVersion: "更新が見つかりました: {{version}}。ダウンロード中...",
         pendingWithVersionAndLastChecked:
           "更新が見つかりました: {{version}}。ダウンロード中... 最終確認: {{time}}。",
+        pendingWithVersionProgress:
+          "更新が見つかりました: {{version}}。ダウンロード中... {{percent}}%",
+        pendingWithVersionProgressAndLastChecked:
+          "更新が見つかりました: {{version}}。ダウンロード中... {{percent}}% 最終確認: {{time}}。",
+        downloadAvailableWithVersion: "利用可能な更新: {{version}}",
+        downloadAvailableWithVersionAndLastChecked:
+          "利用可能な更新: {{version}}。最終確認: {{time}}。",
+        downloadAvailable: "アプリの更新が利用可能です。",
+        downloadAvailableWithLastChecked: "アプリの更新が利用可能です。最終確認: {{time}}。",
         availableWithVersion: "更新の準備ができました: {{version}}",
         availableWithVersionAndLastChecked:
           "更新の準備ができました: {{version}}。最終確認: {{time}}。",
@@ -1720,14 +1732,21 @@ export const ja: TranslationResources = {
       },
       installError: "デスクトップアプリの更新をインストールできません。",
       callout: {
+        downloadingTitle: "更新をダウンロード中",
         installingTitle: "更新をインストール中",
         failedTitle: "更新に失敗しました",
         availableTitle: "更新が利用可能",
         genericError: "問題が発生しました。",
         whatsNew: "新機能",
+        downloadingAction: "ダウンロード中...",
         installingAction: "インストール中...",
+        downloadAndRestart: "ダウンロード",
         installAndRestart: "インストールして再起動",
+        downloadingVersionDescription: "{{version}} をダウンロード中... {{percent}}%",
+        downloadingDescription: "更新をダウンロード中... {{percent}}%",
         installingDescription: "インストールして再起動中...",
+        versionAvailable: "{{version}} をダウンロードできます。",
+        newVersionAvailable: "新しいバージョンをダウンロードできます。",
         versionReady: "{{version}}のインストール準備ができました。",
         newVersionReady: "新しいバージョンのインストール準備ができました。",
         restartWarning:
@@ -1948,12 +1967,6 @@ export const ja: TranslationResources = {
             "フル機能のネイティブモバイルアプリで、スマートフォンからどの Paseo コンピューターでも操作できます",
           appStore: "App Store",
           googlePlay: "Google Play",
-          connectTitle: "接続方法を選択",
-          connectDocs: "ドキュメント",
-          openConnectDocs: "接続のドキュメントを開く",
-          recommended: "おすすめ",
-          relay: { title: "リレー", hint: "エンドツーエンド暗号化、QR コードをスキャン" },
-          tailscale: { title: "Tailscale", hint: "少し設定が必要です" },
         },
       },
     },
@@ -2030,6 +2043,33 @@ export const ja: TranslationResources = {
       noModelAvailable: "選択したプロバイダーで利用可能なモデルがありません",
       workspaceDirectoryNotFound: "ワークスペースディレクトリが見つかりません",
       hostDisconnected: "ホストが接続されていません",
+    },
+  },
+  devices: {
+    title: "デバイス",
+    waysToConnect: "接続方法",
+    docs: "ドキュメント",
+    docsAccessibility: "接続のドキュメントを開く",
+    relay: { title: "リレー", hint: "設定不要、エンドツーエンド暗号化、QR コードをスキャン" },
+    tailscale: {
+      hint: "tailnet 経由で直接接続、アドレスを入力",
+      unavailable: "このホストで Tailscale が動作していません",
+      install: "Tailscale を入手",
+      refresh: "更新",
+      refreshing: "更新中...",
+      waiting: "このホストで Tailscale が起動するのを待っています",
+      alwaysOn: "常にオン。このホストはすでに Tailscale からの接続を受け付けています",
+      socket: "オフ。このホストはローカルソケットで待ち受けています",
+      launch: "このホストを起動するコマンドで制御されています",
+      update: "Tailscale を使うにはこのホストを更新してください",
+      updateDocs: "更新方法",
+      address: "Tailscale を使うスマートフォンで、このアドレスのホストを追加してください",
+      statusError: "Tailscale を確認できませんでした",
+      turnOnError: "Tailscale をオンにできませんでした",
+      turnOffError: "Tailscale をオフにできませんでした",
+      confirmTitle: "Tailscale をオフにしますか？",
+      confirmMessage: "このデバイスは Tailscale 経由で接続しているため、ホストとの接続が切れます。",
+      confirmAction: "オフにする",
     },
   },
   pairing: {
@@ -2532,7 +2572,7 @@ export const ja: TranslationResources = {
     title: "設定",
     loading: "設定を読み込み中...",
     groups: {
-      app: "アプリ",
+      app: "このデバイス",
       host: "ホスト",
     },
     hostPicker: {
@@ -2550,7 +2590,9 @@ export const ja: TranslationResources = {
     groupInfo: "{{title}}について",
     sections: {
       general: "一般",
+      hosts: "ホスト",
       chat: "チャット",
+      chatAndPanes: "チャットとペイン",
       appearance: "外観",
       sidebar: "サイドバー",
       terminal: "ターミナル",
@@ -2563,6 +2605,16 @@ export const ja: TranslationResources = {
       permissions: "権限",
       diagnostics: "診断",
       about: "アプリ情報",
+    },
+    clientHosts: {
+      title: "保存済みホスト",
+      info: "このデバイスが接続するホストです。ここでの名前、アイコン、バッジ、経路はこのデバイスにのみ反映されます。",
+      backToHosts: "ホスト一覧に戻る",
+      routesTitle: "このデバイスの接続経路",
+      routesInfo:
+        "このデバイスがこのホストに到達するために保存された経路です。Paseoは利用可能な最速の経路を選びます。",
+      addRoute: "経路を追加",
+      activeRoute: "接続中",
     },
     layout: en.settings.layout,
     editor: {
@@ -2580,6 +2632,48 @@ export const ja: TranslationResources = {
     },
     notifications: {
       title: "通知",
+      enabled: {
+        label: "通知を有効にする",
+        description: "このデバイスでエージェント、ターミナル、プラグインからの通知を受け取ります",
+        pausedDescription: "プラグインを含むすべての通知がこのデバイスで一時停止されています",
+      },
+      events: {
+        title: "イベント",
+        agentPermission: {
+          label: "エージェントが権限を要求",
+          description: "承認、プラン、質問",
+        },
+        agentError: {
+          label: "エージェントのエラー",
+          description: "エージェントがエラーで停止したとき",
+        },
+        agentFinished: {
+          label: "エージェントが完了",
+          description: "エージェントがターンを完了したとき",
+        },
+        terminalNeedsInput: {
+          label: "ターミナルが入力を待機",
+          description: "ターミナルコマンドが入力を待っているとき",
+        },
+        terminalFinished: {
+          label: "ターミナルが完了",
+          description: "ターミナルコマンドが完了したとき",
+        },
+      },
+      plugins: {
+        title: "プラグイン",
+        enabled: {
+          label: "プラグイン通知",
+          description: "インストール済みプラグインによる通知の送信を許可します",
+        },
+        empty: "インストールされたプラグインがここに表示され、個別にミュートできます",
+      },
+      legacyHostTitle: "プッシュ通知設定にはホストの更新が必要です",
+      legacyHostHint:
+        "このデバイスのカスタムプッシュ通知設定を同期するには、接続中のホストを更新してください",
+      desktop: {
+        title: "システム",
+      },
       permission: "通知の権限",
       refreshAccessibility: "通知の権限を更新",
       playSound: "サウンドを再生",
@@ -2597,6 +2691,7 @@ export const ja: TranslationResources = {
       projects: "プロジェクト",
       connections: "接続",
       agents: "エージェント",
+      tools: "ツールとプロンプト",
       agentProfiles: "エージェントプロファイル",
       metadata: "メタデータ",
       voice: "音声",
@@ -2606,6 +2701,7 @@ export const ja: TranslationResources = {
       terminals: "ターミナル",
       plugins: "プラグイン",
       host: "概要",
+      daemon: "デーモン",
     },
     plugins: pluginSettings.ja,
     metadataGeneration: {
@@ -2811,9 +2907,28 @@ export const ja: TranslationResources = {
         stable: "安定版",
         beta: "ベータ",
       },
+      autoUpdate: {
+        label: "自動更新",
+        options: {
+          automatic: "自動",
+          notify: "通知のみ",
+          off: "オフ",
+        },
+        descriptions: {
+          automatic: "バックグラウンドで更新を確認してダウンロードします",
+          notify: "更新を確認しますが、選択したときだけダウンロードします",
+          off: "自動で更新を確認しません。「確認」をクリックしたときだけ確認します",
+        },
+      },
       updates: {
         label: "アプリの更新",
         readyToInstall: "インストール準備完了: {{version}}",
+        downloadTitle: "デスクトップの更新をダウンロード",
+        downloadMessage: "このコンピューターにPaseoの更新をダウンロードしてインストールします",
+        downloadConfirm: "ダウンロードしてインストール",
+        download: "ダウンロード",
+        downloadTo: "{{version}}をダウンロード",
+        downloading: "ダウンロード中...",
         installTitle: "デスクトップの更新をインストール",
         installMessage: "このコンピューターのPaseoを更新します",
         installConfirm: "更新をインストール",
@@ -3088,9 +3203,7 @@ export const ja: TranslationResources = {
         timeout: "タイムアウト",
       },
       pairDevices: {
-        title: "デバイスをペアリング",
         rowTitle: "デバイスをペアリング",
-        rowHint: "QRコードをスキャンするかリンクをコピーしてスマートフォンをこのホストに接続",
       },
       skills: {
         ...en.settings.host.skills,
@@ -3130,6 +3243,10 @@ export const ja: TranslationResources = {
           update: "スキルを更新",
           delete: "スキルを削除",
         },
+      },
+      tools: {
+        instructionsTitle: "指示",
+        toolsTitle: "エージェントツール",
       },
       orchestration: {
         title: "オーケストレーション",
@@ -3259,6 +3376,7 @@ export const ja: TranslationResources = {
         },
       },
       daemon: {
+        runtimeTitle: "エージェントランタイム",
         rename: {
           editLabel: "ラベルを編集",
           title: "ホストの名前を変更",

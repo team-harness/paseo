@@ -159,6 +159,10 @@ function createHarness(input: {
     }),
     workspaceRegistry: createStub<SessionOptions["workspaceRegistry"]>({
       subscribeToMutations: () => () => {},
+      subscribeBeforePublish: () => () => {},
+      isPublicationDeferred: () => false,
+      isBroadcastDeferred: () => false,
+      waitForDeferredPublication: async () => false,
       initialize: async () => {},
       existsOnDisk: async () => true,
       listAll: async () => Array.from(workspaces.values()),
