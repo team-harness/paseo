@@ -9,8 +9,8 @@
 - Fork remote：`origin` -> `git@github.com:team-harness/paseo.git`
 - 上游 remote：`upstream` -> `git@github.com:getpaseo/paseo.git`
 - 初始记录基线：`upstream/main` = `f2ebac931c60ed423968f1aa07ba78c0a0b2776c`，记录于 2026-07-14。
-- 最近同步基线：`upstream/main` = `74c33b03d`，同步于 2026-11-27。
-- 最近同步 merge commit：`fb7c2e89aa7416645d66a25e100e23b6c55590fa`，同步于 2026-11-27。
+- 最近同步基线：`upstream/main` = `6d8938e26`，同步于 2026-11-28。
+- 最近同步 merge commit：`d3584462a89092826042eb9b86a8cb2e0fe5ddf6`，同步于 2026-11-28。
 
 同步时以 `upstream/main` 为原作者来源，不要把 `origin` 误认为上游。
 
@@ -36,6 +36,13 @@
 - EAS 上传必须使用仓库根目录 `.easignore` 排除本地依赖、桌面产物、generated native project、工具状态和凭据，避免把本机构建缓存上传到云端。
 
 ## 最近同步判断
+
+### 2026-11-28: `upstream/main` `6d8938e26` / `0.18.1`
+
+- 合入 `74c33b03d` 之后的 47 个提交。上游更新了远程工作区浏览器路由、长 Diff 渲染和语法高亮、Composer 自动补全和流式回复、Agent Profile 系统 Prompt、Host 元数据指令，以及 OpenCode、Pi、ACP 和移动端行为。
+- Composer 接入上游自动补全和流式更新，保留完整 Prompt 索引、Prompt Library 与选区引用。保留已有 Agent 计划的 Prompt 编辑、旧 Host 时间线的有界分页、状态栏与 usage ledger、Review、Threadshare、MAIForce 共享配置及 fork 移动端安装身份。上游企业用量卡片继续使用 Provider 数据。
+- 更新的手势依赖补丁安装成功。Server、CLI、音频组件和桌面主进程编译通过，全仓 typecheck、lint、format 通过。Server 545 项、App 242 项、Client、协议、CLI、高亮与桌面 462 项定向测试，以及 iOS 审核逻辑 15 项均通过。Chromium 6 项通过，覆盖 Composer 历史与自动补全、Diff 高亮、已有 Agent 计划和中文输入、状态栏导航。代码索引失败，交叉点通过 Git 差异和相关测试复核。
+- 本轮执行源码同步。合并在隔离工作区完成，保留主工作区四处未提交的文档删除。主 daemon 6767 的监听 PID 为 `99738`，健康检查返回 HTTP 200。
 
 ### 2026-11-27: `upstream/main` `74c33b03d` / `0.17.5`
 
